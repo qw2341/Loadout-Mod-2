@@ -1,0 +1,10 @@
+{
+  "type": "lerp_magnify",
+  "hover_scale": 1.35,
+  "enter_speed": 16.0,
+  "exit_speed": 11.0,
+  "position_lift": 6.0,
+  "transition": "back",
+  "ease": "out",
+  "keep_bottom_anchored": true
+}

@@ -35,7 +35,8 @@ public partial class LoadoutPanelRoot : Control
 		if (tree.Root.GetNodeOrNull("/Game/LoadoutPanelRoot") != null)
 			return;
 
-		var modRoot = new LoadoutPanelRoot();
+		var modRootScene = ResourceLoader.Load<PackedScene>("res://UI/LoadoutPanelRoot.tscn");
+		var modRoot = modRootScene.Instantiate<LoadoutPanelRoot>();
 		modRoot.Name = "LoadoutPanelRoot";
 		modRoot.ZIndex = 999;
 		_overlayInstance = modRoot;

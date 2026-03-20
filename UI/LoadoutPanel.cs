@@ -11,12 +11,15 @@ public partial class LoadoutPanel : Panel
 	public float SlideSpeed = 12f;
 
 	private Vector2 _shownPosition;
+	private Control _itemsContainer;
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
 		_shownPosition = Position;
 		Position = GetTargetPosition();
+		_itemsContainer = GetNode<Control>("MarginContainer/VBoxContainer");
+		AddLoadoutItems();
 	}
 
 	public void ToggleShown()
@@ -37,5 +40,17 @@ public partial class LoadoutPanel : Panel
 		return Shown
 			? _shownPosition
 			: _shownPosition + new Vector2(hiddenOffsetX, 0f);
+	}
+
+	private void AddLoadoutItems()
+	{
+		var loadoutBag = new LoadoutPanelItem();
+		_itemsContainer.AddChild(loadoutBag);
+		var loadoutBag2 = new LoadoutPanelItem();
+		_itemsContainer.AddChild(loadoutBag2);
+		var loadoutBag3 = new LoadoutPanelItem();
+		_itemsContainer.AddChild(loadoutBag3);
+		var loadoutBag4 = new LoadoutPanelItem();
+		_itemsContainer.AddChild(loadoutBag4);
 	}
 }
