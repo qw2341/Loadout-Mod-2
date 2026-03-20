@@ -1,0 +1,44 @@
+[gd_scene load_steps=4 format=3 uid="uid://djje5hx4jbdbk"]
+
+[ext_resource type="Script" uid="uid://b1kdgoyqedb7s" path="res://UI/LoadoutPanelRoot.cs" id="1_dgc0e"]
+[ext_resource type="Script" uid="uid://brd1maagi5mq7" path="res://UI/LoadoutPanelButton.cs" id="1_i5xrf"]
+[ext_resource type="Script" uid="uid://fr8tmxp2fxtf" path="res://UI/LoadoutPanel.cs" id="1_pnno2"]
+
+[node name="LoadoutPanelRoot" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_dgc0e")
+
+[node name="LoadoutPanel" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_top = -252.0
+offset_right = 85.0
+offset_bottom = 261.0
+grow_vertical = 2
+script = ExtResource("1_pnno2")
+
+[node name="LoadoutPanelButton" type="Button" parent="LoadoutPanel"]
+custom_minimum_size = Vector2(25, 25)
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = 1.0
+offset_top = -15.5
+offset_right = 26.0
+offset_bottom = 15.5
+grow_horizontal = 0
+grow_vertical = 2
+toggle_mode = true
+text = "<"
+script = ExtResource("1_i5xrf")

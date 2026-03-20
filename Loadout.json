@@ -1,0 +1,11 @@
+{
+  "id": "Loadout",
+  "name": "Loadout",
+  "author": "Jasonwqq",
+  "description": "A mod for getting stuff.",
+  "version": "v0.0.1",
+  "has_pck": true,
+  "has_dll": true,
+  "dependencies": ["BaseLib"],
+  "affects_gameplay": true
+}
