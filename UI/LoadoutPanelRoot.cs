@@ -1,8 +1,9 @@
 using Godot;
-using System;
 namespace Loadout.UI;
 public partial class LoadoutPanelRoot : Control
 {
+	private static Control _overlayInstance;
+	
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
@@ -11,6 +12,20 @@ public partial class LoadoutPanelRoot : Control
 	// Called every frame. 'delta' is the elapsed time since the previous frame.
 	public override void _Process(double delta)
 	{
+	}
+	
+	private void OnSceneChanged()
+	{
+		EnsureOverlay();
+	}
+
+	private void EnsureOverlay()
+	{
+		if (IsInstanceValid(_overlayInstance))
+		{
+			if (_overlayInstance.GetParent() == null)
+				GetTree().Root.CallDeferred(Node.MethodName.AddChild, _overlayInstance);
+		}
 	}
 	
 	public static void AttachToTree(SceneTree tree)
@@ -23,7 +38,9 @@ public partial class LoadoutPanelRoot : Control
 		var modRoot = new LoadoutPanelRoot();
 		modRoot.Name = "LoadoutPanelRoot";
 		modRoot.ZIndex = 999;
-		
+		_overlayInstance = modRoot;
+		modRoot.SetAnchorsPreset(LayoutPreset.FullRect);
+		GD.Print("LoadoutPanelRoot has been initialized. Attaching to root.");
 		tree.Root.CallDeferred(Node.MethodName.AddChild, modRoot);
 	}
 }

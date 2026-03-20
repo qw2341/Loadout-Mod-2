@@ -14,6 +14,7 @@ public partial class LoadoutPanelButton : Button
 
 	private void OnPressed()
 	{
-		_loadoutPanel?.ToggleShown();
+		_loadoutPanel.ToggleShown();
+		this.Text = _loadoutPanel.Shown ? "<" : ">"; // TODO: change to sprites instead of text
 	}
 }
