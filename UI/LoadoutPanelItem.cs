@@ -20,18 +20,25 @@ public partial class LoadoutPanelItem : TextureButton
 	[Export]
 	public string AnimationId = LoadoutPanelItemAnimationManager.DefaultAnimationId;
 
+	[Export] 
+	public int MinimumSizeY = 100;
+	
 	private PanelItemAnimationProfile _animationProfile;
 	private float _hoverProgress;
 	private bool _isHovered;
 	private bool _isInsideContainer;
 	private Vector2 _baseScale = Vector2.One;
 	private Vector2 _basePosition;
-
+	
 	public override void _Ready()
 	{
 		_isInsideContainer = GetParent() is Container;
 		_baseScale = Scale;
 		_basePosition = Position;
+
+		IgnoreTextureSize = true;
+		StretchMode = StretchModeEnum.KeepCentered;
+		SetCustomMinimumSize(new Vector2(0,MinimumSizeY));
 
 		_animationProfile = ResolveAnimationProfile();
 		ApplySkinTexture();
@@ -47,6 +54,8 @@ public partial class LoadoutPanelItem : TextureButton
 
 		if (UseGlobalAnimation)
 			LoadoutPanelItemAnimationManager.AnimationChanged += OnAnimationChanged;
+		
+		// GD.Print($"Initialized Loadout Panel Item, Size: {Size}");
 	}
 
 	public override void _ExitTree()

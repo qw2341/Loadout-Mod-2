@@ -1,4 +1,5 @@
 using Godot;
+using Loadout.UI.Managers;
 namespace Loadout.UI;
 public partial class LoadoutPanelRoot : Control
 {
@@ -7,11 +8,18 @@ public partial class LoadoutPanelRoot : Control
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
+		LoadoutThemeManager.ThemeChanged += OnThemeChanged;
+		LoadoutThemeManager.ApplyTheme(this);
 	}
 
 	// Called every frame. 'delta' is the elapsed time since the previous frame.
 	public override void _Process(double delta)
 	{
+	}
+
+	public override void _ExitTree()
+	{
+		LoadoutThemeManager.ThemeChanged -= OnThemeChanged;
 	}
 	
 	private void OnSceneChanged()
@@ -43,5 +51,10 @@ public partial class LoadoutPanelRoot : Control
 		modRoot.SetAnchorsPreset(LayoutPreset.FullRect);
 		GD.Print("LoadoutPanelRoot has been initialized. Attaching to root.");
 		tree.Root.CallDeferred(Node.MethodName.AddChild, modRoot);
+	}
+
+	private void OnThemeChanged(string _)
+	{
+		// LoadoutThemeManager.ApplyTheme(this);
 	}
 }

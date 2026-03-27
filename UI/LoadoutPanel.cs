@@ -9,17 +9,28 @@ public partial class LoadoutPanel : Panel
 
 	[Export]
 	public float SlideSpeed = 12f;
-
-	private Vector2 _shownPosition;
+	
+	private PanelContainer _panelContainer;
+	private MarginContainer _marginContainer;
 	private Control _itemsContainer;
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
-		_shownPosition = Position;
-		Position = GetTargetPosition();
-		_itemsContainer = GetNode<Control>("MarginContainer/VBoxContainer");
+		_panelContainer = GetNode<PanelContainer>("PanelContainer");
+		_marginContainer = GetNode<MarginContainer>("PanelContainer/MarginContainer");
+		_itemsContainer = GetNode<Control>("PanelContainer/MarginContainer/VBoxContainer");
+		
+		
+		
 		AddLoadoutItems();
+		
+		// Initial resize
+		UpdatePanelHeight();
+
+		// Recompute whenever the VBox minimum size changes
+		// _marginContainer.MinimumSizeChanged += UpdatePanelHeight;
+		// _itemsContainer.MinimumSizeChanged += UpdatePanelHeight;
 	}
 
 	public void ToggleShown()
@@ -29,17 +40,17 @@ public partial class LoadoutPanel : Panel
 
 	public override void _Process(double delta)
 	{
-		Vector2 target = GetTargetPosition();
+		UpdatePosition(delta);
+	}
+	
+	private void UpdatePosition(double delta)
+	{
+		Vector2 target = Position;
+		target.Y = (GetParent<Control>().Size.Y - Size.Y) / 2f;
+		target.X = Shown ? 0 : -Size.X;
+		
 		float weight = Mathf.Clamp((float)(SlideSpeed * delta), 0f, 1f);
 		Position = Position.Lerp(target, weight);
-	}
-
-	private Vector2 GetTargetPosition()
-	{
-		float hiddenOffsetX = -Size.X;
-		return Shown
-			? _shownPosition
-			: _shownPosition + new Vector2(hiddenOffsetX, 0f);
 	}
 
 	private void AddLoadoutItems()
@@ -52,5 +63,20 @@ public partial class LoadoutPanel : Panel
 		_itemsContainer.AddChild(loadoutBag3);
 		var loadoutBag4 = new LoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag4);
+	}
+	
+	private void UpdatePanelHeight()
+	{
+		// Includes children/layout of the VBox.
+		Vector2 contentMin = _panelContainer.GetCombinedMinimumSize();
+
+		// Keep current width, only change height.
+		Vector2 size = Size;
+		size.Y = contentMin.Y;
+		Size = size;
+		//recenter it
+		Vector2 pos = Position;
+		pos.Y = (GetParent<Control>().Size.Y - Size.Y) / 2f;
+		Position = pos;
 	}
 }
