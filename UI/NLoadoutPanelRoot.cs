@@ -1,7 +1,7 @@
 using Godot;
 using Loadout.UI.Managers;
 namespace Loadout.UI;
-public partial class LoadoutPanelRoot : Control
+public partial class NLoadoutPanelRoot : Control
 {
 	private static Control _overlayInstance;
 	
@@ -44,7 +44,7 @@ public partial class LoadoutPanelRoot : Control
 			return;
 
 		var modRootScene = ResourceLoader.Load<PackedScene>("res://UI/LoadoutPanelRoot.tscn");
-		var modRoot = modRootScene.Instantiate<LoadoutPanelRoot>();
+		var modRoot = modRootScene.Instantiate<NLoadoutPanelRoot>();
 		modRoot.Name = "LoadoutPanelRoot";
 		modRoot.ZIndex = 999;
 		_overlayInstance = modRoot;

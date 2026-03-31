@@ -3,7 +3,7 @@ using Loadout.UI.Managers;
 
 namespace Loadout.UI;
 
-public partial class LoadoutPanelItem : TextureButton
+public partial class NLoadoutPanelItem : TextureButton
 {
 	[Export]
 	public string TextureFileName = "LoadoutBag.png";

@@ -2,7 +2,7 @@ using Godot;
 
 namespace  Loadout.UI;
 
-public partial class LoadoutPanel : Panel
+public partial class NLoadoutPanel : Panel
 {
 	[Export]
 	public bool Shown = true;
@@ -55,13 +55,13 @@ public partial class LoadoutPanel : Panel
 
 	private void AddLoadoutItems()
 	{
-		var loadoutBag = new LoadoutPanelItem();
+		var loadoutBag = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag);
-		var loadoutBag2 = new LoadoutPanelItem();
+		var loadoutBag2 = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag2);
-		var loadoutBag3 = new LoadoutPanelItem();
+		var loadoutBag3 = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag3);
-		var loadoutBag4 = new LoadoutPanelItem();
+		var loadoutBag4 = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag4);
 	}
 	

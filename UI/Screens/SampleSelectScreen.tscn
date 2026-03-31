@@ -1,4 +1,6 @@
-[gd_scene format=3 uid="uid://c8st0fhayta7r"]
+[gd_scene load_steps=2 format=3 uid="uid://c8st0fhayta7r"]
+
+[ext_resource type="Script" path="res://UI/Screens/NLoadoutSelectScreen.cs" id="1_6uqir"]
 
 [node name="SampleSelectScreen" type="Control"]
 layout_mode = 3
@@ -7,6 +9,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1_6uqir")
 
 [node name="PanelContainer" type="PanelContainer" parent="."]
 layout_mode = 1
@@ -70,7 +73,7 @@ anchor_bottom = 0.757
 offset_left = -0.099000454
 offset_right = -0.031021118
 offset_bottom = -0.0026664734
-placeholder_text = "PLACEHOLDER_TEXT"
+placeholder_text = "ui.text_placeholder"
 
 [node name="TextureButton" type="TextureButton" parent="PanelContainer/HBoxContainer/SideBar/MarginContainer/FilterControls/SearchBar"]
 layout_mode = 1
@@ -89,7 +92,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 4.0
 
-[node name="ItemDisplay" type="GridContainer" parent="PanelContainer/HBoxContainer/ScrollContainer"]
+[node name="ItemGrid" type="GridContainer" parent="PanelContainer/HBoxContainer/ScrollContainer"]
 layout_mode = 2
 size_flags_stretch_ratio = 4.0
 columns = 5

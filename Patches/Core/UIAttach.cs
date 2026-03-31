@@ -12,7 +12,7 @@ public class UIAttach
     public static void Postfix(Node __instance)
     {
         if (_done) return;
-        Loadout.UI.LoadoutPanelRoot.AttachToTree(__instance.GetTree());
+        Loadout.UI.NLoadoutPanelRoot.AttachToTree(__instance.GetTree());
         _done = true;
     }
 }
