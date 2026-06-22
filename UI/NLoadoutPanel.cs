@@ -1,4 +1,12 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
+using Loadout.UI.Screens;
+using MegaCrit.Sts2.Core.Entities.UI;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Cards;
 
 namespace  Loadout.UI;
 
@@ -55,14 +63,28 @@ public partial class NLoadoutPanel : Panel
 
 	private void AddLoadoutItems()
 	{
-		var loadoutBag = new NLoadoutPanelItem();
-		_itemsContainer.AddChild(loadoutBag);
+		CreateAndAddLoadoutItem(ModelDb.AllCards, model => $"{model.Id.Entry} {model.Title} {model.Description.GetRawText()}",model => NCard.Create(model));
+		
 		var loadoutBag2 = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag2);
 		var loadoutBag3 = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag3);
 		var loadoutBag4 = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag4);
+	}
+
+	private void CreateAndAddLoadoutItem<TModel>(IEnumerable<TModel> models, Func<TModel,string> searchTextSelector, Func<TModel,Control> itemRenderer) where TModel : AbstractModel
+	{
+		var item = new NLoadoutPanelItem();
+		var scene = GD.Load<PackedScene>("res://UI/Screens/SampleSelectScreen.tscn");
+		var screen = scene.Instantiate<NLoadoutSelectScreen>();
+		screen.ResetConfiguration();
+		screen.SetItems(models, searchTextSelector);
+		//screen.SetSearchMatcher();
+		screen.SetItemRenderer(itemRenderer);
+		
+		item.BoundScreen = screen;
+		_itemsContainer.AddChild(item);
 	}
 	
 	private void UpdatePanelHeight()

@@ -1,5 +1,6 @@
 using Godot;
 using Loadout.UI.Managers;
+using Loadout.UI.Screens;
 
 namespace Loadout.UI;
 
@@ -29,6 +30,7 @@ public partial class NLoadoutPanelItem : TextureButton
 	private bool _isInsideContainer;
 	private Vector2 _baseScale = Vector2.One;
 	private Vector2 _basePosition;
+	private NLoadoutSelectScreen _boundScreen;
 	
 	public override void _Ready()
 	{
@@ -48,6 +50,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		MouseEntered += OnMouseEntered;
 		MouseExited += OnMouseExited;
 		Resized += OnResized;
+		Pressed += OnLeftClick;
 
 		if (UseGlobalSkin)
 			LoadoutSkinManager.SkinChanged += OnSkinChanged;
@@ -63,6 +66,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		MouseEntered -= OnMouseEntered;
 		MouseExited -= OnMouseExited;
 		Resized -= OnResized;
+		Pressed -= OnLeftClick;
 
 		if (UseGlobalSkin)
 			LoadoutSkinManager.SkinChanged -= OnSkinChanged;
@@ -164,5 +168,23 @@ public partial class NLoadoutPanelItem : TextureButton
 
 		_animationProfile = ResolveAnimationProfile();
 		UpdatePivotOffset();
+	}
+
+	private void OnLeftClick()
+	{
+		//open select screen
+		if (_boundScreen == null)
+		{
+			var scene = GD.Load<PackedScene>("res://UI/Screens/SampleSelectScreen.tscn");
+			_boundScreen = scene.Instantiate<NLoadoutSelectScreen>();
+		}
+		var root = GetNode<NLoadoutPanelRoot>("/root/LoadoutPanelRoot");
+		root.OpenScreen(_boundScreen);
+	}
+
+	public NLoadoutSelectScreen BoundScreen
+	{
+		get => _boundScreen;
+		set => _boundScreen = value;
 	}
 }

@@ -1,9 +1,9 @@
 [gd_scene load_steps=6 format=3 uid="uid://djje5hx4jbdbk"]
 
-[ext_resource type="Script" uid="uid://b1kdgoyqedb7s" path="res://UI/LoadoutPanelRoot.cs" id="1_dgc0e"]
+[ext_resource type="Script" uid="uid://b1kdgoyqedb7s" path="res://UI/NLoadoutPanelRoot.cs" id="1_dgc0e"]
 [ext_resource type="Theme" uid="uid://8cybxb5lmk7b" path="res://Loadout/themes/default/theme.tres" id="1_hrewh"]
-[ext_resource type="Script" uid="uid://brd1maagi5mq7" path="res://UI/LoadoutPanelButton.cs" id="1_i5xrf"]
-[ext_resource type="Script" uid="uid://fr8tmxp2fxtf" path="res://UI/LoadoutPanel.cs" id="1_pnno2"]
+[ext_resource type="Script" uid="uid://brd1maagi5mq7" path="res://UI/NLoadoutPanelButton.cs" id="1_i5xrf"]
+[ext_resource type="Script" uid="uid://fr8tmxp2fxtf" path="res://UI/NLoadoutPanel.cs" id="1_pnno2"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_5vcma"]
 
