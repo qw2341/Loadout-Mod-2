@@ -30,7 +30,7 @@ public partial class NLoadoutPanelItem : TextureButton
 	private bool _isInsideContainer;
 	private Vector2 _baseScale = Vector2.One;
 	private Vector2 _basePosition;
-	private NLoadoutSelectScreen _boundScreen;
+	private NGenericSelectScreen _boundScreen;
 	
 	public override void _Ready()
 	{
@@ -176,13 +176,20 @@ public partial class NLoadoutPanelItem : TextureButton
 		if (_boundScreen == null)
 		{
 			var scene = GD.Load<PackedScene>("res://UI/Screens/SampleSelectScreen.tscn");
-			_boundScreen = scene.Instantiate<NLoadoutSelectScreen>();
+			_boundScreen = scene.Instantiate<NGenericSelectScreen>();
 		}
-		var root = GetNode<NLoadoutPanelRoot>("/root/LoadoutPanelRoot");
+
+		var root = NLoadoutPanelRoot.Instance ?? NLoadoutPanelRoot.GetOrAttach(GetTree());
+		if (root == null)
+		{
+			GD.PushError("LoadoutPanelItem: could not find or attach LoadoutPanelRoot.");
+			return;
+		}
+
 		root.OpenScreen(_boundScreen);
 	}
 
-	public NLoadoutSelectScreen BoundScreen
+	public NGenericSelectScreen BoundScreen
 	{
 		get => _boundScreen;
 		set => _boundScreen = value;

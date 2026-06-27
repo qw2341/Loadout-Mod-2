@@ -4,9 +4,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using Loadout.UI.Screens;
-using MegaCrit.Sts2.Core.Entities.UI;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 
 namespace  Loadout.UI;
 
@@ -63,7 +65,30 @@ public partial class NLoadoutPanel : Panel
 
 	private void AddLoadoutItems()
 	{
-		CreateAndAddLoadoutItem(ModelDb.AllCards, model => $"{model.Id.Entry} {model.Title} {model.Description.GetRawText()}",model => NCard.Create(model));
+		CreateAndAddLoadoutItem(
+			ModelDb.AllCards,
+			new SelectItemAdapter<CardModel>
+			{
+				
+				GetId = card => card.Id.ToString(),
+				GetName = card => card.Title.ToString(),
+				GetSearchText = card => $"{card.Id} {card.Title.ToString()} {card.TitleLocString} {card.Description}",
+				CreateView = (card, state) => NGridCardHolder.Create(NCard.Create(card)),
+				UpdateView = (card, holder, state) =>
+				{
+					// if (holder is NGridCardHolder)
+					// {
+					// 	((NGridCardHolder)holder).
+					// }
+				},
+				MatchesSearch = null,
+				BindActivation = null
+			}, builder =>
+			{
+				builder.FilterGroup("class","Class");
+				builder.Filter("ironclad","Ironclad", card => card.Pool is IroncladCardPool, "ironclad");
+				builder.Sorter("name", "Name", (a, b) => a.EntrySortingId - b.EntrySortingId, (a, b) => b.EntrySortingId - a.EntrySortingId, true, false);
+			});
 		
 		var loadoutBag2 = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag2);
@@ -73,18 +98,39 @@ public partial class NLoadoutPanel : Panel
 		_itemsContainer.AddChild(loadoutBag4);
 	}
 
-	private void CreateAndAddLoadoutItem<TModel>(IEnumerable<TModel> models, Func<TModel,string> searchTextSelector, Func<TModel,Control> itemRenderer) where TModel : AbstractModel
+	private void CreateAndAddLoadoutItem<TModel>(IEnumerable<TModel> models, SelectItemAdapter<TModel> adapter,  Action<SelectScreenBuilder<TModel>> builder) where TModel : AbstractModel
 	{
 		var item = new NLoadoutPanelItem();
-		var scene = GD.Load<PackedScene>("res://UI/Screens/SampleSelectScreen.tscn");
-		var screen = scene.Instantiate<NLoadoutSelectScreen>();
-		screen.ResetConfiguration();
-		screen.SetItems(models, searchTextSelector);
-		//screen.SetSearchMatcher();
-		screen.SetItemRenderer(itemRenderer);
+		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+		var screen = scene.Instantiate<NGenericSelectScreen>();
+		screen.Configure(models, adapter, builder);
 		
 		item.BoundScreen = screen;
 		_itemsContainer.AddChild(item);
+	}
+
+	private static Control CreateCardGridItem(CardModel model)
+	{
+		var card = NCard.Create(model);
+		if (card is null)
+		{
+			return new Control
+			{
+				CustomMinimumSize = NCard.defaultSize
+			};
+		}
+
+		var holder = NGridCardHolder.Create(card);
+		if (holder is null)
+		{
+			card.CustomMinimumSize = card.GetCurrentSize();
+			return card;
+		}
+
+		holder.MouseFilter = MouseFilterEnum.Pass;
+		holder.Scale = holder.SmallScale;
+		holder.CustomMinimumSize = NCard.defaultSize * holder.SmallScale;
+		return holder;
 	}
 	
 	private void UpdatePanelHeight()

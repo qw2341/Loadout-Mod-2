@@ -1,6 +1,7 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Godot;
 using HarmonyLib;
+using Loadout.UI;
 using MegaCrit.Sts2.Core.Modding;
 
 namespace Loadout;
@@ -16,10 +17,13 @@ public partial class MainFile : Node
 
     public static void Initialize()
     {
-        Harmony harmony = new(ModId);
-
-        harmony.PatchAll();
         var assembly = Assembly.GetExecutingAssembly();
         Godot.Bridge.ScriptManagerBridge.LookupScriptsInAssembly(assembly);
+
+        Harmony harmony = new(ModId);
+        harmony.PatchAll();
+
+        if (Engine.GetMainLoop() is SceneTree tree)
+            NLoadoutPanelRoot.AttachToTree(tree);
     }
 }

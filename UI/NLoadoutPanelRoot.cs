@@ -1,24 +1,42 @@
 using Godot;
 using Loadout.UI.Managers;
+using Loadout.UI.Screens;
 using System.Collections.Generic;
+
 namespace Loadout.UI;
+
 public partial class NLoadoutPanelRoot : Control
 {
-	private static Control _overlayInstance;
+	private const string OverlayLayerName = "LoadoutOverlayLayer";
+	private const string RootName = "LoadoutPanelRoot";
+	private const int OverlayLayer = 1000;
+
+	private static CanvasLayer _overlayLayer;
+	private static NLoadoutPanelRoot _instance;
+
 	private readonly Dictionary<StringName, Control> _screens = new();
 	private readonly Dictionary<Control, ProcessModeEnum> _screenProcessModes = new();
+	private readonly Dictionary<Control, MouseFilterEnum> _screenMouseFilters = new();
 	private readonly Stack<Control> _screenHistory = new();
 	private Control _screenContainer;
+
+	public static NLoadoutPanelRoot Instance => IsValid(_instance) ? _instance : null;
+
+	public bool HasOpenScreen => TryPeekScreen(out _);
 
 	[Export]
 	public NodePath ScreenStackPath = "ScreenStack";
 
 	[Export]
 	public StringName InitialScreen = "";
-	
-	// Called when the node enters the scene tree for the first time.
+
 	public override void _Ready()
 	{
+		_instance = this;
+		Name = RootName;
+		ZIndex = 999;
+		MouseFilter = MouseFilterEnum.Pass;
+
 		LoadoutThemeManager.ThemeChanged += OnThemeChanged;
 		LoadoutThemeManager.ApplyTheme(this);
 		BindScreenStack();
@@ -30,11 +48,6 @@ public partial class NLoadoutPanelRoot : Control
 			CloseAllScreens();
 	}
 
-	// Called every frame. 'delta' is the elapsed time since the previous frame.
-	public override void _Process(double delta)
-	{
-	}
-
 	public override void _Input(InputEvent @event)
 	{
 		if (@event is not InputEventKey keyEvent)
@@ -43,43 +56,46 @@ public partial class NLoadoutPanelRoot : Control
 		if (keyEvent.Keycode != Key.Escape || !keyEvent.Pressed || keyEvent.Echo)
 			return;
 
-		if (!TryPeekScreen(out _))
+		if (!HasOpenScreen)
 			return;
 
 		CloseTopScreen();
 		GetViewport().SetInputAsHandled();
 	}
 
+	public override void _UnhandledInput(InputEvent @event)
+	{
+		if (!HasOpenScreen)
+			return;
+
+		GetViewport().SetInputAsHandled();
+	}
+
 	public override void _ExitTree()
 	{
 		LoadoutThemeManager.ThemeChanged -= OnThemeChanged;
-	}
-	
-	private void OnSceneChanged()
-	{
-		EnsureOverlay();
-	}
 
-	private void EnsureOverlay()
-	{
-		if (IsInstanceValid(_overlayInstance))
-		{
-			if (_overlayInstance.GetParent() == null)
-				GetTree().Root.CallDeferred(Node.MethodName.AddChild, _overlayInstance);
-		}
+		if (_instance == this)
+			_instance = null;
 	}
 
 	private void BindScreenStack()
 	{
 		_screenContainer = GetNodeOrNull<Control>(ScreenStackPath);
 		if (!IsInstanceValid(_screenContainer))
+		{
 			GD.PushWarning($"LoadoutPanelRoot: could not find ScreenStack at path '{ScreenStackPath}'.");
+			return;
+		}
+
+		_screenContainer.MouseFilter = MouseFilterEnum.Pass;
 	}
 
 	private void RefreshScreens()
 	{
 		_screens.Clear();
 		_screenProcessModes.Clear();
+		_screenMouseFilters.Clear();
 		_screenHistory.Clear();
 		if (!IsInstanceValid(_screenContainer))
 			return;
@@ -123,6 +139,8 @@ public partial class NLoadoutPanelRoot : Control
 
 		if (wasTop && TryPeekScreen(out var previousScreen))
 			SetScreenActive(previousScreen, true);
+
+		UpdateModalInputState();
 	}
 
 	public bool CloseTopScreen()
@@ -134,6 +152,7 @@ public partial class NLoadoutPanelRoot : Control
 		if (_screenHistory.TryPeek(out var previousScreen))
 			SetScreenActive(previousScreen, true);
 
+		UpdateModalInputState();
 		return true;
 	}
 
@@ -143,6 +162,7 @@ public partial class NLoadoutPanelRoot : Control
 			SetScreenActive(screen, false);
 
 		_screenHistory.Clear();
+		UpdateModalInputState();
 	}
 
 	public void RegisterScreen(Control screen)
@@ -156,6 +176,7 @@ public partial class NLoadoutPanelRoot : Control
 		screen.SetAnchorsPreset(LayoutPreset.FullRect);
 		TrackScreen(screen);
 		SetScreenActive(screen, false);
+		UpdateModalInputState();
 	}
 
 	public StringName GetActiveScreenName()
@@ -185,8 +206,12 @@ public partial class NLoadoutPanelRoot : Control
 	private void TrackScreen(Control screen)
 	{
 		_screens[screen.Name] = screen;
+
 		if (!_screenProcessModes.ContainsKey(screen))
 			_screenProcessModes[screen] = screen.ProcessMode;
+
+		if (!_screenMouseFilters.ContainsKey(screen))
+			_screenMouseFilters[screen] = screen.MouseFilter;
 	}
 
 	private void PushScreen(Control screen)
@@ -227,7 +252,22 @@ public partial class NLoadoutPanelRoot : Control
 			_screenProcessModes[screen] = originalMode;
 		}
 
+		if (!_screenMouseFilters.TryGetValue(screen, out var originalMouseFilter))
+		{
+			originalMouseFilter = screen.MouseFilter;
+			_screenMouseFilters[screen] = originalMouseFilter;
+		}
+
 		screen.ProcessMode = isActive ? originalMode : ProcessModeEnum.Disabled;
+		screen.MouseFilter = isActive ? MouseFilterEnum.Stop : originalMouseFilter;
+	}
+
+	private void UpdateModalInputState()
+	{
+		MouseFilter = MouseFilterEnum.Pass;
+
+		if (IsInstanceValid(_screenContainer))
+			_screenContainer.MouseFilter = MouseFilterEnum.Pass;
 	}
 
 	private bool RemoveFromHistory(Control screenToRemove)
@@ -255,22 +295,84 @@ public partial class NLoadoutPanelRoot : Control
 
 		return removed;
 	}
-	
+
 	public static void AttachToTree(SceneTree tree)
 	{
-		if (tree == null) return;
+		GetOrAttach(tree);
+	}
 
-		if (tree.Root.GetNodeOrNull("/Game/LoadoutPanelRoot") != null)
-			return;
+	public static NLoadoutPanelRoot GetOrAttach(SceneTree tree)
+	{
+		if (tree == null)
+			return Instance;
+
+		if (IsValid(_instance))
+			return _instance;
+
+		CanvasLayer overlayLayer = GetOrCreateOverlayLayer(tree);
+		var existingRoot = overlayLayer.GetNodeOrNull<NLoadoutPanelRoot>(RootName);
+		if (IsValid(existingRoot))
+		{
+			_instance = existingRoot;
+			return existingRoot;
+		}
 
 		var modRootScene = ResourceLoader.Load<PackedScene>("res://UI/LoadoutPanelRoot.tscn");
+		if (modRootScene == null)
+		{
+			GD.PushError("LoadoutPanelRoot: failed to load res://UI/LoadoutPanelRoot.tscn.");
+			return null;
+		}
+
 		var modRoot = modRootScene.Instantiate<NLoadoutPanelRoot>();
-		modRoot.Name = "LoadoutPanelRoot";
+		modRoot.Name = RootName;
 		modRoot.ZIndex = 999;
-		_overlayInstance = modRoot;
+		modRoot.MouseFilter = MouseFilterEnum.Pass;
 		modRoot.SetAnchorsPreset(LayoutPreset.FullRect);
-		GD.Print("LoadoutPanelRoot has been initialized. Attaching to root.");
-		tree.Root.CallDeferred(Node.MethodName.AddChild, modRoot);
+
+		_instance = modRoot;
+		GD.Print("LoadoutPanelRoot has been initialized. Attaching to overlay layer.");
+		overlayLayer.AddChild(modRoot);
+		return modRoot;
+	}
+
+	private static CanvasLayer GetOrCreateOverlayLayer(SceneTree tree)
+	{
+		if (IsValid(_overlayLayer))
+		{
+			_overlayLayer.Layer = OverlayLayer;
+			if (_overlayLayer.GetParent() == null)
+				tree.Root.AddChild(_overlayLayer);
+
+			return _overlayLayer;
+		}
+
+		var existingLayer = tree.Root.GetNodeOrNull<CanvasLayer>(OverlayLayerName);
+		if (IsValid(existingLayer))
+		{
+			existingLayer.Layer = OverlayLayer;
+			_overlayLayer = existingLayer;
+			return existingLayer;
+		}
+
+		var existingNode = tree.Root.GetNodeOrNull<Node>(OverlayLayerName);
+		if (IsInstanceValid(existingNode))
+			GD.PushWarning($"LoadoutPanelRoot: /root/{OverlayLayerName} exists but is not a CanvasLayer. Creating another overlay layer.");
+
+		var overlayLayer = new CanvasLayer
+		{
+			Name = OverlayLayerName,
+			Layer = OverlayLayer
+		};
+
+		_overlayLayer = overlayLayer;
+		tree.Root.AddChild(overlayLayer);
+		return overlayLayer;
+	}
+
+	private static bool IsValid(GodotObject instance)
+	{
+		return instance != null && GodotObject.IsInstanceValid(instance);
 	}
 
 	private void OnThemeChanged(string _)

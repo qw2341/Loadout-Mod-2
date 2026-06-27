@@ -1,10 +1,11 @@
-﻿namespace Loadout.Patches.Core;
-using MegaCrit.Sts2.Core.Nodes;
-using HarmonyLib;
+namespace Loadout.Patches.Core;
+
 using Godot;
+using HarmonyLib;
+using MegaCrit.Sts2.Core.Nodes;
 
 
-[HarmonyPatch(typeof(NGame), "_Ready")]
+[HarmonyPatch(typeof(NGame), "LaunchMainMenu")]
 public class UIAttach
 {
     private static bool _done;

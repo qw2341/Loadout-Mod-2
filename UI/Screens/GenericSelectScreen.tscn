@@ -1,0 +1,228 @@
+[gd_scene load_steps=2 format=3 uid="uid://cjjun3absrcb7"]
+
+[ext_resource type="Script" path="res://UI/Screens/NGenericSelectScreen.cs" id="1_generic"]
+
+[node name="GenericSelectScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_generic")
+
+[node name="CardGrid" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 288.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="CardGrid"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 40.0
+offset_right = -40.0
+offset_bottom = -64.0
+grow_horizontal = 2
+grow_vertical = 2
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="GridMargin" type="MarginContainer" parent="CardGrid/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 0
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 0
+theme_override_constants/margin_bottom = 0
+
+[node name="ItemGrid" type="GridContainer" parent="CardGrid/ScrollContainer/GridMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 16
+columns = 5
+
+[node name="Sidebar" type="Control" parent="."]
+custom_minimum_size = Vector2(288, 0)
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 288.0
+grow_vertical = 2
+
+[node name="Panel" type="ColorRect" parent="Sidebar"]
+custom_minimum_size = Vector2(288, 0)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.182, 0.2604, 0.28, 0.501961)
+
+[node name="Shadow" type="ColorRect" parent="Sidebar/Panel"]
+custom_minimum_size = Vector2(4, 0)
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 0
+grow_vertical = 2
+color = Color(0.05, 0.08, 0.09, 0.45)
+
+[node name="MarginContainer" type="MarginContainer" parent="Sidebar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="MainVBox" type="VBoxContainer" parent="Sidebar/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="TopVBox" type="VBoxContainer" parent="Sidebar/MarginContainer/MainVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 25
+text = "Select"
+vertical_alignment = 1
+
+[node name="SearchBar" type="Control" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TextArea" type="LineEdit" parent="Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = -44.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 20
+placeholder_text = "Search"
+
+[node name="ClearButton" type="Button" parent="Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+grow_horizontal = 0
+grow_vertical = 2
+text = "×"
+
+[node name="SortLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+text = "Sort"
+vertical_alignment = 1
+
+[node name="SortButtons" type="HFlowContainer" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
+
+[node name="FilterLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+text = "Filters"
+vertical_alignment = 1
+
+[node name="FilterGroups" type="VBoxContainer" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="BottomVBox" type="VBoxContainer" parent="Sidebar/MarginContainer/MainVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="SelectedCountLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/BottomVBox"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 17
+text = "Selected: 0"
+vertical_alignment = 1
+
+[node name="ConfirmButton" type="Button" parent="Sidebar/MarginContainer/MainVBox/BottomVBox"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Confirm"
+
+[node name="CancelButton" type="Button" parent="Sidebar/MarginContainer/MainVBox/BottomVBox"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Cancel"
+
+[node name="CardCountLabel" type="Label" parent="."]
+modulate = Color(1, 1, 1, 0.65)
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -136.0
+offset_top = -58.0
+offset_right = -24.0
+offset_bottom = -28.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 22
+text = "0/0"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="NoResultsLabel" type="Label" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 288.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 32
+text = "No results."
+horizontal_alignment = 1
+vertical_alignment = 1
