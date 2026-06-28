@@ -3,6 +3,10 @@
 namespace Loadout.UI.Screens;
 
 using Godot;
+using Loadout.UI.Screens.Controls;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,26 +21,30 @@ using System.Text.RegularExpressions;
 /// </summary>
 public partial class NGenericSelectScreen : Control
 {
-    [Export]
-    public NodePath SearchLineEditPath = "PanelContainer/HBoxContainer/SideBar/MarginContainer/FilterControls/SearchBar/LineEdit";
+    private const string AllFilterOptionId = "__all__";
+    private const string SelectSortButtonInnerPath = "screens/deck_view_screen/deck_view_sort_button";
+    private const string SelectFilterDropdownScenePath = "res://UI/Screens/Controls/SelectFilterDropdown.tscn";
 
     [Export]
-    public NodePath ClearSearchButtonPath = "PanelContainer/HBoxContainer/SideBar/MarginContainer/FilterControls/SearchBar/TextureButton";
+    public NodePath SearchLineEditPath = "Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar/TextArea";
 
     [Export]
-    public NodePath FilterControlsPath = "PanelContainer/HBoxContainer/SideBar/MarginContainer/FilterControls";
+    public NodePath ClearSearchButtonPath = "Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar/ClearButton";
 
     [Export]
-    public NodePath ItemGridPath = "PanelContainer/HBoxContainer/ScrollContainer/ItemGrid";
+    public NodePath FilterControlsPath = "Sidebar/MarginContainer/MainVBox/TopVBox";
 
     [Export]
-    public NodePath ScrollContainerPath = "PanelContainer/HBoxContainer/ScrollContainer";
+    public NodePath ItemGridPath = "CardGrid/ScrollContainer/GridMargin/ItemGrid";
 
     [Export]
-    public NodePath ConfirmButtonPath = "PanelContainer/VBoxContainer/ConfirmButton";
+    public NodePath ScrollContainerPath = "CardGrid/ScrollContainer";
 
     [Export]
-    public NodePath CancelButtonPath = "PanelContainer/VBoxContainer/CancelButton";
+    public NodePath ConfirmButtonPath = "Sidebar/MarginContainer/MainVBox/BottomVBox/ConfirmButton";
+
+    [Export]
+    public NodePath CancelButtonPath = "Sidebar/MarginContainer/MainVBox/BottomVBox/CancelButton";
 
     [Export(PropertyHint.Range, "0,1000,1")]
     public int SearchDelayMsec = 160;
@@ -73,8 +81,8 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<string, SelectSorterDefinition> _sortersById = new(StringComparer.Ordinal);
     private readonly List<string> _sortPriority = new();
 
-    private readonly Dictionary<string, CheckButton> _filterButtonsById = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Button> _sortButtonsById = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NSelectFilterDropdown> _filterDropdownsByGroupId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NCardViewSortButton> _sortButtonsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _selectedAmounts = new(StringComparer.Ordinal);
 
     private LineEdit? _searchLineEdit;
@@ -89,7 +97,7 @@ public partial class NGenericSelectScreen : Control
 
     private SelectScreenOptions _options = new();
     private string _query = string.Empty;
-    private bool _isSyncingFilterButtons;
+    private bool _isSyncingFilterDropdowns;
     private bool _isConfigured;
     private float _lastMeasuredItemWidth = -1f;
     private System.Threading.CancellationTokenSource? _searchDelayCts;
@@ -103,7 +111,12 @@ public partial class NGenericSelectScreen : Control
         BindSceneNodes();
         BuildUtilityContainersIfMissing();
         BindSceneSignals();
+        RebuildSortButtons();
+        RebuildFilterButtons();
         ApplyLayoutSettings();
+
+        if (_isConfigured)
+            RefreshNow(resetScroll: true);
     }
 
     public override void _ExitTree()
@@ -193,6 +206,8 @@ public partial class NGenericSelectScreen : Control
 
         if (filter.Enabled)
             EnforceSingleFilterSelection(filter.GroupId, filter.Id);
+        else
+            EnsureFilterSelectionIsValid(filter.GroupId);
 
         RebuildFilterButtons();
     }
@@ -206,7 +221,10 @@ public partial class NGenericSelectScreen : Control
         _sortersById[sorter.Id] = sorter;
 
         if (sorter.ActiveByDefault)
+        {
+            _sortPriority.Remove(sorter.Id);
             _sortPriority.Add(sorter.Id);
+        }
 
         RebuildSortButtons();
     }
@@ -439,13 +457,12 @@ public partial class NGenericSelectScreen : Control
         foreach (SelectSorterDefinition sorter in _sorters)
         {
             string sorterId = sorter.Id;
-            Button button = new()
-            {
-                Text = sorter.Label,
-                SizeFlagsHorizontal = SizeFlags.ExpandFill
-            };
-
-            button.Pressed += () => OnSorterPressed(sorterId);
+            NCardViewSortButton button = SceneHelper.Instantiate<NCardViewSortButton>(SelectSortButtonInnerPath);
+            button.Name = MakeSafeNodeName($"{sorterId}SortButton");
+            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            button.SetLabel(sorter.Label);
+            button.IsDescending = sorter.IsDescending;
+            button.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => OnSorterPressed(sorterId)));
             _sortButtonsContainer.AddChild(button);
             _sortButtonsById[sorterId] = button;
         }
@@ -475,18 +492,11 @@ public partial class NGenericSelectScreen : Control
     {
         foreach (SelectSorterDefinition sorter in _sorters)
         {
-            if (!_sortButtonsById.TryGetValue(sorter.Id, out Button? button))
+            if (!_sortButtonsById.TryGetValue(sorter.Id, out NCardViewSortButton? button))
                 continue;
 
-            int priority = _sortPriority.IndexOf(sorter.Id);
-            if (priority < 0)
-            {
-                button.Text = sorter.Label;
-                continue;
-            }
-
-            string direction = sorter.IsDescending ? "↓" : "↑";
-            button.Text = $"{sorter.Label} {direction} {priority + 1}";
+            button.SetLabel(sorter.Label);
+            button.IsDescending = sorter.IsDescending;
         }
     }
 
@@ -498,7 +508,13 @@ public partial class NGenericSelectScreen : Control
         foreach (Node child in _filtersContainer.GetChildren())
             child.QueueFree();
 
-        _filterButtonsById.Clear();
+        _filterDropdownsByGroupId.Clear();
+        PackedScene? filterDropdownScene = GD.Load<PackedScene>(SelectFilterDropdownScenePath);
+        if (filterDropdownScene is null)
+        {
+            GD.PushError($"{nameof(NGenericSelectScreen)}: missing filter dropdown scene at '{SelectFilterDropdownScenePath}'.");
+            return;
+        }
 
         IEnumerable<string> groupOrder = _filterGroupOrder
             .Concat(_filters.Select(filter => filter.GroupId))
@@ -517,56 +533,40 @@ public partial class NGenericSelectScreen : Control
                 ? groupDef
                 : new SelectFilterGroupDefinition(groupId, groupId);
 
-            Label groupLabel = new()
-            {
-                Text = group.Label,
-                SizeFlagsHorizontal = SizeFlags.ExpandFill
-            };
-            _filtersContainer.AddChild(groupLabel);
+            EnsureFilterSelectionIsValid(groupId);
 
-            VBoxContainer groupBox = new()
-            {
-                Name = $"{groupId}Options",
-                SizeFlagsHorizontal = SizeFlags.ExpandFill
-            };
-            _filtersContainer.AddChild(groupBox);
+            List<SelectDropdownOption> options = new();
+            if (!group.RequireSelection)
+                options.Add(new SelectDropdownOption(AllFilterOptionId, "All"));
 
             foreach (SelectFilterDefinition filter in groupFilters)
-            {
-                string filterId = filter.Id;
-                CheckButton button = new()
-                {
-                    Text = filter.Label,
-                    ButtonPressed = filter.Enabled,
-                    SizeFlagsHorizontal = SizeFlags.ExpandFill
-                };
+                options.Add(new SelectDropdownOption(filter.Id, filter.Label));
 
-                button.Toggled += enabled => OnFilterToggled(filterId, enabled);
-                groupBox.AddChild(button);
-                _filterButtonsById[filterId] = button;
-            }
+            string selectedOptionId = GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId;
+            NSelectFilterDropdown dropdown = filterDropdownScene.Instantiate<NSelectFilterDropdown>(PackedScene.GenEditState.Disabled);
+            dropdown.Name = MakeSafeNodeName($"{groupId}FilterDropdown");
+            dropdown.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            dropdown.OptionSelected += selectedId => OnFilterDropdownSelected(groupId, selectedId);
+            _filtersContainer.AddChild(dropdown);
+            dropdown.SetOptions(group.Label, options, selectedOptionId);
+            _filterDropdownsByGroupId[groupId] = dropdown;
         }
     }
 
-    private void OnFilterToggled(string filterId, bool enabled)
+    private void OnFilterDropdownSelected(string groupId, string selectedOptionId)
     {
-        if (_isSyncingFilterButtons)
+        if (_isSyncingFilterDropdowns)
             return;
 
-        if (!_filtersById.TryGetValue(filterId, out SelectFilterDefinition? filter))
-            return;
-
-        filter.Enabled = enabled;
-
-        if (enabled)
+        if (selectedOptionId == AllFilterOptionId)
         {
-            EnforceSingleFilterSelection(filter.GroupId, filter.Id);
-        }
-        else if (GroupRequiresSelection(filter.GroupId) && !HasEnabledFilterInGroup(filter.GroupId))
-        {
-            SetFilterState(filter.Id, true);
+            SetExclusiveFilterSelection(groupId, null);
+            RefreshNow(resetScroll: true);
             return;
         }
+
+        if (_filtersById.TryGetValue(selectedOptionId, out SelectFilterDefinition? filter))
+            SetExclusiveFilterSelection(filter.GroupId, filter.Id);
 
         RefreshNow(resetScroll: true);
     }
@@ -582,23 +582,29 @@ public partial class NGenericSelectScreen : Control
 
     private void EnforceSingleFilterSelection(string groupId, string selectedFilterId)
     {
-        if (!_filterGroupsById.TryGetValue(groupId, out SelectFilterGroupDefinition? group))
+        SetExclusiveFilterSelection(groupId, selectedFilterId);
+    }
+
+    private void EnsureFilterSelectionIsValid(string groupId)
+    {
+        List<SelectFilterDefinition> groupFilters = GetFiltersInGroup(groupId);
+        if (groupFilters.Count == 0)
             return;
 
-        if (group.SelectionMode != SelectFilterGroupSelectionMode.Single)
-            return;
-
-        foreach (SelectFilterDefinition filter in _filters)
+        SelectFilterDefinition? selectedFilter = groupFilters.FirstOrDefault(filter => filter.Enabled);
+        if (selectedFilter is not null)
         {
-            if (!string.Equals(filter.GroupId, groupId, StringComparison.Ordinal))
-                continue;
-
-            if (string.Equals(filter.Id, selectedFilterId, StringComparison.Ordinal))
-                continue;
-
-            if (filter.Enabled)
-                SetFilterState(filter.Id, false);
+            SetExclusiveFilterSelection(groupId, selectedFilter.Id);
+            return;
         }
+
+        if (GroupRequiresSelection(groupId))
+        {
+            SetExclusiveFilterSelection(groupId, groupFilters[0].Id);
+            return;
+        }
+
+        SyncFilterDropdown(groupId);
     }
 
     private bool GroupRequiresSelection(string groupId)
@@ -607,25 +613,43 @@ public partial class NGenericSelectScreen : Control
             && group.RequireSelection;
     }
 
-    private bool HasEnabledFilterInGroup(string groupId)
+    private List<SelectFilterDefinition> GetFiltersInGroup(string groupId)
     {
-        return _filters.Any(filter =>
-            string.Equals(filter.GroupId, groupId, StringComparison.Ordinal) && filter.Enabled);
+        return _filters
+            .Where(filter => string.Equals(filter.GroupId, groupId, StringComparison.Ordinal))
+            .ToList();
     }
 
-    private void SetFilterState(string filterId, bool enabled)
+    private string? GetSelectedFilterIdForGroup(string groupId)
     {
-        if (!_filtersById.TryGetValue(filterId, out SelectFilterDefinition? filter))
+        return _filters
+            .FirstOrDefault(filter => string.Equals(filter.GroupId, groupId, StringComparison.Ordinal) && filter.Enabled)
+            ?.Id;
+    }
+
+    private void SetExclusiveFilterSelection(string groupId, string? selectedFilterId)
+    {
+        List<SelectFilterDefinition> groupFilters = GetFiltersInGroup(groupId);
+        if (groupFilters.Count == 0)
             return;
 
-        filter.Enabled = enabled;
+        if (selectedFilterId is null && GroupRequiresSelection(groupId))
+            selectedFilterId = groupFilters[0].Id;
 
-        if (_filterButtonsById.TryGetValue(filterId, out CheckButton? button))
-        {
-            _isSyncingFilterButtons = true;
-            button.ButtonPressed = enabled;
-            _isSyncingFilterButtons = false;
-        }
+        foreach (SelectFilterDefinition filter in groupFilters)
+            filter.Enabled = selectedFilterId is not null && string.Equals(filter.Id, selectedFilterId, StringComparison.Ordinal);
+
+        SyncFilterDropdown(groupId);
+    }
+
+    private void SyncFilterDropdown(string groupId)
+    {
+        if (!_filterDropdownsByGroupId.TryGetValue(groupId, out NSelectFilterDropdown? dropdown))
+            return;
+
+        _isSyncingFilterDropdowns = true;
+        dropdown.SetSelectedOption(GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId);
+        _isSyncingFilterDropdowns = false;
     }
 
     private bool PassesSearchAndFilters(IGenericSelectItem item)
@@ -702,6 +726,12 @@ public partial class NGenericSelectScreen : Control
         if (item.TryBindActivation(() => ActivateItem(item)))
             return;
 
+        if (view is NClickableControl clickableControl)
+        {
+            clickableControl.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => ActivateItem(item)));
+            return;
+        }
+
         if (view is BaseButton button)
             button.Pressed += () => ActivateItem(item);
 
@@ -760,6 +790,12 @@ public partial class NGenericSelectScreen : Control
             selectionAmount: amount,
             isSelected: amount > 0,
             isEnabled: true);
+    }
+
+    private static string MakeSafeNodeName(string value)
+    {
+        string safeName = Regex.Replace(value, @"[^A-Za-z0-9_]", "_");
+        return string.IsNullOrWhiteSpace(safeName) ? "GeneratedControl" : safeName;
     }
 
     private void RefreshVisibleItemStates()
@@ -950,8 +986,6 @@ public sealed class SelectScreenBuilder<TModel>
 
 public sealed class SelectItemAdapter<TModel>
 {
-    
-    
     public required Func<TModel, string> GetId { get; init; }
     public required Func<TModel, string> GetName { get; init; }
     public Func<TModel, string>? GetSearchText { get; init; }

@@ -1,0 +1,247 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://UI/Screens/Controls/NSelectFilterDropdown.cs" id="1_dropdown"]
+[ext_resource type="Script" path="res://src/Core/Nodes/GodotExtensions/NButton.cs" id="2_button"]
+[ext_resource type="FontVariation" path="res://themes/kreon_bold_glyph_space_one.tres" id="3_font"]
+[ext_resource type="Script" path="res://addons/mega_text/MegaLabel.cs" id="4_label"]
+[ext_resource type="Texture2D" path="res://images/packed/common_ui/settings_tiny_left_arrow.png" id="5_arrow"]
+[ext_resource type="Script" path="res://src/Core/Nodes/CommonUi/NDropdownContainer.cs" id="6_container"]
+[ext_resource type="Script" path="res://src/Core/Nodes/CommonUi/NDropdownScrollbar.cs" id="7_scrollbar"]
+[ext_resource type="Texture2D" path="res://images/packed/common_ui/small_scrollbar_track_edge.png" id="8_track_edge"]
+[ext_resource type="Texture2D" path="res://images/packed/common_ui/small_scrollbar_track_center.png" id="9_track_center"]
+[ext_resource type="Texture2D" path="res://images/packed/common_ui/small_scrollbar_train.png" id="10_train"]
+[ext_resource type="PackedScene" path="res://scenes/ui/selection_reticle.tscn" id="11_reticle"]
+
+[node name="SelectFilterDropdown" type="Control"]
+custom_minimum_size = Vector2(320, 64)
+layout_mode = 3
+anchors_preset = 0
+focus_mode = 2
+mouse_filter = 1
+script = ExtResource("1_dropdown")
+metadata/_edit_group_ = true
+
+[node name="Container" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="Dismisser" type="Control" parent="Container"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(3000, 2000)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -1500.0
+offset_top = -1000.0
+offset_right = 1500.0
+offset_bottom = 1000.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("2_button")
+
+[node name="CurrentOption" type="Control" parent="Container"]
+custom_minimum_size = Vector2(300, 40)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Highlight" type="ColorRect" parent="Container/CurrentOption"]
+unique_name_in_owner = true
+modulate = Color(0.172549, 0.262745, 0.309804, 1)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="Container/CurrentOption"]
+unique_name_in_owner = true
+modulate = Color(0.937255, 0.784314, 0.317647, 1)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.25098)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 28
+text = "Filter"
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("4_label")
+MinFontSize = 18
+MaxFontSize = 28
+
+[node name="Arrow" type="TextureRect" parent="Container"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -39.0
+offset_top = -15.0
+offset_right = -13.0
+offset_bottom = 11.0
+grow_horizontal = 0
+grow_vertical = 2
+rotation = -1.5708
+pivot_offset = Vector2(16, 13)
+mouse_filter = 2
+texture = ExtResource("5_arrow")
+expand_mode = 2
+stretch_mode = 5
+
+[node name="DropdownContainer" type="Control" parent="Container"]
+unique_name_in_owner = true
+visible = false
+clip_contents = true
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -160.0
+offset_top = 64.0
+offset_right = 160.0
+offset_bottom = 664.0
+grow_horizontal = 2
+mouse_force_pass_scroll_events = false
+script = ExtResource("6_container")
+
+[node name="ColorRect" type="ColorRect" parent="Container/DropdownContainer"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.0705882, 0.129412, 0.160784, 1)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Container/DropdownContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Scrollbar" type="Control" parent="Container/DropdownContainer"]
+anchors_preset = 0
+anchor_left = 0.875
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -3.05176e-05
+grow_horizontal = 0
+grow_vertical = 2
+script = ExtResource("7_scrollbar")
+
+[node name="Track" type="Control" parent="Container/DropdownContainer/Scrollbar"]
+modulate = Color(0, 0, 0, 0.501961)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 5.0
+offset_bottom = 5.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TrackTop" type="TextureRect" parent="Container/DropdownContainer/Scrollbar/Track"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -18.0
+offset_right = 14.0
+offset_bottom = 32.0
+grow_horizontal = 2
+mouse_filter = 2
+texture = ExtResource("8_track_edge")
+expand_mode = 3
+
+[node name="TrackBody" type="TextureRect" parent="Container/DropdownContainer/Scrollbar/Track"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -18.0
+offset_top = -268.0
+offset_right = 14.0
+offset_bottom = 259.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("9_track_center")
+expand_mode = 1
+
+[node name="TrackBot" type="TextureRect" parent="Container/DropdownContainer/Scrollbar/Track"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -18.0
+offset_top = -41.0
+offset_right = 14.0
+offset_bottom = -9.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_track_edge")
+expand_mode = 3
+flip_v = true
+
+[node name="Train" type="NinePatchRect" parent="Container/DropdownContainer/Scrollbar"]
+modulate = Color(1, 1, 1, 0.25098)
+layout_mode = 1
+anchors_preset = 14
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = 4.0
+offset_top = -291.0
+offset_right = -8.0
+offset_bottom = -203.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(14, 44)
+texture = ExtResource("10_train")
+patch_margin_top = 20
+patch_margin_bottom = 20
+
+[node name="SelectionReticle" parent="." instance=ExtResource("11_reticle")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -9.0
+offset_top = -5.0
+offset_right = 10.0
+offset_bottom = 7.0
+grow_horizontal = 2
+grow_vertical = 2
