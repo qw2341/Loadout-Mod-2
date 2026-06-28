@@ -14,6 +14,8 @@ namespace  Loadout.UI;
 
 public partial class NLoadoutPanel : Panel
 {
+	private const int MaxLoadoutItemInitAttempts = 120;
+
 	[Export]
 	public bool Shown = true;
 
@@ -23,6 +25,9 @@ public partial class NLoadoutPanel : Panel
 	private PanelContainer _panelContainer;
 	private MarginContainer _marginContainer;
 	private Control _itemsContainer;
+	private int _loadoutItemInitAttempts;
+	private bool _loadoutItemsAdded;
+	private bool _loadoutItemRetryScheduled;
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
@@ -33,10 +38,7 @@ public partial class NLoadoutPanel : Panel
 		
 		
 		
-		AddLoadoutItems();
-		
-		// Initial resize
-		UpdatePanelHeight();
+		TryAddLoadoutItems();
 
 		// Recompute whenever the VBox minimum size changes
 		// _marginContainer.MinimumSizeChanged += UpdatePanelHeight;
@@ -96,6 +98,47 @@ public partial class NLoadoutPanel : Panel
 		_itemsContainer.AddChild(loadoutBag3);
 		var loadoutBag4 = new NLoadoutPanelItem();
 		_itemsContainer.AddChild(loadoutBag4);
+	}
+
+	private void TryAddLoadoutItems()
+	{
+		if (_loadoutItemsAdded)
+			return;
+
+		try
+		{
+			AddLoadoutItems();
+			_loadoutItemsAdded = true;
+			UpdatePanelHeight();
+		}
+		catch (KeyNotFoundException exception)
+		{
+			ScheduleLoadoutItemRetry(exception);
+		}
+	}
+
+	private async void ScheduleLoadoutItemRetry(KeyNotFoundException exception)
+	{
+		if (_loadoutItemRetryScheduled)
+			return;
+
+		if (_loadoutItemInitAttempts >= MaxLoadoutItemInitAttempts)
+		{
+			GD.PushError($"LoadoutPanel: failed to initialize loadout items after {_loadoutItemInitAttempts} frames. Last missing key: {exception.Message}");
+			return;
+		}
+
+		_loadoutItemInitAttempts++;
+		_loadoutItemRetryScheduled = true;
+
+		if (_loadoutItemInitAttempts == 1)
+			GD.PushWarning($"LoadoutPanel: ModelDb is not ready yet; retrying loadout item initialization. Missing key: {exception.Message}");
+
+		await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+		_loadoutItemRetryScheduled = false;
+		if (IsInsideTree())
+			TryAddLoadoutItems();
 	}
 
 	private void CreateAndAddLoadoutItem<TModel>(IEnumerable<TModel> models, SelectItemAdapter<TModel> adapter,  Action<SelectScreenBuilder<TModel>> builder) where TModel : AbstractModel

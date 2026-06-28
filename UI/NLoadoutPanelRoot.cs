@@ -35,7 +35,7 @@ public partial class NLoadoutPanelRoot : Control
 		_instance = this;
 		Name = RootName;
 		ZIndex = 999;
-		MouseFilter = MouseFilterEnum.Pass;
+		MouseFilter = MouseFilterEnum.Ignore;
 
 		LoadoutThemeManager.ThemeChanged += OnThemeChanged;
 		LoadoutThemeManager.ApplyTheme(this);
@@ -63,14 +63,6 @@ public partial class NLoadoutPanelRoot : Control
 		GetViewport().SetInputAsHandled();
 	}
 
-	public override void _UnhandledInput(InputEvent @event)
-	{
-		if (!HasOpenScreen)
-			return;
-
-		GetViewport().SetInputAsHandled();
-	}
-
 	public override void _ExitTree()
 	{
 		LoadoutThemeManager.ThemeChanged -= OnThemeChanged;
@@ -88,7 +80,7 @@ public partial class NLoadoutPanelRoot : Control
 			return;
 		}
 
-		_screenContainer.MouseFilter = MouseFilterEnum.Pass;
+		_screenContainer.MouseFilter = MouseFilterEnum.Ignore;
 	}
 
 	private void RefreshScreens()
@@ -259,15 +251,15 @@ public partial class NLoadoutPanelRoot : Control
 		}
 
 		screen.ProcessMode = isActive ? originalMode : ProcessModeEnum.Disabled;
-		screen.MouseFilter = isActive ? MouseFilterEnum.Stop : originalMouseFilter;
+		screen.MouseFilter = isActive ? MouseFilterEnum.Ignore : originalMouseFilter;
 	}
 
 	private void UpdateModalInputState()
 	{
-		MouseFilter = MouseFilterEnum.Pass;
+		MouseFilter = MouseFilterEnum.Ignore;
 
 		if (IsInstanceValid(_screenContainer))
-			_screenContainer.MouseFilter = MouseFilterEnum.Pass;
+			_screenContainer.MouseFilter = MouseFilterEnum.Ignore;
 	}
 
 	private bool RemoveFromHistory(Control screenToRemove)
@@ -327,7 +319,7 @@ public partial class NLoadoutPanelRoot : Control
 		var modRoot = modRootScene.Instantiate<NLoadoutPanelRoot>();
 		modRoot.Name = RootName;
 		modRoot.ZIndex = 999;
-		modRoot.MouseFilter = MouseFilterEnum.Pass;
+		modRoot.MouseFilter = MouseFilterEnum.Ignore;
 		modRoot.SetAnchorsPreset(LayoutPreset.FullRect);
 
 		_instance = modRoot;
