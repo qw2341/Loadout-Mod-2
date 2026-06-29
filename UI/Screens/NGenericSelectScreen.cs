@@ -3,9 +3,12 @@
 namespace Loadout.UI.Screens;
 
 using Godot;
+using Loadout.UI;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using System;
@@ -24,28 +27,33 @@ public partial class NGenericSelectScreen : Control
 {
     private const string AllFilterOptionId = "__all__";
     private const string SelectSortButtonInnerPath = "screens/deck_view_screen/deck_view_sort_button";
-    private const string SelectFilterDropdownScenePath = "res://UI/Screens/Controls/SelectFilterDropdown.tscn";
+    private const float SidebarWidth = 288f;
+    private const float ContentLeftSafetyMargin = 96f;
+    private const float ContentRightSafetyMargin = 120f;
 
     [Export]
-    public NodePath SearchLineEditPath = "Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar/TextArea";
+    public NodePath SearchLineEditPath = "Sidebar/MarginContainer/TopVBox/SearchBar/TextArea";
 
     [Export]
-    public NodePath ClearSearchButtonPath = "Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar/ClearButton";
+    public NodePath ClearSearchButtonPath = "Sidebar/MarginContainer/TopVBox/SearchBar/ClearButton";
 
     [Export]
-    public NodePath FilterControlsPath = "Sidebar/MarginContainer/MainVBox/TopVBox";
+    public NodePath FilterControlsPath = "Sidebar/MarginContainer/TopVBox";
 
     [Export]
-    public NodePath ItemGridPath = "CardGrid/ScrollContainer/GridMargin/ItemGrid";
+    public NodePath ItemGridPath = "CardGrid/ScreenContents/Mask/Content";
 
     [Export]
-    public NodePath ScrollContainerPath = "CardGrid/ScrollContainer";
+    public NodePath ScrollContainerPath = "CardGrid/ScreenContents";
 
     [Export]
-    public NodePath ConfirmButtonPath = "Sidebar/MarginContainer/MainVBox/BottomVBox/ConfirmButton";
+    public NodePath ConfirmButtonPath = "ConfirmButton";
 
     [Export]
-    public NodePath CancelButtonPath = "Sidebar/MarginContainer/MainVBox/BottomVBox/CancelButton";
+    public NodePath CancelButtonPath = "BackButton";
+
+    [Export]
+    public NodePath SelectedCountLabelPath = "Sidebar/MarginContainer/TopVBox/SelectedCountLabel";
 
     [Export(PropertyHint.Range, "0,1000,1")]
     public int SearchDelayMsec = 160;
@@ -83,6 +91,7 @@ public partial class NGenericSelectScreen : Control
     private readonly List<string> _sortPriority = new();
     private readonly Dictionary<string, SelectGroupDefinition> _groupsBySorterId = new(StringComparer.Ordinal);
     private readonly List<Control> _generatedGroupContainers = new();
+    private readonly List<Control> _visibleLayoutNodes = new();
 
     private readonly Dictionary<string, NSelectFilterDropdown> _filterDropdownsByGroupId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NCardViewSortButton> _sortButtonsById = new(StringComparer.Ordinal);
@@ -90,13 +99,19 @@ public partial class NGenericSelectScreen : Control
 
     private LineEdit? _searchLineEdit;
     private BaseButton? _clearSearchButton;
+    private NClickableControl? _clearSearchClickable;
     private VBoxContainer? _filterControls;
     private HFlowContainer? _sortButtonsContainer;
     private VBoxContainer? _filtersContainer;
-    private GridContainer? _itemGrid;
-    private ScrollContainer? _scrollContainer;
+    private Control? _itemGrid;
+    private Control? _scrollMask;
+    private Control? _scrollContainer;
+    private NScrollbar? _scrollbar;
     private BaseButton? _confirmButton;
+    private NClickableControl? _confirmClickable;
     private BaseButton? _cancelButton;
+    private NClickableControl? _cancelClickable;
+    private Control? _selectedCountLabel;
 
     private SelectScreenOptions _options = new();
     private SelectLayoutDefinition _layout = SelectLayoutDefinition.Default;
@@ -104,6 +119,10 @@ public partial class NGenericSelectScreen : Control
     private bool _isSyncingFilterDropdowns;
     private bool _isConfigured;
     private float _lastMeasuredItemWidth = -1f;
+    private float _scrollY;
+    private float _targetScrollY;
+    private float _maxScrollY;
+    private bool _scrollbarPressed;
     private System.Threading.CancellationTokenSource? _searchDelayCts;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
@@ -114,6 +133,8 @@ public partial class NGenericSelectScreen : Control
     {
         BindSceneNodes();
         BuildUtilityContainersIfMissing();
+        EnsureGameScrollbar();
+        EnsureActionButtons();
         BindSceneSignals();
         RebuildSortButtons();
         RebuildFilterButtons();
@@ -128,6 +149,33 @@ public partial class NGenericSelectScreen : Control
         _searchDelayCts?.Cancel();
         _searchDelayCts?.Dispose();
         _searchDelayCts = null;
+    }
+
+    public override void _Process(double delta)
+    {
+        UpdateSelectScroll(delta);
+        KeepHoverTipsAboveSelectScreen();
+    }
+
+    public override void _Input(InputEvent @event)
+    {
+        if (!IsVisibleInTree() || _scrollMask is null)
+            return;
+
+        if (@event is not InputEventMouseButton { Pressed: true } mouseButton)
+            return;
+
+        if (mouseButton.ButtonIndex != MouseButton.WheelUp && mouseButton.ButtonIndex != MouseButton.WheelDown)
+            return;
+
+        if (!_scrollMask.GetGlobalRect().HasPoint(mouseButton.GlobalPosition))
+            return;
+
+        float drag = ScrollHelper.GetDragForScrollEvent(@event);
+        if (!Mathf.IsZeroApprox(drag))
+            SetTargetScroll(_targetScrollY - drag);
+
+        GetViewport().SetInputAsHandled();
     }
 
     /// <summary>
@@ -262,6 +310,7 @@ public partial class NGenericSelectScreen : Control
         _visibleItems.Clear();
         _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
         _visibleItems.Sort(CompareItems);
+        _visibleLayoutNodes.Clear();
 
         foreach (IGenericSelectItem item in _items)
         {
@@ -277,8 +326,10 @@ public partial class NGenericSelectScreen : Control
         ApplyLayoutSettings();
         UpdateConfirmButtonState();
 
-        if (resetScroll && _scrollContainer is not null)
-            _scrollContainer.SetDeferred(ScrollContainer.PropertyName.ScrollVertical, 0);
+        UpdateScrollBounds();
+
+        if (resetScroll)
+            ScrollToTop();
     }
 
     public void ClearSelection()
@@ -337,11 +388,17 @@ public partial class NGenericSelectScreen : Control
     {
         _searchLineEdit = GetNodeOrNull<LineEdit>(SearchLineEditPath);
         _clearSearchButton = GetNodeOrNull<BaseButton>(ClearSearchButtonPath);
+        _clearSearchClickable = GetNodeOrNull<NClickableControl>(ClearSearchButtonPath);
         _filterControls = GetNodeOrNull<VBoxContainer>(FilterControlsPath);
-        _itemGrid = GetNodeOrNull<GridContainer>(ItemGridPath);
-        _scrollContainer = GetNodeOrNull<ScrollContainer>(ScrollContainerPath);
+        _itemGrid = GetNodeOrNull<Control>(ItemGridPath);
+        _scrollMask = _itemGrid?.GetParent() as Control;
+        _scrollContainer = GetNodeOrNull<Control>(ScrollContainerPath);
+        _scrollbar = _scrollContainer?.GetNodeOrNull<NScrollbar>("Scrollbar");
         _confirmButton = GetNodeOrNull<BaseButton>(ConfirmButtonPath);
+        _confirmClickable = GetNodeOrNull<NClickableControl>(ConfirmButtonPath);
         _cancelButton = GetNodeOrNull<BaseButton>(CancelButtonPath);
+        _cancelClickable = GetNodeOrNull<NClickableControl>(CancelButtonPath);
+        _selectedCountLabel = GetNodeOrNull<Control>(SelectedCountLabelPath);
 
         if (_searchLineEdit is null)
             GD.PushWarning($"{nameof(NGenericSelectScreen)}: missing search line edit at '{SearchLineEditPath}'. Search will be disabled.");
@@ -352,8 +409,22 @@ public partial class NGenericSelectScreen : Control
         if (_itemGrid is null)
             GD.PushError($"{nameof(NGenericSelectScreen)}: missing item grid at '{ItemGridPath}'. The select screen cannot render items.");
 
-        if (_scrollContainer is not null)
-            _scrollContainer.FollowFocus = true;
+        ApplyLocalizedSceneText();
+    }
+
+    private void ApplyLocalizedSceneText()
+    {
+        if (GetNodeOrNull<Label>("Sidebar/MarginContainer/TopVBox/TitleLabel") is { } titleLabel)
+            titleLabel.Text = SelectScreenLoc.Text("TITLE_SELECT", "Select");
+
+        if (GetNodeOrNull<Label>("Sidebar/MarginContainer/TopVBox/SortLabel") is { } sortLabel)
+            sortLabel.Text = SelectScreenLoc.Text("SORT", "Sort");
+
+        if (GetNodeOrNull<Label>("Sidebar/MarginContainer/TopVBox/FilterLabel") is { } filterLabel)
+            filterLabel.Text = SelectScreenLoc.Text("FILTERS", "Filters");
+
+        if (_searchLineEdit is not null)
+            _searchLineEdit.PlaceholderText = SelectScreenLoc.Text("SEARCH", "Search");
     }
 
     private void BuildUtilityContainersIfMissing()
@@ -384,6 +455,58 @@ public partial class NGenericSelectScreen : Control
         }
     }
 
+    private void EnsureGameScrollbar()
+    {
+        if (_scrollContainer is null)
+            return;
+
+        _scrollbar ??= _scrollContainer.GetNodeOrNull<NScrollbar>("Scrollbar");
+        if (_scrollbar is null)
+        {
+            _scrollbar = CreateGameScrollbar();
+            _scrollContainer.AddChild(_scrollbar);
+        }
+
+        _scrollbar.Name = "Scrollbar";
+        _scrollbar.MinValue = 0;
+        _scrollbar.MaxValue = 100;
+        _scrollbar.Step = 1;
+        _scrollbar.Visible = false;
+        _scrollbar.MouseFilter = MouseFilterEnum.Stop;
+        _scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
+        _scrollbar.OffsetLeft = -58f;
+        _scrollbar.OffsetTop = 130f;
+        _scrollbar.OffsetRight = -10f;
+        _scrollbar.OffsetBottom = -130f;
+
+        _scrollbar.Connect(NScrollbar.SignalName.MousePressed, Callable.From<InputEvent>(_ => _scrollbarPressed = true));
+        _scrollbar.Connect(NScrollbar.SignalName.MouseReleased, Callable.From<InputEvent>(_ => _scrollbarPressed = false));
+    }
+
+    private void EnsureActionButtons()
+    {
+        if (_cancelClickable is null)
+        {
+            NBackButton backButton = CreateBackButton();
+            backButton.Name = "BackButton";
+            AddChild(backButton);
+            _cancelClickable = backButton;
+        }
+
+        if (_confirmClickable is null)
+        {
+            NConfirmButton confirmButton = CreateConfirmButton();
+            confirmButton.Name = "ConfirmButton";
+            confirmButton.Visible = false;
+            AddChild(confirmButton);
+            _confirmClickable = confirmButton;
+        }
+
+        _cancelButton = GetNodeOrNull<BaseButton>(CancelButtonPath);
+        _confirmButton = GetNodeOrNull<BaseButton>(ConfirmButtonPath);
+        _confirmClickable = GetNodeOrNull<NClickableControl>(ConfirmButtonPath);
+    }
+
     private void BindSceneSignals()
     {
         if (_searchLineEdit is not null)
@@ -396,11 +519,20 @@ public partial class NGenericSelectScreen : Control
         if (_clearSearchButton is not null)
             _clearSearchButton.Pressed += ClearSearch;
 
+        if (_clearSearchClickable is not null)
+            _clearSearchClickable.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => ClearSearch()));
+
         if (_confirmButton is not null)
             _confirmButton.Pressed += ConfirmSelection;
 
+        if (_confirmClickable is not null)
+            _confirmClickable.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => ConfirmSelection()));
+
         if (_cancelButton is not null)
             _cancelButton.Pressed += CancelSelection;
+
+        if (_cancelClickable is not null)
+            _cancelClickable.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => CancelSelection()));
     }
 
     private void OnSearchTextChanged(string text)
@@ -471,7 +603,8 @@ public partial class NGenericSelectScreen : Control
             string sorterId = sorter.Id;
             NCardViewSortButton button = SceneHelper.Instantiate<NCardViewSortButton>(SelectSortButtonInnerPath);
             button.Name = MakeSafeNodeName($"{sorterId}SortButton");
-            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            button.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+            button.CustomMinimumSize = new Vector2(82f, 34f);
             button.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => OnSorterPressed(sorterId)));
             _sortButtonsContainer.AddChild(button);
             button.SetLabel(sorter.Label);
@@ -521,12 +654,6 @@ public partial class NGenericSelectScreen : Control
             child.QueueFree();
 
         _filterDropdownsByGroupId.Clear();
-        PackedScene? filterDropdownScene = GD.Load<PackedScene>(SelectFilterDropdownScenePath);
-        if (filterDropdownScene is null)
-        {
-            GD.PushError($"{nameof(NGenericSelectScreen)}: missing filter dropdown scene at '{SelectFilterDropdownScenePath}'.");
-            return;
-        }
 
         IEnumerable<string> groupOrder = _filterGroupOrder
             .Concat(_filters.Select(filter => filter.GroupId))
@@ -548,16 +675,16 @@ public partial class NGenericSelectScreen : Control
             EnsureFilterSelectionIsValid(groupId);
 
             List<SelectDropdownOption> options = new();
-            if (!group.RequireSelection)
-                options.Add(new SelectDropdownOption(AllFilterOptionId, "All"));
+            options.Add(new SelectDropdownOption(AllFilterOptionId, SelectScreenLoc.Text("ALL", "All")));
 
             foreach (SelectFilterDefinition filter in groupFilters)
                 options.Add(new SelectDropdownOption(filter.Id, filter.Label));
 
             string selectedOptionId = GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId;
-            NSelectFilterDropdown dropdown = filterDropdownScene.Instantiate<NSelectFilterDropdown>(PackedScene.GenEditState.Disabled);
+            NSelectFilterDropdown dropdown = new();
             dropdown.Name = MakeSafeNodeName($"{groupId}FilterDropdown");
             dropdown.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            dropdown.CustomMinimumSize = new Vector2(256f, 52f);
             dropdown.OptionSelected += selectedId => OnFilterDropdownSelected(groupId, selectedId);
             _filtersContainer.AddChild(dropdown);
             dropdown.SetOptions(group.Label, options, selectedOptionId);
@@ -724,30 +851,41 @@ public partial class NGenericSelectScreen : Control
     private float RefreshFlatItems()
     {
         ClearGeneratedGroupContainers();
-        ApplyLayoutToGrid(_itemGrid!, GridColumns > 0 ? GridColumns : CalculateAutoColumns());
 
         float measuredWidth = 0f;
+        Vector2 itemSize = ResolveConfiguredItemSize();
+        int columns = ResolveColumnCount(itemSize, 0f);
+        float contentWidth = CalculateGridWidth(columns, itemSize.X);
+        float startX = CalculateCenteredStartX(contentWidth, 0f);
+        float startY = _layout.PaddingTop;
+
         for (int i = 0; i < _visibleItems.Count; i++)
         {
             IGenericSelectItem item = _visibleItems[i];
-            Control view = EnsureViewInGrid(item, _itemGrid!);
+            Control view = EnsureViewInCanvas(item);
             view.Visible = true;
-            _itemGrid!.MoveChild(view, i);
+            view.Size = itemSize;
+            view.Position = new Vector2(
+                startX + (i % columns) * (itemSize.X + ItemHorizontalGap),
+                startY + (i / columns) * (itemSize.Y + ItemVerticalGap));
+            view.ZIndex = 0;
+            _visibleLayoutNodes.Add(view);
 
             SelectItemState state = BuildState(item, i);
             item.UpdateView(state);
 
-            Vector2 size = ResolveItemLayoutSize(view);
-            measuredWidth = Math.Max(measuredWidth, size.X);
+            measuredWidth = Math.Max(measuredWidth, itemSize.X);
         }
 
+        int rows = _visibleItems.Count == 0 ? 0 : ((_visibleItems.Count - 1) / columns) + 1;
+        float contentHeight = startY + rows * itemSize.Y + Math.Max(0, rows - 1) * ItemVerticalGap + _layout.PaddingBottom;
+        SetContentSize(Math.Max(GetViewportContentWidth(), contentWidth + _layout.PaddingLeft + _layout.PaddingRight), contentHeight);
         return measuredWidth;
     }
 
     private float RefreshGroupedItems(SelectGroupDefinition group)
     {
         ClearGeneratedGroupContainers();
-        ApplyLayoutToGrid(_itemGrid!, 1);
 
         Dictionary<string, List<IGenericSelectItem>> itemsByKey = new(StringComparer.Ordinal);
         foreach (IGenericSelectItem item in _visibleItems)
@@ -769,6 +907,15 @@ public partial class NGenericSelectScreen : Control
 
         float measuredWidth = 0f;
         int visibleIndex = 0;
+        float y = _layout.PaddingTop;
+        Vector2 itemSize = ResolveConfiguredItemSize();
+        const float groupGridIndent = 48f;
+        int columns = ResolveColumnCount(itemSize, groupGridIndent);
+        float groupGridWidth = CalculateGridWidth(columns, itemSize.X);
+        float headerWidth = Math.Max(groupGridWidth + groupGridIndent, Math.Min(GetViewportContentWidth(), 1020f));
+        float groupStartX = CalculateCenteredStartX(headerWidth, 0f);
+        float gridStartX = groupStartX + groupGridIndent;
+
         foreach (string key in orderedKeys)
         {
             List<IGenericSelectItem> groupItems = itemsByKey.GetValueOrDefault(key) ?? new List<IGenericSelectItem>();
@@ -776,57 +923,63 @@ public partial class NGenericSelectScreen : Control
             if (groupItems.Count == 0 && !header.ShowWhenEmpty)
                 continue;
 
-            VBoxContainer groupContainer = CreateGroupContainer(key, header);
+            Control groupContainer = CreateGroupHeader(key, header);
+            groupContainer.Position = new Vector2(groupStartX, y);
+            groupContainer.Size = new Vector2(headerWidth, _layout.GroupHeaderHeight);
             _itemGrid!.AddChild(groupContainer);
             _generatedGroupContainers.Add(groupContainer);
+            _visibleLayoutNodes.Add(groupContainer);
+            y += _layout.GroupHeaderHeight + _layout.GroupHeaderGap;
 
-            GridContainer? groupGrid = null;
-            if (groupItems.Count > 0)
+            for (int i = 0; i < groupItems.Count; i++)
             {
-                groupGrid = CreateGroupGrid(key);
-                groupContainer.AddChild(groupGrid);
-            }
-
-            foreach (IGenericSelectItem item in groupItems)
-            {
-                Control view = EnsureViewInGrid(item, groupGrid!);
+                IGenericSelectItem item = groupItems[i];
+                Control view = EnsureViewInCanvas(item);
                 view.Visible = true;
+                view.Size = itemSize;
+                view.Position = new Vector2(
+                    gridStartX + (i % columns) * (itemSize.X + ItemHorizontalGap),
+                    y + (i / columns) * (itemSize.Y + ItemVerticalGap));
+                view.ZIndex = 0;
+                _visibleLayoutNodes.Add(view);
 
                 SelectItemState state = BuildState(item, visibleIndex);
                 item.UpdateView(state);
 
-                Vector2 size = ResolveItemLayoutSize(view);
-                measuredWidth = Math.Max(measuredWidth, size.X);
+                measuredWidth = Math.Max(measuredWidth, itemSize.X);
                 visibleIndex++;
             }
+
+            int rows = groupItems.Count == 0 ? 0 : ((groupItems.Count - 1) / columns) + 1;
+            y += rows * itemSize.Y + Math.Max(0, rows - 1) * ItemVerticalGap + _layout.GroupSectionGap;
         }
 
+        SetContentSize(Math.Max(GetViewportContentWidth(), headerWidth + _layout.PaddingLeft + _layout.PaddingRight), y + _layout.PaddingBottom);
         return measuredWidth;
     }
 
-    private VBoxContainer CreateGroupContainer(string key, SelectGroupHeader header)
+    private Control CreateGroupHeader(string key, SelectGroupHeader header)
     {
-        VBoxContainer container = new()
+        Control container = new()
         {
             Name = MakeSafeNodeName($"Group_{key}"),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        container.AddThemeConstantOverride("separation", 16);
 
         HBoxContainer headerRow = new()
         {
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore
         };
+        headerRow.SetAnchorsPreset(LayoutPreset.FullRect);
         headerRow.AddThemeConstantOverride("separation", header.Icon is null ? 0 : 12);
         container.AddChild(headerRow);
 
-        if (header.Icon is not null)
+        if (TryGetValidTexture(header.Icon, out Texture2D? headerIcon))
         {
             TextureRect icon = new()
             {
-                Texture = header.Icon,
+                Texture = headerIcon,
                 CustomMinimumSize = new Vector2(48f, 48f),
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                 StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
@@ -851,22 +1004,31 @@ public partial class NGenericSelectScreen : Control
         return container;
     }
 
-    private GridContainer CreateGroupGrid(string key)
+    private static bool TryGetValidTexture(Texture2D? texture, out Texture2D? validTexture)
     {
-        GridContainer grid = new()
+        validTexture = null;
+        if (texture is null)
+            return false;
+
+        try
         {
-            Name = MakeSafeNodeName($"GroupGrid_{key}"),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        ApplyLayoutToGrid(grid, Math.Max(1, _layout.Columns));
-        return grid;
+            if (!GodotObject.IsInstanceValid(texture))
+                return false;
+
+            _ = texture.GetRid();
+            validTexture = texture;
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
     }
 
     private static void ApplyGameRichTextTheme(RichTextLabel label)
     {
-        Font? regular = GD.Load<Font>("res://themes/kreon_regular_glyph_space_one.tres");
-        Font? bold = GD.Load<Font>("res://themes/kreon_bold_glyph_space_one.tres");
+        Font? regular = LoadGameFont("res://themes/kreon_regular_glyph_space_one.tres");
+        Font? bold = LoadGameFont("res://themes/kreon_bold_glyph_space_one.tres");
         if (regular is not null)
         {
             label.AddThemeFontOverride("normal_font", regular);
@@ -896,7 +1058,10 @@ public partial class NGenericSelectScreen : Control
                 continue;
 
             if (item.View.GetParent() is not null && item.View.GetParent() != _itemGrid)
+            {
                 item.View.GetParent()?.RemoveChild(item.View);
+                _itemGrid?.AddChild(item.View);
+            }
         }
 
         foreach (Control groupContainer in _generatedGroupContainers)
@@ -911,9 +1076,9 @@ public partial class NGenericSelectScreen : Control
         _generatedGroupContainers.Clear();
     }
 
-    private Control EnsureViewInGrid(IGenericSelectItem item, GridContainer parentGrid)
+    private Control EnsureViewInCanvas(IGenericSelectItem item)
     {
-        if (parentGrid is null)
+        if (_itemGrid is null)
             throw new InvalidOperationException("Item grid is not available.");
 
         if (item.View is null || !GodotObject.IsInstanceValid(item.View))
@@ -925,10 +1090,10 @@ public partial class NGenericSelectScreen : Control
         }
 
         Control control = item.View!;
-        if (control.GetParent() != parentGrid)
+        if (control.GetParent() != _itemGrid)
         {
             control.GetParent()?.RemoveChild(control);
-            parentGrid.AddChild(control);
+            _itemGrid.AddChild(control);
         }
 
         return control;
@@ -1122,20 +1287,446 @@ public partial class NGenericSelectScreen : Control
         return size;
     }
 
+    private Vector2 ResolveConfiguredItemSize()
+    {
+        Vector2 size = _layout.ItemSize;
+
+        if (size.X <= 0f)
+            size.X = FallbackItemWidth;
+
+        if (size.Y <= 0f)
+            size.Y = FallbackItemHeight;
+
+        return size;
+    }
+
+    private int ResolveColumnCount(Vector2 itemSize, float horizontalReservedSpace)
+    {
+        if (GridColumns > 0)
+            return Math.Max(1, GridColumns);
+
+        int requestedColumns = CalculateAutoColumns();
+        int columns = Math.Max(1, requestedColumns);
+        float availableWidth = Math.Max(1f, GetViewportContentWidth() - horizontalReservedSpace);
+
+        while (columns > 1 && CalculateGridWidth(columns, itemSize.X) > availableWidth)
+            columns--;
+
+        return Math.Max(1, columns);
+    }
+
+    private float CalculateGridWidth(int columns, float itemWidth)
+    {
+        return columns * itemWidth + Math.Max(0, columns - 1) * ItemHorizontalGap;
+    }
+
+    private float CalculateCenteredStartX(float contentWidth, float horizontalReservedSpace)
+    {
+        float viewportWidth = GetViewportContentWidth() - horizontalReservedSpace;
+        float safetyLeft = ShouldApplyCardSafeMargins() ? ContentLeftSafetyMargin : 0f;
+        return _layout.PaddingLeft + safetyLeft + Math.Max(0f, (viewportWidth - contentWidth) * 0.5f);
+    }
+
+    private float GetViewportContentWidth()
+    {
+        Control? viewport = _itemGrid?.GetParent<Control>();
+        float width = viewport?.Size.X ?? 0f;
+
+        if (width <= 0f && _itemGrid is not null)
+            width = _itemGrid.Size.X;
+
+        if (width <= 0f)
+            width = Math.Max(1f, Size.X - SidebarWidth);
+
+        float safetyLeft = ShouldApplyCardSafeMargins() ? ContentLeftSafetyMargin : 0f;
+        float safetyRight = ShouldApplyCardSafeMargins() ? ContentRightSafetyMargin : 0f;
+        return Math.Max(1f, width - _layout.PaddingLeft - _layout.PaddingRight - safetyLeft - safetyRight);
+    }
+
+    private void SetContentSize(float width, float height)
+    {
+        if (_itemGrid is null)
+            return;
+
+        Control? viewport = _itemGrid.GetParent<Control>();
+        float viewportWidth = viewport?.Size.X ?? Size.X;
+        float viewportHeight = viewport?.Size.Y ?? Size.Y;
+        Vector2 contentSize = new(Math.Max(width, viewportWidth), Math.Max(height, viewportHeight));
+        _itemGrid.CustomMinimumSize = contentSize;
+        _itemGrid.Size = contentSize;
+        UpdateScrollBounds();
+    }
+
+    private void UpdateViewportCulling()
+    {
+        if (_visibleLayoutNodes.Count == 0)
+            return;
+
+        Rect2 viewportRect = new(Vector2.Zero, GetViewportRect().Size);
+        foreach (Control control in _visibleLayoutNodes)
+        {
+            if (!GodotObject.IsInstanceValid(control))
+                continue;
+
+            Rect2 rect = control.GetGlobalRect();
+            control.Visible = rect.Intersects(viewportRect, includeBorders: true);
+        }
+    }
+
+    private static void KeepHoverTipsAboveSelectScreen()
+    {
+        NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+    }
+
     private void ApplyLayoutSettings()
     {
         if (_itemGrid is null)
             return;
 
-        int columns = GridColumns > 0 ? GridColumns : CalculateAutoColumns();
-        ApplyLayoutToGrid(_itemGrid, Math.Max(1, columns));
+        if (_isConfigured)
+            SetContentSize(_itemGrid.Size.X, _itemGrid.Size.Y);
     }
 
-    private void ApplyLayoutToGrid(GridContainer grid, int columns)
+    private bool ShouldApplyCardSafeMargins()
     {
-        grid.AddThemeConstantOverride("h_separation", ItemHorizontalGap);
-        grid.AddThemeConstantOverride("v_separation", ItemVerticalGap);
-        grid.Columns = Math.Max(1, columns);
+        return GridColumns == 5 && FallbackItemWidth >= 240f && FallbackItemHeight >= 300f;
+    }
+
+    private void UpdateSelectScroll(double delta)
+    {
+        if (_itemGrid is null)
+            return;
+
+        if (_scrollbarPressed && _scrollbar is not null && _maxScrollY > 0f)
+            _targetScrollY = Mathf.Clamp((float)_scrollbar.Value * 0.01f * _maxScrollY, 0f, _maxScrollY);
+
+        _scrollY = Mathf.Lerp(_scrollY, _targetScrollY, (float)delta * 15f);
+        if (Mathf.Abs(_scrollY - _targetScrollY) < 0.5f)
+            _scrollY = _targetScrollY;
+
+        _itemGrid.Position = new Vector2(_itemGrid.Position.X, -_scrollY);
+
+        if (_scrollbar is not null && !_scrollbarPressed)
+            _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
+    }
+
+    private void SetTargetScroll(float value)
+    {
+        _targetScrollY = Mathf.Clamp(value, 0f, _maxScrollY);
+    }
+
+    private void ScrollToTop()
+    {
+        _scrollY = 0f;
+        _targetScrollY = 0f;
+        if (_itemGrid is not null)
+            _itemGrid.Position = new Vector2(_itemGrid.Position.X, 0f);
+
+        _scrollbar?.SetValueWithoutAnimation(0);
+    }
+
+    private void UpdateScrollBounds()
+    {
+        if (_itemGrid is null)
+            return;
+
+        Control? viewport = _itemGrid.GetParent<Control>();
+        float viewportHeight = viewport?.Size.Y ?? Size.Y;
+        _maxScrollY = Math.Max(0f, _itemGrid.Size.Y - viewportHeight);
+        _targetScrollY = Mathf.Clamp(_targetScrollY, 0f, _maxScrollY);
+        _scrollY = Mathf.Clamp(_scrollY, 0f, _maxScrollY);
+
+        if (_scrollbar is not null)
+        {
+            _scrollbar.Visible = _maxScrollY > 1f;
+            _scrollbar.MouseFilter = _scrollbar.Visible ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        }
+    }
+
+    private static NScrollbar CreateGameScrollbar()
+    {
+        NScrollbar scrollbar = new()
+        {
+            CustomMinimumSize = new Vector2(48f, 820f),
+            MouseFilter = MouseFilterEnum.Stop
+        };
+
+        TextureRect trackBody = new()
+        {
+            Name = "TrackBody",
+            Modulate = new Color(0.164706f, 0.290196f, 0.321569f, 1f),
+            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/scrollbar_track_center.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        trackBody.SetAnchorsPreset(LayoutPreset.FullRect);
+        scrollbar.AddChild(trackBody);
+
+        TextureRect trackTop = new()
+        {
+            Name = "TrackTop",
+            Modulate = trackBody.Modulate,
+            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/scrollbar_track_edge2.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        trackTop.SetAnchorsPreset(LayoutPreset.TopWide);
+        trackTop.OffsetTop = -48f;
+        scrollbar.AddChild(trackTop);
+
+        TextureRect trackBottom = new()
+        {
+            Name = "TrackBot",
+            Modulate = trackBody.Modulate,
+            Texture = trackTop.Texture,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            FlipV = true,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        trackBottom.SetAnchorsPreset(LayoutPreset.BottomWide);
+        trackBottom.OffsetBottom = 48f;
+        scrollbar.AddChild(trackBottom);
+
+        TextureRect handle = new()
+        {
+            Name = "Handle",
+            UniqueNameInOwner = true,
+            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/scrollbar_train_large.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            PivotOffset = new Vector2(36f, 36f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        handle.SetAnchorsPreset(LayoutPreset.BottomWide);
+        handle.OffsetLeft = -12f;
+        handle.OffsetTop = -847f;
+        handle.OffsetRight = 12f;
+        handle.OffsetBottom = -775f;
+        scrollbar.AddChild(handle);
+
+        AssignOwnerRecursive(scrollbar, scrollbar);
+        return scrollbar;
+    }
+
+    private static NBackButton CreateBackButton()
+    {
+        NBackButton backButton = new()
+        {
+            FocusMode = FocusModeEnum.All,
+            MouseFilter = MouseFilterEnum.Stop,
+            PivotOffset = new Vector2(20f, 40f)
+        };
+        backButton.SetAnchorsPreset(LayoutPreset.BottomLeft);
+        backButton.OffsetLeft = -40f;
+        backButton.OffsetTop = -354f;
+        backButton.OffsetRight = 160f;
+        backButton.OffsetBottom = -244f;
+
+        TextureRect shadow = new()
+        {
+            Name = "Shadow",
+            Modulate = new Color(0f, 0f, 0f, 0.25098f),
+            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/back_button.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        shadow.SetAnchorsPreset(LayoutPreset.FullRect);
+        shadow.OffsetLeft = -9f;
+        shadow.OffsetTop = -1f;
+        shadow.OffsetRight = 58f;
+        shadow.OffsetBottom = 39f;
+        backButton.AddChild(shadow);
+
+        TextureRect outline = new()
+        {
+            Name = "Outline",
+            Modulate = StsColors.gold,
+            Texture = LoadGameTexture("res://images/atlases/compressed.sprites/back_button_outline.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        outline.SetAnchorsPreset(LayoutPreset.FullRect);
+        outline.OffsetLeft = -24f;
+        outline.OffsetTop = -16f;
+        outline.OffsetRight = 49f;
+        outline.OffsetBottom = 30f;
+        backButton.AddChild(outline);
+
+        TextureRect image = new()
+        {
+            Name = "Image",
+            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/back_button.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        image.SetAnchorsPreset(LayoutPreset.FullRect);
+        image.OffsetLeft = -21f;
+        image.OffsetTop = -13f;
+        image.OffsetRight = 46f;
+        image.OffsetBottom = 27f;
+        backButton.AddChild(image);
+
+        TextureRect icon = new()
+        {
+            Name = "Icon",
+            Modulate = StsColors.cream,
+            Texture = LoadGameTexture("res://images/atlases/compressed.sprites/back_button_arrow.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore,
+            Position = new Vector2(88f, 28f),
+            Size = new Vector2(80f, 80f)
+        };
+        image.AddChild(icon);
+
+        TextureRect controllerIcon = new()
+        {
+            Name = "ControllerIcon",
+            UniqueNameInOwner = true,
+            Visible = false,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        controllerIcon.SetAnchorsPreset(LayoutPreset.Center);
+        controllerIcon.OffsetLeft = -219f;
+        controllerIcon.OffsetTop = -48f;
+        controllerIcon.OffsetRight = 21f;
+        controllerIcon.OffsetBottom = 72f;
+        controllerIcon.Scale = new Vector2(0.5f, 0.5f);
+        controllerIcon.PivotOffset = new Vector2(256f, 128f);
+        backButton.AddChild(controllerIcon);
+
+        AssignOwnerRecursive(backButton, backButton);
+        return backButton;
+    }
+
+    private static NConfirmButton CreateConfirmButton()
+    {
+        NConfirmButton confirmButton = new()
+        {
+            FocusMode = FocusModeEnum.All,
+            MouseFilter = MouseFilterEnum.Stop,
+            PivotOffset = new Vector2(180f, 40f)
+        };
+        confirmButton.SetAnchorsPreset(LayoutPreset.BottomRight);
+        confirmButton.OffsetLeft = -160f;
+        confirmButton.OffsetTop = -354f;
+        confirmButton.OffsetRight = 40f;
+        confirmButton.OffsetBottom = -244f;
+
+        TextureRect shadow = new()
+        {
+            Name = "Shadow",
+            Modulate = new Color(0f, 0f, 0f, 0.25098f),
+            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/confirm_button.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        shadow.SetAnchorsPreset(LayoutPreset.FullRect);
+        shadow.OffsetLeft = -41f;
+        shadow.OffsetTop = -1f;
+        shadow.OffsetRight = 26f;
+        shadow.OffsetBottom = 39f;
+        confirmButton.AddChild(shadow);
+
+        TextureRect outline = new()
+        {
+            Name = "Outline",
+            Modulate = new Color(0.941176f, 0.705882f, 0f, 0.752941f),
+            Texture = LoadGameTexture("res://images/atlases/compressed.sprites/confirm_button_outline.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        outline.SetAnchorsPreset(LayoutPreset.FullRect);
+        outline.OffsetLeft = -56f;
+        outline.OffsetTop = -16f;
+        outline.OffsetRight = 17f;
+        outline.OffsetBottom = 30f;
+        confirmButton.AddChild(outline);
+
+        TextureRect image = new()
+        {
+            Name = "Image",
+            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/confirm_button.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        image.SetAnchorsPreset(LayoutPreset.FullRect);
+        image.OffsetLeft = -53f;
+        image.OffsetTop = -13f;
+        image.OffsetRight = 14f;
+        image.OffsetBottom = 27f;
+        confirmButton.AddChild(image);
+
+        TextureRect icon = new()
+        {
+            Name = "Icon",
+            Modulate = StsColors.cream,
+            Texture = LoadGameTexture("res://images/atlases/compressed.sprites/confirm_button_tick.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore,
+            Position = new Vector2(88f, 28f),
+            Size = new Vector2(80f, 80f)
+        };
+        image.AddChild(icon);
+
+        TextureRect controllerIcon = new()
+        {
+            Name = "ControllerIcon",
+            UniqueNameInOwner = true,
+            Visible = false,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        controllerIcon.SetAnchorsPreset(LayoutPreset.Center);
+        controllerIcon.OffsetLeft = -142.5f;
+        controllerIcon.OffsetTop = -64f;
+        controllerIcon.OffsetRight = 97.5f;
+        controllerIcon.OffsetBottom = 56f;
+        controllerIcon.Scale = new Vector2(0.5f, 0.5f);
+        controllerIcon.PivotOffset = new Vector2(256f, 128f);
+        image.AddChild(controllerIcon);
+
+        AssignOwnerRecursive(confirmButton, confirmButton);
+        return confirmButton;
+    }
+
+    private static Texture2D? LoadGameTexture(string path)
+    {
+        string localPath = path
+            .Replace("res://images/atlases/", "res://Loadout/images/atlases/")
+            .Replace("res://images/packed/common_ui/", "res://Loadout/images/atlases/ui_atlas.sprites/");
+
+        if (ResourceLoader.Exists(localPath))
+            return GD.Load<Texture2D>(localPath);
+
+        if (ResourceLoader.Exists(path))
+            return GD.Load<Texture2D>(path);
+
+        return null;
+    }
+
+    private static Font? LoadGameFont(string path)
+    {
+        string localPath = path.Replace("res://themes/", "res://Loadout/themes/default/");
+        if (ResourceLoader.Exists(localPath))
+            return GD.Load<Font>(localPath);
+
+        return ResourceLoader.Exists(path) ? GD.Load<Font>(path) : null;
+    }
+
+    private static void AssignOwnerRecursive(Node root, Node owner)
+    {
+        foreach (Node child in root.GetChildren())
+        {
+            child.Owner = owner;
+            AssignOwnerRecursive(child, owner);
+        }
     }
 
     private int CalculateAutoColumns()
@@ -1143,9 +1734,9 @@ public partial class NGenericSelectScreen : Control
         if (_itemGrid is null)
             return 1;
 
-        float availableWidth = _scrollContainer?.Size.X ?? _itemGrid.Size.X;
+        float availableWidth = GetViewportContentWidth();
         if (availableWidth <= 0f)
-            return Math.Max(1, _itemGrid.Columns);
+            return 1;
 
         float itemWidth = _lastMeasuredItemWidth > 0f ? _lastMeasuredItemWidth : FallbackItemWidth;
         int columns = (int)MathF.Floor((availableWidth + ItemHorizontalGap) / (itemWidth + ItemHorizontalGap));
@@ -1161,10 +1752,71 @@ public partial class NGenericSelectScreen : Control
 
     private void UpdateConfirmButtonState()
     {
-        if (_confirmButton is null)
-            return;
+        bool usesSelection = _options.SelectionMode != SelectSelectionMode.None;
+        int selectedCount = _selectedAmounts.Values.Sum();
 
-        _confirmButton.Disabled = !IsConfirmAllowed();
+        if (_selectedCountLabel is Label selectedCountLabel)
+        {
+            selectedCountLabel.Visible = usesSelection;
+            selectedCountLabel.Text = SelectScreenLoc.Text("SELECTED_COUNT", "Selected: {0}", selectedCount);
+        }
+        else if (_selectedCountLabel is not null)
+        {
+            _selectedCountLabel.Visible = usesSelection;
+        }
+
+        if (_confirmButton is not null)
+        {
+            _confirmButton.Visible = usesSelection;
+            _confirmButton.Disabled = !usesSelection || !IsConfirmAllowed();
+        }
+
+        if (_confirmClickable is not null)
+        {
+            _confirmClickable.Visible = usesSelection;
+            _confirmClickable.SetEnabled(usesSelection && IsConfirmAllowed());
+        }
+
+        if (_cancelButton is not null)
+            _cancelButton.Visible = true;
+
+        if (_cancelClickable is not null)
+        {
+            _cancelClickable.Visible = true;
+            _cancelClickable.SetEnabled(true);
+        }
+    }
+}
+
+public static class SelectScreenLoc
+{
+    private const string Table = "loadout";
+
+    public static string Text(string key, string fallback)
+    {
+        try
+        {
+            return LocString.Exists(Table, key)
+                ? new LocString(Table, key).GetFormattedText()
+                : fallback;
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    public static string Text(string key, string fallback, params object[] args)
+    {
+        string format = Text(key, fallback);
+        try
+        {
+            return string.Format(format, args);
+        }
+        catch
+        {
+            return fallback;
+        }
     }
 }
 
@@ -1190,9 +1842,22 @@ public sealed class SelectScreenBuilder<TModel>
         Vector2 itemSize,
         int horizontalGap,
         int verticalGap,
-        bool fixedSlots = true)
+        bool fixedSlots = true,
+        float paddingLeft = 0f,
+        float paddingTop = 80f,
+        float paddingRight = 0f,
+        float paddingBottom = 180f)
     {
-        _screen.SetLayout(new SelectLayoutDefinition(columns, itemSize, horizontalGap, verticalGap, fixedSlots));
+        _screen.SetLayout(new SelectLayoutDefinition(
+            columns,
+            itemSize,
+            horizontalGap,
+            verticalGap,
+            fixedSlots,
+            paddingLeft,
+            paddingTop,
+            paddingRight,
+            paddingBottom));
         return this;
     }
 
@@ -1363,7 +2028,7 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
 
 public sealed class SelectScreenOptions
 {
-    public SelectSelectionMode SelectionMode { get; init; } = SelectSelectionMode.Multi;
+    public SelectSelectionMode SelectionMode { get; init; } = SelectSelectionMode.None;
     public int MinSelection { get; init; } = 0;
     public int MaxTotalSelection { get; init; } = int.MaxValue;
     public int MaxCopiesPerItem { get; init; } = 1;
@@ -1373,13 +2038,29 @@ public sealed class SelectLayoutDefinition
 {
     public static SelectLayoutDefinition Default { get; } = new(0, new Vector2(220f, 300f), 12, 12, fixedSlots: false);
 
-    public SelectLayoutDefinition(int columns, Vector2 itemSize, int horizontalGap, int verticalGap, bool fixedSlots)
+    public SelectLayoutDefinition(
+        int columns,
+        Vector2 itemSize,
+        int horizontalGap,
+        int verticalGap,
+        bool fixedSlots,
+        float paddingLeft = 0f,
+        float paddingTop = 80f,
+        float paddingRight = 0f,
+        float paddingBottom = 180f)
     {
         Columns = columns;
         ItemSize = itemSize;
         HorizontalGap = horizontalGap;
         VerticalGap = verticalGap;
         FixedSlots = fixedSlots;
+        PaddingLeft = paddingLeft;
+        PaddingTop = paddingTop;
+        PaddingRight = paddingRight;
+        PaddingBottom = paddingBottom;
+        GroupHeaderHeight = 48f;
+        GroupHeaderGap = 16f;
+        GroupSectionGap = 48f;
     }
 
     public int Columns { get; }
@@ -1387,6 +2068,13 @@ public sealed class SelectLayoutDefinition
     public int HorizontalGap { get; }
     public int VerticalGap { get; }
     public bool FixedSlots { get; }
+    public float PaddingLeft { get; }
+    public float PaddingTop { get; }
+    public float PaddingRight { get; }
+    public float PaddingBottom { get; }
+    public float GroupHeaderHeight { get; }
+    public float GroupHeaderGap { get; }
+    public float GroupSectionGap { get; }
 }
 
 public sealed class SelectGroupDefinition

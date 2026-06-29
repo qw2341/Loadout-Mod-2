@@ -1,8 +1,23 @@
-[gd_scene load_steps=4 format=3 uid="uid://cjjun3absrcb7"]
+[gd_scene load_steps=10 format=3 uid="uid://cjjun3absrcb7"]
 
 [ext_resource type="Script" path="res://UI/Screens/NGenericSelectScreen.cs" id="1_generic"]
-[ext_resource type="FontVariation" path="res://themes/kreon_bold_glyph_space_one.tres" id="2_bold"]
-[ext_resource type="FontVariation" path="res://themes/kreon_regular_glyph_space_one.tres" id="3_regular"]
+[ext_resource type="FontVariation" path="res://Loadout/themes/default/kreon_bold_glyph_space_one.tres" id="2_bold"]
+[ext_resource type="FontVariation" path="res://Loadout/themes/default/kreon_regular_shared.tres" id="3_regular"]
+[ext_resource type="Script" path="res://src/Core/Nodes/CommonUi/NSearchBar.cs" id="4_searchbar"]
+[ext_resource type="Script" path="res://src/Core/Nodes/GodotExtensions/NMegaLineEdit.cs" id="5_lineedit"]
+[ext_resource type="Script" path="res://src/Core/Nodes/Screens/CardLibrary/NClearSearchButton.cs" id="6_clear"]
+[ext_resource type="Texture2D" path="res://Loadout/images/atlases/compressed.sprites/back_button_x.tres" id="7_clear_icon"]
+
+[sub_resource type="Gradient" id="Gradient_select_fade"]
+interpolation_mode = 2
+offsets = PackedFloat32Array(0, 0.05, 0.95, 1)
+colors = PackedColorArray(0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture_select_fade"]
+gradient = SubResource("Gradient_select_fade")
+width = 2
+height = 256
+fill_to = Vector2(0, 1)
 
 [node name="GenericSelectScreen" type="Control"]
 layout_mode = 3
@@ -11,7 +26,18 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 script = ExtResource("1_generic")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.42)
 
 [node name="CardGrid" type="Control" parent="."]
 layout_mode = 1
@@ -21,37 +47,46 @@ anchor_bottom = 1.0
 offset_left = 288.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
-[node name="ScrollContainer" type="ScrollContainer" parent="CardGrid"]
+[node name="ScreenContents" type="Control" parent="CardGrid"]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 24.0
-offset_top = 40.0
-offset_right = -40.0
-offset_bottom = -64.0
+offset_left = 32.0
+offset_right = -32.0
 grow_horizontal = 2
 grow_vertical = 2
-follow_focus = true
-horizontal_scroll_mode = 0
+mouse_filter = 1
 
-[node name="GridMargin" type="MarginContainer" parent="CardGrid/ScrollContainer"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_constants/margin_left = 0
-theme_override_constants/margin_top = 0
-theme_override_constants/margin_right = 0
-theme_override_constants/margin_bottom = 0
+[node name="Mask" type="Control" parent="CardGrid/ScreenContents"]
+clip_children = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
-[node name="ItemGrid" type="GridContainer" parent="CardGrid/ScrollContainer/GridMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_constants/h_separation = 16
-theme_override_constants/v_separation = 16
-columns = 5
+[node name="Content" type="Control" parent="CardGrid/ScreenContents/Mask"]
+layout_mode = 1
+mouse_filter = 2
+
+[node name="BorderGradient" type="TextureRect" parent="CardGrid/ScreenContents"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(1, 1.01)
+pivot_offset = Vector2(0, 540)
+mouse_filter = 2
+texture = SubResource("GradientTexture_select_fade")
+expand_mode = 1
 
 [node name="Sidebar" type="Control" parent="."]
 custom_minimum_size = Vector2(288, 0)
@@ -69,10 +104,11 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.182, 0.2604, 0.28, 0.501961)
+color = Color(0.182, 0.2604, 0.28, 0.72)
 
 [node name="Shadow" type="ColorRect" parent="Sidebar/Panel"]
 custom_minimum_size = Vector2(4, 0)
+show_behind_parent = true
 layout_mode = 1
 anchors_preset = 11
 anchor_left = 1.0
@@ -94,19 +130,13 @@ theme_override_constants/margin_top = 16
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 16
 
-[node name="MainVBox" type="VBoxContainer" parent="Sidebar/MarginContainer"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_constants/separation = 12
-
-[node name="TopVBox" type="VBoxContainer" parent="Sidebar/MarginContainer/MainVBox"]
+[node name="TopVBox" type="VBoxContainer" parent="Sidebar/MarginContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="TitleLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+[node name="TitleLabel" type="Label" parent="Sidebar/MarginContainer/TopVBox"]
 custom_minimum_size = Vector2(0, 34)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -115,37 +145,62 @@ theme_override_fonts/font = ExtResource("2_bold")
 text = "Select"
 vertical_alignment = 1
 
-[node name="SearchBar" type="Control" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+[node name="SearchBar" type="Control" parent="Sidebar/MarginContainer/TopVBox"]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
+script = ExtResource("4_searchbar")
 
-[node name="TextArea" type="LineEdit" parent="Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar"]
+[node name="TextArea" type="LineEdit" parent="Sidebar/MarginContainer/TopVBox/SearchBar"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_right = -44.0
+offset_right = -48.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 20
 theme_override_fonts/font = ExtResource("3_regular")
+theme_override_font_sizes/font_size = 24
 placeholder_text = "Search"
+script = ExtResource("5_lineedit")
 
-[node name="ClearButton" type="Button" parent="Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar"]
-custom_minimum_size = Vector2(40, 0)
+[node name="ClearButton" type="Control" parent="Sidebar/MarginContainer/TopVBox/SearchBar"]
 layout_mode = 1
-anchors_preset = 11
+anchors_preset = 6
 anchor_left = 1.0
+anchor_top = 0.5
 anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -40.0
+anchor_bottom = 0.5
+offset_left = -48.0
+offset_top = -24.0
+offset_bottom = 24.0
 grow_horizontal = 0
 grow_vertical = 2
-theme_override_fonts/font = ExtResource("2_bold")
-text = "×"
+focus_mode = 2
+script = ExtResource("6_clear")
 
-[node name="SortLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+[node name="Image" type="TextureRect" parent="Sidebar/MarginContainer/TopVBox/SearchBar/ClearButton"]
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -18.0
+offset_top = -18.0
+offset_right = 18.0
+offset_bottom = 18.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.9, 0.9)
+pivot_offset = Vector2(24, 24)
+mouse_filter = 2
+texture = ExtResource("7_clear_icon")
+expand_mode = 1
+
+[node name="SortLabel" type="Label" parent="Sidebar/MarginContainer/TopVBox"]
 custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -154,13 +209,13 @@ theme_override_fonts/font = ExtResource("2_bold")
 text = "Sort"
 vertical_alignment = 1
 
-[node name="SortButtons" type="HFlowContainer" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+[node name="SortButtons" type="HFlowContainer" parent="Sidebar/MarginContainer/TopVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
 
-[node name="FilterLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+[node name="FilterLabel" type="Label" parent="Sidebar/MarginContainer/TopVBox"]
 custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -169,72 +224,18 @@ theme_override_fonts/font = ExtResource("2_bold")
 text = "Filters"
 vertical_alignment = 1
 
-[node name="FilterGroups" type="VBoxContainer" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
+[node name="FilterGroups" type="VBoxContainer" parent="Sidebar/MarginContainer/TopVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
-[node name="BottomVBox" type="VBoxContainer" parent="Sidebar/MarginContainer/MainVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="SelectedCountLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/BottomVBox"]
+[node name="SelectedCountLabel" type="Label" parent="Sidebar/MarginContainer/TopVBox"]
+visible = false
 custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 17
 theme_override_fonts/font = ExtResource("2_bold")
 text = "Selected: 0"
-vertical_alignment = 1
-
-[node name="ConfirmButton" type="Button" parent="Sidebar/MarginContainer/MainVBox/BottomVBox"]
-custom_minimum_size = Vector2(0, 38)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_fonts/font = ExtResource("2_bold")
-text = "Confirm"
-
-[node name="CancelButton" type="Button" parent="Sidebar/MarginContainer/MainVBox/BottomVBox"]
-custom_minimum_size = Vector2(0, 34)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_fonts/font = ExtResource("2_bold")
-text = "Cancel"
-
-[node name="CardCountLabel" type="Label" parent="."]
-modulate = Color(1, 1, 1, 0.65)
-layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -136.0
-offset_top = -58.0
-offset_right = -24.0
-offset_bottom = -28.0
-grow_horizontal = 0
-grow_vertical = 0
-theme_override_font_sizes/font_size = 22
-theme_override_fonts/font = ExtResource("2_bold")
-text = "0/0"
-horizontal_alignment = 2
-vertical_alignment = 1
-
-[node name="NoResultsLabel" type="Label" parent="."]
-visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 288.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_font_sizes/font_size = 32
-theme_override_fonts/font = ExtResource("2_bold")
-text = "No results."
-horizontal_alignment = 1
 vertical_alignment = 1

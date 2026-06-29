@@ -1,6 +1,8 @@
 using Godot;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System.Collections.Generic;
 
 namespace Loadout.UI;
@@ -19,10 +21,14 @@ public partial class NLoadoutPanelRoot : Control
 	private readonly Dictionary<Control, MouseFilterEnum> _screenMouseFilters = new();
 	private readonly Stack<Control> _screenHistory = new();
 	private Control _screenContainer;
+	private Control _dropdownLayer;
+	private Control _hoverTipLayer;
 
 	public static NLoadoutPanelRoot Instance => IsValid(_instance) ? _instance : null;
 
 	public bool HasOpenScreen => TryPeekScreen(out _);
+	public Control DropdownLayer => _dropdownLayer;
+	public Control HoverTipLayer => _hoverTipLayer;
 
 	[Export]
 	public NodePath ScreenStackPath = "ScreenStack";
@@ -40,6 +46,8 @@ public partial class NLoadoutPanelRoot : Control
 		LoadoutThemeManager.ThemeChanged += OnThemeChanged;
 		LoadoutThemeManager.ApplyTheme(this);
 		BindScreenStack();
+		BindDropdownLayer();
+		BindHoverTipLayer();
 		RefreshScreens();
 
 		if (!InitialScreen.IsEmpty)
@@ -63,6 +71,12 @@ public partial class NLoadoutPanelRoot : Control
 		GetViewport().SetInputAsHandled();
 	}
 
+	public override void _Process(double delta)
+	{
+		if (HasOpenScreen)
+			AdoptGameHoverTips();
+	}
+
 	public override void _ExitTree()
 	{
 		LoadoutThemeManager.ThemeChanged -= OnThemeChanged;
@@ -81,6 +95,68 @@ public partial class NLoadoutPanelRoot : Control
 		}
 
 		_screenContainer.MouseFilter = MouseFilterEnum.Ignore;
+	}
+
+	private void BindHoverTipLayer()
+	{
+		_hoverTipLayer = GetNodeOrNull<Control>("HoverTipLayer");
+		if (IsInstanceValid(_hoverTipLayer))
+		{
+			_hoverTipLayer.MouseFilter = MouseFilterEnum.Ignore;
+			_hoverTipLayer.ZIndex = 60;
+			_hoverTipLayer.MoveToFront();
+			return;
+		}
+
+		_hoverTipLayer = new Control
+		{
+			Name = "HoverTipLayer",
+			MouseFilter = MouseFilterEnum.Ignore,
+			ZIndex = 60
+		};
+		_hoverTipLayer.SetAnchorsPreset(LayoutPreset.FullRect);
+		AddChild(_hoverTipLayer);
+	}
+
+	private void BindDropdownLayer()
+	{
+		_dropdownLayer = GetNodeOrNull<Control>("DropdownLayer");
+		if (IsInstanceValid(_dropdownLayer))
+		{
+			_dropdownLayer.MouseFilter = MouseFilterEnum.Ignore;
+			_dropdownLayer.ZIndex = 50;
+			_dropdownLayer.MoveToFront();
+			return;
+		}
+
+		_dropdownLayer = new Control
+		{
+			Name = "DropdownLayer",
+			MouseFilter = MouseFilterEnum.Ignore,
+			ZIndex = 50
+		};
+		_dropdownLayer.SetAnchorsPreset(LayoutPreset.FullRect);
+		AddChild(_dropdownLayer);
+	}
+
+	public void AdoptGameHoverTips()
+	{
+		if (!IsInstanceValid(_hoverTipLayer) || NGame.Instance?.HoverTipsContainer is not Node gameHoverTips)
+			return;
+
+		foreach (Node child in gameHoverTips.GetChildren())
+		{
+			if (child is not NHoverTipSet tipSet || tipSet.GetParent() == _hoverTipLayer)
+				continue;
+
+			Vector2 globalPosition = tipSet.GlobalPosition;
+			child.GetParent()?.RemoveChild(child);
+			_hoverTipLayer.AddChild(child);
+			tipSet.GlobalPosition = globalPosition;
+			tipSet.ZIndex = 0;
+		}
+
+		_hoverTipLayer.MoveToFront();
 	}
 
 	private void RefreshScreens()
