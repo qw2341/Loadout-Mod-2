@@ -460,10 +460,10 @@ public partial class NGenericSelectScreen : Control
             NCardViewSortButton button = SceneHelper.Instantiate<NCardViewSortButton>(SelectSortButtonInnerPath);
             button.Name = MakeSafeNodeName($"{sorterId}SortButton");
             button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            button.SetLabel(sorter.Label);
-            button.IsDescending = sorter.IsDescending;
             button.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => OnSorterPressed(sorterId)));
             _sortButtonsContainer.AddChild(button);
+            button.SetLabel(sorter.Label);
+            button.IsDescending = sorter.IsDescending;
             _sortButtonsById[sorterId] = button;
         }
 

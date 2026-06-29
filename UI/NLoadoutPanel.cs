@@ -190,9 +190,9 @@ public partial class NLoadoutPanel : Panel
 				builder.FilterGroup("type", "Type");
 				builder.Filter("buff", "Buff", power => power.Type == PowerType.Buff, "type");
 				builder.Filter("debuff", "Debuff", power => power.Type == PowerType.Debuff, "type");
-				builder.Filter("none", "None", power => power.Type == PowerType.None, "type");
+				builder.Filter("type_none", "None", power => power.Type == PowerType.None, "type");
 				builder.FilterGroup("stack", "Stack");
-				builder.Filter("none", "None", power => power.StackType == PowerStackType.None, "stack");
+				builder.Filter("stack_none", "None", power => power.StackType == PowerStackType.None, "stack");
 				builder.Filter("counter", "Counter", power => power.StackType == PowerStackType.Counter, "stack");
 				builder.Filter("single", "Single", power => power.StackType == PowerStackType.Single, "stack");
 				builder.Sorter("name", "Name", (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
