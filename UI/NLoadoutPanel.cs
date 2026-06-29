@@ -111,7 +111,9 @@ public partial class NLoadoutPanel : Panel
 				builder.Filter("common", L("RARITY_COMMON", "Common"), card => card.Rarity == CardRarity.Common, "rarity");
 				builder.Filter("uncommon", L("RARITY_UNCOMMON", "Uncommon"), card => card.Rarity == CardRarity.Uncommon, "rarity");
 				builder.Filter("rare", L("RARITY_RARE", "Rare"), card => card.Rarity == CardRarity.Rare, "rarity");
-				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
+				builder.Sorter("library", L("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
+				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("cost", L("SORT_COST", "Cost"), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
 			},
@@ -455,10 +457,7 @@ public partial class NLoadoutPanel : Panel
 
 	private static void AddCardPoolFilters(SelectScreenBuilder<CardModel> builder)
 	{
-		IReadOnlyList<CardPoolModel> pools = BuildOrderedPools(
-			ModelDb.AllCards.Select(card => card.Pool),
-			ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
-			pool => pool.IsColorless && !IsInternalPool(pool));
+		IReadOnlyList<CardPoolModel> pools = BuildOrderedCardPools();
 
 		foreach (CardPoolModel pool in pools)
 		{
@@ -469,6 +468,14 @@ public partial class NLoadoutPanel : Panel
 				card => SamePool(card.Pool, localPool),
 				"class");
 		}
+	}
+
+	private static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()
+	{
+		return BuildOrderedPools(
+			ModelDb.AllCards.Select(card => card.Pool),
+			ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
+			pool => pool.IsColorless && !IsInternalPool(pool));
 	}
 
 	private static void AddPotionPoolFilters(SelectScreenBuilder<PotionModel> builder)
@@ -578,6 +585,54 @@ public partial class NLoadoutPanel : Panel
 	private static bool SamePool(AbstractModel left, AbstractModel right)
 	{
 		return string.Equals(PoolKey(left), PoolKey(right), StringComparison.Ordinal);
+	}
+
+	private static int CompareCardLibraryOrder(CardModel left, CardModel right, IReadOnlyList<CardPoolModel> orderedPools)
+	{
+		int pool = GetCardPoolSortIndex(left.Pool, orderedPools).CompareTo(GetCardPoolSortIndex(right.Pool, orderedPools));
+		if (pool != 0)
+			return pool;
+
+		int rarity = GetCardRaritySortValue(left.Rarity).CompareTo(GetCardRaritySortValue(right.Rarity));
+		if (rarity != 0)
+			return rarity;
+
+		int type = left.Type.CompareTo(right.Type);
+		if (type != 0)
+			return type;
+
+		int cost = left.EnergyCost.GetResolved().CompareTo(right.EnergyCost.GetResolved());
+		if (cost != 0)
+			return cost;
+
+		return string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
+	}
+
+	private static int GetCardPoolSortIndex(CardPoolModel pool, IReadOnlyList<CardPoolModel> orderedPools)
+	{
+		for (int i = 0; i < orderedPools.Count; i++)
+		{
+			if (SamePool(pool, orderedPools[i]))
+				return i;
+		}
+
+		return orderedPools.Count;
+	}
+
+	private static int GetCardRaritySortValue(CardRarity rarity)
+	{
+		if (rarity <= CardRarity.Ancient)
+			return (int)rarity;
+
+		return rarity switch
+		{
+			CardRarity.Status => 6,
+			CardRarity.Curse => 7,
+			CardRarity.Event => 8,
+			CardRarity.Quest => 9,
+			CardRarity.Token => 10,
+			_ => (int)rarity
+		};
 	}
 
 	private static bool IsSharedPool(AbstractModel pool)

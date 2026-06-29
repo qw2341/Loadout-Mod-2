@@ -18,7 +18,7 @@ public partial class NLoadoutDropdown : NDropdown
 {
     private const float DefaultDropdownWidth = 320f;
     private const float DefaultItemHeight = 44f;
-    private const int DefaultMaxVisibleItems = 6;
+    private const int DefaultMaxVisibleItems = 8;
     private const float ButtonHeight = 52f;
 
     private readonly List<LoadoutDropdownOption> _items = new();
