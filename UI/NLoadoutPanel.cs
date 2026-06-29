@@ -99,7 +99,7 @@ public partial class NLoadoutPanel : Panel
 				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
 			}, builder =>
 			{
-				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingRight: 0f);
+				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
 				AddCardPoolFilters(builder, currentCardPool);
 				builder.FilterGroup("type", L("FILTER_GROUP_TYPE", "Type"));

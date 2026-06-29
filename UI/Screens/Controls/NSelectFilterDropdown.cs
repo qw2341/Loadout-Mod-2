@@ -30,6 +30,9 @@ public partial class NSelectFilterDropdown : NDropdown
     private Control? _dropdownOriginalParent;
     private int _dropdownOriginalIndex;
     private NButton? _dismisser;
+    private bool _containerPressStarted;
+    private ulong _pendingFallbackReleaseFrame;
+    private ulong _lastToggleFrame;
 
     public event Action<string>? OptionSelected;
 
@@ -93,10 +96,44 @@ public partial class NSelectFilterDropdown : NDropdown
 
     protected override void OnRelease()
     {
+        ToggleSelectDropdown();
+    }
+
+    private void ToggleSelectDropdown()
+    {
+        _lastToggleFrame = Engine.GetProcessFrames();
+
         if (_isOpen)
             CloseSelectDropdown();
         else
             OpenSelectDropdown();
+    }
+
+    private void OnContainerGuiInput(InputEvent inputEvent)
+    {
+        if (inputEvent is not InputEventMouseButton { ButtonIndex: MouseButton.Left } mouseButton)
+            return;
+
+        if (mouseButton.Pressed)
+        {
+            _containerPressStarted = true;
+            return;
+        }
+
+        if (!_containerPressStarted)
+            return;
+
+        _containerPressStarted = false;
+        _pendingFallbackReleaseFrame = Engine.GetProcessFrames();
+        Callable.From(ToggleFromContainerReleaseIfNeeded).CallDeferred();
+    }
+
+    private void ToggleFromContainerReleaseIfNeeded()
+    {
+        if (_lastToggleFrame == _pendingFallbackReleaseFrame)
+            return;
+
+        ToggleSelectDropdown();
     }
 
     private void ApplyOptions()
@@ -237,9 +274,10 @@ public partial class NSelectFilterDropdown : NDropdown
         Control container = new()
         {
             Name = "Container",
-            MouseFilter = MouseFilterEnum.Stop
+            MouseFilter = MouseFilterEnum.Pass
         };
         container.SetAnchorsPreset(LayoutPreset.FullRect);
+        container.GuiInput += OnContainerGuiInput;
         AddChild(container);
 
         NButton dismisser = new()
