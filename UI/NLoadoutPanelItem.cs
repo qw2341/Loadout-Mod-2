@@ -1,6 +1,7 @@
 using Godot;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using System;
 
 namespace Loadout.UI;
 
@@ -31,6 +32,7 @@ public partial class NLoadoutPanelItem : TextureButton
 	private Vector2 _baseScale = Vector2.One;
 	private Vector2 _basePosition;
 	private NGenericSelectScreen _boundScreen;
+	private Action<NGenericSelectScreen> _beforeOpen;
 	
 	public override void _Ready()
 	{
@@ -179,6 +181,8 @@ public partial class NLoadoutPanelItem : TextureButton
 			_boundScreen = scene.Instantiate<NGenericSelectScreen>();
 		}
 
+		_beforeOpen?.Invoke(_boundScreen);
+
 		var root = NLoadoutPanelRoot.Instance ?? NLoadoutPanelRoot.GetOrAttach(GetTree());
 		if (root == null)
 		{
@@ -193,5 +197,11 @@ public partial class NLoadoutPanelItem : TextureButton
 	{
 		get => _boundScreen;
 		set => _boundScreen = value;
+	}
+
+	public Action<NGenericSelectScreen> BeforeOpen
+	{
+		get => _beforeOpen;
+		set => _beforeOpen = value;
 	}
 }

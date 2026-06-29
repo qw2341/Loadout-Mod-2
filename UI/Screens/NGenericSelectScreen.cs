@@ -30,6 +30,12 @@ public partial class NGenericSelectScreen : Control
     private const float SidebarWidth = 288f;
     private const float ContentLeftSafetyMargin = 96f;
     private const float ContentRightSafetyMargin = 120f;
+    private const int InitialMaterializeBudget = 96;
+    private const int ScrollMaterializeBudget = 48;
+    private const int DeferredMaterializeBatchSize = 24;
+    private const float MaterializeRowsAhead = 3f;
+    private const float MaterializeRowsBehind = 2f;
+    private const float CullRetentionRows = 0.75f;
 
     [Export]
     public NodePath SearchLineEditPath = "Sidebar/MarginContainer/TopVBox/SearchBar/TextArea";
@@ -92,8 +98,10 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<string, SelectGroupDefinition> _groupsBySorterId = new(StringComparer.Ordinal);
     private readonly List<Control> _generatedGroupContainers = new();
     private readonly List<Control> _visibleLayoutNodes = new();
+    private readonly Dictionary<IGenericSelectItem, SelectItemLayout> _itemLayouts = new();
+    private readonly List<IGenericSelectItem> _itemLayoutOrder = new();
 
-    private readonly Dictionary<string, NSelectFilterDropdown> _filterDropdownsByGroupId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NLoadoutDropdown> _filterDropdownsByGroupId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NCardViewSortButton> _sortButtonsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _selectedAmounts = new(StringComparer.Ordinal);
 
@@ -124,6 +132,8 @@ public partial class NGenericSelectScreen : Control
     private float _maxScrollY;
     private bool _scrollbarPressed;
     private System.Threading.CancellationTokenSource? _searchDelayCts;
+    private System.Threading.CancellationTokenSource? _materializeCts;
+    private ulong _layoutGeneration;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -149,6 +159,7 @@ public partial class NGenericSelectScreen : Control
         _searchDelayCts?.Cancel();
         _searchDelayCts?.Dispose();
         _searchDelayCts = null;
+        CancelPendingMaterialization();
     }
 
     public override void _Process(double delta)
@@ -204,10 +215,13 @@ public partial class NGenericSelectScreen : Control
 
     public void ResetConfiguration()
     {
+        CancelPendingMaterialization();
         ClearItemViews();
 
         _items.Clear();
         _visibleItems.Clear();
+        _itemLayouts.Clear();
+        _itemLayoutOrder.Clear();
         _filters.Clear();
         _filtersById.Clear();
         _filterGroupsById.Clear();
@@ -305,12 +319,15 @@ public partial class NGenericSelectScreen : Control
         if (!_isConfigured || _itemGrid is null)
             return;
 
+        CancelPendingMaterialization();
         CancelPendingSearchRefresh();
 
         _visibleItems.Clear();
         _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
         _visibleItems.Sort(CompareItems);
         _visibleLayoutNodes.Clear();
+        _itemLayouts.Clear();
+        _itemLayoutOrder.Clear();
 
         foreach (IGenericSelectItem item in _items)
         {
@@ -330,6 +347,10 @@ public partial class NGenericSelectScreen : Control
 
         if (resetScroll)
             ScrollToTop();
+
+        MaterializeViewportItemViews(InitialMaterializeBudget);
+        StartDeferredItemMaterialization();
+        UpdateViewportCulling();
     }
 
     public void ClearSelection()
@@ -382,6 +403,15 @@ public partial class NGenericSelectScreen : Control
     public void CancelSelection()
     {
         Cancelled?.Invoke();
+    }
+
+    public bool SetExclusiveFilterSelection(string groupId, string? selectedFilterId, bool resetScroll = true)
+    {
+        if (!ApplyExclusiveFilterSelection(groupId, selectedFilterId))
+            return false;
+
+        RefreshNow(resetScroll);
+        return true;
     }
 
     private void BindSceneNodes()
@@ -588,6 +618,14 @@ public partial class NGenericSelectScreen : Control
         _searchDelayCts = null;
     }
 
+    private void CancelPendingMaterialization()
+    {
+        _layoutGeneration++;
+        _materializeCts?.Cancel();
+        _materializeCts?.Dispose();
+        _materializeCts = null;
+    }
+
     private void RebuildSortButtons()
     {
         if (_sortButtonsContainer is null)
@@ -674,20 +712,20 @@ public partial class NGenericSelectScreen : Control
 
             EnsureFilterSelectionIsValid(groupId);
 
-            List<SelectDropdownOption> options = new();
-            options.Add(new SelectDropdownOption(AllFilterOptionId, SelectScreenLoc.Text("ALL", "All")));
+            List<LoadoutDropdownOption> options = new();
+            options.Add(new LoadoutDropdownOption(AllFilterOptionId, SelectScreenLoc.Text("ALL", "All")));
 
             foreach (SelectFilterDefinition filter in groupFilters)
-                options.Add(new SelectDropdownOption(filter.Id, filter.Label));
+                options.Add(new LoadoutDropdownOption(filter.Id, filter.Label));
 
             string selectedOptionId = GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId;
-            NSelectFilterDropdown dropdown = new();
+            NLoadoutDropdown dropdown = new();
             dropdown.Name = MakeSafeNodeName($"{groupId}FilterDropdown");
             dropdown.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             dropdown.CustomMinimumSize = new Vector2(256f, 52f);
-            dropdown.OptionSelected += selectedId => OnFilterDropdownSelected(groupId, selectedId);
+            dropdown.SelectedItemChanged += selectedId => OnFilterDropdownSelected(groupId, selectedId);
             _filtersContainer.AddChild(dropdown);
-            dropdown.SetOptions(group.Label, options, selectedOptionId);
+            dropdown.SetItems(group.Label, options, selectedOptionId);
             _filterDropdownsByGroupId[groupId] = dropdown;
         }
     }
@@ -700,14 +738,11 @@ public partial class NGenericSelectScreen : Control
         if (selectedOptionId == AllFilterOptionId)
         {
             SetExclusiveFilterSelection(groupId, null);
-            RefreshNow(resetScroll: true);
             return;
         }
 
         if (_filtersById.TryGetValue(selectedOptionId, out SelectFilterDefinition? filter))
             SetExclusiveFilterSelection(filter.GroupId, filter.Id);
-
-        RefreshNow(resetScroll: true);
     }
 
     private void EnsureFilterGroupExists(string groupId)
@@ -721,7 +756,7 @@ public partial class NGenericSelectScreen : Control
 
     private void EnforceSingleFilterSelection(string groupId, string selectedFilterId)
     {
-        SetExclusiveFilterSelection(groupId, selectedFilterId);
+        ApplyExclusiveFilterSelection(groupId, selectedFilterId);
     }
 
     private void EnsureFilterSelectionIsValid(string groupId)
@@ -733,13 +768,13 @@ public partial class NGenericSelectScreen : Control
         SelectFilterDefinition? selectedFilter = groupFilters.FirstOrDefault(filter => filter.Enabled);
         if (selectedFilter is not null)
         {
-            SetExclusiveFilterSelection(groupId, selectedFilter.Id);
+            ApplyExclusiveFilterSelection(groupId, selectedFilter.Id);
             return;
         }
 
         if (GroupRequiresSelection(groupId))
         {
-            SetExclusiveFilterSelection(groupId, groupFilters[0].Id);
+            ApplyExclusiveFilterSelection(groupId, groupFilters[0].Id);
             return;
         }
 
@@ -766,28 +801,41 @@ public partial class NGenericSelectScreen : Control
             ?.Id;
     }
 
-    private void SetExclusiveFilterSelection(string groupId, string? selectedFilterId)
+    private bool ApplyExclusiveFilterSelection(string groupId, string? selectedFilterId)
     {
         List<SelectFilterDefinition> groupFilters = GetFiltersInGroup(groupId);
         if (groupFilters.Count == 0)
-            return;
+            return false;
 
         if (selectedFilterId is null && GroupRequiresSelection(groupId))
             selectedFilterId = groupFilters[0].Id;
 
+        if (selectedFilterId is not null && groupFilters.All(filter => !string.Equals(filter.Id, selectedFilterId, StringComparison.Ordinal)))
+            return false;
+
+        bool changed = false;
+
         foreach (SelectFilterDefinition filter in groupFilters)
-            filter.Enabled = selectedFilterId is not null && string.Equals(filter.Id, selectedFilterId, StringComparison.Ordinal);
+        {
+            bool shouldEnable = selectedFilterId is not null && string.Equals(filter.Id, selectedFilterId, StringComparison.Ordinal);
+            if (filter.Enabled != shouldEnable)
+            {
+                filter.Enabled = shouldEnable;
+                changed = true;
+            }
+        }
 
         SyncFilterDropdown(groupId);
+        return changed;
     }
 
     private void SyncFilterDropdown(string groupId)
     {
-        if (!_filterDropdownsByGroupId.TryGetValue(groupId, out NSelectFilterDropdown? dropdown))
+        if (!_filterDropdownsByGroupId.TryGetValue(groupId, out NLoadoutDropdown? dropdown))
             return;
 
         _isSyncingFilterDropdowns = true;
-        dropdown.SetSelectedOption(GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId);
+        dropdown.SetSelectedItem(GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId);
         _isSyncingFilterDropdowns = false;
     }
 
@@ -862,17 +910,9 @@ public partial class NGenericSelectScreen : Control
         for (int i = 0; i < _visibleItems.Count; i++)
         {
             IGenericSelectItem item = _visibleItems[i];
-            Control view = EnsureViewInCanvas(item);
-            view.Visible = true;
-            view.Size = itemSize;
-            view.Position = new Vector2(
+            QueueItemLayout(item, new Vector2(
                 startX + (i % columns) * (itemSize.X + ItemHorizontalGap),
-                startY + (i / columns) * (itemSize.Y + ItemVerticalGap));
-            view.ZIndex = 0;
-            _visibleLayoutNodes.Add(view);
-
-            SelectItemState state = BuildState(item, i);
-            item.UpdateView(state);
+                startY + (i / columns) * (itemSize.Y + ItemVerticalGap)), itemSize, i);
 
             measuredWidth = Math.Max(measuredWidth, itemSize.X);
         }
@@ -934,17 +974,9 @@ public partial class NGenericSelectScreen : Control
             for (int i = 0; i < groupItems.Count; i++)
             {
                 IGenericSelectItem item = groupItems[i];
-                Control view = EnsureViewInCanvas(item);
-                view.Visible = true;
-                view.Size = itemSize;
-                view.Position = new Vector2(
+                QueueItemLayout(item, new Vector2(
                     gridStartX + (i % columns) * (itemSize.X + ItemHorizontalGap),
-                    y + (i / columns) * (itemSize.Y + ItemVerticalGap));
-                view.ZIndex = 0;
-                _visibleLayoutNodes.Add(view);
-
-                SelectItemState state = BuildState(item, visibleIndex);
-                item.UpdateView(state);
+                    y + (i / columns) * (itemSize.Y + ItemVerticalGap)), itemSize, visibleIndex);
 
                 measuredWidth = Math.Max(measuredWidth, itemSize.X);
                 visibleIndex++;
@@ -956,6 +988,108 @@ public partial class NGenericSelectScreen : Control
 
         SetContentSize(Math.Max(GetViewportContentWidth(), headerWidth + _layout.PaddingLeft + _layout.PaddingRight), y + _layout.PaddingBottom);
         return measuredWidth;
+    }
+
+    private readonly record struct SelectItemLayout(Vector2 Position, Vector2 Size, int VisibleIndex);
+
+    private void QueueItemLayout(IGenericSelectItem item, Vector2 position, Vector2 size, int visibleIndex)
+    {
+        _itemLayouts[item] = new SelectItemLayout(position, size, visibleIndex);
+        _itemLayoutOrder.Add(item);
+    }
+
+    private void MaterializeViewportItemViews(int maxCount)
+    {
+        if (_itemGrid is null || maxCount <= 0)
+            return;
+
+        int materialized = 0;
+        foreach (IGenericSelectItem item in _itemLayoutOrder)
+        {
+            if (materialized >= maxCount)
+                break;
+
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout) || !IsLayoutNearViewport(layout))
+                continue;
+
+            bool needsView = item.View is null || !GodotObject.IsInstanceValid(item.View);
+            if (MaterializeItemView(item, layout) && needsView)
+                materialized++;
+        }
+    }
+
+    private bool MaterializeItemView(IGenericSelectItem item, SelectItemLayout layout)
+    {
+        if (_itemGrid is null)
+            return false;
+
+        Control view = EnsureViewInCanvas(item);
+        view.Size = layout.Size;
+        view.Position = layout.Position;
+        view.ZIndex = 0;
+        view.Visible = true;
+
+        if (!_visibleLayoutNodes.Contains(view))
+            _visibleLayoutNodes.Add(view);
+
+        item.UpdateView(BuildState(item, layout.VisibleIndex));
+        return true;
+    }
+
+    private void StartDeferredItemMaterialization()
+    {
+        if (!IsInsideTree() || _itemLayoutOrder.Count == 0)
+            return;
+
+        _materializeCts = new System.Threading.CancellationTokenSource();
+        ulong generation = _layoutGeneration;
+        _ = MaterializeRemainingItemViewsAsync(_itemLayoutOrder.ToList(), generation, _materializeCts.Token);
+    }
+
+    private async System.Threading.Tasks.Task MaterializeRemainingItemViewsAsync(
+        IReadOnlyList<IGenericSelectItem> itemOrder,
+        ulong generation,
+        System.Threading.CancellationToken token)
+    {
+        int index = 0;
+        while (!token.IsCancellationRequested && generation == _layoutGeneration && IsInsideTree() && index < itemOrder.Count)
+        {
+            int materializedThisFrame = 0;
+            while (index < itemOrder.Count && materializedThisFrame < DeferredMaterializeBatchSize)
+            {
+                IGenericSelectItem item = itemOrder[index++];
+                if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                    continue;
+
+                if (item.View is not null && GodotObject.IsInstanceValid(item.View))
+                    continue;
+
+                if (MaterializeItemView(item, layout))
+                    materializedThisFrame++;
+            }
+
+            UpdateViewportCulling();
+
+            if (index < itemOrder.Count)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+    }
+
+    private bool IsLayoutNearViewport(SelectItemLayout layout)
+    {
+        if (_itemGrid is null)
+            return false;
+
+        float viewportHeight = _scrollMask?.Size.Y ?? _itemGrid.GetParent<Control>()?.Size.Y ?? Size.Y;
+        float rowHeight = Math.Max(1f, layout.Size.Y + ItemVerticalGap);
+        float scrollTop = Math.Min(_scrollY, _targetScrollY);
+        float scrollBottom = Math.Max(_scrollY, _targetScrollY);
+        float behindBuffer = rowHeight * MaterializeRowsBehind;
+        float aheadBuffer = rowHeight * MaterializeRowsAhead;
+        Rect2 materializeRect = new(
+            new Vector2(0f, scrollTop - behindBuffer),
+            new Vector2(_itemGrid.Size.X, scrollBottom - scrollTop + viewportHeight + behindBuffer + aheadBuffer));
+        return new Rect2(layout.Position, layout.Size).Intersects(materializeRect, includeBorders: true);
     }
 
     private Control CreateGroupHeader(string key, SelectGroupHeader header)
@@ -1362,14 +1496,17 @@ public partial class NGenericSelectScreen : Control
         if (_visibleLayoutNodes.Count == 0)
             return;
 
-        Rect2 viewportRect = new(Vector2.Zero, GetViewportRect().Size);
+        Rect2 viewportRect = _scrollMask?.GetGlobalRect() ?? new Rect2(Vector2.Zero, GetViewportRect().Size);
+        float rowHeight = Math.Max(1f, ResolveConfiguredItemSize().Y + ItemVerticalGap);
+        Rect2 cullRect = viewportRect.Grow(rowHeight * CullRetentionRows);
+
         foreach (Control control in _visibleLayoutNodes)
         {
             if (!GodotObject.IsInstanceValid(control))
                 continue;
 
             Rect2 rect = control.GetGlobalRect();
-            control.Visible = rect.Intersects(viewportRect, includeBorders: true);
+            control.Visible = rect.Intersects(cullRect, includeBorders: true);
         }
     }
 
@@ -1408,6 +1545,9 @@ public partial class NGenericSelectScreen : Control
 
         if (_scrollbar is not null && !_scrollbarPressed)
             _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
+
+        MaterializeViewportItemViews(ScrollMaterializeBudget);
+        UpdateViewportCulling();
     }
 
     private void SetTargetScroll(float value)

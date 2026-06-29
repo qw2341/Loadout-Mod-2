@@ -12,17 +12,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-public readonly record struct SelectDropdownOption(string Id, string Label);
+public readonly record struct LoadoutDropdownOption(string Id, string Label);
 
-public partial class NSelectFilterDropdown : NDropdown
+public partial class NLoadoutDropdown : NDropdown
 {
-    private const float DropdownHeight = 600f;
-    private const float DropdownWidth = 320f;
+    private const float DefaultDropdownWidth = 320f;
+    private const float DefaultItemHeight = 44f;
+    private const int DefaultMaxVisibleItems = 6;
+    private const float ButtonHeight = 52f;
 
-    private readonly List<SelectDropdownOption> _options = new();
-    private readonly Dictionary<NSelectDropdownItem, string> _optionIdsByItem = new();
-    private string _groupLabel = string.Empty;
-    private string _selectedOptionId = string.Empty;
+    private readonly List<LoadoutDropdownOption> _items = new();
+    private readonly Dictionary<NSelectDropdownItem, string> _itemIdsByNode = new();
+    private string _labelPrefix = string.Empty;
+    private string _selectedItemId = string.Empty;
     private bool _isReady;
     private bool _isOpen;
     private Control? _container;
@@ -34,7 +36,11 @@ public partial class NSelectFilterDropdown : NDropdown
     private ulong _pendingFallbackReleaseFrame;
     private ulong _lastToggleFrame;
 
-    public event Action<string>? OptionSelected;
+    public float DropdownWidth { get; set; } = DefaultDropdownWidth;
+    public float ItemHeight { get; set; } = DefaultItemHeight;
+    public int MaxVisibleItems { get; set; } = DefaultMaxVisibleItems;
+
+    public event Action<string>? SelectedItemChanged;
 
     public override void _Ready()
     {
@@ -44,15 +50,15 @@ public partial class NSelectFilterDropdown : NDropdown
         _container = GetNode<Control>("Container");
         _dropdownContainer = GetNode<Control>("%DropdownContainer");
         _dismisser = GetNode<NButton>("%Dismisser");
-        _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => CloseSelectDropdown()));
+        _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => CloseLoadoutDropdown()));
         _isReady = true;
-        ApplyOptions();
+        ApplyItems();
         SetEnabled(true);
     }
 
     public override void _ExitTree()
     {
-        CloseSelectDropdown();
+        CloseLoadoutDropdown();
     }
 
     public override void _Process(double delta)
@@ -72,41 +78,41 @@ public partial class NSelectFilterDropdown : NDropdown
         bool insideButton = GetGlobalRect().HasPoint(globalPosition);
         bool insideDropdown = _dropdownContainer?.GetGlobalRect().HasPoint(globalPosition) ?? false;
         if (!insideButton && !insideDropdown)
-            CloseSelectDropdown();
+            CloseLoadoutDropdown();
     }
 
-    public void SetOptions(string groupLabel, IEnumerable<SelectDropdownOption> options, string selectedOptionId)
+    public void SetItems(string labelPrefix, IEnumerable<LoadoutDropdownOption> items, string selectedItemId)
     {
-        _groupLabel = groupLabel;
-        _selectedOptionId = selectedOptionId;
-        _options.Clear();
-        _options.AddRange(options);
+        _labelPrefix = labelPrefix;
+        _selectedItemId = selectedItemId;
+        _items.Clear();
+        _items.AddRange(items);
 
         if (_isReady)
-            ApplyOptions();
+            ApplyItems();
     }
 
-    public void SetSelectedOption(string selectedOptionId)
+    public void SetSelectedItem(string selectedItemId)
     {
-        _selectedOptionId = selectedOptionId;
+        _selectedItemId = selectedItemId;
 
         if (_isReady)
-            RefreshCurrentOptionLabel();
+            RefreshCurrentItemLabel();
     }
 
     protected override void OnRelease()
     {
-        ToggleSelectDropdown();
+        ToggleLoadoutDropdown();
     }
 
-    private void ToggleSelectDropdown()
+    private void ToggleLoadoutDropdown()
     {
         _lastToggleFrame = Engine.GetProcessFrames();
 
         if (_isOpen)
-            CloseSelectDropdown();
+            CloseLoadoutDropdown();
         else
-            OpenSelectDropdown();
+            OpenLoadoutDropdown();
     }
 
     private void OnContainerGuiInput(InputEvent inputEvent)
@@ -133,10 +139,10 @@ public partial class NSelectFilterDropdown : NDropdown
         if (_lastToggleFrame == _pendingFallbackReleaseFrame)
             return;
 
-        ToggleSelectDropdown();
+        ToggleLoadoutDropdown();
     }
 
-    private void ApplyOptions()
+    private void ApplyItems()
     {
         foreach (Node child in _dropdownItems.GetChildren())
         {
@@ -144,63 +150,66 @@ public partial class NSelectFilterDropdown : NDropdown
             child.QueueFree();
         }
 
-        _optionIdsByItem.Clear();
+        _itemIdsByNode.Clear();
 
-        foreach (SelectDropdownOption option in _options)
+        foreach (LoadoutDropdownOption option in _items)
         {
             NSelectDropdownItem item = new()
             {
                 Name = MakeSafeNodeName($"Option_{option.Id}"),
-                CustomMinimumSize = new Vector2(DropdownWidth - 4f, 44f),
+                CustomMinimumSize = new Vector2(DropdownWidth - 4f, ItemHeight),
+                Size = new Vector2(DropdownWidth - 4f, ItemHeight),
                 FocusMode = FocusModeEnum.All,
                 MouseFilter = MouseFilterEnum.Stop
             };
             item.Init(option.Id, option.Label);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(OnDropdownItemSelected));
             _dropdownItems.AddChild(item);
-            _optionIdsByItem[item] = option.Id;
+            _itemIdsByNode[item] = option.Id;
         }
 
-        if (_dropdownItems.GetParent() is NDropdownContainer dropdownContainer)
+        ResizeDropdownToMaxVisibleItems();
+
+        if (_dropdownItems.GetParent() is NLoadoutDropdownContainer dropdownContainer)
             dropdownContainer.RefreshLayout();
 
-        RefreshCurrentOptionLabel();
+        RefreshCurrentItemLabel();
         PositionDropdownContainer();
     }
 
     private void OnDropdownItemSelected(NDropdownItem dropdownItem)
     {
-        if (dropdownItem is not NSelectDropdownItem selectItem || !_optionIdsByItem.TryGetValue(selectItem, out string? optionId))
+        if (dropdownItem is not NSelectDropdownItem selectItem || !_itemIdsByNode.TryGetValue(selectItem, out string? itemId))
             return;
 
-        _selectedOptionId = optionId;
-        RefreshCurrentOptionLabel();
-        OptionSelected?.Invoke(optionId);
-        CloseSelectDropdown();
+        _selectedItemId = itemId;
+        RefreshCurrentItemLabel();
+        SelectedItemChanged?.Invoke(itemId);
+        CloseLoadoutDropdown();
     }
 
-    private void RefreshCurrentOptionLabel()
+    private void RefreshCurrentItemLabel()
     {
         if (_currentOptionLabel is null)
             return;
 
-        if (_options.Count == 0)
+        if (_items.Count == 0)
         {
-            _currentOptionLabel.SetTextAutoSize(_groupLabel);
+            _currentOptionLabel.SetTextAutoSize(_labelPrefix);
             return;
         }
 
-        SelectDropdownOption selectedOption = _options.FirstOrDefault(option => option.Id == _selectedOptionId);
-        if (string.IsNullOrWhiteSpace(selectedOption.Id))
-            selectedOption = _options[0];
+        LoadoutDropdownOption selectedItem = _items.FirstOrDefault(item => item.Id == _selectedItemId);
+        if (string.IsNullOrWhiteSpace(selectedItem.Id))
+            selectedItem = _items[0];
 
-        string label = string.IsNullOrWhiteSpace(_groupLabel)
-            ? selectedOption.Label
-            : $"{_groupLabel}: {selectedOption.Label}";
+        string label = string.IsNullOrWhiteSpace(_labelPrefix)
+            ? selectedItem.Label
+            : $"{_labelPrefix}: {selectedItem.Label}";
         _currentOptionLabel.SetTextAutoSize(label);
     }
 
-    private void OpenSelectDropdown()
+    private void OpenLoadoutDropdown()
     {
         if (_dropdownContainer is null)
             return;
@@ -218,6 +227,10 @@ public partial class NSelectFilterDropdown : NDropdown
             layer.AddChild(_dropdownContainer);
         }
 
+        ResizeDropdownToMaxVisibleItems();
+        if (_dropdownItems.GetParent() is NLoadoutDropdownContainer dropdownContainer)
+            dropdownContainer.RefreshLayout();
+
         _dropdownContainer.Visible = true;
         _dropdownContainer.MoveToFront();
         PositionDropdownContainer();
@@ -228,7 +241,7 @@ public partial class NSelectFilterDropdown : NDropdown
         _dropdownItems.GetChildren().OfType<NDropdownItem>().FirstOrDefault()?.TryGrabFocus();
     }
 
-    private void CloseSelectDropdown()
+    private void CloseLoadoutDropdown()
     {
         _isOpen = false;
         _dismisser?.Hide();
@@ -258,15 +271,38 @@ public partial class NSelectFilterDropdown : NDropdown
 
         Vector2 globalPosition = GlobalPosition + new Vector2((Size.X - DropdownWidth) * 0.5f, Size.Y + 2f);
         float viewportHeight = GetViewportRect().Size.Y;
-        float maxHeight = MathF.Min(DropdownHeight, MathF.Max(120f, viewportHeight - globalPosition.Y - 24f));
+        float availableHeight = MathF.Max(ItemHeight, viewportHeight - globalPosition.Y - 24f);
+        float currentHeight = _dropdownContainer.Size.Y > 0f ? _dropdownContainer.Size.Y : GetMaxDropdownHeight();
 
         _dropdownContainer.GlobalPosition = globalPosition;
+        _dropdownContainer.Size = new Vector2(DropdownWidth, MathF.Min(currentHeight, availableHeight));
+    }
+
+    private void ResizeDropdownToMaxVisibleItems()
+    {
+        if (_dropdownContainer is null)
+            return;
+
+        float maxHeight = GetMaxDropdownHeight();
+        _dropdownContainer.CustomMinimumSize = new Vector2(DropdownWidth, maxHeight);
         _dropdownContainer.Size = new Vector2(DropdownWidth, maxHeight);
+        _dropdownContainer.OffsetLeft = 0f;
+        _dropdownContainer.OffsetTop = ButtonHeight + 2f;
+        _dropdownContainer.OffsetRight = DropdownWidth;
+        _dropdownContainer.OffsetBottom = ButtonHeight + 2f + maxHeight;
+
+        if (_dropdownContainer is NLoadoutDropdownContainer dropdownContainer)
+            dropdownContainer.SetMaxHeight(maxHeight);
+    }
+
+    private float GetMaxDropdownHeight()
+    {
+        return MathF.Max(1, MaxVisibleItems) * MathF.Max(1f, ItemHeight);
     }
 
     private void BuildControlTree()
     {
-        CustomMinimumSize = new Vector2(256f, 52f);
+        CustomMinimumSize = new Vector2(256f, ButtonHeight);
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         FocusMode = FocusModeEnum.All;
         MouseFilter = MouseFilterEnum.Stop;
@@ -317,7 +353,7 @@ public partial class NSelectFilterDropdown : NDropdown
         {
             Name = "Label",
             UniqueNameInOwner = true,
-            Text = "Filter",
+            Text = "Select",
             MinFontSize = 18,
             MaxFontSize = 28,
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -352,26 +388,28 @@ public partial class NSelectFilterDropdown : NDropdown
         arrow.OffsetBottom = 11f;
         container.AddChild(arrow);
 
-        NDropdownContainer dropdownContainer = CreateDropdownContainer();
+        NLoadoutDropdownContainer dropdownContainer = CreateDropdownContainer();
         container.AddChild(dropdownContainer);
     }
 
-    private static NDropdownContainer CreateDropdownContainer()
+    private NLoadoutDropdownContainer CreateDropdownContainer()
     {
-        NDropdownContainer dropdownContainer = new()
+        float maxHeight = GetMaxDropdownHeight();
+        NLoadoutDropdownContainer dropdownContainer = new()
         {
             Name = "DropdownContainer",
             UniqueNameInOwner = true,
             Visible = false,
             ClipContents = true,
-            CustomMinimumSize = new Vector2(DropdownWidth, DropdownHeight),
+            CustomMinimumSize = new Vector2(DropdownWidth, maxHeight),
+            Size = new Vector2(DropdownWidth, maxHeight),
             MouseFilter = MouseFilterEnum.Stop
         };
         dropdownContainer.SetAnchorsPreset(LayoutPreset.TopWide);
         dropdownContainer.OffsetLeft = 0f;
-        dropdownContainer.OffsetTop = 54f;
-        dropdownContainer.OffsetRight = 0f;
-        dropdownContainer.OffsetBottom = 54f + DropdownHeight;
+        dropdownContainer.OffsetTop = ButtonHeight + 2f;
+        dropdownContainer.OffsetRight = DropdownWidth;
+        dropdownContainer.OffsetBottom = ButtonHeight + 2f + maxHeight;
 
         ColorRect background = new()
         {
@@ -391,7 +429,7 @@ public partial class NSelectFilterDropdown : NDropdown
         items.AddThemeConstantOverride("separation", 0);
         dropdownContainer.AddChild(items);
 
-        NDropdownScrollbar scrollbar = new()
+        Control scrollbar = new()
         {
             Name = "Scrollbar",
             MouseFilter = MouseFilterEnum.Stop
@@ -425,13 +463,14 @@ public partial class NSelectFilterDropdown : NDropdown
             PatchMarginBottom = 20,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        train.SetAnchorsPreset(LayoutPreset.CenterRight);
+        train.SetAnchorsPreset(LayoutPreset.TopWide);
         train.OffsetLeft = 4f;
-        train.OffsetTop = -291f;
+        train.OffsetTop = 9f;
         train.OffsetRight = -8f;
-        train.OffsetBottom = -203f;
+        train.OffsetBottom = 97f;
         train.PivotOffset = new Vector2(14f, 44f);
         scrollbar.AddChild(train);
+        dropdownContainer.SetMaxHeight(maxHeight);
 
         return dropdownContainer;
     }
@@ -514,4 +553,188 @@ public partial class NSelectFilterDropdown : NDropdown
             AssignOwnerRecursive(child, owner);
         }
     }
+}
+
+public partial class NLoadoutDropdownContainer : Control
+{
+    private const float ScrollbarPadding = 9f;
+    private const float MinimumTrainHeight = 32f;
+
+    private VBoxContainer? _dropdownItems;
+    private Control? _scrollbar;
+    private Control? _train;
+    private float _maxHeight = 264f;
+    private float _contentHeight;
+    private float _targetItemsY;
+    private bool _isDraggingTrain;
+
+    public override void _Ready()
+    {
+        _dropdownItems = GetNodeOrNull<VBoxContainer>("VBoxContainer");
+        _scrollbar = GetNodeOrNull<Control>("Scrollbar");
+        _train = GetNodeOrNull<Control>("Scrollbar/Train");
+
+        if (_scrollbar is not null)
+            _scrollbar.GuiInput += OnScrollbarGuiInput;
+
+        VisibilityChanged += OnVisibilityChanged;
+        RefreshLayout();
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!IsVisibleInTree() || _dropdownItems is null || !IsScrollbarNeeded())
+            return;
+
+        float currentY = _dropdownItems.Position.Y;
+        if (!Mathf.IsEqualApprox(currentY, _targetItemsY))
+        {
+            currentY = Mathf.Lerp(currentY, _targetItemsY, (float)delta * 15f);
+            if (Mathf.Abs(currentY - _targetItemsY) < 0.5f)
+                currentY = _targetItemsY;
+
+            _dropdownItems.Position = new Vector2(_dropdownItems.Position.X, currentY);
+            UpdateScrollbarTrain();
+        }
+    }
+
+    public override void _GuiInput(InputEvent inputEvent)
+    {
+        float drag = ScrollHelper.GetDragForScrollEvent(inputEvent);
+        if (!Mathf.IsZeroApprox(drag))
+            ScrollItemsBy(drag);
+    }
+
+    public void SetMaxHeight(float maxHeight)
+    {
+        _maxHeight = MathF.Max(1f, maxHeight);
+
+        if (IsNodeReady())
+            RefreshLayout();
+    }
+
+    public void RefreshLayout()
+    {
+        if (_dropdownItems is null)
+            return;
+
+        _contentHeight = 0f;
+        foreach (Node child in _dropdownItems.GetChildren())
+        {
+            if (child is not Control control)
+                continue;
+
+            float childHeight = control.Size.Y > 0f ? control.Size.Y : control.CustomMinimumSize.Y;
+            _contentHeight += MathF.Max(0f, childHeight);
+        }
+
+        bool needsScrollbar = IsScrollbarNeeded();
+        Size = new Vector2(Size.X, needsScrollbar ? _maxHeight : _contentHeight);
+        CustomMinimumSize = new Vector2(CustomMinimumSize.X, Size.Y);
+
+        if (_scrollbar is not null)
+            _scrollbar.Visible = needsScrollbar;
+
+        if (!needsScrollbar)
+        {
+            _targetItemsY = 0f;
+            _dropdownItems.Position = new Vector2(_dropdownItems.Position.X, 0f);
+        }
+        else
+        {
+            _targetItemsY = ClampItemsY(_targetItemsY);
+            _dropdownItems.Position = new Vector2(_dropdownItems.Position.X, ClampItemsY(_dropdownItems.Position.Y));
+        }
+
+        UpdateScrollbarTrain();
+    }
+
+    private void OnVisibilityChanged()
+    {
+        if (!Visible)
+            return;
+
+        _isDraggingTrain = false;
+        RefreshLayout();
+    }
+
+    private void OnScrollbarGuiInput(InputEvent inputEvent)
+    {
+        if (!IsScrollbarNeeded())
+            return;
+
+        if (inputEvent is InputEventMouseButton { ButtonIndex: MouseButton.Left } mouseButton)
+        {
+            _isDraggingTrain = mouseButton.Pressed;
+            return;
+        }
+
+        if (_isDraggingTrain && inputEvent is InputEventMouseMotion motion)
+        {
+            float trainRange = GetTrainTravelRange();
+            if (trainRange <= 0f)
+                return;
+
+            float contentRange = _contentHeight - Size.Y;
+            _targetItemsY = ClampItemsY(_targetItemsY - motion.Relative.Y * contentRange / trainRange);
+            if (_dropdownItems is not null)
+                _dropdownItems.Position = new Vector2(_dropdownItems.Position.X, _targetItemsY);
+            UpdateScrollbarTrain();
+            return;
+        }
+
+        float drag = ScrollHelper.GetDragForScrollEvent(inputEvent);
+        if (!Mathf.IsZeroApprox(drag))
+            ScrollItemsBy(drag);
+    }
+
+    private void ScrollItemsBy(float deltaY)
+    {
+        if (!IsScrollbarNeeded())
+            return;
+
+        _targetItemsY = ClampItemsY(_targetItemsY + deltaY);
+    }
+
+    private bool IsScrollbarNeeded()
+    {
+        return _contentHeight > _maxHeight;
+    }
+
+    private float ClampItemsY(float value)
+    {
+        return Mathf.Clamp(value, MathF.Min(0f, Size.Y - _contentHeight), 0f);
+    }
+
+    private float GetTrainHeight()
+    {
+        if (_contentHeight <= 0f)
+            return MinimumTrainHeight;
+
+        return Mathf.Clamp((Size.Y - ScrollbarPadding * 2f) * Size.Y / _contentHeight, MinimumTrainHeight, Size.Y - ScrollbarPadding * 2f);
+    }
+
+    private float GetTrainTravelRange()
+    {
+        return MathF.Max(0f, Size.Y - ScrollbarPadding * 2f - GetTrainHeight());
+    }
+
+    private void UpdateScrollbarTrain()
+    {
+        if (_train is null)
+            return;
+
+        float trainHeight = GetTrainHeight();
+        float contentRange = MathF.Max(1f, _contentHeight - Size.Y);
+        float scrollPercentage = IsScrollbarNeeded()
+            ? Mathf.Clamp(-(_dropdownItems?.Position.Y ?? _targetItemsY) / contentRange, 0f, 1f)
+            : 0f;
+
+        _train.Size = new Vector2(_train.Size.X, trainHeight);
+        _train.Position = new Vector2(_train.Position.X, ScrollbarPadding + scrollPercentage * GetTrainTravelRange());
+    }
+}
+
+public partial class NSelectFilterDropdown : NLoadoutDropdown
+{
 }

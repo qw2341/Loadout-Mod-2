@@ -2,35 +2,61 @@ namespace Loadout.Patches.Core;
 
 using Godot;
 using HarmonyLib;
-using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 
-
-[HarmonyPatch(typeof(NGame), "LaunchMainMenu")]
+[HarmonyPatch(typeof(NMainMenu), nameof(NMainMenu._Ready))]
 public class UIAttach
 {
-    private static bool _done;
+    private static bool _attachScheduled;
+    private static bool _attached;
 
     [HarmonyPostfix]
-    public static void Postfix(Node __instance)
+    public static void Postfix(NMainMenu __instance)
     {
-        if (_done) return;
-        _done = true;
+        if (_attached || _attachScheduled)
+            return;
 
-        AttachAfterMainMenuFrame(__instance);
+        if (__instance == null || !GodotObject.IsInstanceValid(__instance))
+            return;
+
+        _attachScheduled = true;
+        Log.Info("[Loadout] Scheduling menu-ready UI attach.");
+        Callable.From<Node>(AttachAfterMainMenuFrame).CallDeferred(__instance);
     }
 
     private static async void AttachAfterMainMenuFrame(Node node)
     {
         if (node == null || !GodotObject.IsInstanceValid(node))
+        {
+            _attachScheduled = false;
             return;
+        }
 
-        var tree = node.GetTree();
+        SceneTree tree = node.GetTree();
         if (tree == null)
+        {
+            _attachScheduled = false;
             return;
+        }
 
         await node.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
-        if (GodotObject.IsInstanceValid(node))
-            Loadout.UI.NLoadoutPanelRoot.AttachToTree(tree);
+        if (node == null || !GodotObject.IsInstanceValid(node))
+        {
+            _attachScheduled = false;
+            return;
+        }
+
+        var root = Loadout.UI.NLoadoutPanelRoot.GetOrAttach(tree);
+        if (root == null || !GodotObject.IsInstanceValid(root))
+        {
+            _attachScheduled = false;
+            return;
+        }
+
+        _attached = true;
+        _attachScheduled = false;
+        Log.Info("[Loadout] Attached UI root after main menu ready.");
     }
 }

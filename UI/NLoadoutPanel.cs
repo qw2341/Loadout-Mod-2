@@ -45,6 +45,7 @@ public partial class NLoadoutPanel : Panel
 	private int _loadoutItemInitAttempts;
 	private bool _loadoutItemsAdded;
 	private bool _loadoutItemRetryScheduled;
+	private string? _currentCardFilterId;
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
@@ -84,7 +85,6 @@ public partial class NLoadoutPanel : Panel
 
 	private void AddLoadoutItems()
 	{
-		CardPoolModel? currentCardPool = GetCurrentCharacterCardPool();
 		RelicGroupingData relicGroupingData = BuildRelicGroupingData();
 
 		CreateAndAddLoadoutItem(
@@ -101,7 +101,7 @@ public partial class NLoadoutPanel : Panel
 			{
 				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
-				AddCardPoolFilters(builder, currentCardPool);
+				AddCardPoolFilters(builder);
 				builder.FilterGroup("type", L("FILTER_GROUP_TYPE", "Type"));
 				builder.Filter("attack", L("CARD_TYPE_ATTACK", "Attack"), card => card.Type == CardType.Attack, "type");
 				builder.Filter("skill", L("CARD_TYPE_SKILL", "Skill"), card => card.Type == CardType.Skill, "type");
@@ -114,7 +114,8 @@ public partial class NLoadoutPanel : Panel
 				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("cost", L("SORT_COST", "Cost"), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
-			});
+			},
+			ApplyCurrentCardClassFilter);
 
 		CreateAndAddLoadoutItem(
 			ModelDb.AllPotions,
@@ -256,7 +257,11 @@ public partial class NLoadoutPanel : Panel
 			TryAddLoadoutItems();
 	}
 
-	private void CreateAndAddLoadoutItem<TModel>(IEnumerable<TModel> models, SelectItemAdapter<TModel> adapter,  Action<SelectScreenBuilder<TModel>> builder)
+	private void CreateAndAddLoadoutItem<TModel>(
+		IEnumerable<TModel> models,
+		SelectItemAdapter<TModel> adapter,
+		Action<SelectScreenBuilder<TModel>> builder,
+		Action<NGenericSelectScreen>? beforeOpen = null)
 	{
 		var item = new NLoadoutPanelItem();
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
@@ -266,7 +271,24 @@ public partial class NLoadoutPanel : Panel
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
 		
 		item.BoundScreen = screen;
+		if (beforeOpen is not null)
+			item.BeforeOpen = beforeOpen;
+
 		_itemsContainer.AddChild(item);
+	}
+
+	private void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)
+	{
+		CardPoolModel? currentCardPool = GetCurrentCharacterCardPool();
+		if (currentCardPool is null)
+			return;
+
+		string filterId = PoolFilterId("card", currentCardPool);
+		if (string.Equals(_currentCardFilterId, filterId, StringComparison.Ordinal))
+			return;
+
+		if (screen.SetExclusiveFilterSelection("class", filterId, resetScroll: true))
+			_currentCardFilterId = filterId;
 	}
 
 	private static void CloseTopLoadoutScreen()
@@ -431,7 +453,7 @@ public partial class NLoadoutPanel : Panel
 		return false;
 	}
 
-	private static void AddCardPoolFilters(SelectScreenBuilder<CardModel> builder, CardPoolModel? currentCardPool)
+	private static void AddCardPoolFilters(SelectScreenBuilder<CardModel> builder)
 	{
 		IReadOnlyList<CardPoolModel> pools = BuildOrderedPools(
 			ModelDb.AllCards.Select(card => card.Pool),
@@ -445,8 +467,7 @@ public partial class NLoadoutPanel : Panel
 				PoolFilterId("card", localPool),
 				GetPoolLabel(localPool),
 				card => SamePool(card.Pool, localPool),
-				"class",
-				currentCardPool is not null && SamePool(currentCardPool, localPool));
+				"class");
 		}
 	}
 
@@ -686,7 +707,7 @@ public partial class NLoadoutPanel : Panel
 			["relic:uncommon"] = new(new LocString("relic_collection", "UNCOMMON").GetFormattedText()),
 			["relic:rare"] = new(new LocString("relic_collection", "RARE").GetFormattedText()),
 			["relic:shop"] = new(new LocString("relic_collection", "SHOP").GetFormattedText()),
-			["relic:ancient"] = new(new LocString("relic_collection", "ANCIENT").GetFormattedText(), showWhenEmpty: true),
+			["relic:ancient"] = new(new LocString("relic_collection", "ANCIENT").GetFormattedText()),
 			["relic:event"] = new(new LocString("relic_collection", "EVENT").GetFormattedText())
 		};
 		List<string> groupOrder = new()
