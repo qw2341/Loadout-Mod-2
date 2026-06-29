@@ -4,6 +4,7 @@ namespace Loadout.UI.Screens;
 
 using Godot;
 using Loadout.UI.Screens.Controls;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -80,6 +81,8 @@ public partial class NGenericSelectScreen : Control
     private readonly List<SelectSorterDefinition> _sorters = new();
     private readonly Dictionary<string, SelectSorterDefinition> _sortersById = new(StringComparer.Ordinal);
     private readonly List<string> _sortPriority = new();
+    private readonly Dictionary<string, SelectGroupDefinition> _groupsBySorterId = new(StringComparer.Ordinal);
+    private readonly List<Control> _generatedGroupContainers = new();
 
     private readonly Dictionary<string, NSelectFilterDropdown> _filterDropdownsByGroupId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NCardViewSortButton> _sortButtonsById = new(StringComparer.Ordinal);
@@ -96,6 +99,7 @@ public partial class NGenericSelectScreen : Control
     private BaseButton? _cancelButton;
 
     private SelectScreenOptions _options = new();
+    private SelectLayoutDefinition _layout = SelectLayoutDefinition.Default;
     private string _query = string.Empty;
     private bool _isSyncingFilterDropdowns;
     private bool _isConfigured;
@@ -163,9 +167,12 @@ public partial class NGenericSelectScreen : Control
         _sorters.Clear();
         _sortersById.Clear();
         _sortPriority.Clear();
+        _groupsBySorterId.Clear();
         _selectedAmounts.Clear();
+        ClearGeneratedGroupContainers();
 
         _options = new SelectScreenOptions();
+        _layout = SelectLayoutDefinition.Default;
         _query = string.Empty;
         _isConfigured = false;
         _lastMeasuredItemWidth = -1f;
@@ -182,6 +189,17 @@ public partial class NGenericSelectScreen : Control
     {
         _options = options;
         UpdateConfirmButtonState();
+    }
+
+    public void SetLayout(SelectLayoutDefinition layout)
+    {
+        _layout = layout;
+        GridColumns = layout.Columns;
+        ItemHorizontalGap = layout.HorizontalGap;
+        ItemVerticalGap = layout.VerticalGap;
+        FallbackItemWidth = Mathf.CeilToInt(layout.ItemSize.X);
+        FallbackItemHeight = Mathf.CeilToInt(layout.ItemSize.Y);
+        ApplyLayoutSettings();
     }
 
     public void AddFilterGroup(SelectFilterGroupDefinition group)
@@ -229,6 +247,11 @@ public partial class NGenericSelectScreen : Control
         RebuildSortButtons();
     }
 
+    public void AddGroupDefinition(SelectGroupDefinition group)
+    {
+        _groupsBySorterId[group.SorterId] = group;
+    }
+
     public void RefreshNow(bool resetScroll = false)
     {
         if (!_isConfigured || _itemGrid is null)
@@ -246,20 +269,9 @@ public partial class NGenericSelectScreen : Control
                 item.View.Visible = false;
         }
 
-        float measuredWidth = 0f;
-        for (int i = 0; i < _visibleItems.Count; i++)
-        {
-            IGenericSelectItem item = _visibleItems[i];
-            Control view = EnsureViewInGrid(item);
-            view.Visible = true;
-            _itemGrid.MoveChild(view, i);
-
-            SelectItemState state = BuildState(item, i);
-            item.UpdateView(state);
-
-            Vector2 size = ResolveItemLayoutSize(view);
-            measuredWidth = Math.Max(measuredWidth, size.X);
-        }
+        float measuredWidth = GetActiveGroupDefinition() is { } group
+            ? RefreshGroupedItems(group)
+            : RefreshFlatItems();
 
         _lastMeasuredItemWidth = measuredWidth > 0f ? measuredWidth : FallbackItemWidth;
         ApplyLayoutSettings();
@@ -698,27 +710,254 @@ public partial class NGenericSelectScreen : Control
         return left.OriginalIndex.CompareTo(right.OriginalIndex);
     }
 
-    private Control EnsureViewInGrid(IGenericSelectItem item)
+    private SelectGroupDefinition? GetActiveGroupDefinition()
     {
-        if (_itemGrid is null)
+        string? activeSorterId = _sortPriority.FirstOrDefault();
+        if (activeSorterId is null)
+            return null;
+
+        return _groupsBySorterId.TryGetValue(activeSorterId, out SelectGroupDefinition? group)
+            ? group
+            : null;
+    }
+
+    private float RefreshFlatItems()
+    {
+        ClearGeneratedGroupContainers();
+        ApplyLayoutToGrid(_itemGrid!, GridColumns > 0 ? GridColumns : CalculateAutoColumns());
+
+        float measuredWidth = 0f;
+        for (int i = 0; i < _visibleItems.Count; i++)
+        {
+            IGenericSelectItem item = _visibleItems[i];
+            Control view = EnsureViewInGrid(item, _itemGrid!);
+            view.Visible = true;
+            _itemGrid!.MoveChild(view, i);
+
+            SelectItemState state = BuildState(item, i);
+            item.UpdateView(state);
+
+            Vector2 size = ResolveItemLayoutSize(view);
+            measuredWidth = Math.Max(measuredWidth, size.X);
+        }
+
+        return measuredWidth;
+    }
+
+    private float RefreshGroupedItems(SelectGroupDefinition group)
+    {
+        ClearGeneratedGroupContainers();
+        ApplyLayoutToGrid(_itemGrid!, 1);
+
+        Dictionary<string, List<IGenericSelectItem>> itemsByKey = new(StringComparer.Ordinal);
+        foreach (IGenericSelectItem item in _visibleItems)
+        {
+            string key = group.KeySelector(item);
+            if (!itemsByKey.TryGetValue(key, out List<IGenericSelectItem>? items))
+            {
+                items = new List<IGenericSelectItem>();
+                itemsByKey[key] = items;
+            }
+
+            items.Add(item);
+        }
+
+        List<string> orderedKeys = group.GroupOrder
+            .Concat(itemsByKey.Keys)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        float measuredWidth = 0f;
+        int visibleIndex = 0;
+        foreach (string key in orderedKeys)
+        {
+            List<IGenericSelectItem> groupItems = itemsByKey.GetValueOrDefault(key) ?? new List<IGenericSelectItem>();
+            SelectGroupHeader header = group.HeaderSelector(key);
+            if (groupItems.Count == 0 && !header.ShowWhenEmpty)
+                continue;
+
+            VBoxContainer groupContainer = CreateGroupContainer(key, header);
+            _itemGrid!.AddChild(groupContainer);
+            _generatedGroupContainers.Add(groupContainer);
+
+            GridContainer? groupGrid = null;
+            if (groupItems.Count > 0)
+            {
+                groupGrid = CreateGroupGrid(key);
+                groupContainer.AddChild(groupGrid);
+            }
+
+            foreach (IGenericSelectItem item in groupItems)
+            {
+                Control view = EnsureViewInGrid(item, groupGrid!);
+                view.Visible = true;
+
+                SelectItemState state = BuildState(item, visibleIndex);
+                item.UpdateView(state);
+
+                Vector2 size = ResolveItemLayoutSize(view);
+                measuredWidth = Math.Max(measuredWidth, size.X);
+                visibleIndex++;
+            }
+        }
+
+        return measuredWidth;
+    }
+
+    private VBoxContainer CreateGroupContainer(string key, SelectGroupHeader header)
+    {
+        VBoxContainer container = new()
+        {
+            Name = MakeSafeNodeName($"Group_{key}"),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        container.AddThemeConstantOverride("separation", 16);
+
+        HBoxContainer headerRow = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        headerRow.AddThemeConstantOverride("separation", header.Icon is null ? 0 : 12);
+        container.AddChild(headerRow);
+
+        if (header.Icon is not null)
+        {
+            TextureRect icon = new()
+            {
+                Texture = header.Icon,
+                CustomMinimumSize = new Vector2(48f, 48f),
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            headerRow.AddChild(icon);
+        }
+
+        MegaRichTextLabel label = new()
+        {
+            Text = header.Text,
+            BbcodeEnabled = true,
+            FitContent = true,
+            ScrollActive = false,
+            AutowrapMode = TextServer.AutowrapMode.Off,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        ApplyGameRichTextTheme(label);
+        headerRow.AddChild(label);
+
+        return container;
+    }
+
+    private GridContainer CreateGroupGrid(string key)
+    {
+        GridContainer grid = new()
+        {
+            Name = MakeSafeNodeName($"GroupGrid_{key}"),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        ApplyLayoutToGrid(grid, Math.Max(1, _layout.Columns));
+        return grid;
+    }
+
+    private static void ApplyGameRichTextTheme(RichTextLabel label)
+    {
+        Font? regular = GD.Load<Font>("res://themes/kreon_regular_glyph_space_one.tres");
+        Font? bold = GD.Load<Font>("res://themes/kreon_bold_glyph_space_one.tres");
+        if (regular is not null)
+        {
+            label.AddThemeFontOverride("normal_font", regular);
+            label.AddThemeFontOverride("italics_font", regular);
+            label.AddThemeFontOverride("mono_font", regular);
+        }
+
+        if (bold is not null)
+        {
+            label.AddThemeFontOverride("bold_font", bold);
+            label.AddThemeFontOverride("bold_italics_font", bold);
+        }
+
+        label.AddThemeFontSizeOverride("normal_font_size", 24);
+        label.AddThemeFontSizeOverride("bold_font_size", 28);
+        label.AddThemeColorOverride("default_color", StsColors.cream);
+        label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
+        label.AddThemeConstantOverride("shadow_offset_x", 3);
+        label.AddThemeConstantOverride("shadow_offset_y", 2);
+    }
+
+    private void ClearGeneratedGroupContainers()
+    {
+        foreach (IGenericSelectItem item in _items)
+        {
+            if (item.View is null || !GodotObject.IsInstanceValid(item.View))
+                continue;
+
+            if (item.View.GetParent() is not null && item.View.GetParent() != _itemGrid)
+                item.View.GetParent()?.RemoveChild(item.View);
+        }
+
+        foreach (Control groupContainer in _generatedGroupContainers)
+        {
+            if (!GodotObject.IsInstanceValid(groupContainer))
+                continue;
+
+            groupContainer.GetParent()?.RemoveChild(groupContainer);
+            groupContainer.QueueFree();
+        }
+
+        _generatedGroupContainers.Clear();
+    }
+
+    private Control EnsureViewInGrid(IGenericSelectItem item, GridContainer parentGrid)
+    {
+        if (parentGrid is null)
             throw new InvalidOperationException("Item grid is not available.");
 
         if (item.View is null || !GodotObject.IsInstanceValid(item.View))
         {
-            Control view = item.CreateView(BuildState(item, -1));
+            Control view = CreateLayoutView(item, BuildState(item, -1));
             item.SetView(view);
             NormalizeItemForGrid(view);
             BindViewActivation(item, view);
         }
 
         Control control = item.View!;
-        if (control.GetParent() != _itemGrid)
+        if (control.GetParent() != parentGrid)
         {
             control.GetParent()?.RemoveChild(control);
-            _itemGrid.AddChild(control);
+            parentGrid.AddChild(control);
         }
 
         return control;
+    }
+
+    private Control CreateLayoutView(IGenericSelectItem item, SelectItemState state)
+    {
+        Control content = item.CreateView(state);
+        if (!_layout.FixedSlots || content is NSelectItemSlot)
+        {
+            NotifyItemViewReady(item, content);
+            return content;
+        }
+
+        NSelectItemSlot slot = new();
+        slot.SetContent(content, _layout.ItemSize);
+        slot.ContentReady = readyContent => NotifyItemViewReady(item, readyContent);
+        return slot;
+    }
+
+    private static void NotifyItemViewReady(IGenericSelectItem item, Control view)
+    {
+        if (view.IsNodeReady())
+        {
+            item.NotifyViewReady(view);
+            return;
+        }
+
+        view.Connect(Node.SignalName.Ready, Callable.From(() => item.NotifyViewReady(view)), (uint)ConnectFlags.OneShot);
     }
 
     private void BindViewActivation(IGenericSelectItem item, Control view)
@@ -726,16 +965,35 @@ public partial class NGenericSelectScreen : Control
         if (item.TryBindActivation(() => ActivateItem(item)))
             return;
 
-        if (view is NClickableControl clickableControl)
+        if (view is NClickableControl clickableControl || TryFindDescendant(view, out clickableControl))
         {
             clickableControl.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => ActivateItem(item)));
             return;
         }
 
-        if (view is BaseButton button)
+        if (view is BaseButton button || TryFindDescendant(view, out button))
             button.Pressed += () => ActivateItem(item);
 
         // For non-button views, the adapter should provide BindActivation.
+    }
+
+    private static bool TryFindDescendant<TControl>(Node root, out TControl control)
+        where TControl : class
+    {
+        foreach (Node child in root.GetChildren())
+        {
+            if (child is TControl direct)
+            {
+                control = direct;
+                return true;
+            }
+
+            if (TryFindDescendant(child, out control))
+                return true;
+        }
+
+        control = null!;
+        return false;
     }
 
     private void ActivateItem(IGenericSelectItem item)
@@ -869,11 +1127,15 @@ public partial class NGenericSelectScreen : Control
         if (_itemGrid is null)
             return;
 
-        _itemGrid.AddThemeConstantOverride("h_separation", ItemHorizontalGap);
-        _itemGrid.AddThemeConstantOverride("v_separation", ItemVerticalGap);
-
         int columns = GridColumns > 0 ? GridColumns : CalculateAutoColumns();
-        _itemGrid.Columns = Math.Max(1, columns);
+        ApplyLayoutToGrid(_itemGrid, Math.Max(1, columns));
+    }
+
+    private void ApplyLayoutToGrid(GridContainer grid, int columns)
+    {
+        grid.AddThemeConstantOverride("h_separation", ItemHorizontalGap);
+        grid.AddThemeConstantOverride("v_separation", ItemVerticalGap);
+        grid.Columns = Math.Max(1, columns);
     }
 
     private int CalculateAutoColumns()
@@ -920,6 +1182,17 @@ public sealed class SelectScreenBuilder<TModel>
     public SelectScreenBuilder<TModel> Options(SelectScreenOptions options)
     {
         _screen.SetOptions(options);
+        return this;
+    }
+
+    public SelectScreenBuilder<TModel> Layout(
+        int columns,
+        Vector2 itemSize,
+        int horizontalGap,
+        int verticalGap,
+        bool fixedSlots = true)
+    {
+        _screen.SetLayout(new SelectLayoutDefinition(columns, itemSize, horizontalGap, verticalGap, fixedSlots));
         return this;
     }
 
@@ -982,6 +1255,21 @@ public sealed class SelectScreenBuilder<TModel>
 
         return this;
     }
+
+    public SelectScreenBuilder<TModel> GroupBySorter(
+        string sorterId,
+        Func<TModel, string> keySelector,
+        Func<string, SelectGroupHeader> headerSelector,
+        IEnumerable<string> groupOrder)
+    {
+        _screen.AddGroupDefinition(new SelectGroupDefinition(
+            sorterId,
+            item => item is GenericSelectItem<TModel> typed ? keySelector(typed.Model) : string.Empty,
+            headerSelector,
+            groupOrder.ToList()));
+
+        return this;
+    }
 }
 
 public sealed class SelectItemAdapter<TModel>
@@ -990,6 +1278,7 @@ public sealed class SelectItemAdapter<TModel>
     public required Func<TModel, string> GetName { get; init; }
     public Func<TModel, string>? GetSearchText { get; init; }
     public required Func<TModel, SelectItemState, Control> CreateView { get; init; }
+    public Action<TModel, Control>? ViewReady { get; init; }
     public Action<TModel, Control, SelectItemState>? UpdateView { get; init; }
     public Func<TModel, string, bool>? MatchesSearch { get; init; }
     public Func<TModel, Control, Action, bool>? BindActivation { get; init; }
@@ -1005,6 +1294,7 @@ public interface IGenericSelectItem
     Control? View { get; }
 
     Control CreateView(SelectItemState state);
+    void NotifyViewReady(Control renderedView);
     void UpdateView(SelectItemState state);
     bool MatchesSearch(string normalizedQuery);
     bool TryBindActivation(Action activate);
@@ -1044,6 +1334,11 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
             _adapter.UpdateView?.Invoke(Model, View, state);
     }
 
+    public void NotifyViewReady(Control renderedView)
+    {
+        _adapter.ViewReady?.Invoke(Model, renderedView);
+    }
+
     public bool MatchesSearch(string normalizedQuery)
     {
         if (_adapter.MatchesSearch is not null)
@@ -1072,6 +1367,60 @@ public sealed class SelectScreenOptions
     public int MinSelection { get; init; } = 0;
     public int MaxTotalSelection { get; init; } = int.MaxValue;
     public int MaxCopiesPerItem { get; init; } = 1;
+}
+
+public sealed class SelectLayoutDefinition
+{
+    public static SelectLayoutDefinition Default { get; } = new(0, new Vector2(220f, 300f), 12, 12, fixedSlots: false);
+
+    public SelectLayoutDefinition(int columns, Vector2 itemSize, int horizontalGap, int verticalGap, bool fixedSlots)
+    {
+        Columns = columns;
+        ItemSize = itemSize;
+        HorizontalGap = horizontalGap;
+        VerticalGap = verticalGap;
+        FixedSlots = fixedSlots;
+    }
+
+    public int Columns { get; }
+    public Vector2 ItemSize { get; }
+    public int HorizontalGap { get; }
+    public int VerticalGap { get; }
+    public bool FixedSlots { get; }
+}
+
+public sealed class SelectGroupDefinition
+{
+    public SelectGroupDefinition(
+        string sorterId,
+        Func<IGenericSelectItem, string> keySelector,
+        Func<string, SelectGroupHeader> headerSelector,
+        IReadOnlyList<string> groupOrder)
+    {
+        SorterId = sorterId;
+        KeySelector = keySelector;
+        HeaderSelector = headerSelector;
+        GroupOrder = groupOrder;
+    }
+
+    public string SorterId { get; }
+    public Func<IGenericSelectItem, string> KeySelector { get; }
+    public Func<string, SelectGroupHeader> HeaderSelector { get; }
+    public IReadOnlyList<string> GroupOrder { get; }
+}
+
+public sealed class SelectGroupHeader
+{
+    public SelectGroupHeader(string text, Texture2D? icon = null, bool showWhenEmpty = false)
+    {
+        Text = text;
+        Icon = icon;
+        ShowWhenEmpty = showWhenEmpty;
+    }
+
+    public string Text { get; }
+    public Texture2D? Icon { get; }
+    public bool ShowWhenEmpty { get; }
 }
 
 public enum SelectSelectionMode

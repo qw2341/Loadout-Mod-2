@@ -13,7 +13,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/selection_reticle.tscn" id="11_reticle"]
 
 [node name="SelectFilterDropdown" type="Control"]
-custom_minimum_size = Vector2(320, 64)
+custom_minimum_size = Vector2(320, 44)
 layout_mode = 3
 anchors_preset = 0
 focus_mode = 2
@@ -21,16 +21,7 @@ mouse_filter = 1
 script = ExtResource("1_dropdown")
 metadata/_edit_group_ = true
 
-[node name="Container" type="Control" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 1
-
-[node name="Dismisser" type="Control" parent="Container"]
+[node name="Dismisser" type="Control" parent="."]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(3000, 2000)
@@ -48,8 +39,8 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2_button")
 
-[node name="CurrentOption" type="Control" parent="Container"]
-custom_minimum_size = Vector2(300, 40)
+[node name="CurrentOption" type="Control" parent="."]
+custom_minimum_size = Vector2(320, 44)
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -58,7 +49,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Highlight" type="ColorRect" parent="Container/CurrentOption"]
+[node name="Highlight" type="ColorRect" parent="CurrentOption"]
 unique_name_in_owner = true
 modulate = Color(0.172549, 0.262745, 0.309804, 1)
 layout_mode = 1
@@ -69,38 +60,39 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Label" type="Label" parent="Container/CurrentOption"]
+[node name="Label" type="Label" parent="CurrentOption"]
 unique_name_in_owner = true
 modulate = Color(0.937255, 0.784314, 0.317647, 1)
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_right = -34.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.25098)
 theme_override_constants/shadow_offset_x = 3
 theme_override_constants/shadow_offset_y = 2
 theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 24
 text = "Filter"
 horizontal_alignment = 1
 vertical_alignment = 1
 script = ExtResource("4_label")
+AutoSizeEnabled = false
 MinFontSize = 18
-MaxFontSize = 28
+MaxFontSize = 24
 
-[node name="Arrow" type="TextureRect" parent="Container"]
-unique_name_in_owner = true
+[node name="Arrow" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 6
 anchor_left = 1.0
 anchor_top = 0.5
 anchor_right = 1.0
 anchor_bottom = 0.5
-offset_left = -39.0
+offset_left = -37.0
 offset_top = -15.0
-offset_right = -13.0
+offset_right = -11.0
 offset_bottom = 11.0
 grow_horizontal = 0
 grow_vertical = 2
@@ -111,7 +103,7 @@ texture = ExtResource("5_arrow")
 expand_mode = 2
 stretch_mode = 5
 
-[node name="DropdownContainer" type="Control" parent="Container"]
+[node name="DropdownContainer" type="Control" parent="."]
 unique_name_in_owner = true
 visible = false
 clip_contents = true
@@ -120,14 +112,14 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -160.0
-offset_top = 64.0
+offset_top = 44.0
 offset_right = 160.0
-offset_bottom = 664.0
+offset_bottom = 644.0
 grow_horizontal = 2
 mouse_force_pass_scroll_events = false
 script = ExtResource("6_container")
 
-[node name="ColorRect" type="ColorRect" parent="Container/DropdownContainer"]
+[node name="ColorRect" type="ColorRect" parent="DropdownContainer"]
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -136,17 +128,18 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(0.0705882, 0.129412, 0.160784, 1)
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Container/DropdownContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="DropdownContainer"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_right = -40.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/separation = 0
 
-[node name="Scrollbar" type="Control" parent="Container/DropdownContainer"]
+[node name="Scrollbar" type="Control" parent="DropdownContainer"]
 anchors_preset = 0
 anchor_left = 0.875
 anchor_right = 1.0
@@ -156,7 +149,7 @@ grow_horizontal = 0
 grow_vertical = 2
 script = ExtResource("7_scrollbar")
 
-[node name="Track" type="Control" parent="Container/DropdownContainer/Scrollbar"]
+[node name="Track" type="Control" parent="DropdownContainer/Scrollbar"]
 modulate = Color(0, 0, 0, 0.501961)
 layout_mode = 1
 anchors_preset = 15
@@ -168,7 +161,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="TrackTop" type="TextureRect" parent="Container/DropdownContainer/Scrollbar/Track"]
+[node name="TrackTop" type="TextureRect" parent="DropdownContainer/Scrollbar/Track"]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
@@ -181,7 +174,7 @@ mouse_filter = 2
 texture = ExtResource("8_track_edge")
 expand_mode = 3
 
-[node name="TrackBody" type="TextureRect" parent="Container/DropdownContainer/Scrollbar/Track"]
+[node name="TrackBody" type="TextureRect" parent="DropdownContainer/Scrollbar/Track"]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -198,7 +191,7 @@ mouse_filter = 2
 texture = ExtResource("9_track_center")
 expand_mode = 1
 
-[node name="TrackBot" type="TextureRect" parent="Container/DropdownContainer/Scrollbar/Track"]
+[node name="TrackBot" type="TextureRect" parent="DropdownContainer/Scrollbar/Track"]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -216,7 +209,7 @@ texture = ExtResource("8_track_edge")
 expand_mode = 3
 flip_v = true
 
-[node name="Train" type="NinePatchRect" parent="Container/DropdownContainer/Scrollbar"]
+[node name="Train" type="NinePatchRect" parent="DropdownContainer/Scrollbar"]
 modulate = Color(1, 1, 1, 0.25098)
 layout_mode = 1
 anchors_preset = 14

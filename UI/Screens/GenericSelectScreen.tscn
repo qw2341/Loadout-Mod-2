@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://cjjun3absrcb7"]
+[gd_scene load_steps=4 format=3 uid="uid://cjjun3absrcb7"]
 
 [ext_resource type="Script" path="res://UI/Screens/NGenericSelectScreen.cs" id="1_generic"]
+[ext_resource type="FontVariation" path="res://themes/kreon_bold_glyph_space_one.tres" id="2_bold"]
+[ext_resource type="FontVariation" path="res://themes/kreon_regular_glyph_space_one.tres" id="3_regular"]
 
 [node name="GenericSelectScreen" type="Control"]
 layout_mode = 3
@@ -109,6 +111,7 @@ custom_minimum_size = Vector2(0, 34)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 25
+theme_override_fonts/font = ExtResource("2_bold")
 text = "Select"
 vertical_alignment = 1
 
@@ -126,6 +129,7 @@ offset_right = -44.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 20
+theme_override_fonts/font = ExtResource("3_regular")
 placeholder_text = "Search"
 
 [node name="ClearButton" type="Button" parent="Sidebar/MarginContainer/MainVBox/TopVBox/SearchBar"]
@@ -138,6 +142,7 @@ anchor_bottom = 1.0
 offset_left = -40.0
 grow_horizontal = 0
 grow_vertical = 2
+theme_override_fonts/font = ExtResource("2_bold")
 text = "×"
 
 [node name="SortLabel" type="Label" parent="Sidebar/MarginContainer/MainVBox/TopVBox"]
@@ -145,6 +150,7 @@ custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 16
+theme_override_fonts/font = ExtResource("2_bold")
 text = "Sort"
 vertical_alignment = 1
 
@@ -159,6 +165,7 @@ custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 16
+theme_override_fonts/font = ExtResource("2_bold")
 text = "Filters"
 vertical_alignment = 1
 
@@ -178,6 +185,7 @@ custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 17
+theme_override_fonts/font = ExtResource("2_bold")
 text = "Selected: 0"
 vertical_alignment = 1
 
@@ -185,12 +193,14 @@ vertical_alignment = 1
 custom_minimum_size = Vector2(0, 38)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("2_bold")
 text = "Confirm"
 
 [node name="CancelButton" type="Button" parent="Sidebar/MarginContainer/MainVBox/BottomVBox"]
 custom_minimum_size = Vector2(0, 34)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("2_bold")
 text = "Cancel"
 
 [node name="CardCountLabel" type="Label" parent="."]
@@ -208,6 +218,7 @@ offset_bottom = -28.0
 grow_horizontal = 0
 grow_vertical = 0
 theme_override_font_sizes/font_size = 22
+theme_override_fonts/font = ExtResource("2_bold")
 text = "0/0"
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -223,6 +234,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 32
+theme_override_fonts/font = ExtResource("2_bold")
 text = "No results."
 horizontal_alignment = 1
 vertical_alignment = 1
