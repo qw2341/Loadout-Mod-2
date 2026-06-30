@@ -49,10 +49,13 @@ public partial class NLoadoutPanel : Panel
 	private const string ViewUpgradesToggleId = "view_upgrades";
 	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
 	private static readonly Vector2 EventTileSize = new(220f, 120f);
+	private static readonly Vector2I AncientPreviewTextureSize = new(360, 196);
 	private const float EventTilePortraitRestAlpha = 0.45f;
 	private const float EventTilePortraitHoverAlpha = 0.78f;
 	private const float EventTileShadeHoverAlpha = 0.16f;
 	private static readonly Dictionary<Control, Tween> EventTileHoverTweens = new();
+	private static readonly Dictionary<string, SubViewport> AncientPreviewViewports = new(StringComparer.Ordinal);
+	private static readonly Dictionary<string, Texture2D> AncientPreviewTextures = new(StringComparer.Ordinal);
 
 	[Export]
 	public bool Shown = true;
@@ -848,6 +851,8 @@ public partial class NLoadoutPanel : Panel
 			isAncient ? new Color(0.937255f, 0.784314f, 0.317647f, 1f) : StsColors.cream);
 		if (isAncient)
 			titleLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/spectral_bold_shared.tres"));
+		else
+			ConfigureWrappingEventTitle(titleLabel);
 		button.AddChild(titleLabel);
 
 		if (model is AncientEventModel ancientEvent)
@@ -870,6 +875,13 @@ public partial class NLoadoutPanel : Panel
 
 	private static TextureRect? CreateEventTileBackground(EventModel model)
 	{
+		if (model is AncientEventModel ancientEvent)
+		{
+			Texture2D? ancientPreview = GetAncientBackgroundPreviewTexture(ancientEvent);
+			if (ancientPreview is not null)
+				return CreateTileBackground(ancientPreview);
+		}
+
 		try
 		{
 			Texture2D portrait = model.CreateInitialPortrait();
@@ -915,6 +927,45 @@ public partial class NLoadoutPanel : Panel
 			Position = Vector2.Zero,
 			Size = EventTileSize
 		};
+	}
+
+	private static Texture2D? GetAncientBackgroundPreviewTexture(AncientEventModel model)
+	{
+		string id = model.Id.ToString();
+		if (AncientPreviewTextures.TryGetValue(id, out Texture2D? cachedTexture))
+			return cachedTexture;
+
+		try
+		{
+			SubViewport viewport = new()
+			{
+				Name = $"LoadoutAncientPreview_{MakeSafeNodeName(id)}",
+				Size = AncientPreviewTextureSize,
+				TransparentBg = false,
+				Disable3D = false,
+				RenderTargetUpdateMode = SubViewport.UpdateMode.Always
+			};
+
+			Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);
+			backgroundScene.MouseFilter = MouseFilterEnum.Ignore;
+			backgroundScene.Position = Vector2.Zero;
+			backgroundScene.Size = new Vector2(1920f, 1080f);
+			backgroundScene.Scale = Vector2.One * Math.Max(
+				AncientPreviewTextureSize.X / 1920f,
+				AncientPreviewTextureSize.Y / 1080f);
+			viewport.AddChild(backgroundScene);
+
+			NLoadoutPanelRoot.Instance?.AddChild(viewport);
+			Texture2D texture = viewport.GetTexture();
+			AncientPreviewViewports[id] = viewport;
+			AncientPreviewTextures[id] = texture;
+			return texture;
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not create ancient background preview for '{model.Id}'. {exception.Message}");
+			return null;
+		}
 	}
 
 	private static void AttachEventTileHoverAnimation(Control tile, TextureRect? background, ColorRect shade, float restingShadeAlpha)
@@ -992,6 +1043,16 @@ public partial class NLoadoutPanel : Panel
 		label.AddThemeConstantOverride("shadow_offset_x", 3);
 		label.AddThemeConstantOverride("shadow_offset_y", 2);
 		return label;
+	}
+
+	private static void ConfigureWrappingEventTitle(MegaLabel label)
+	{
+		label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		label.TextOverrunBehavior = TextServer.OverrunBehavior.NoTrimming;
+		label.AutoSizeEnabled = true;
+		label.MinFontSize = 16;
+		label.MaxFontSize = 22;
+		label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
 	}
 
 	private static void AttachHoverTips(Control owner, IEnumerable<IHoverTip> hoverTips)
