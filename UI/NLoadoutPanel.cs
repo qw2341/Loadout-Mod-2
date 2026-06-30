@@ -32,6 +32,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
 using MegaCrit.Sts2.Core.Runs;
 using System.Text.RegularExpressions;
+using HarmonyLib;
 
 namespace  Loadout.UI;
 
@@ -95,7 +96,91 @@ public partial class NLoadoutPanel : Panel
 	{
 		RelicGroupingData relicGroupingData = BuildRelicGroupingData();
 		IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
+		//01 - LOADOUT BAG
+		CreateAndAddLoadoutItem(
+			ModelDb.AllRelics,
+			new SelectItemAdapter<RelicModel>
+			{
+				GetId = relic => relic.Id.ToString(),
+				GetName = relic => FormatRelicTitle(relic),
+				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
+				CreateView = (relic, _) => CreateRelicGridItem(relic),
+				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
+			}, builder =>
+			{
+				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
+				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
+				AddRelicPoolFilters(builder);
+				builder.FilterGroup("rarity", SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
+				AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
+				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
+				builder.GroupBySorter(
+					"rarity",
+					relic => GetRelicGroupKey(relic, relicGroupingData),
+					key => GetRelicGroupHeader(key, relicGroupingData),
+					relicGroupingData.GroupOrder,
+					relicGroupingData.DescendingGroupOrder);
+			},null,
+			"LoadoutBag.png",
+			"Loadout Bag",
+			"A bag that contains everthing.");
+		//02 - TRASH BIN
+		CreateAndAddDynamicLoadoutItem(
+			GetLocalRelics,
+			new SelectItemAdapter<RelicModel>
+			{
+				GetId = relic => relic.Id.ToString(),
+				GetName = relic => FormatRelicTitle(relic),
+				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
+				CreateView = (relic, _) => CreateRelicGridItem(relic),
+				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
+			},
+			builder =>
+			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
+			},
+			HandleRemoveRelicActivatedAsync,
+			"TrashBin.png",
+			"Remove Relic",
+			"Remove one of your current relics.");
+		//03 - LOADOUT CAULDRON
+		CreateAndAddLoadoutItem(
+			ModelDb.AllPotions,
+			new SelectItemAdapter<PotionModel>
+			{
+				GetId = potion => potion.Id.ToString(),
+				GetName = potion => FormatPotionTitle(potion),
+				GetSearchText = potion => $"{potion.Id} {FormatPotionTitle(potion)} {potion.DynamicDescription}",
+				CreateView = (potion, _) => CreatePotionGridItem(potion),
+				BindActivation = (_, view, activate) => BindGuiReleaseActivation(view, activate)
+			}, builder =>
+			{
+				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Layout(10, new Vector2(60f, 60f), 32, 32);
+				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
+				AddPotionPoolFilters(builder);
+				builder.FilterGroup("rarity", SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
+				AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
+				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPotionTitle(a), FormatPotionTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
+				builder.GroupBySorter(
+					"rarity",
+					GetPotionGroupKey,
+					GetPotionGroupHeader,
+					PotionGroupOrder,
+					PotionGroupOrder.Reverse());
+			}, null,
+			"LoadoutCauldron.png",
+			"Loadout Cauldron",
+			"A cauldron that creates any potion.");
 
+		//04 - CARD PRINTER
 		CreateAndAddLoadoutItem(
 			allCards,
 			new SelectItemAdapter<CardModel>
@@ -126,8 +211,11 @@ public partial class NLoadoutPanel : Panel
 				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("cost", GameLoc("gameplay_ui", "SORT_COST", SScreenLoc("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
 			},
-			ApplyCurrentCardClassFilter);
-
+			ApplyCurrentCardClassFilter, 
+			"CardPrinter.png",
+			"Card Printer",
+			"It prints any cards you want.");
+		//05 - CARD SHREDDER
 		CreateAndAddDynamicLoadoutItem(
 			GetLocalDeckCards,
 			new SelectItemAdapter<CardModel>
@@ -150,84 +238,8 @@ public partial class NLoadoutPanel : Panel
 			"CardShredder.png",
 			"Remove Card",
 			"Remove a card from your current deck.");
-
-		CreateAndAddLoadoutItem(
-			ModelDb.AllPotions,
-			new SelectItemAdapter<PotionModel>
-			{
-				GetId = potion => potion.Id.ToString(),
-				GetName = potion => FormatPotionTitle(potion),
-				GetSearchText = potion => $"{potion.Id} {FormatPotionTitle(potion)} {potion.DynamicDescription}",
-				CreateView = (potion, _) => CreatePotionGridItem(potion),
-				BindActivation = (_, view, activate) => BindGuiReleaseActivation(view, activate)
-			}, builder =>
-			{
-				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(10, new Vector2(60f, 60f), 32, 32);
-				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
-				AddPotionPoolFilters(builder);
-				builder.FilterGroup("rarity", SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
-				AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
-				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPotionTitle(a), FormatPotionTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
-				builder.GroupBySorter(
-					"rarity",
-					GetPotionGroupKey,
-					GetPotionGroupHeader,
-					PotionGroupOrder,
-					PotionGroupOrder.Reverse());
-			});
-
-		CreateAndAddLoadoutItem(
-			ModelDb.AllRelics,
-			new SelectItemAdapter<RelicModel>
-			{
-				GetId = relic => relic.Id.ToString(),
-				GetName = relic => FormatRelicTitle(relic),
-				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
-				CreateView = (relic, _) => CreateRelicGridItem(relic),
-				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
-			}, builder =>
-			{
-				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
-				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
-				AddRelicPoolFilters(builder);
-				builder.FilterGroup("rarity", SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
-				AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
-				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
-				builder.GroupBySorter(
-					"rarity",
-					relic => GetRelicGroupKey(relic, relicGroupingData),
-					key => GetRelicGroupHeader(key, relicGroupingData),
-					relicGroupingData.GroupOrder,
-					relicGroupingData.DescendingGroupOrder);
-			});
-
-		CreateAndAddDynamicLoadoutItem(
-			GetLocalRelics,
-			new SelectItemAdapter<RelicModel>
-			{
-				GetId = relic => relic.Id.ToString(),
-				GetName = relic => FormatRelicTitle(relic),
-				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
-				CreateView = (relic, _) => CreateRelicGridItem(relic),
-				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
-			},
-			builder =>
-			{
-				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
-			},
-			HandleRemoveRelicActivatedAsync,
-			"TrashBin.png",
-			"Remove Relic",
-			"Remove one of your current relics.");
-
+				
+		//07 - EVENTFUL COMPASS
 		CreateAndAddLoadoutItem(
 			ModelDb.AllEvents.Concat(ModelDb.AllAncients).Distinct(),
 			new SelectItemAdapter<EventModel>
@@ -249,8 +261,11 @@ public partial class NLoadoutPanel : Panel
 				builder.Filter("solo", SScreenLoc("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
 				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatEventTitle(a), FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-			});
-
+			},null,
+			"EventfulCompass.png",
+			"Eventful Compass",
+			"A compass that leads to your heart's desire.");
+		//08 - POWER GIVER
 		CreateAndAddLoadoutItem(
 			ModelDb.AllPowers,
 			new SelectItemAdapter<PowerModel>
@@ -274,7 +289,11 @@ public partial class NLoadoutPanel : Panel
 				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("type", GameLoc("gameplay_ui", "SORT_TYPE", SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
-			});
+			},
+			null,
+			"PowerGiver.png",
+			"Power Giver",
+			"Potion that gives power.");
 	}
 
 	private void TryAddLoadoutItems()
@@ -322,9 +341,12 @@ public partial class NLoadoutPanel : Panel
 		IEnumerable<TModel> models,
 		SelectItemAdapter<TModel> adapter,
 		Action<SelectScreenBuilder<TModel>> builder,
-		Action<NGenericSelectScreen>? beforeOpen = null)
+		Action<NGenericSelectScreen>? beforeOpen,
+		string textureFileName,
+		string title,
+		string description)
 	{
-		var item = new NLoadoutPanelItem();
+		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		screen.Configure(models, adapter, builder);
@@ -421,7 +443,7 @@ public partial class NLoadoutPanel : Panel
 			if (!RunManager.Instance.IsInProgress)
 				return null;
 
-			return LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState());
+			return LocalContext.GetMe(AccessTools.Field(typeof(RunManager),"State").GetValue(RunManager.Instance) as RunState);
 		}
 		catch (Exception exception)
 		{
