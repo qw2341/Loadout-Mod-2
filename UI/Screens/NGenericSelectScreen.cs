@@ -627,7 +627,11 @@ public partial class NGenericSelectScreen : Control
             _cancelButton.Pressed += CancelSelection;
 
         if (_cancelClickable is not null)
-            _cancelClickable.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => CancelSelection()));
+            _cancelClickable.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ =>
+            {
+                ResetActionButtonVisualState(_cancelClickable);
+                CancelSelection();
+            }));
     }
 
     private void OnSearchTextChanged(string text)
@@ -1314,8 +1318,8 @@ public partial class NGenericSelectScreen : Control
             label.AddThemeFontOverride("bold_italics_font", bold);
         }
 
-        label.AddThemeFontSizeOverride("normal_font_size", 24);
-        label.AddThemeFontSizeOverride("bold_font_size", 28);
+        label.AddThemeFontSizeOverride("normal_font_size", SelectGroupHeader.CategoryDescriptionFontSize);
+        label.AddThemeFontSizeOverride("bold_font_size", SelectGroupHeader.CategoryTitleFontSize);
         label.AddThemeColorOverride("default_color", StsColors.cream);
         label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
         label.AddThemeConstantOverride("shadow_offset_x", 3);
@@ -1646,6 +1650,17 @@ public partial class NGenericSelectScreen : Control
         if (_visibleLayoutNodes.Count == 0)
             return;
 
+        if (_materializationMode == SelectMaterializationMode.Eager)
+        {
+            foreach (Control control in _visibleLayoutNodes)
+            {
+                if (GodotObject.IsInstanceValid(control))
+                    control.Visible = true;
+            }
+
+            return;
+        }
+
         Rect2 viewportRect = _scrollMask?.GetGlobalRect() ?? new Rect2(Vector2.Zero, GetViewportRect().Size);
         float rowHeight = Math.Max(1f, ResolveConfiguredItemSize().Y + ItemVerticalGap);
         Rect2 cullRect = viewportRect.Grow(rowHeight * CullRetentionRows);
@@ -1696,8 +1711,11 @@ public partial class NGenericSelectScreen : Control
         if (_scrollbar is not null && !_scrollbarPressed)
             _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
 
-        MaterializeViewportItemViews(ScrollMaterializeBudget);
-        UpdateViewportCulling();
+        if (_materializationMode == SelectMaterializationMode.Lazy)
+        {
+            MaterializeViewportItemViews(ScrollMaterializeBudget);
+            UpdateViewportCulling();
+        }
     }
 
     private void SetTargetScroll(float value)
@@ -1831,12 +1849,13 @@ public partial class NGenericSelectScreen : Control
         TextureRect outline = new()
         {
             Name = "Outline",
-            Modulate = StsColors.gold,
+            Modulate = Colors.Transparent,
             Texture = LoadGameTexture("res://images/atlases/compressed.sprites/back_button_outline.tres"),
             ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             MouseFilter = MouseFilterEnum.Ignore
         };
+        outline.Material = LoadGameMaterial("res://themes/canvas_item_material_additive_shared.tres");
         outline.SetAnchorsPreset(LayoutPreset.FullRect);
         outline.OffsetLeft = -24f;
         outline.OffsetTop = -16f;
@@ -1889,6 +1908,7 @@ public partial class NGenericSelectScreen : Control
         backButton.AddChild(controllerIcon);
 
         AssignOwnerRecursive(backButton, backButton);
+        ResetActionButtonVisualState(backButton);
         return backButton;
     }
 
@@ -2010,6 +2030,27 @@ public partial class NGenericSelectScreen : Control
         return ResourceLoader.Exists(path) ? GD.Load<Font>(path) : null;
     }
 
+    private static Material? LoadGameMaterial(string path)
+    {
+        string localPath = path.Replace("res://themes/", "res://Loadout/themes/default/");
+        if (ResourceLoader.Exists(localPath))
+            return GD.Load<Material>(localPath);
+
+        return ResourceLoader.Exists(path) ? GD.Load<Material>(path) : null;
+    }
+
+    private static void ResetActionButtonVisualState(Node button)
+    {
+        if (button is Control control)
+            control.Scale = Vector2.One;
+
+        if (button.GetNodeOrNull<CanvasItem>("Image") is { } image)
+            image.Modulate = Colors.White;
+
+        if (button.GetNodeOrNull<CanvasItem>("Outline") is { } outline)
+            outline.Modulate = Colors.Transparent;
+    }
+
     private static void AssignOwnerRecursive(Node root, Node owner)
     {
         foreach (Node child in root.GetChildren())
@@ -2074,6 +2115,7 @@ public partial class NGenericSelectScreen : Control
         {
             _cancelClickable.Visible = true;
             _cancelClickable.SetEnabled(true);
+            ResetActionButtonVisualState(_cancelClickable);
         }
     }
 }
@@ -2401,11 +2443,15 @@ public sealed class SelectGroupDefinition
 
 public sealed class SelectGroupHeader
 {
-    private const string CategoryTitleColor = "#ffd75a";
+    public const int CategoryTitleFontSize = 32;
+    public const int CategoryDescriptionFontSize = 26;
+    private static readonly Regex LocalizedCategoryPattern = new(
+        @"^(?<title>\[(?<color>gold|blue)\]\[font_size=)\d+(?<titleTail>\]\[b\].+?\[/b\]\[/font_size\]\[/\k<color>\])(?<description>\s+.+)$",
+        RegexOptions.CultureInvariant | RegexOptions.Singleline);
 
     public SelectGroupHeader(string text, Texture2D? icon = null, bool showWhenEmpty = false, string? childGroupPrefix = null)
     {
-        Text = text;
+        Text = NormalizeCategoryText(text);
         Icon = icon;
         ShowWhenEmpty = showWhenEmpty;
         ChildGroupPrefix = childGroupPrefix;
@@ -2419,9 +2465,22 @@ public sealed class SelectGroupHeader
     public static string FormatCategoryText(string title, string? description = null)
     {
         if (string.IsNullOrWhiteSpace(description))
-            return $"[color={CategoryTitleColor}][font_size=28][b]{title}[/b][/font_size][/color]";
+            return $"[gold][font_size={CategoryTitleFontSize}][b]{title}[/b][/font_size][/gold]";
 
-        return $"[color={CategoryTitleColor}][font_size=28][b]{title}:[/b][/font_size][/color] {description}";
+        return $"[gold][font_size={CategoryTitleFontSize}][b]{title}:[/b][/font_size][/gold] [font_size={CategoryDescriptionFontSize}]{description}[/font_size]";
+    }
+
+    private static string NormalizeCategoryText(string text)
+    {
+        Match match = LocalizedCategoryPattern.Match(text);
+        if (!match.Success)
+            return text;
+
+        string description = match.Groups["description"].Value.Trim();
+        if (description.StartsWith("[font_size=", StringComparison.OrdinalIgnoreCase))
+            return text;
+
+        return $"{match.Groups["title"].Value}{CategoryTitleFontSize}{match.Groups["titleTail"].Value} [font_size={CategoryDescriptionFontSize}]{description}[/font_size]";
     }
 
     public string Text { get; }
