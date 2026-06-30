@@ -209,11 +209,10 @@ theme_override_fonts/font = ExtResource("2_bold")
 text = "Sort"
 vertical_alignment = 1
 
-[node name="SortButtons" type="HFlowContainer" parent="Sidebar/MarginContainer/TopVBox"]
+[node name="SortButtons" type="VBoxContainer" parent="Sidebar/MarginContainer/TopVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/h_separation = 6
-theme_override_constants/v_separation = 6
+theme_override_constants/separation = 6
 
 [node name="FilterLabel" type="Label" parent="Sidebar/MarginContainer/TopVBox"]
 custom_minimum_size = Vector2(0, 22)

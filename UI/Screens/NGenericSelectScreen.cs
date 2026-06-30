@@ -26,10 +26,10 @@ using System.Text.RegularExpressions;
 public partial class NGenericSelectScreen : Control
 {
     private const string AllFilterOptionId = "__all__";
-    private const string SelectSortButtonInnerPath = "screens/deck_view_screen/deck_view_sort_button";
+    private const string SelectSortButtonInnerPath = "screens/card_library/library_sort_button";
     private const float SidebarWidth = 288f;
-    private const float ContentLeftSafetyMargin = 96f;
-    private const float ContentRightSafetyMargin = 120f;
+    private const float CardVisualLeftOverhang = 96f;
+    private const float CardScrollbarReserve = 48f;
     private const int InitialMaterializeBudget = 96;
     private const int ScrollMaterializeBudget = 48;
     private const int DeferredMaterializeBatchSize = 24;
@@ -109,7 +109,7 @@ public partial class NGenericSelectScreen : Control
     private BaseButton? _clearSearchButton;
     private NClickableControl? _clearSearchClickable;
     private VBoxContainer? _filterControls;
-    private HFlowContainer? _sortButtonsContainer;
+    private Container? _sortButtonsContainer;
     private VBoxContainer? _filtersContainer;
     private Control? _itemGrid;
     private Control? _scrollMask;
@@ -462,10 +462,10 @@ public partial class NGenericSelectScreen : Control
         if (_filterControls is null)
             return;
 
-        _sortButtonsContainer = _filterControls.GetNodeOrNull<HFlowContainer>("SortButtons");
+        _sortButtonsContainer = _filterControls.GetNodeOrNull<Container>("SortButtons");
         if (_sortButtonsContainer is null)
         {
-            _sortButtonsContainer = new HFlowContainer
+            _sortButtonsContainer = new VBoxContainer
             {
                 Name = "SortButtons",
                 SizeFlagsHorizontal = SizeFlags.ExpandFill
@@ -641,8 +641,8 @@ public partial class NGenericSelectScreen : Control
             string sorterId = sorter.Id;
             NCardViewSortButton button = SceneHelper.Instantiate<NCardViewSortButton>(SelectSortButtonInnerPath);
             button.Name = MakeSafeNodeName($"{sorterId}SortButton");
-            button.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
-            button.CustomMinimumSize = new Vector2(82f, 34f);
+            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            button.CustomMinimumSize = new Vector2(0f, 42f);
             button.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => OnSorterPressed(sorterId)));
             _sortButtonsContainer.AddChild(button);
             button.SetLabel(sorter.Label);
@@ -1456,12 +1456,25 @@ public partial class NGenericSelectScreen : Control
 
     private float CalculateCenteredStartX(float contentWidth, float horizontalReservedSpace)
     {
-        float viewportWidth = GetViewportContentWidth() - horizontalReservedSpace;
-        float safetyLeft = ShouldApplyCardSafeMargins() ? ContentLeftSafetyMargin : 0f;
-        return _layout.PaddingLeft + safetyLeft + Math.Max(0f, (viewportWidth - contentWidth) * 0.5f);
+        if (!ShouldApplyCardSafeMargins())
+            return _layout.PaddingLeft + Math.Max(0f, (GetViewportContentWidth() - horizontalReservedSpace - contentWidth) * 0.5f);
+
+        float viewportWidth = GetRawViewportWidth() - _layout.PaddingLeft - _layout.PaddingRight - horizontalReservedSpace;
+        float visualLaneWidth = Math.Max(1f, viewportWidth - CardScrollbarReserve);
+        float visualContentWidth = contentWidth + CardVisualLeftOverhang;
+        return _layout.PaddingLeft + CardVisualLeftOverhang + Math.Max(0f, (visualLaneWidth - visualContentWidth) * 0.5f);
     }
 
     private float GetViewportContentWidth()
+    {
+        float width = GetRawViewportWidth();
+        float reservedWidth = ShouldApplyCardSafeMargins()
+            ? CardVisualLeftOverhang + CardScrollbarReserve
+            : 0f;
+        return Math.Max(1f, width - _layout.PaddingLeft - _layout.PaddingRight - reservedWidth);
+    }
+
+    private float GetRawViewportWidth()
     {
         Control? viewport = _itemGrid?.GetParent<Control>();
         float width = viewport?.Size.X ?? 0f;
@@ -1472,9 +1485,7 @@ public partial class NGenericSelectScreen : Control
         if (width <= 0f)
             width = Math.Max(1f, Size.X - SidebarWidth);
 
-        float safetyLeft = ShouldApplyCardSafeMargins() ? ContentLeftSafetyMargin : 0f;
-        float safetyRight = ShouldApplyCardSafeMargins() ? ContentRightSafetyMargin : 0f;
-        return Math.Max(1f, width - _layout.PaddingLeft - _layout.PaddingRight - safetyLeft - safetyRight);
+        return Math.Max(1f, width);
     }
 
     private void SetContentSize(float width, float height)

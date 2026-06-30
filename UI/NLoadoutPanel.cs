@@ -172,7 +172,7 @@ public partial class NLoadoutPanel : Panel
 			});
 
 		CreateAndAddLoadoutItem(
-			ModelDb.AllEvents,
+			ModelDb.AllEvents.Concat(ModelDb.AllAncients).Distinct(),
 			new SelectItemAdapter<EventModel>
 			{
 				GetId = eventModel => eventModel.Id.ToString(),

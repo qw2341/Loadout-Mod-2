@@ -168,10 +168,7 @@ public partial class NLoadoutDropdown : NDropdown
             _itemIdsByNode[item] = option.Id;
         }
 
-        ResizeDropdownToMaxVisibleItems();
-
-        if (_dropdownItems.GetParent() is NLoadoutDropdownContainer dropdownContainer)
-            dropdownContainer.RefreshLayout();
+        RefreshDropdownLayout();
 
         RefreshCurrentItemLabel();
         PositionDropdownContainer();
@@ -227,9 +224,7 @@ public partial class NLoadoutDropdown : NDropdown
             layer.AddChild(_dropdownContainer);
         }
 
-        ResizeDropdownToMaxVisibleItems();
-        if (_dropdownItems.GetParent() is NLoadoutDropdownContainer dropdownContainer)
-            dropdownContainer.RefreshLayout();
+        RefreshDropdownLayout();
 
         _dropdownContainer.Visible = true;
         _dropdownContainer.MoveToFront();
@@ -272,32 +267,49 @@ public partial class NLoadoutDropdown : NDropdown
         Vector2 globalPosition = GlobalPosition + new Vector2((Size.X - DropdownWidth) * 0.5f, Size.Y + 2f);
         float viewportHeight = GetViewportRect().Size.Y;
         float availableHeight = MathF.Max(ItemHeight, viewportHeight - globalPosition.Y - 24f);
-        float currentHeight = _dropdownContainer.Size.Y > 0f ? _dropdownContainer.Size.Y : GetMaxDropdownHeight();
+        RefreshDropdownLayout(availableHeight);
+        float currentHeight = _dropdownContainer.Size.Y > 0f ? _dropdownContainer.Size.Y : GetDesiredDropdownHeight(availableHeight);
 
+        _dropdownContainer.SetAnchorsPreset(LayoutPreset.TopLeft);
         _dropdownContainer.GlobalPosition = globalPosition;
         _dropdownContainer.Size = new Vector2(DropdownWidth, MathF.Min(currentHeight, availableHeight));
+        _dropdownContainer.CustomMinimumSize = _dropdownContainer.Size;
     }
 
-    private void ResizeDropdownToMaxVisibleItems()
+    private void RefreshDropdownLayout(float? availableHeight = null)
     {
         if (_dropdownContainer is null)
             return;
 
         float maxHeight = GetMaxDropdownHeight();
-        _dropdownContainer.CustomMinimumSize = new Vector2(DropdownWidth, maxHeight);
-        _dropdownContainer.Size = new Vector2(DropdownWidth, maxHeight);
-        _dropdownContainer.OffsetLeft = 0f;
-        _dropdownContainer.OffsetTop = ButtonHeight + 2f;
-        _dropdownContainer.OffsetRight = DropdownWidth;
-        _dropdownContainer.OffsetBottom = ButtonHeight + 2f + maxHeight;
+        if (availableHeight is { } constrainedHeight)
+            maxHeight = MathF.Min(maxHeight, MathF.Max(ItemHeight, constrainedHeight));
 
         if (_dropdownContainer is NLoadoutDropdownContainer dropdownContainer)
+        {
             dropdownContainer.SetMaxHeight(maxHeight);
+        }
+        else
+        {
+            _dropdownContainer.Size = new Vector2(DropdownWidth, GetDesiredDropdownHeight(maxHeight));
+            _dropdownContainer.CustomMinimumSize = _dropdownContainer.Size;
+        }
+
+        _dropdownContainer.SetAnchorsPreset(LayoutPreset.TopLeft);
+        _dropdownContainer.Position = new Vector2(0f, ButtonHeight + 2f);
+        _dropdownContainer.Size = new Vector2(DropdownWidth, _dropdownContainer.Size.Y);
+        _dropdownContainer.CustomMinimumSize = _dropdownContainer.Size;
     }
 
     private float GetMaxDropdownHeight()
     {
         return MathF.Max(1, MaxVisibleItems) * MathF.Max(1f, ItemHeight);
+    }
+
+    private float GetDesiredDropdownHeight(float maxHeight)
+    {
+        float itemCountHeight = MathF.Max(1, _items.Count) * MathF.Max(1f, ItemHeight);
+        return MathF.Min(maxHeight, itemCountHeight);
     }
 
     private void BuildControlTree()
@@ -401,15 +413,12 @@ public partial class NLoadoutDropdown : NDropdown
             UniqueNameInOwner = true,
             Visible = false,
             ClipContents = true,
-            CustomMinimumSize = new Vector2(DropdownWidth, maxHeight),
-            Size = new Vector2(DropdownWidth, maxHeight),
+            CustomMinimumSize = new Vector2(DropdownWidth, GetDesiredDropdownHeight(maxHeight)),
+            Size = new Vector2(DropdownWidth, GetDesiredDropdownHeight(maxHeight)),
             MouseFilter = MouseFilterEnum.Stop
         };
-        dropdownContainer.SetAnchorsPreset(LayoutPreset.TopWide);
-        dropdownContainer.OffsetLeft = 0f;
-        dropdownContainer.OffsetTop = ButtonHeight + 2f;
-        dropdownContainer.OffsetRight = DropdownWidth;
-        dropdownContainer.OffsetBottom = ButtonHeight + 2f + maxHeight;
+        dropdownContainer.SetAnchorsPreset(LayoutPreset.TopLeft);
+        dropdownContainer.Position = new Vector2(0f, ButtonHeight + 2f);
 
         ColorRect background = new()
         {
