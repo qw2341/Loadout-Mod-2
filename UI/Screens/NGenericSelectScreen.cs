@@ -141,6 +141,7 @@ public partial class NGenericSelectScreen : Control
     private System.Threading.CancellationTokenSource? _materializeCts;
     private ulong _layoutGeneration;
     private ulong _scheduledEagerRefreshGeneration;
+    private ulong _scheduledVisibleRefreshGeneration;
     private ulong _lastEagerMismatchWarningGeneration;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
@@ -178,7 +179,7 @@ public partial class NGenericSelectScreen : Control
             CloseOpenDropdowns();
 
         if (what == NotificationVisibilityChanged && Visible)
-            ScheduleDeferredEagerMaterializationRefresh();
+            ScheduleDeferredVisibleRefresh();
     }
 
     public override void _Process(double delta)
@@ -1167,9 +1168,13 @@ public partial class NGenericSelectScreen : Control
         int visibleItemViews = 0;
         foreach (IGenericSelectItem item in _itemLayoutOrder)
         {
-            if (item.View is not { } view || !GodotObject.IsInstanceValid(view))
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
                 continue;
 
+            if (!TryMaterializeOrRecoverItemView(item, layout, out Control? materializedView) || materializedView is null)
+                continue;
+
+            Control view = materializedView;
             if (view.GetParent() != _itemGrid)
             {
                 view.GetParent()?.RemoveChild(view);
@@ -1177,11 +1182,17 @@ public partial class NGenericSelectScreen : Control
             }
 
             view.Visible = true;
-            if (_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+            view.Size = layout.Size;
+            view.Position = layout.Position;
+
+            try
             {
-                view.Size = layout.Size;
-                view.Position = layout.Position;
                 item.UpdateView(BuildState(item, layout.VisibleIndex));
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning(
+                    $"Loadout select screen '{Name}' failed to update item '{item.Id}' ({item.Name}): {exception}");
             }
 
             visibleItemViews++;
@@ -1194,6 +1205,29 @@ public partial class NGenericSelectScreen : Control
         GD.PushWarning(
             $"Loadout select screen '{Name}' eager materialization mismatch: " +
             $"layouts={_itemLayoutOrder.Count}, visibleItemViews={visibleItemViews}, layoutNodes={_visibleLayoutNodes.Count}.");
+    }
+
+    private void ScheduleDeferredVisibleRefresh()
+    {
+        if (!_isConfigured || !IsInsideTree())
+            return;
+
+        ulong generation = _layoutGeneration;
+        if (_scheduledVisibleRefreshGeneration == generation)
+            return;
+
+        _scheduledVisibleRefreshGeneration = generation;
+        _ = DeferredVisibleRefreshAsync(generation);
+    }
+
+    private async System.Threading.Tasks.Task DeferredVisibleRefreshAsync(ulong generation)
+    {
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        if (generation != _layoutGeneration || !IsInsideTree() || !IsVisibleInTree())
+            return;
+
+        RefreshNow(resetScroll: false);
     }
 
     private void ScheduleDeferredEagerMaterializationRefresh()
@@ -1229,7 +1263,10 @@ public partial class NGenericSelectScreen : Control
         if (_itemGrid is null)
             return false;
 
-        Control view = EnsureViewInCanvas(item);
+        if (!TryMaterializeOrRecoverItemView(item, layout, out Control? materializedView) || materializedView is null)
+            return false;
+
+        Control view = materializedView;
         view.Size = layout.Size;
         view.Position = layout.Position;
         view.ZIndex = 0;
@@ -1238,8 +1275,67 @@ public partial class NGenericSelectScreen : Control
         if (!_visibleLayoutNodes.Contains(view))
             _visibleLayoutNodes.Add(view);
 
-        item.UpdateView(BuildState(item, layout.VisibleIndex));
+        try
+        {
+            item.UpdateView(BuildState(item, layout.VisibleIndex));
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"Loadout select screen '{Name}' failed to update item '{item.Id}' ({item.Name}): {exception}");
+        }
+
         return true;
+    }
+
+    private bool TryMaterializeOrRecoverItemView(IGenericSelectItem item, SelectItemLayout layout, out Control? view)
+    {
+        view = null;
+
+        try
+        {
+            view = EnsureViewInCanvas(item);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"Loadout select screen '{Name}' failed to create item '{item.Id}' ({item.Name}); using fallback tile. {exception}");
+
+            try
+            {
+                view = CreateFailedItemFallbackView(item, layout.Size);
+                item.SetView(view);
+                _itemGrid?.AddChild(view);
+                return true;
+            }
+            catch (Exception fallbackException)
+            {
+                GD.PushError(
+                    $"Loadout select screen '{Name}' failed to create fallback for item '{item.Id}' ({item.Name}): {fallbackException}");
+                return false;
+            }
+        }
+    }
+
+    private Control CreateFailedItemFallbackView(IGenericSelectItem item, Vector2 size)
+    {
+        Button button = new()
+        {
+            Name = MakeSafeNodeName($"Fallback_{item.Id}"),
+            CustomMinimumSize = size,
+            Size = size,
+            FocusMode = FocusModeEnum.All,
+            MouseFilter = MouseFilterEnum.Stop,
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            SizeFlagsVertical = SizeFlags.ShrinkBegin,
+            Text = $"{item.Name}\n{item.Id}"
+        };
+        button.AddThemeFontOverride("font", LoadGameFont("res://themes/kreon_regular_glyph_space_one.tres"));
+        button.AddThemeFontSizeOverride("font_size", 18);
+        button.AddThemeColorOverride("font_color", StsColors.cream);
+        button.Pressed += () => ActivateItem(item);
+        return button;
     }
 
     private void CloseOpenDropdowns()

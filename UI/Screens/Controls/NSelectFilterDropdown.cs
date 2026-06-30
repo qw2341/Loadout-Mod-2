@@ -5,6 +5,8 @@ namespace Loadout.UI.Screens.Controls;
 using Godot;
 using Loadout.UI;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Audio;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -53,7 +55,7 @@ public partial class NLoadoutDropdown : NDropdown
         _dropdownContainer = GetNode<Control>("%DropdownContainer");
         _buttonHoverHighlight = GetNodeOrNull<ColorRect>("%HoverHighlight");
         _dismisser = GetNode<NButton>("%Dismisser");
-        _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => CloseLoadoutDropdown()));
+        _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => CloseLoadoutDropdown(restoreFocus: false)));
         MouseEntered += OnButtonHoverStart;
         MouseExited += OnButtonHoverEnd;
         FocusEntered += RefreshButtonHighlight;
@@ -85,7 +87,7 @@ public partial class NLoadoutDropdown : NDropdown
         bool insideButton = GetGlobalRect().HasPoint(globalPosition);
         bool insideDropdown = _dropdownContainer?.GetGlobalRect().HasPoint(globalPosition) ?? false;
         if (!insideButton && !insideDropdown)
-            CloseLoadoutDropdown();
+            CloseLoadoutDropdown(restoreFocus: false);
     }
 
     public void SetItems(string labelPrefix, IEnumerable<LoadoutDropdownOption> items, string selectedItemId)
@@ -189,7 +191,7 @@ public partial class NLoadoutDropdown : NDropdown
         _selectedItemId = itemId;
         RefreshCurrentItemLabel();
         SelectedItemChanged?.Invoke(itemId);
-        CloseLoadoutDropdown();
+        CloseLoadoutDropdown(restoreFocus: false);
     }
 
     private void RefreshCurrentItemLabel()
@@ -247,7 +249,6 @@ public partial class NLoadoutDropdown : NDropdown
     public void CloseLoadoutDropdown(bool restoreFocus = true)
     {
         _isOpen = false;
-        RefreshButtonHighlight();
         _dismisser?.Hide();
 
         if (_dropdownContainer is not null)
@@ -266,11 +267,24 @@ public partial class NLoadoutDropdown : NDropdown
 
         _dropdownOriginalParent = null;
         if (restoreFocus && IsInsideTree() && Visible)
+        {
             GrabFocus();
+        }
+        else
+        {
+            RefreshButtonHoverFromMouse();
+            if (HasFocus())
+                ReleaseFocus();
+        }
+
+        RefreshButtonHighlight();
     }
 
     private void OnButtonHoverStart()
     {
+        if (!_isButtonHovered)
+            SfxCmd.Play(FmodSfx.uiHover);
+
         _isButtonHovered = true;
         RefreshButtonHighlight();
     }
@@ -285,6 +299,12 @@ public partial class NLoadoutDropdown : NDropdown
     {
         if (_buttonHoverHighlight is not null && GodotObject.IsInstanceValid(_buttonHoverHighlight))
             _buttonHoverHighlight.Visible = _isOpen || _isButtonHovered || HasFocus();
+    }
+
+    private void RefreshButtonHoverFromMouse()
+    {
+        Viewport? viewport = GetViewport();
+        _isButtonHovered = viewport is not null && GetGlobalRect().HasPoint(viewport.GetMousePosition());
     }
 
     private void PositionDropdownContainer()
