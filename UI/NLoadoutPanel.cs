@@ -29,6 +29,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
+using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
 using MegaCrit.Sts2.Core.Runs;
@@ -138,7 +139,7 @@ public partial class NLoadoutPanel : Panel
 				GetId = RuntimeItemId,
 				GetName = relic => FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
-				CreateView = (relic, _) => CreateRelicGridItem(relic),
+				CreateView = (relic, _) => CreateOwnedRelicGridItem(relic),
 				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
 			},
 			builder =>
@@ -430,7 +431,8 @@ public partial class NLoadoutPanel : Panel
 			else
 				target.Configure(models, adapter, builder);
 
-			target.RequestDeferredVisibleRefresh();
+			if (!preserveViews)
+				target.RequestDeferredVisibleRefresh();
 		}
 
 		ConfigureCurrentModels(screen);
@@ -707,6 +709,17 @@ public partial class NLoadoutPanel : Panel
 		return holder;
 	}
 
+	private static Control CreateOwnedRelicGridItem(RelicModel model)
+	{
+		NRelicBasicHolder? holder = NRelicBasicHolder.Create(model);
+		if (holder is null)
+			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, SScreenLoc("CATEGORY_RELIC", "Relic"));
+
+		holder.MouseFilter = MouseFilterEnum.Pass;
+		holder.CustomMinimumSize = new Vector2(68f, 68f);
+		return holder;
+	}
+
 	private static Control CreatePowerGridItem(PowerModel model)
 	{
 		Texture2D? icon = null;
@@ -947,11 +960,19 @@ public partial class NLoadoutPanel : Panel
 
 	private static bool BindRelicActivation(Control view, Action activate)
 	{
-		if (!TryFindDescendantOrSelf(view, out NRelicCollectionEntry? clickable))
-			return false;
+		if (TryFindDescendantOrSelf(view, out NRelicCollectionEntry? collectionEntry))
+		{
+			collectionEntry!.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicCollectionEntry>(_ => activate()));
+			return true;
+		}
 
-		clickable!.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicCollectionEntry>(_ => activate()));
-		return true;
+		if (TryFindDescendantOrSelf(view, out NRelicBasicHolder? basicHolder))
+		{
+			basicHolder!.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicBasicHolder>(_ => activate()));
+			return true;
+		}
+
+		return false;
 	}
 
 	private static bool BindGuiReleaseActivation(Control view, Action activate)
