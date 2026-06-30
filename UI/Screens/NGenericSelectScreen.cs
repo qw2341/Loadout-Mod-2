@@ -95,6 +95,9 @@ public partial class NGenericSelectScreen : Control
     private readonly List<SelectSorterDefinition> _sorters = new();
     private readonly Dictionary<string, SelectSorterDefinition> _sortersById = new(StringComparer.Ordinal);
     private readonly List<string> _sortPriority = new();
+    private readonly List<SelectToggleDefinition> _toggles = new();
+    private readonly Dictionary<string, SelectToggleDefinition> _togglesById = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _toggleStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SelectGroupDefinition> _groupsBySorterId = new(StringComparer.Ordinal);
     private readonly List<Control> _generatedGroupContainers = new();
     private readonly List<Control> _visibleLayoutNodes = new();
@@ -103,6 +106,7 @@ public partial class NGenericSelectScreen : Control
 
     private readonly Dictionary<string, NLoadoutDropdown> _filterDropdownsByGroupId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NCardViewSortButton> _sortButtonsById = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NLoadoutToggle> _toggleButtonsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _selectedAmounts = new(StringComparer.Ordinal);
 
     private LineEdit? _searchLineEdit;
@@ -110,6 +114,7 @@ public partial class NGenericSelectScreen : Control
     private NClickableControl? _clearSearchClickable;
     private VBoxContainer? _filterControls;
     private Container? _sortButtonsContainer;
+    private VBoxContainer? _togglesContainer;
     private VBoxContainer? _filtersContainer;
     private Control? _itemGrid;
     private Control? _scrollMask;
@@ -147,6 +152,7 @@ public partial class NGenericSelectScreen : Control
         EnsureActionButtons();
         BindSceneSignals();
         RebuildSortButtons();
+        RebuildToggleButtons();
         RebuildFilterButtons();
         ApplyLayoutSettings();
 
@@ -229,6 +235,9 @@ public partial class NGenericSelectScreen : Control
         _sorters.Clear();
         _sortersById.Clear();
         _sortPriority.Clear();
+        _toggles.Clear();
+        _togglesById.Clear();
+        _toggleStates.Clear();
         _groupsBySorterId.Clear();
         _selectedAmounts.Clear();
         ClearGeneratedGroupContainers();
@@ -243,6 +252,7 @@ public partial class NGenericSelectScreen : Control
             _searchLineEdit.Text = string.Empty;
 
         RebuildSortButtons();
+        RebuildToggleButtons();
         RebuildFilterButtons();
         UpdateConfirmButtonState();
     }
@@ -312,6 +322,17 @@ public partial class NGenericSelectScreen : Control
     public void AddGroupDefinition(SelectGroupDefinition group)
     {
         _groupsBySorterId[group.SorterId] = group;
+    }
+
+    public void AddToggle(SelectToggleDefinition toggle)
+    {
+        if (_togglesById.ContainsKey(toggle.Id))
+            throw new InvalidOperationException($"Toggle id '{toggle.Id}' already exists.");
+
+        _toggles.Add(toggle);
+        _togglesById[toggle.Id] = toggle;
+        _toggleStates[toggle.Id] = toggle.CheckedByDefault;
+        RebuildToggleButtons();
     }
 
     public void RefreshNow(bool resetScroll = false)
@@ -444,15 +465,6 @@ public partial class NGenericSelectScreen : Control
 
     private void ApplyLocalizedSceneText()
     {
-        if (GetNodeOrNull<Label>("Sidebar/MarginContainer/TopVBox/TitleLabel") is { } titleLabel)
-            titleLabel.Text = SelectScreenLoc.Text("TITLE_SELECT", "Select");
-
-        if (GetNodeOrNull<Label>("Sidebar/MarginContainer/TopVBox/SortLabel") is { } sortLabel)
-            sortLabel.Text = SelectScreenLoc.Text("SORT", "Sort");
-
-        if (GetNodeOrNull<Label>("Sidebar/MarginContainer/TopVBox/FilterLabel") is { } filterLabel)
-            filterLabel.Text = SelectScreenLoc.Text("FILTERS", "Filters");
-
         if (_searchLineEdit is not null)
             _searchLineEdit.PlaceholderText = SelectScreenLoc.Text("SEARCH", "Search");
     }
@@ -471,6 +483,17 @@ public partial class NGenericSelectScreen : Control
                 SizeFlagsHorizontal = SizeFlags.ExpandFill
             };
             _filterControls.AddChild(_sortButtonsContainer);
+        }
+
+        _togglesContainer = _filterControls.GetNodeOrNull<VBoxContainer>("Toggles");
+        if (_togglesContainer is null)
+        {
+            _togglesContainer = new VBoxContainer
+            {
+                Name = "Toggles",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            _filterControls.AddChild(_togglesContainer);
         }
 
         _filtersContainer = _filterControls.GetNodeOrNull<VBoxContainer>("FilterGroups");
@@ -681,6 +704,38 @@ public partial class NGenericSelectScreen : Control
             button.SetLabel(sorter.Label);
             button.IsDescending = sorter.IsDescending;
         }
+    }
+
+    private void RebuildToggleButtons()
+    {
+        if (_togglesContainer is null)
+            return;
+
+        foreach (Node child in _togglesContainer.GetChildren())
+            child.QueueFree();
+
+        _toggleButtonsById.Clear();
+
+        foreach (SelectToggleDefinition toggle in _toggles)
+        {
+            bool isChecked = _toggleStates.GetValueOrDefault(toggle.Id, toggle.CheckedByDefault);
+            NLoadoutToggle button = new();
+            button.Name = MakeSafeNodeName($"{toggle.Id}Toggle");
+            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            button.Init(toggle.Id, toggle.Label, isChecked);
+            button.Connect(NLoadoutToggle.SignalName.Toggled, Callable.From<NLoadoutToggle>(OnToggleChanged));
+            _togglesContainer.AddChild(button);
+            _toggleButtonsById[toggle.Id] = button;
+        }
+    }
+
+    private void OnToggleChanged(NLoadoutToggle toggle)
+    {
+        if (!_togglesById.ContainsKey(toggle.ToggleId))
+            return;
+
+        _toggleStates[toggle.ToggleId] = toggle.IsChecked;
+        RefreshVisibleItemStates();
     }
 
     private void RebuildFilterButtons()
@@ -1346,7 +1401,8 @@ public partial class NGenericSelectScreen : Control
             visibleIndex: visibleIndex,
             selectionAmount: amount,
             isSelected: amount > 0,
-            isEnabled: true);
+            isEnabled: true,
+            toggleStates: new Dictionary<string, bool>(_toggleStates, StringComparer.Ordinal));
     }
 
     private static string MakeSafeNodeName(string value)
@@ -2039,6 +2095,12 @@ public sealed class SelectScreenBuilder<TModel>
         return this;
     }
 
+    public SelectScreenBuilder<TModel> Toggle(string id, string label, bool checkedByDefault = false)
+    {
+        _screen.AddToggle(new SelectToggleDefinition(id, label, checkedByDefault));
+        return this;
+    }
+
     public SelectScreenBuilder<TModel> Sorter(
         string id,
         string label,
@@ -2277,13 +2339,20 @@ public enum SelectFilterGroupSelectionMode
 
 public sealed class SelectItemState
 {
-    public SelectItemState(int originalIndex, int visibleIndex, int selectionAmount, bool isSelected, bool isEnabled)
+    public SelectItemState(
+        int originalIndex,
+        int visibleIndex,
+        int selectionAmount,
+        bool isSelected,
+        bool isEnabled,
+        IReadOnlyDictionary<string, bool>? toggleStates = null)
     {
         OriginalIndex = originalIndex;
         VisibleIndex = visibleIndex;
         SelectionAmount = selectionAmount;
         IsSelected = isSelected;
         IsEnabled = isEnabled;
+        ToggleStates = toggleStates ?? new Dictionary<string, bool>(StringComparer.Ordinal);
     }
 
     public int OriginalIndex { get; }
@@ -2291,6 +2360,26 @@ public sealed class SelectItemState
     public int SelectionAmount { get; }
     public bool IsSelected { get; }
     public bool IsEnabled { get; }
+    public IReadOnlyDictionary<string, bool> ToggleStates { get; }
+
+    public bool IsToggleEnabled(string id)
+    {
+        return ToggleStates.TryGetValue(id, out bool enabled) && enabled;
+    }
+}
+
+public sealed class SelectToggleDefinition
+{
+    public SelectToggleDefinition(string id, string label, bool checkedByDefault = false)
+    {
+        Id = id;
+        Label = label;
+        CheckedByDefault = checkedByDefault;
+    }
+
+    public string Id { get; }
+    public string Label { get; }
+    public bool CheckedByDefault { get; }
 }
 
 public sealed class SelectFilterGroupDefinition

@@ -11,6 +11,7 @@ public partial class NSelectDropdownItem : NDropdownItem
 {
     public string OptionId { get; private set; } = string.Empty;
     private string _pendingLabel = "DropdownItem";
+    private ColorRect? _highlight;
 
     public void Init(string optionId, string label)
     {
@@ -25,12 +26,17 @@ public partial class NSelectDropdownItem : NDropdownItem
     {
         EnsureControlTree();
         base._Ready();
+        MouseEntered += ShowHoverHighlight;
+        MouseExited += HideHoverHighlight;
+        FocusEntered += ShowHoverHighlight;
+        FocusExited += HideHoverHighlight;
         Text = _pendingLabel;
     }
 
     private void EnsureControlTree()
     {
-        if (GetNodeOrNull<ColorRect>("Highlight") is null)
+        _highlight = GetNodeOrNull<ColorRect>("Highlight");
+        if (_highlight is null)
         {
             ColorRect highlight = new()
             {
@@ -41,6 +47,7 @@ public partial class NSelectDropdownItem : NDropdownItem
             };
             highlight.SetAnchorsPreset(LayoutPreset.FullRect);
             AddChild(highlight);
+            _highlight = highlight;
         }
 
         if (GetNodeOrNull<MegaLabel>("Label") is not null)
@@ -72,5 +79,17 @@ public partial class NSelectDropdownItem : NDropdownItem
             return GD.Load<Font>(localPath);
 
         return ResourceLoader.Exists(path) ? GD.Load<Font>(path) : null;
+    }
+
+    private void ShowHoverHighlight()
+    {
+        if (_highlight is not null && GodotObject.IsInstanceValid(_highlight))
+            _highlight.Visible = true;
+    }
+
+    private void HideHoverHighlight()
+    {
+        if (_highlight is not null && GodotObject.IsInstanceValid(_highlight))
+            _highlight.Visible = false;
     }
 }

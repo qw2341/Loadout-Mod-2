@@ -16,6 +16,7 @@ SORT_NAME,Name,Name
 SORT_ID,ID,ID
 SORT_COST,Cost,Cost
 SORT_LIBRARY,Library,Library
+VIEW_UPGRADES,View Upgrades,View Upgrades
 SORT_RARITY,Rarity,Rarity
 SORT_TYPE,Type,Type
 CARD_TYPE_ATTACK,Attack,Attack

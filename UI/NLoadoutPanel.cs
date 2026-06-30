@@ -32,6 +32,8 @@ namespace  Loadout.UI;
 public partial class NLoadoutPanel : Panel
 {
 	private const int MaxLoadoutItemInitAttempts = 120;
+	private const string ViewUpgradesToggleId = "view_upgrades";
+	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
 
 	[Export]
 	public bool Shown = true;
@@ -94,12 +96,14 @@ public partial class NLoadoutPanel : Panel
 				GetId = card => card.Id.ToString(),
 				GetName = card => FormatCardTitle(card),
 				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
-				CreateView = (card, _) => CreateCardGridItem(card),
+				CreateView = CreateCardGridItem,
 				ViewReady = (_, view) => RefreshCardVisuals(view),
+				UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
 				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
 			}, builder =>
 			{
 				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
+				builder.Toggle(ViewUpgradesToggleId, L("VIEW_UPGRADES", "View Upgrades"), checkedByDefault: false);
 				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
 				AddCardPoolFilters(builder);
 				builder.FilterGroup("type", L("FILTER_GROUP_TYPE", "Type"));
@@ -298,7 +302,7 @@ public partial class NLoadoutPanel : Panel
 		NLoadoutPanelRoot.Instance?.CloseTopScreen();
 	}
 
-	private static Control CreateCardGridItem(CardModel model)
+	private static Control CreateCardGridItem(CardModel model, SelectItemState state)
 	{
 		var card = NCard.Create(model);
 		if (card is null)
@@ -319,6 +323,7 @@ public partial class NLoadoutPanel : Panel
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.Scale = holder.SmallScale;
 		holder.CustomMinimumSize = NCard.defaultSize * holder.SmallScale;
+		ApplyCardUpgradePreview(holder, state);
 		return holder;
 	}
 
@@ -401,6 +406,35 @@ public partial class NLoadoutPanel : Panel
 			return;
 
 		holder.CardNode.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+
+		if (holder.CardModel is not null
+		    && holder.CardModel.IsUpgradable
+		    && holder.GetMeta(PreviewUpgradeMetaKey, false).AsBool())
+		{
+			holder.SetIsPreviewingUpgrade(true);
+		}
+	}
+
+	private static void UpdateCardGridItem(Control view, SelectItemState state)
+	{
+		if (!TryFindDescendantOrSelf(view, out NGridCardHolder? holder))
+			return;
+
+		ApplyCardUpgradePreview(holder!, state);
+	}
+
+	private static void ApplyCardUpgradePreview(NGridCardHolder holder, SelectItemState state)
+	{
+		bool shouldPreviewUpgrade = holder.CardModel is not null
+			&& holder.CardModel.IsUpgradable
+			&& state.IsToggleEnabled(ViewUpgradesToggleId);
+
+		holder.SetMeta(PreviewUpgradeMetaKey, shouldPreviewUpgrade);
+
+		if (holder.CardModel is null || !holder.CardModel.IsUpgradable)
+			return;
+
+		holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
 	}
 
 	private static bool BindCardActivation(Control view, Action activate)
