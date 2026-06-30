@@ -485,6 +485,17 @@ public partial class NGenericSelectScreen : Control
             _filterControls.AddChild(_sortButtonsContainer);
         }
 
+        _filtersContainer = _filterControls.GetNodeOrNull<VBoxContainer>("FilterGroups");
+        if (_filtersContainer is null)
+        {
+            _filtersContainer = new VBoxContainer
+            {
+                Name = "FilterGroups",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            _filterControls.AddChild(_filtersContainer);
+        }
+
         _togglesContainer = _filterControls.GetNodeOrNull<VBoxContainer>("Toggles");
         if (_togglesContainer is null)
         {
@@ -496,16 +507,8 @@ public partial class NGenericSelectScreen : Control
             _filterControls.AddChild(_togglesContainer);
         }
 
-        _filtersContainer = _filterControls.GetNodeOrNull<VBoxContainer>("FilterGroups");
-        if (_filtersContainer is null)
-        {
-            _filtersContainer = new VBoxContainer
-            {
-                Name = "FilterGroups",
-                SizeFlagsHorizontal = SizeFlags.ExpandFill
-            };
-            _filterControls.AddChild(_filtersContainer);
-        }
+        if (_filtersContainer.GetParent() == _filterControls && _togglesContainer.GetParent() == _filterControls)
+            _filterControls.MoveChild(_togglesContainer, _filtersContainer.GetIndex() + 1);
     }
 
     private void EnsureGameScrollbar()
@@ -1231,8 +1234,8 @@ public partial class NGenericSelectScreen : Control
             label.AddThemeFontOverride("bold_italics_font", bold);
         }
 
-        label.AddThemeFontSizeOverride("normal_font_size", 24);
-        label.AddThemeFontSizeOverride("bold_font_size", 28);
+        label.AddThemeFontSizeOverride("normal_font_size", 26);
+        label.AddThemeFontSizeOverride("bold_font_size", 32);
         label.AddThemeColorOverride("default_color", StsColors.cream);
         label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
         label.AddThemeConstantOverride("shadow_offset_x", 3);
@@ -2312,11 +2315,26 @@ public sealed class SelectGroupDefinition
 
 public sealed class SelectGroupHeader
 {
+    private const string CategoryTitleColor = "#ffd75a";
+
     public SelectGroupHeader(string text, Texture2D? icon = null, bool showWhenEmpty = false)
     {
         Text = text;
         Icon = icon;
         ShowWhenEmpty = showWhenEmpty;
+    }
+
+    public static SelectGroupHeader Category(string title, string? description = null, Texture2D? icon = null, bool showWhenEmpty = false)
+    {
+        return new SelectGroupHeader(FormatCategoryText(title, description), icon, showWhenEmpty);
+    }
+
+    public static string FormatCategoryText(string title, string? description = null)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+            return $"[color={CategoryTitleColor}][b]{title}[/b][/color]";
+
+        return $"[color={CategoryTitleColor}][b]{title}:[/b][/color] {description}";
     }
 
     public string Text { get; }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using Loadout.UI.Screens;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Potions;
@@ -13,6 +14,7 @@ using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.CardPools;
@@ -22,6 +24,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
 using MegaCrit.Sts2.Core.Runs;
@@ -103,7 +106,6 @@ public partial class NLoadoutPanel : Panel
 			}, builder =>
 			{
 				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
-				builder.Toggle(ViewUpgradesToggleId, L("VIEW_UPGRADES", "View Upgrades"), checkedByDefault: false);
 				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
 				AddCardPoolFilters(builder);
 				builder.FilterGroup("type", L("FILTER_GROUP_TYPE", "Type"));
@@ -115,6 +117,7 @@ public partial class NLoadoutPanel : Panel
 				builder.Filter("common", L("RARITY_COMMON", "Common"), card => card.Rarity == CardRarity.Common, "rarity");
 				builder.Filter("uncommon", L("RARITY_UNCOMMON", "Uncommon"), card => card.Rarity == CardRarity.Uncommon, "rarity");
 				builder.Filter("rare", L("RARITY_RARE", "Rare"), card => card.Rarity == CardRarity.Rare, "rarity");
+				builder.Toggle(ViewUpgradesToggleId, L("VIEW_UPGRADES", "View Upgrades"), checkedByDefault: false);
 				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
 				builder.Sorter("library", L("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
 				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
@@ -182,7 +185,7 @@ public partial class NLoadoutPanel : Panel
 				GetId = eventModel => eventModel.Id.ToString(),
 				GetName = eventModel => FormatEventTitle(eventModel),
 				GetSearchText = eventModel => $"{eventModel.Id} {FormatEventTitle(eventModel)} {eventModel.InitialDescription}",
-				CreateView = (eventModel, _) => CreateTextModelGridItem(eventModel, FormatEventTitle(eventModel), eventModel.Id.Entry, L("CATEGORY_EVENT", "Event"))
+				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
 			}, builder =>
 			{
 				builder.Layout(4, new Vector2(220f, 120f), 24, 24);
@@ -355,7 +358,149 @@ public partial class NLoadoutPanel : Panel
 		if (ResourceLoader.Exists(model.IconPath))
 			icon = model.Icon;
 
-		return CreateTextModelGridItem(model, FormatPowerTitle(model), model.Id.Entry, FormatPowerCategory(model.Type), icon, new Vector2(220f, 104f));
+		Button button = CreateModelButton(new Vector2(220f, 104f));
+
+		if (icon is not null)
+		{
+			TextureRect iconRect = new()
+			{
+				Texture = icon,
+				StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+				MouseFilter = MouseFilterEnum.Ignore,
+				Position = new Vector2(18f, 22f),
+				Size = new Vector2(62f, 62f)
+			};
+			button.AddChild(iconRect);
+		}
+
+		MegaLabel nameLabel = CreateButtonLabel(
+			"PowerName",
+			FormatPowerTitle(model),
+			new Vector2(82f, 8f),
+			new Vector2(126f, 78f),
+			18,
+			HorizontalAlignment.Center,
+			StsColors.cream);
+		button.AddChild(nameLabel);
+
+		if (model.StackType == PowerStackType.Counter)
+		{
+			MegaLabel amountLabel = CreateButtonLabel(
+				"PowerAmount",
+				model.DisplayAmount.ToString(),
+				new Vector2(160f, 72f),
+				new Vector2(50f, 26f),
+				22,
+				HorizontalAlignment.Right,
+				model.AmountLabelColor);
+			button.AddChild(amountLabel);
+		}
+
+		AttachHoverTips(button, model.HoverTips);
+		return button;
+	}
+
+	private static Control CreateEventGridItem(EventModel model)
+	{
+		Button button = CreateModelButton(new Vector2(220f, 120f));
+
+		MegaLabel titleLabel = CreateButtonLabel(
+			"EventTitle",
+			FormatEventTitle(model),
+			new Vector2(12f, 16f),
+			new Vector2(196f, 58f),
+			20,
+			HorizontalAlignment.Center,
+			StsColors.cream);
+		button.AddChild(titleLabel);
+
+		MegaLabel categoryLabel = CreateButtonLabel(
+			"EventCategory",
+			FormatEventCategory(model),
+			new Vector2(12f, 74f),
+			new Vector2(196f, 30f),
+			17,
+			HorizontalAlignment.Center,
+			StsColors.gold);
+		button.AddChild(categoryLabel);
+
+		AttachHoverTips(button, CreateEventHoverTips(model));
+		return button;
+	}
+
+	private static Button CreateModelButton(Vector2 size)
+	{
+		Button button = new()
+		{
+			CustomMinimumSize = size,
+			MouseFilter = MouseFilterEnum.Stop,
+			FocusMode = FocusModeEnum.All,
+			SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+			SizeFlagsVertical = SizeFlags.ShrinkBegin,
+			Text = string.Empty
+		};
+		button.AddThemeFontOverride("font", LoadGameFont());
+		button.AddThemeFontSizeOverride("font_size", 18);
+		button.AddThemeColorOverride("font_color", StsColors.cream);
+		return button;
+	}
+
+	private static MegaLabel CreateButtonLabel(
+		string name,
+		string text,
+		Vector2 position,
+		Vector2 size,
+		int fontSize,
+		HorizontalAlignment horizontalAlignment,
+		Color color)
+	{
+		MegaLabel label = new()
+		{
+			Name = name,
+			Text = text,
+			AutoSizeEnabled = false,
+			HorizontalAlignment = horizontalAlignment,
+			VerticalAlignment = VerticalAlignment.Center,
+			MouseFilter = MouseFilterEnum.Ignore,
+			Position = position,
+			Size = size
+		};
+		label.AddThemeFontOverride("font", LoadGameFont());
+		label.AddThemeFontSizeOverride("font_size", fontSize);
+		label.AddThemeColorOverride("font_color", color);
+		label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
+		label.AddThemeConstantOverride("shadow_offset_x", 3);
+		label.AddThemeConstantOverride("shadow_offset_y", 2);
+		return label;
+	}
+
+	private static void AttachHoverTips(Control owner, IEnumerable<IHoverTip> hoverTips)
+	{
+		IReadOnlyList<IHoverTip> tips = hoverTips.Where(tip => tip is not null).ToList();
+		if (tips.Count == 0)
+			return;
+
+		owner.MouseEntered += () => ShowHoverTips(owner, tips);
+		owner.MouseExited += () => NHoverTipSet.Remove(owner);
+		owner.TreeExiting += () => NHoverTipSet.Remove(owner);
+	}
+
+	private static void ShowHoverTips(Control owner, IReadOnlyList<IHoverTip> tips)
+	{
+		NHoverTipSet.Remove(owner);
+		NHoverTipSet.CreateAndShow(owner, tips, HoverTip.GetHoverTipAlignment(owner))?.SetFollowOwner();
+		NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+	}
+
+	private static IReadOnlyList<IHoverTip> CreateEventHoverTips(EventModel model)
+	{
+		string description = GetFirstEventDescriptionParagraph(model.InitialDescription);
+		string idLine = $"[color=#9a9a9a]{model.Id}[/color]";
+		string hoverDescription = string.IsNullOrWhiteSpace(description)
+			? idLine
+			: $"{description}\n\n{idLine}";
+
+		return [new HoverTip(model.Title, hoverDescription)];
 	}
 
 	private static Button CreateTextModelGridItem(
@@ -381,7 +526,6 @@ public partial class NLoadoutPanel : Panel
 		button.Text = icon is null
 			? $"{title}\n{category}\n{subtitle}"
 			: $"{title}\n{category}";
-		button.TooltipText = $"{title}\n{model.Id}";
 
 		if (icon is not null)
 		{
@@ -778,7 +922,7 @@ public partial class NLoadoutPanel : Panel
 			"potion:uncommon" => new SelectGroupHeader(new LocString("potion_lab", "UNCOMMON").GetFormattedText()),
 			"potion:rare" => new SelectGroupHeader(new LocString("potion_lab", "RARE").GetFormattedText()),
 			"potion:special" => new SelectGroupHeader(new LocString("potion_lab", "SPECIAL").GetFormattedText()),
-			_ => new SelectGroupHeader(L("OTHER", "Other"))
+			_ => SelectGroupHeader.Category(L("OTHER", "Other"))
 		};
 	}
 
@@ -857,7 +1001,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		return groupingData.HeadersByKey.TryGetValue(key, out SelectGroupHeader? header)
 			? header
-			: new SelectGroupHeader(L("OTHER", "Other"));
+			: SelectGroupHeader.Category(L("OTHER", "Other"));
 	}
 
 	private static Texture2D? TryGetValidTexture(Texture2D? texture)
@@ -928,6 +1072,35 @@ public partial class NLoadoutPanel : Panel
 	private static string FormatEventTitle(EventModel eventModel)
 	{
 		return eventModel.Title.GetFormattedText();
+	}
+
+	private static string FormatEventCategory(EventModel eventModel)
+	{
+		return eventModel.LayoutType == EventLayoutType.Ancient
+			? L("LAYOUT_ANCIENT", "Ancient")
+			: L("CATEGORY_EVENT", "Event");
+	}
+
+	private static string GetFirstEventDescriptionParagraph(LocString description)
+	{
+		string text = description.GetFormattedText()
+			.Replace("[p]", "\n\n", StringComparison.OrdinalIgnoreCase);
+
+		foreach (string paragraph in Regex.Split(text, @"(?:\r?\n){2,}"))
+		{
+			string cleaned = StripUiMarkup(paragraph);
+			if (!string.IsNullOrWhiteSpace(cleaned))
+				return cleaned;
+		}
+
+		return string.Empty;
+	}
+
+	private static string StripUiMarkup(string text)
+	{
+		string withoutBbcode = Regex.Replace(text, @"\[[^\]]+\]", " ");
+		string withoutTags = Regex.Replace(withoutBbcode, @"<[^>]+>", " ");
+		return Regex.Replace(withoutTags, @"\s+", " ").Trim();
 	}
 
 	private static string FormatPowerTitle(PowerModel power)

@@ -216,11 +216,6 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="Toggles" type="VBoxContainer" parent="Sidebar/MarginContainer/TopVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
 [node name="FilterLabel" type="Label" parent="Sidebar/MarginContainer/TopVBox"]
 visible = false
 custom_minimum_size = Vector2(0, 22)
@@ -236,6 +231,11 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/separation = 8
+
+[node name="Toggles" type="VBoxContainer" parent="Sidebar/MarginContainer/TopVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
 
 [node name="SelectedCountLabel" type="Label" parent="Sidebar/MarginContainer/TopVBox"]
 visible = false

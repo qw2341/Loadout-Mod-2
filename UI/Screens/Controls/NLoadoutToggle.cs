@@ -5,13 +5,15 @@ namespace Loadout.UI.Screens.Controls;
 using Godot;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
-using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 
 public partial class NLoadoutToggle : Control
 {
     [Signal]
     public delegate void ToggledEventHandler(NLoadoutToggle toggle);
 
+    private const float RowHeight = 56f;
+    private const float TickboxSize = 64f;
+    private const float LabelLeft = 60f;
     private const float BaseTickboxScale = 0.56f;
     private const float HoverTickboxScale = 0.62f;
     private const float PressTickboxScale = 0.50f;
@@ -135,7 +137,7 @@ public partial class NLoadoutToggle : Control
 
     private void EnsureControlTree()
     {
-        CustomMinimumSize = new Vector2(256f, 48f);
+        CustomMinimumSize = new Vector2(256f, RowHeight);
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
 
         _tickboxVisuals = GetNodeOrNull<Control>("TickboxVisuals");
@@ -144,9 +146,9 @@ public partial class NLoadoutToggle : Control
             Control visuals = new()
             {
                 Name = "TickboxVisuals",
-                Position = new Vector2(4f, 2f),
-                Size = new Vector2(64f, 64f),
-                PivotOffset = new Vector2(32f, 32f),
+                Position = new Vector2(-4f, (RowHeight - TickboxSize) * 0.5f),
+                Size = Vector2.One * TickboxSize,
+                PivotOffset = Vector2.One * (TickboxSize * 0.5f),
                 Scale = Vector2.One * BaseTickboxScale,
                 MouseFilter = MouseFilterEnum.Ignore
             };
@@ -183,14 +185,14 @@ public partial class NLoadoutToggle : Control
             MouseFilter = MouseFilterEnum.Ignore
         };
         label.SetAnchorsPreset(LayoutPreset.FullRect);
-        label.OffsetLeft = 44f;
+        label.OffsetLeft = LabelLeft;
         label.OffsetRight = -4f;
         label.AddThemeColorOverride("font_color", StsColors.gold);
         label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.45f));
         label.AddThemeConstantOverride("shadow_offset_x", 4);
         label.AddThemeConstantOverride("shadow_offset_y", 3);
         label.AddThemeFontOverride("font", LoadGameFont("res://themes/kreon_bold_glyph_space_one.tres"));
-        label.AddThemeFontSizeOverride("font_size", 25);
+        label.AddThemeFontSizeOverride("font_size", 24);
         AddChild(label);
         _label = label;
     }
