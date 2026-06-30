@@ -49,9 +49,10 @@ public partial class NLoadoutPanel : Panel
 	private const string ViewUpgradesToggleId = "view_upgrades";
 	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
 	private static readonly Vector2 EventTileSize = new(220f, 120f);
-	private static readonly Vector2I AncientPreviewTextureSize = new(360, 196);
-	private static readonly Dictionary<string, Texture2D> AncientPreviewTextures = new(StringComparer.Ordinal);
-	private static readonly Dictionary<string, SubViewport> AncientPreviewViewports = new(StringComparer.Ordinal);
+	private const float EventTilePortraitRestAlpha = 0.45f;
+	private const float EventTilePortraitHoverAlpha = 0.78f;
+	private const float EventTileShadeHoverAlpha = 0.16f;
+	private static readonly Dictionary<Control, Tween> EventTileHoverTweens = new();
 
 	[Export]
 	public bool Shown = true;
@@ -264,8 +265,7 @@ public partial class NLoadoutPanel : Panel
 				GetId = eventModel => eventModel.Id.ToString(),
 				GetName = eventModel => FormatEventTitle(eventModel),
 				GetSearchText = eventModel => $"{eventModel.Id} {FormatEventTitle(eventModel)} {eventModel.InitialDescription}",
-				CreateView = (eventModel, _) => CreateEventGridItem(eventModel),
-				BindActivation = (_, view, activate) => BindGuiReleaseActivation(view, activate)
+				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
 			}, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
@@ -821,43 +821,45 @@ public partial class NLoadoutPanel : Panel
 		Button button = CreateModelButton(EventTileSize);
 		button.ClipContents = true;
 
-		TextureRect? background = model is AncientEventModel ancient
-			? CreateAncientEventTileBackground(ancient)
-			: CreateRegularEventTileBackground(model);
+		TextureRect? background = CreateEventTileBackground(model);
 		if (background is not null)
 			button.AddChild(background);
 
+		float restingShadeAlpha = model is AncientEventModel ? 0.38f : 0.35f;
 		ColorRect shade = new()
 		{
-			Color = model is AncientEventModel ? new Color(0f, 0f, 0f, 0.42f) : new Color(0f, 0f, 0f, 0.35f),
+			Color = new Color(0f, 0f, 0f, restingShadeAlpha),
 			MouseFilter = MouseFilterEnum.Ignore,
 			Position = Vector2.Zero,
 			Size = EventTileSize
 		};
 		button.AddChild(shade);
+		AttachEventTileHoverAnimation(button, background, shade, restingShadeAlpha);
+
+		bool isAncient = model is AncientEventModel;
 
 		MegaLabel titleLabel = CreateButtonLabel(
 			"EventTitle",
-			FormatEventTitle(model),
-			model is AncientEventModel ? new Vector2(12f, 30f) : new Vector2(12f, 16f),
-			model is AncientEventModel ? new Vector2(196f, 36f) : new Vector2(196f, 88f),
-			model is AncientEventModel ? 26 : 22,
+			isAncient ? FormatEventTitle(model).ToUpperInvariant() : FormatEventTitle(model),
+			isAncient ? new Vector2(12f, 22f) : new Vector2(12f, 16f),
+			isAncient ? new Vector2(196f, 42f) : new Vector2(196f, 88f),
+			isAncient ? 27 : 22,
 			HorizontalAlignment.Center,
-			StsColors.cream);
-		if (model is AncientEventModel)
-			titleLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/ancient_name_banner.tres"));
+			isAncient ? new Color(0.937255f, 0.784314f, 0.317647f, 1f) : StsColors.cream);
+		if (isAncient)
+			titleLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/spectral_bold_shared.tres"));
 		button.AddChild(titleLabel);
 
 		if (model is AncientEventModel ancientEvent)
 		{
 			MegaLabel epithetLabel = CreateButtonLabel(
 				"AncientEpithet",
-				ancientEvent.Epithet.GetFormattedText(),
-				new Vector2(12f, 64f),
-				new Vector2(196f, 34f),
-				15,
+				SafeFormatLocString(ancientEvent.Epithet, string.Empty),
+				new Vector2(12f, 62f),
+				new Vector2(196f, 44f),
+				16,
 				HorizontalAlignment.Center,
-				new Color(StsColors.cream, 0.72f));
+				new Color(0.529412f, 0.807843f, 0.921569f, 0.88f));
 			epithetLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/bitter_medium_italic_glyph_space_one.tres"));
 			button.AddChild(epithetLabel);
 		}
@@ -866,7 +868,7 @@ public partial class NLoadoutPanel : Panel
 		return button;
 	}
 
-	private static TextureRect? CreateRegularEventTileBackground(EventModel model)
+	private static TextureRect? CreateEventTileBackground(EventModel model)
 	{
 		try
 		{
@@ -875,15 +877,30 @@ public partial class NLoadoutPanel : Panel
 		}
 		catch (Exception exception)
 		{
-			GD.PushWarning($"LoadoutPanel: could not load event portrait for '{model.Id}'. {exception.Message}");
-			return null;
-		}
-	}
+			if (model is not AncientEventModel ancient)
+			{
+				GD.PushWarning($"LoadoutPanel: could not load event portrait for '{model.Id}'. {exception.Message}");
+				return null;
+			}
 
-	private static TextureRect? CreateAncientEventTileBackground(AncientEventModel model)
-	{
-		Texture2D? texture = GetAncientPreviewTexture(model);
-		return texture is null ? null : CreateTileBackground(texture);
+			try
+			{
+				return CreateTileBackground(ancient.RunHistoryIcon);
+			}
+			catch (Exception iconException)
+			{
+				try
+				{
+					return CreateTileBackground(ancient.MapIcon);
+				}
+				catch (Exception mapIconException)
+				{
+					GD.PushWarning(
+						$"LoadoutPanel: could not load ancient portrait/icon for '{model.Id}'. portrait={exception.Message}; runHistory={iconException.Message}; map={mapIconException.Message}");
+					return null;
+				}
+			}
+		}
 	}
 
 	private static TextureRect CreateTileBackground(Texture2D texture)
@@ -894,49 +911,41 @@ public partial class NLoadoutPanel : Panel
 			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
 			StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
 			MouseFilter = MouseFilterEnum.Ignore,
-			Modulate = new Color(1f, 1f, 1f, 0.5f),
+			Modulate = new Color(1f, 1f, 1f, EventTilePortraitRestAlpha),
 			Position = Vector2.Zero,
 			Size = EventTileSize
 		};
 	}
 
-	private static Texture2D? GetAncientPreviewTexture(AncientEventModel model)
+	private static void AttachEventTileHoverAnimation(Control tile, TextureRect? background, ColorRect shade, float restingShadeAlpha)
 	{
-		string id = model.Id.ToString();
-		if (AncientPreviewTextures.TryGetValue(id, out Texture2D? cachedTexture))
-			return cachedTexture;
-
-		try
+		tile.MouseEntered += () => AnimateEventTileHover(tile, background, shade, EventTilePortraitHoverAlpha, EventTileShadeHoverAlpha);
+		tile.MouseExited += () => AnimateEventTileHover(tile, background, shade, EventTilePortraitRestAlpha, restingShadeAlpha);
+		tile.TreeExiting += () =>
 		{
-			SubViewport viewport = new()
-			{
-				Name = $"LoadoutAncientPreview_{MakeSafeNodeName(id)}",
-				Size = AncientPreviewTextureSize,
-				TransparentBg = true,
-				Disable3D = true,
-				RenderTargetUpdateMode = SubViewport.UpdateMode.Once
-			};
-			Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);
-			backgroundScene.MouseFilter = MouseFilterEnum.Ignore;
-			backgroundScene.Position = Vector2.Zero;
-			backgroundScene.Size = new Vector2(1920f, 1080f);
-			float scale = Math.Max(
-				AncientPreviewTextureSize.X / Math.Max(1f, backgroundScene.Size.X),
-				AncientPreviewTextureSize.Y / Math.Max(1f, backgroundScene.Size.Y));
-			backgroundScene.Scale = Vector2.One * scale;
-			viewport.AddChild(backgroundScene);
+			if (EventTileHoverTweens.TryGetValue(tile, out Tween? tween) && GodotObject.IsInstanceValid(tween))
+				tween.Kill();
 
-			NLoadoutPanelRoot.Instance?.AddChild(viewport);
-			Texture2D texture = viewport.GetTexture();
-			AncientPreviewViewports[id] = viewport;
-			AncientPreviewTextures[id] = texture;
-			return texture;
-		}
-		catch (Exception exception)
-		{
-			GD.PushWarning($"LoadoutPanel: could not create ancient preview for '{model.Id}'. {exception.Message}");
-			return null;
-		}
+			EventTileHoverTweens.Remove(tile);
+		};
+	}
+
+	private static void AnimateEventTileHover(Control tile, TextureRect? background, ColorRect shade, float portraitAlpha, float shadeAlpha)
+	{
+		if (EventTileHoverTweens.TryGetValue(tile, out Tween? oldTween) && GodotObject.IsInstanceValid(oldTween))
+			oldTween.Kill();
+
+		Tween tween = tile.CreateTween().SetParallel();
+		if (background is not null && GodotObject.IsInstanceValid(background))
+			tween.TweenProperty(background, "modulate", new Color(1f, 1f, 1f, portraitAlpha), 0.12)
+				.SetEase(Tween.EaseType.Out)
+				.SetTrans(Tween.TransitionType.Cubic);
+
+		tween.TweenProperty(shade, "color", new Color(0f, 0f, 0f, shadeAlpha), 0.12)
+			.SetEase(Tween.EaseType.Out)
+			.SetTrans(Tween.TransitionType.Cubic);
+
+		EventTileHoverTweens[tile] = tween;
 	}
 
 	private static Button CreateModelButton(Vector2 size)
@@ -1005,7 +1014,7 @@ public partial class NLoadoutPanel : Panel
 
 	private static IReadOnlyList<IHoverTip> CreateEventHoverTips(EventModel model)
 	{
-		string description = GetFirstEventDescriptionParagraph(model.InitialDescription);
+		string description = GetFirstEventDescriptionParagraph(model);
 		string idLine = $"[color=#9a9a9a]{model.Id}[/color]";
 		string hoverDescription = string.IsNullOrWhiteSpace(description)
 			? idLine
@@ -1799,10 +1808,21 @@ public partial class NLoadoutPanel : Panel
 		return eventModel.Title.GetFormattedText();
 	}
 
-	private static string GetFirstEventDescriptionParagraph(LocString description)
+	private static string GetFirstEventDescriptionParagraph(EventModel model)
 	{
-		string text = description.GetFormattedText()
-			.Replace("[p]", "\n\n", StringComparison.OrdinalIgnoreCase);
+		string text;
+		try
+		{
+			text = model.InitialDescription.GetFormattedText()
+				.Replace("[p]", "\n\n", StringComparison.OrdinalIgnoreCase);
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not format initial event description for '{model.Id}'. {exception.Message}");
+			return model is AncientEventModel ancient
+				? SafeFormatLocString(ancient.Epithet, string.Empty)
+				: string.Empty;
+		}
 
 		foreach (string paragraph in Regex.Split(text, @"(?:\r?\n){2,}"))
 		{
@@ -1812,6 +1832,19 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		return string.Empty;
+	}
+
+	private static string SafeFormatLocString(LocString locString, string fallback)
+	{
+		try
+		{
+			return locString.GetFormattedText();
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not format loc string '{locString.LocTable}.{locString.LocEntryKey}'. {exception.Message}");
+			return fallback;
+		}
 	}
 
 	private static string StripUiMarkup(string text)
