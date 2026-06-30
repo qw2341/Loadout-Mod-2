@@ -3,11 +3,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Godot;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.Entities.Relics;
@@ -125,6 +128,29 @@ public partial class NLoadoutPanel : Panel
 			},
 			ApplyCurrentCardClassFilter);
 
+		CreateAndAddDynamicLoadoutItem(
+			GetLocalDeckCards,
+			new SelectItemAdapter<CardModel>
+			{
+				GetId = card => card.Id.ToString(),
+				GetName = card => FormatCardTitle(card),
+				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
+				CreateView = CreateCardGridItem,
+				ViewReady = (_, view) => RefreshCardVisuals(view),
+				UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
+				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
+			},
+			builder =>
+			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+				builder.Materialization(SelectMaterializationMode.Lazy);
+				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
+			},
+			HandleRemoveCardActivatedAsync,
+			"CardShredder.png",
+			"Remove Card",
+			"Remove a card from your current deck.");
+
 		CreateAndAddLoadoutItem(
 			ModelDb.AllPotions,
 			new SelectItemAdapter<PotionModel>
@@ -180,6 +206,27 @@ public partial class NLoadoutPanel : Panel
 					relicGroupingData.GroupOrder,
 					relicGroupingData.DescendingGroupOrder);
 			});
+
+		CreateAndAddDynamicLoadoutItem(
+			GetLocalRelics,
+			new SelectItemAdapter<RelicModel>
+			{
+				GetId = relic => relic.Id.ToString(),
+				GetName = relic => FormatRelicTitle(relic),
+				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
+				CreateView = (relic, _) => CreateRelicGridItem(relic),
+				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
+			},
+			builder =>
+			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
+			},
+			HandleRemoveRelicActivatedAsync,
+			"TrashBin.png",
+			"Remove Relic",
+			"Remove one of your current relics.");
 
 		CreateAndAddLoadoutItem(
 			ModelDb.AllEvents.Concat(ModelDb.AllAncients).Distinct(),
@@ -283,12 +330,137 @@ public partial class NLoadoutPanel : Panel
 		screen.Configure(models, adapter, builder);
 		screen.Cancelled += CloseTopLoadoutScreen;
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
-		
+
 		item.BoundScreen = screen;
 		if (beforeOpen is not null)
 			item.BeforeOpen = beforeOpen;
 
 		_itemsContainer.AddChild(item);
+	}
+
+	private void CreateAndAddDynamicLoadoutItem<TModel>(
+		Func<IReadOnlyList<TModel>> getModels,
+		SelectItemAdapter<TModel> adapter,
+		Action<SelectScreenBuilder<TModel>> builder,
+		Func<NGenericSelectScreen, IGenericSelectItem, Task> onActivated,
+		string textureFileName,
+		string title,
+		string description)
+	{
+		var item = new NLoadoutPanelItem(textureFileName, title, description);
+		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+		var screen = scene.Instantiate<NGenericSelectScreen>();
+		bool activationInFlight = false;
+
+		void ConfigureCurrentModels(NGenericSelectScreen target)
+		{
+			target.Configure(getModels(), adapter, builder);
+		}
+
+		ConfigureCurrentModels(screen);
+		screen.Cancelled += CloseTopLoadoutScreen;
+		screen.Confirmed += _ => CloseTopLoadoutScreen();
+		screen.ItemActivated += (selectItem, state) =>
+		{
+			if (activationInFlight)
+				return;
+
+			activationInFlight = true;
+			_ = HandleDynamicItemActivatedAsync(
+				screen,
+				selectItem,
+				onActivated,
+				ConfigureCurrentModels,
+				() => activationInFlight = false);
+		};
+
+		item.BoundScreen = screen;
+		item.BeforeOpen = ConfigureCurrentModels;
+
+		_itemsContainer.AddChild(item);
+	}
+
+	private static async Task HandleDynamicItemActivatedAsync(
+		NGenericSelectScreen screen,
+		IGenericSelectItem selectItem,
+		Func<NGenericSelectScreen, IGenericSelectItem, Task> onActivated,
+		Action<NGenericSelectScreen> refresh,
+		Action clearActivation)
+	{
+		try
+		{
+			await onActivated(screen, selectItem);
+		}
+		catch (Exception exception)
+		{
+			GD.PushError($"LoadoutPanel: dynamic item activation failed for '{selectItem.Id}' ({selectItem.Name}): {exception}");
+		}
+		finally
+		{
+			refresh(screen);
+			clearActivation();
+		}
+	}
+
+	private static IReadOnlyList<CardModel> GetLocalDeckCards()
+	{
+		Player? localPlayer = GetLocalRunPlayer();
+		return localPlayer is null ? Array.Empty<CardModel>() : localPlayer.Deck.Cards.ToList();
+	}
+
+	private static IReadOnlyList<RelicModel> GetLocalRelics()
+	{
+		Player? localPlayer = GetLocalRunPlayer();
+		return localPlayer is null ? Array.Empty<RelicModel>() : localPlayer.Relics.ToList();
+	}
+
+	private static Player? GetLocalRunPlayer()
+	{
+		try
+		{
+			if (!RunManager.Instance.IsInProgress)
+				return null;
+
+			return LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState());
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not resolve local run player. {exception.Message}");
+			return null;
+		}
+	}
+
+	private static async Task HandleRemoveCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	{
+		if (selectItem.UntypedModel is not CardModel card)
+			return;
+
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null
+		    || !LocalContext.IsMine(card)
+		    || card.Pile?.Type != PileType.Deck
+		    || !localPlayer.Deck.Cards.Contains(card))
+		{
+			return;
+		}
+
+		await CardPileCmd.RemoveFromDeck(card);
+	}
+
+	private static async Task HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	{
+		if (selectItem.UntypedModel is not RelicModel relic)
+			return;
+
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null
+		    || !LocalContext.IsMine(relic)
+		    || !localPlayer.Relics.Contains(relic))
+		{
+			return;
+		}
+
+		await RelicCmd.Remove(relic);
 	}
 
 	private void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)

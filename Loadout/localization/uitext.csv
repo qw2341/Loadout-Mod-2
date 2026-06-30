@@ -5,6 +5,7 @@ SEARCH,Search,Search
 SORT,Sort,Sort
 FILTERS,Filters,Filters
 ALL,All,All
+LOADOUT_PANEL_ITEM_TITLE,{Title},{Title}
 SELECTED_COUNT,Selected: {0},Selected: {0}
 FILTER_GROUP_CLASS,Class,Class
 FILTER_GROUP_TYPE,Type,Type

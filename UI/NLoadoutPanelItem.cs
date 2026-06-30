@@ -1,6 +1,9 @@
 using Godot;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System;
 
 namespace Loadout.UI;
@@ -24,6 +27,12 @@ public partial class NLoadoutPanelItem : TextureButton
 
 	[Export] 
 	public int MinimumSizeY = 100;
+
+	[Export]
+	public string DisplayName = string.Empty;
+
+	[Export]
+	public string Description = string.Empty;
 	
 	private PanelItemAnimationProfile _animationProfile;
 	private float _hoverProgress;
@@ -33,6 +42,17 @@ public partial class NLoadoutPanelItem : TextureButton
 	private Vector2 _basePosition;
 	private NGenericSelectScreen _boundScreen;
 	private Action<NGenericSelectScreen> _beforeOpen;
+
+	public NLoadoutPanelItem()
+	{
+	}
+
+	public NLoadoutPanelItem(string textureFileName, string displayName, string description)
+	{
+		TextureFileName = textureFileName;
+		DisplayName = displayName;
+		Description = description;
+	}
 	
 	public override void _Ready()
 	{
@@ -75,6 +95,8 @@ public partial class NLoadoutPanelItem : TextureButton
 
 		if (UseGlobalAnimation)
 			LoadoutPanelItemAnimationManager.AnimationChanged -= OnAnimationChanged;
+
+		NHoverTipSet.Remove(this);
 	}
 
 	public override void _Process(double delta)
@@ -143,11 +165,26 @@ public partial class NLoadoutPanelItem : TextureButton
 	private void OnMouseEntered()
 	{
 		_isHovered = true;
+		ShowHoverTip();
 	}
 
 	private void OnMouseExited()
 	{
 		_isHovered = false;
+		NHoverTipSet.Remove(this);
+	}
+
+	private void ShowHoverTip()
+	{
+		if (string.IsNullOrWhiteSpace(DisplayName) && string.IsNullOrWhiteSpace(Description))
+			return;
+
+		LocString title = new("loadout", "LOADOUT_PANEL_ITEM_TITLE");
+		title.Add("Title", string.IsNullOrWhiteSpace(DisplayName) ? TextureFileName : DisplayName);
+
+		NHoverTipSet.Remove(this);
+		NHoverTipSet.CreateAndShow(this, new HoverTip(title, Description), HoverTip.GetHoverTipAlignment(this))?.SetFollowOwner();
+		NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
 	}
 
 	private void OnResized()
