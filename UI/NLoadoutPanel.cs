@@ -114,6 +114,8 @@ public partial class NLoadoutPanel : Panel
 				AddCardTypeFilters(builder, allCards);
 				builder.FilterGroup("rarity", GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", L("FILTER_GROUP_RARITY", "Rarity")));
 				AddCardRarityFilters(builder, allCards);
+				AddCardKeywordFilterGroup(builder, allCards);
+				AddCardTagFilterGroup(builder, allCards);
 				builder.Toggle(ViewUpgradesToggleId, GameLoc("card_library", "VIEW_UPGRADES", GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
 				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
 				builder.Sorter("library", L("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
@@ -147,7 +149,8 @@ public partial class NLoadoutPanel : Panel
 					"rarity",
 					GetPotionGroupKey,
 					GetPotionGroupHeader,
-					PotionGroupOrder);
+					PotionGroupOrder,
+					PotionGroupOrder.Reverse());
 			});
 
 		CreateAndAddLoadoutItem(
@@ -174,7 +177,8 @@ public partial class NLoadoutPanel : Panel
 					"rarity",
 					relic => GetRelicGroupKey(relic, relicGroupingData),
 					key => GetRelicGroupHeader(key, relicGroupingData),
-					relicGroupingData.GroupOrder);
+					relicGroupingData.GroupOrder,
+					relicGroupingData.DescendingGroupOrder);
 			});
 
 		CreateAndAddLoadoutItem(
@@ -211,7 +215,7 @@ public partial class NLoadoutPanel : Panel
 			}, builder =>
 			{
 				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(5, new Vector2(220f, 104f), 24, 24);
+				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
 				builder.FilterGroup("type", L("FILTER_GROUP_TYPE", "Type"));
 				builder.Filter("buff", L("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
 				builder.Filter("debuff", L("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
@@ -683,6 +687,59 @@ public partial class NLoadoutPanel : Panel
 		}
 	}
 
+	private static void AddCardKeywordFilterGroup(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+	{
+		IReadOnlyList<CardKeyword> keywords = cards
+			.SelectMany(GetLocalCardKeywords)
+			.Where(keyword => keyword != CardKeyword.None)
+			.Distinct()
+			.OrderBy(keyword => Convert.ToInt32(keyword))
+			.ToList();
+
+		if (keywords.Count == 0)
+			return;
+
+		builder.FilterGroup("keyword", L("FILTER_GROUP_KEYWORD", "Keyword"));
+		foreach (CardKeyword keyword in keywords)
+		{
+			CardKeyword localKeyword = keyword;
+			builder.Filter(
+				EnumFilterId("card_keyword", localKeyword),
+				GetCardKeywordLabel(localKeyword),
+				card => GetLocalCardKeywords(card).Contains(localKeyword),
+				"keyword");
+		}
+	}
+
+	private static IEnumerable<CardKeyword> GetLocalCardKeywords(CardModel card)
+	{
+		return card.GetKeywordsWithSources(KeywordSources.Local);
+	}
+
+	private static void AddCardTagFilterGroup(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+	{
+		IReadOnlyList<CardTag> tags = cards
+			.SelectMany(card => card.Tags)
+			.Where(tag => tag != CardTag.None)
+			.Distinct()
+			.OrderBy(tag => Convert.ToInt32(tag))
+			.ToList();
+
+		if (tags.Count == 0)
+			return;
+
+		builder.FilterGroup("tag", L("FILTER_GROUP_TAG", "Tag"));
+		foreach (CardTag tag in tags)
+		{
+			CardTag localTag = tag;
+			builder.Filter(
+				EnumFilterId("card_tag", localTag),
+				GetCardTagLabel(localTag),
+				card => card.Tags.Contains(localTag),
+				"tag");
+		}
+	}
+
 	private static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()
 	{
 		return BuildOrderedPools(
@@ -985,6 +1042,7 @@ public partial class NLoadoutPanel : Panel
 			"relic:shop",
 			"relic:ancient"
 		};
+		List<string> ancientGroupOrder = new();
 
 		foreach (AncientEventModel ancient in ModelDb.AllAncients.Distinct())
 		{
@@ -1003,13 +1061,30 @@ public partial class NLoadoutPanel : Panel
 			headerText.Add("Ancient", ancient.Title);
 			headers[groupKey] = new SelectGroupHeader(headerText.GetFormattedText(), TryGetValidTexture(ancient.RunHistoryIcon));
 			groupOrder.Add(groupKey);
+			ancientGroupOrder.Add(groupKey);
 
 			foreach (RelicModel relic in ancientRelics)
 				keyByRelicId[relic.Id.ToString()] = groupKey;
 		}
 
 		groupOrder.Add("relic:event");
-		return new RelicGroupingData(keyByRelicId, headers, groupOrder);
+
+		List<string> descendingGroupOrder = new()
+		{
+			"relic:event",
+			"relic:ancient"
+		};
+		descendingGroupOrder.AddRange(ancientGroupOrder);
+		descendingGroupOrder.AddRange(new[]
+		{
+			"relic:shop",
+			"relic:rare",
+			"relic:uncommon",
+			"relic:common",
+			"relic:starter"
+		});
+
+		return new RelicGroupingData(keyByRelicId, headers, groupOrder, descendingGroupOrder);
 	}
 
 	private static string GetRelicGroupKey(RelicModel relic, RelicGroupingData groupingData)
@@ -1114,6 +1189,26 @@ public partial class NLoadoutPanel : Panel
 		{
 			return PrettifyEnumValue(rarity);
 		}
+	}
+
+	private static string GetCardKeywordLabel(CardKeyword keyword)
+	{
+		try
+		{
+			if (HoverTipFactory.FromKeyword(keyword) is HoverTip hoverTip && !string.IsNullOrWhiteSpace(hoverTip.Title))
+				return hoverTip.Title;
+		}
+		catch
+		{
+			// Fall back below for unknown or modded keyword values.
+		}
+
+		return PrettifyEnumValue(keyword);
+	}
+
+	private static string GetCardTagLabel(CardTag tag)
+	{
+		return PrettifyEnumValue(tag);
 	}
 
 	private static string GetEnumLabel<TEnum>(TEnum value)
@@ -1225,16 +1320,19 @@ public partial class NLoadoutPanel : Panel
 		public RelicGroupingData(
 			IReadOnlyDictionary<string, string> ancientGroupKeyByRelicId,
 			IReadOnlyDictionary<string, SelectGroupHeader> headersByKey,
-			IReadOnlyList<string> groupOrder)
+			IReadOnlyList<string> groupOrder,
+			IReadOnlyList<string> descendingGroupOrder)
 		{
 			AncientGroupKeyByRelicId = ancientGroupKeyByRelicId;
 			HeadersByKey = headersByKey;
 			GroupOrder = groupOrder;
+			DescendingGroupOrder = descendingGroupOrder;
 		}
 
 		public IReadOnlyDictionary<string, string> AncientGroupKeyByRelicId { get; }
 		public IReadOnlyDictionary<string, SelectGroupHeader> HeadersByKey { get; }
 		public IReadOnlyList<string> GroupOrder { get; }
+		public IReadOnlyList<string> DescendingGroupOrder { get; }
 	}
 	
 	private void UpdatePanelHeight()

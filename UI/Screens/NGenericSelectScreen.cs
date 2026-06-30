@@ -140,6 +140,8 @@ public partial class NGenericSelectScreen : Control
     private System.Threading.CancellationTokenSource? _searchDelayCts;
     private System.Threading.CancellationTokenSource? _materializeCts;
     private ulong _layoutGeneration;
+    private ulong _scheduledEagerRefreshGeneration;
+    private ulong _lastEagerMismatchWarningGeneration;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -174,6 +176,9 @@ public partial class NGenericSelectScreen : Control
     {
         if (what == NotificationVisibilityChanged && !Visible)
             CloseOpenDropdowns();
+
+        if (what == NotificationVisibilityChanged && Visible)
+            ScheduleDeferredEagerMaterializationRefresh();
     }
 
     public override void _Process(double delta)
@@ -385,7 +390,8 @@ public partial class NGenericSelectScreen : Control
 
         if (_materializationMode == SelectMaterializationMode.Eager)
         {
-            MaterializeAllItemViews();
+            FinalizeEagerMaterialization(warnOnMismatch: true);
+            ScheduleDeferredEagerMaterializationRefresh();
         }
         else
         {
@@ -1041,7 +1047,8 @@ public partial class NGenericSelectScreen : Control
             items.Add(item);
         }
 
-        List<string> orderedKeys = group.GroupOrder
+        bool descending = _sortersById.TryGetValue(group.SorterId, out SelectSorterDefinition? sorter) && sorter.IsDescending;
+        List<string> orderedKeys = group.GetGroupOrder(descending)
             .Concat(itemsByKey.Keys)
             .Distinct(StringComparer.Ordinal)
             .ToList();
@@ -1142,6 +1149,79 @@ public partial class NGenericSelectScreen : Control
 
             MaterializeItemView(item, layout);
         }
+    }
+
+    private void FinalizeEagerMaterialization(bool warnOnMismatch)
+    {
+        if (_itemGrid is null)
+            return;
+
+        MaterializeAllItemViews();
+
+        foreach (Control control in _visibleLayoutNodes)
+        {
+            if (GodotObject.IsInstanceValid(control))
+                control.Visible = true;
+        }
+
+        int visibleItemViews = 0;
+        foreach (IGenericSelectItem item in _itemLayoutOrder)
+        {
+            if (item.View is not { } view || !GodotObject.IsInstanceValid(view))
+                continue;
+
+            if (view.GetParent() != _itemGrid)
+            {
+                view.GetParent()?.RemoveChild(view);
+                _itemGrid.AddChild(view);
+            }
+
+            view.Visible = true;
+            if (_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+            {
+                view.Size = layout.Size;
+                view.Position = layout.Position;
+                item.UpdateView(BuildState(item, layout.VisibleIndex));
+            }
+
+            visibleItemViews++;
+        }
+
+        if (!warnOnMismatch || visibleItemViews == _itemLayoutOrder.Count || _lastEagerMismatchWarningGeneration == _layoutGeneration)
+            return;
+
+        _lastEagerMismatchWarningGeneration = _layoutGeneration;
+        GD.PushWarning(
+            $"Loadout select screen '{Name}' eager materialization mismatch: " +
+            $"layouts={_itemLayoutOrder.Count}, visibleItemViews={visibleItemViews}, layoutNodes={_visibleLayoutNodes.Count}.");
+    }
+
+    private void ScheduleDeferredEagerMaterializationRefresh()
+    {
+        if (_materializationMode != SelectMaterializationMode.Eager || !IsInsideTree())
+            return;
+
+        ulong generation = _layoutGeneration;
+        if (_scheduledEagerRefreshGeneration == generation)
+            return;
+
+        _scheduledEagerRefreshGeneration = generation;
+        _ = DeferredEagerMaterializationRefreshAsync(generation);
+    }
+
+    private async System.Threading.Tasks.Task DeferredEagerMaterializationRefreshAsync(ulong generation)
+    {
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        if (generation != _layoutGeneration
+            || _materializationMode != SelectMaterializationMode.Eager
+            || !IsInsideTree()
+            || !IsVisibleInTree())
+        {
+            return;
+        }
+
+        FinalizeEagerMaterialization(warnOnMismatch: true);
     }
 
     private bool MaterializeItemView(IGenericSelectItem item, SelectItemLayout layout)
@@ -1652,12 +1732,7 @@ public partial class NGenericSelectScreen : Control
 
         if (_materializationMode == SelectMaterializationMode.Eager)
         {
-            foreach (Control control in _visibleLayoutNodes)
-            {
-                if (GodotObject.IsInstanceValid(control))
-                    control.Visible = true;
-            }
-
+            FinalizeEagerMaterialization(warnOnMismatch: false);
             return;
         }
 
@@ -1711,7 +1786,11 @@ public partial class NGenericSelectScreen : Control
         if (_scrollbar is not null && !_scrollbarPressed)
             _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
 
-        if (_materializationMode == SelectMaterializationMode.Lazy)
+        if (_materializationMode == SelectMaterializationMode.Eager)
+        {
+            FinalizeEagerMaterialization(warnOnMismatch: false);
+        }
+        else
         {
             MaterializeViewportItemViews(ScrollMaterializeBudget);
             UpdateViewportCulling();
@@ -2269,13 +2348,15 @@ public sealed class SelectScreenBuilder<TModel>
         string sorterId,
         Func<TModel, string> keySelector,
         Func<string, SelectGroupHeader> headerSelector,
-        IEnumerable<string> groupOrder)
+        IEnumerable<string> groupOrder,
+        IEnumerable<string>? descendingGroupOrder = null)
     {
         _screen.AddGroupDefinition(new SelectGroupDefinition(
             sorterId,
             item => item is GenericSelectItem<TModel> typed ? keySelector(typed.Model) : string.Empty,
             headerSelector,
-            groupOrder.ToList()));
+            groupOrder.ToList(),
+            descendingGroupOrder?.ToList()));
 
         return this;
     }
@@ -2427,18 +2508,29 @@ public sealed class SelectGroupDefinition
         string sorterId,
         Func<IGenericSelectItem, string> keySelector,
         Func<string, SelectGroupHeader> headerSelector,
-        IReadOnlyList<string> groupOrder)
+        IReadOnlyList<string> groupOrder,
+        IReadOnlyList<string>? descendingGroupOrder = null)
     {
         SorterId = sorterId;
         KeySelector = keySelector;
         HeaderSelector = headerSelector;
         GroupOrder = groupOrder;
+        DescendingGroupOrder = descendingGroupOrder;
     }
 
     public string SorterId { get; }
     public Func<IGenericSelectItem, string> KeySelector { get; }
     public Func<string, SelectGroupHeader> HeaderSelector { get; }
     public IReadOnlyList<string> GroupOrder { get; }
+    public IReadOnlyList<string>? DescendingGroupOrder { get; }
+
+    public IEnumerable<string> GetGroupOrder(bool descending)
+    {
+        if (!descending)
+            return GroupOrder;
+
+        return DescendingGroupOrder ?? GroupOrder.Reverse();
+    }
 }
 
 public sealed class SelectGroupHeader
