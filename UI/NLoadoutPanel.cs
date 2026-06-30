@@ -8,8 +8,11 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Assets;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
@@ -20,6 +23,7 @@ using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Models.PotionPools;
@@ -32,6 +36,7 @@ using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using System.Text.RegularExpressions;
 using HarmonyLib;
@@ -43,6 +48,10 @@ public partial class NLoadoutPanel : Panel
 	private const int MaxLoadoutItemInitAttempts = 120;
 	private const string ViewUpgradesToggleId = "view_upgrades";
 	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
+	private static readonly Vector2 EventTileSize = new(220f, 120f);
+	private static readonly Vector2I AncientPreviewTextureSize = new(360, 196);
+	private static readonly Dictionary<string, Texture2D> AncientPreviewTextures = new(StringComparer.Ordinal);
+	private static readonly Dictionary<string, SubViewport> AncientPreviewViewports = new(StringComparer.Ordinal);
 
 	[Export]
 	public bool Shown = true;
@@ -255,11 +264,13 @@ public partial class NLoadoutPanel : Panel
 				GetId = eventModel => eventModel.Id.ToString(),
 				GetName = eventModel => FormatEventTitle(eventModel),
 				GetSearchText = eventModel => $"{eventModel.Id} {FormatEventTitle(eventModel)} {eventModel.InitialDescription}",
-				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
+				CreateView = (eventModel, _) => CreateEventGridItem(eventModel),
+				BindActivation = (_, view, activate) => BindGuiReleaseActivation(view, activate)
 			}, builder =>
 			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(4, new Vector2(220f, 120f), 24, 24);
+				builder.Layout(4, EventTileSize, 24, 24);
 				builder.FilterGroup("layout", SScreenLoc("FILTER_GROUP_LAYOUT", "Layout"));
 				builder.Filter("default", SScreenLoc("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
 				builder.Filter("combat", SScreenLoc("LAYOUT_COMBAT", "Combat"), eventModel => eventModel.LayoutType == EventLayoutType.Combat, "layout");
@@ -272,7 +283,8 @@ public partial class NLoadoutPanel : Panel
 			},null,
 			"EventfulCompass.png",
 			"Eventful Compass",
-			"A compass that leads to your heart's desire.");
+			"A compass that leads to your heart's desire.",
+			HandleEnterEventActivatedAsync);
 		//08 - POWER GIVER
 		CreateAndAddLoadoutItem(
 			ModelDb.AllPowers,
@@ -643,6 +655,42 @@ public partial class NLoadoutPanel : Panel
 		await RelicCmd.Remove(relic);
 	}
 
+	private static async Task HandleEnterEventActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	{
+		if (selectItem.UntypedModel is not EventModel eventModel)
+			return;
+
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null || !RunManager.Instance.IsInProgress)
+		{
+			GD.PushWarning($"LoadoutPanel: cannot enter event '{selectItem.Id}' because no local run player was resolved.");
+			return;
+		}
+
+		try
+		{
+			if (!RunManager.Instance.IsSingleplayerOrFakeMultiplayer)
+			{
+				string command = $"event {eventModel.Id.Entry}";
+				RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+					new ConsoleCmdGameAction(localPlayer, command, CombatManager.Instance.IsInProgress));
+				CloseTopLoadoutScreen();
+				return;
+			}
+
+			MapPointType mapPointType = eventModel is AncientEventModel
+				? MapPointType.Ancient
+				: MapPointType.Unknown;
+			localPlayer.RunState.AppendToMapPointHistory(mapPointType, RoomType.Event, eventModel.Id);
+			await RunManager.Instance.EnterRoom(new EventRoom(eventModel));
+			CloseTopLoadoutScreen();
+		}
+		catch (Exception exception)
+		{
+			GD.PushError($"LoadoutPanel: failed to enter event '{eventModel.Id}': {exception}");
+		}
+	}
+
 	private void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)
 	{
 		CardPoolModel? currentCardPool = GetCurrentCharacterCardPool();
@@ -770,30 +818,125 @@ public partial class NLoadoutPanel : Panel
 
 	private static Control CreateEventGridItem(EventModel model)
 	{
-		Button button = CreateModelButton(new Vector2(220f, 120f));
+		Button button = CreateModelButton(EventTileSize);
+		button.ClipContents = true;
+
+		TextureRect? background = model is AncientEventModel ancient
+			? CreateAncientEventTileBackground(ancient)
+			: CreateRegularEventTileBackground(model);
+		if (background is not null)
+			button.AddChild(background);
+
+		ColorRect shade = new()
+		{
+			Color = model is AncientEventModel ? new Color(0f, 0f, 0f, 0.42f) : new Color(0f, 0f, 0f, 0.35f),
+			MouseFilter = MouseFilterEnum.Ignore,
+			Position = Vector2.Zero,
+			Size = EventTileSize
+		};
+		button.AddChild(shade);
 
 		MegaLabel titleLabel = CreateButtonLabel(
 			"EventTitle",
 			FormatEventTitle(model),
-			new Vector2(12f, 16f),
-			new Vector2(196f, 58f),
-			20,
+			model is AncientEventModel ? new Vector2(12f, 30f) : new Vector2(12f, 16f),
+			model is AncientEventModel ? new Vector2(196f, 36f) : new Vector2(196f, 88f),
+			model is AncientEventModel ? 26 : 22,
 			HorizontalAlignment.Center,
 			StsColors.cream);
+		if (model is AncientEventModel)
+			titleLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/ancient_name_banner.tres"));
 		button.AddChild(titleLabel);
 
-		MegaLabel categoryLabel = CreateButtonLabel(
-			"EventCategory",
-			FormatEventCategory(model),
-			new Vector2(12f, 74f),
-			new Vector2(196f, 30f),
-			17,
-			HorizontalAlignment.Center,
-			StsColors.gold);
-		button.AddChild(categoryLabel);
+		if (model is AncientEventModel ancientEvent)
+		{
+			MegaLabel epithetLabel = CreateButtonLabel(
+				"AncientEpithet",
+				ancientEvent.Epithet.GetFormattedText(),
+				new Vector2(12f, 64f),
+				new Vector2(196f, 34f),
+				15,
+				HorizontalAlignment.Center,
+				new Color(StsColors.cream, 0.72f));
+			epithetLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/bitter_medium_italic_glyph_space_one.tres"));
+			button.AddChild(epithetLabel);
+		}
 
 		AttachHoverTips(button, CreateEventHoverTips(model));
 		return button;
+	}
+
+	private static TextureRect? CreateRegularEventTileBackground(EventModel model)
+	{
+		try
+		{
+			Texture2D portrait = model.CreateInitialPortrait();
+			return CreateTileBackground(portrait);
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not load event portrait for '{model.Id}'. {exception.Message}");
+			return null;
+		}
+	}
+
+	private static TextureRect? CreateAncientEventTileBackground(AncientEventModel model)
+	{
+		Texture2D? texture = GetAncientPreviewTexture(model);
+		return texture is null ? null : CreateTileBackground(texture);
+	}
+
+	private static TextureRect CreateTileBackground(Texture2D texture)
+	{
+		return new TextureRect
+		{
+			Texture = texture,
+			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+			StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
+			MouseFilter = MouseFilterEnum.Ignore,
+			Modulate = new Color(1f, 1f, 1f, 0.5f),
+			Position = Vector2.Zero,
+			Size = EventTileSize
+		};
+	}
+
+	private static Texture2D? GetAncientPreviewTexture(AncientEventModel model)
+	{
+		string id = model.Id.ToString();
+		if (AncientPreviewTextures.TryGetValue(id, out Texture2D? cachedTexture))
+			return cachedTexture;
+
+		try
+		{
+			SubViewport viewport = new()
+			{
+				Name = $"LoadoutAncientPreview_{MakeSafeNodeName(id)}",
+				Size = AncientPreviewTextureSize,
+				TransparentBg = true,
+				Disable3D = true,
+				RenderTargetUpdateMode = SubViewport.UpdateMode.Once
+			};
+			Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);
+			backgroundScene.MouseFilter = MouseFilterEnum.Ignore;
+			backgroundScene.Position = Vector2.Zero;
+			backgroundScene.Size = new Vector2(1920f, 1080f);
+			float scale = Math.Max(
+				AncientPreviewTextureSize.X / Math.Max(1f, backgroundScene.Size.X),
+				AncientPreviewTextureSize.Y / Math.Max(1f, backgroundScene.Size.Y));
+			backgroundScene.Scale = Vector2.One * scale;
+			viewport.AddChild(backgroundScene);
+
+			NLoadoutPanelRoot.Instance?.AddChild(viewport);
+			Texture2D texture = viewport.GetTexture();
+			AncientPreviewViewports[id] = viewport;
+			AncientPreviewTextures[id] = texture;
+			return texture;
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not create ancient preview for '{model.Id}'. {exception.Message}");
+			return null;
+		}
 	}
 
 	private static Button CreateModelButton(Vector2 size)
@@ -1622,6 +1765,20 @@ public partial class NLoadoutPanel : Panel
 		return GD.Load<Font>("res://themes/kreon_bold_glyph_space_one.tres");
 	}
 
+	private static Font LoadGameFont(string path)
+	{
+		if (ResourceLoader.Exists(path))
+			return GD.Load<Font>(path);
+
+		return LoadGameFont();
+	}
+
+	private static string MakeSafeNodeName(string value)
+	{
+		string safeName = Regex.Replace(value, @"[^A-Za-z0-9_]", "_");
+		return string.IsNullOrWhiteSpace(safeName) ? "GeneratedControl" : safeName;
+	}
+
 	private static string FormatCardTitle(CardModel card)
 	{
 		return card.Title;
@@ -1640,13 +1797,6 @@ public partial class NLoadoutPanel : Panel
 	private static string FormatEventTitle(EventModel eventModel)
 	{
 		return eventModel.Title.GetFormattedText();
-	}
-
-	private static string FormatEventCategory(EventModel eventModel)
-	{
-		return eventModel.LayoutType == EventLayoutType.Ancient
-			? SScreenLoc("LAYOUT_ANCIENT", "Ancient")
-			: SScreenLoc("CATEGORY_EVENT", "Event");
 	}
 
 	private static string GetFirstEventDescriptionParagraph(LocString description)

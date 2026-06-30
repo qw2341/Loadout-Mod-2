@@ -110,6 +110,9 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<string, NCardViewSortButton> _sortButtonsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NLoadoutToggle> _toggleButtonsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _selectedAmounts = new(StringComparer.Ordinal);
+    private readonly Dictionary<Control, Tween> _relayoutTweens = new();
+    private readonly Dictionary<Control, Vector2> _relayoutTargets = new();
+    private readonly HashSet<Control> _relayoutPositionLockedViews = new();
 
     private LineEdit? _searchLineEdit;
     private BaseButton? _clearSearchButton;
@@ -222,6 +225,7 @@ public partial class NGenericSelectScreen : Control
         SelectItemAdapter<TModel> adapter,
         Action<SelectScreenBuilder<TModel>>? build = null)
     {
+        CancelRelayoutAnimations(applyFinalPositions: true);
         ResetConfiguration();
 
         SelectScreenBuilder<TModel> builder = new(this, adapter);
@@ -244,8 +248,10 @@ public partial class NGenericSelectScreen : Control
         Action<SelectScreenBuilder<TModel>>? build = null,
         bool animateRelayout = false)
     {
+        CancelRelayoutAnimations(applyFinalPositions: false);
         Dictionary<string, Control> reusableViews = CaptureReusableItemViewsById();
         Dictionary<string, Vector2> previousPositions = CaptureItemPositionsById();
+        Dictionary<Control, Vector2> relayoutStartPositions = new();
 
         ResetConfiguration(clearItemViews: false);
 
@@ -257,7 +263,11 @@ public partial class NGenericSelectScreen : Control
         {
             GenericSelectItem<TModel> item = new(model, adapter, index);
             if (reusableViews.Remove(item.Id, out Control? view) && GodotObject.IsInstanceValid(view))
+            {
                 item.SetView(view);
+                if (animateRelayout && previousPositions.TryGetValue(item.Id, out Vector2 previousPosition))
+                    relayoutStartPositions[view] = previousPosition;
+            }
 
             _items.Add(item);
             index++;
@@ -272,11 +282,14 @@ public partial class NGenericSelectScreen : Control
             staleView.QueueFreeSafely();
         }
 
+        if (animateRelayout)
+            LockRelayoutPositions(relayoutStartPositions);
+
         _isConfigured = true;
         RefreshNow(resetScroll: false);
 
         if (animateRelayout)
-            AnimateRelayoutFrom(previousPositions);
+            AnimateRelayoutFrom(relayoutStartPositions);
     }
 
     public void RequestDeferredVisibleRefresh()
@@ -305,6 +318,7 @@ public partial class NGenericSelectScreen : Control
 
     public void ResetConfiguration(bool clearItemViews = true)
     {
+        CancelRelayoutAnimations(applyFinalPositions: clearItemViews);
         CancelPendingMaterialization();
         if (clearItemViews)
             ClearItemViews();
@@ -502,9 +516,21 @@ public partial class NGenericSelectScreen : Control
         return positions;
     }
 
-    private void AnimateRelayoutFrom(IReadOnlyDictionary<string, Vector2> previousPositions)
+    private void LockRelayoutPositions(IReadOnlyDictionary<Control, Vector2> startPositions)
     {
-        if (previousPositions.Count == 0)
+        foreach ((Control view, Vector2 startPosition) in startPositions)
+        {
+            if (!GodotObject.IsInstanceValid(view))
+                continue;
+
+            _relayoutPositionLockedViews.Add(view);
+            view.Position = startPosition;
+        }
+    }
+
+    private void AnimateRelayoutFrom(IReadOnlyDictionary<Control, Vector2> startPositions)
+    {
+        if (startPositions.Count == 0)
             return;
 
         foreach (IGenericSelectItem item in _items)
@@ -512,20 +538,74 @@ public partial class NGenericSelectScreen : Control
             if (item.View is null || !GodotObject.IsInstanceValid(item.View))
                 continue;
 
-            if (!previousPositions.TryGetValue(item.Id, out Vector2 previousPosition))
-                continue;
-
             Control view = item.View;
-            Vector2 targetPosition = view.Position;
-            if (previousPosition.DistanceTo(targetPosition) <= RelayoutTweenMinDistance)
+            if (!startPositions.TryGetValue(view, out Vector2 previousPosition))
                 continue;
 
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+            {
+                UnlockRelayoutPosition(view);
+                continue;
+            }
+
+            Vector2 targetPosition = layout.Position;
+            if (!IsLayoutNearViewport(layout) || previousPosition.DistanceTo(targetPosition) <= RelayoutTweenMinDistance)
+            {
+                view.Position = targetPosition;
+                UnlockRelayoutPosition(view);
+                continue;
+            }
+
+            _relayoutTargets[view] = targetPosition;
             view.Position = previousPosition;
             Tween tween = view.CreateTween();
+            _relayoutTweens[view] = tween;
             tween.TweenProperty(view, "position", targetPosition, RelayoutTweenSeconds)
                 .SetEase(Tween.EaseType.Out)
                 .SetTrans(Tween.TransitionType.Cubic);
+            tween.Finished += () =>
+            {
+                if (GodotObject.IsInstanceValid(view))
+                    view.Position = targetPosition;
+
+                UnlockRelayoutPosition(view);
+            };
         }
+    }
+
+    private bool IsRelayoutPositionLocked(Control view)
+    {
+        return _relayoutPositionLockedViews.Contains(view);
+    }
+
+    private void UnlockRelayoutPosition(Control view)
+    {
+        _relayoutPositionLockedViews.Remove(view);
+        _relayoutTargets.Remove(view);
+        _relayoutTweens.Remove(view);
+    }
+
+    private void CancelRelayoutAnimations(bool applyFinalPositions)
+    {
+        if (_relayoutPositionLockedViews.Count == 0 && _relayoutTweens.Count == 0)
+            return;
+
+        foreach ((Control view, Tween tween) in _relayoutTweens.ToList())
+        {
+            if (GodotObject.IsInstanceValid(tween))
+                tween.Kill();
+
+            if (applyFinalPositions
+                && GodotObject.IsInstanceValid(view)
+                && _relayoutTargets.TryGetValue(view, out Vector2 targetPosition))
+            {
+                view.Position = targetPosition;
+            }
+        }
+
+        _relayoutTweens.Clear();
+        _relayoutTargets.Clear();
+        _relayoutPositionLockedViews.Clear();
     }
 
     public void ClearSelection()
@@ -1308,7 +1388,8 @@ public partial class NGenericSelectScreen : Control
 
             view.Visible = true;
             view.Size = layout.Size;
-            view.Position = layout.Position;
+            if (!IsRelayoutPositionLocked(view))
+                view.Position = layout.Position;
 
             try
             {
@@ -1393,7 +1474,8 @@ public partial class NGenericSelectScreen : Control
 
         Control view = materializedView;
         view.Size = layout.Size;
-        view.Position = layout.Position;
+        if (!IsRelayoutPositionLocked(view))
+            view.Position = layout.Position;
         view.ZIndex = 0;
         view.Visible = true;
 
