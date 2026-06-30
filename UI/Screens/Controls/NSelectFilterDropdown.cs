@@ -30,11 +30,13 @@ public partial class NLoadoutDropdown : NDropdown
     private Control? _container;
     private Control? _dropdownContainer;
     private Control? _dropdownOriginalParent;
+    private ColorRect? _buttonHoverHighlight;
     private int _dropdownOriginalIndex;
     private NButton? _dismisser;
     private bool _containerPressStarted;
     private ulong _pendingFallbackReleaseFrame;
     private ulong _lastToggleFrame;
+    private bool _isButtonHovered;
 
     public float DropdownWidth { get; set; } = DefaultDropdownWidth;
     public float ItemHeight { get; set; } = DefaultItemHeight;
@@ -49,8 +51,13 @@ public partial class NLoadoutDropdown : NDropdown
         ConnectSignals();
         _container = GetNode<Control>("Container");
         _dropdownContainer = GetNode<Control>("%DropdownContainer");
+        _buttonHoverHighlight = GetNodeOrNull<ColorRect>("%HoverHighlight");
         _dismisser = GetNode<NButton>("%Dismisser");
         _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => CloseLoadoutDropdown()));
+        MouseEntered += OnButtonHoverStart;
+        MouseExited += OnButtonHoverEnd;
+        FocusEntered += RefreshButtonHighlight;
+        FocusExited += RefreshButtonHighlight;
         _isReady = true;
         ApplyItems();
         SetEnabled(true);
@@ -58,7 +65,7 @@ public partial class NLoadoutDropdown : NDropdown
 
     public override void _ExitTree()
     {
-        CloseLoadoutDropdown();
+        CloseLoadoutDropdown(restoreFocus: false);
     }
 
     public override void _Process(double delta)
@@ -212,6 +219,7 @@ public partial class NLoadoutDropdown : NDropdown
             return;
 
         _isOpen = true;
+        RefreshButtonHighlight();
         _dismisser?.SetEnabled(true);
         _dismisser?.Show();
 
@@ -236,9 +244,10 @@ public partial class NLoadoutDropdown : NDropdown
         _dropdownItems.GetChildren().OfType<NDropdownItem>().FirstOrDefault()?.TryGrabFocus();
     }
 
-    private void CloseLoadoutDropdown()
+    public void CloseLoadoutDropdown(bool restoreFocus = true)
     {
         _isOpen = false;
+        RefreshButtonHighlight();
         _dismisser?.Hide();
 
         if (_dropdownContainer is not null)
@@ -256,7 +265,26 @@ public partial class NLoadoutDropdown : NDropdown
         }
 
         _dropdownOriginalParent = null;
-        GrabFocus();
+        if (restoreFocus && IsInsideTree() && Visible)
+            GrabFocus();
+    }
+
+    private void OnButtonHoverStart()
+    {
+        _isButtonHovered = true;
+        RefreshButtonHighlight();
+    }
+
+    private void OnButtonHoverEnd()
+    {
+        _isButtonHovered = false;
+        RefreshButtonHighlight();
+    }
+
+    private void RefreshButtonHighlight()
+    {
+        if (_buttonHoverHighlight is not null && GodotObject.IsInstanceValid(_buttonHoverHighlight))
+            _buttonHoverHighlight.Visible = _isOpen || _isButtonHovered || HasFocus();
     }
 
     private void PositionDropdownContainer()
@@ -351,15 +379,26 @@ public partial class NLoadoutDropdown : NDropdown
         currentOption.SetAnchorsPreset(LayoutPreset.FullRect);
         container.AddChild(currentOption);
 
-        ColorRect highlight = new()
+        ColorRect baseFill = new()
         {
             Name = "Highlight",
             UniqueNameInOwner = true,
             Color = new Color(0.172549f, 0.262745f, 0.309804f, 1f),
             MouseFilter = MouseFilterEnum.Ignore
         };
-        highlight.SetAnchorsPreset(LayoutPreset.FullRect);
-        currentOption.AddChild(highlight);
+        baseFill.SetAnchorsPreset(LayoutPreset.FullRect);
+        currentOption.AddChild(baseFill);
+
+        ColorRect hoverHighlight = new()
+        {
+            Name = "HoverHighlight",
+            UniqueNameInOwner = true,
+            Visible = false,
+            Color = new Color(0.215686f, 0.411765f, 0.501961f, 0.82f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        hoverHighlight.SetAnchorsPreset(LayoutPreset.FullRect);
+        currentOption.AddChild(hoverHighlight);
 
         MegaLabel label = new()
         {

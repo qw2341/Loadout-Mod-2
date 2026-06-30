@@ -91,9 +91,10 @@ public partial class NLoadoutPanel : Panel
 	private void AddLoadoutItems()
 	{
 		RelicGroupingData relicGroupingData = BuildRelicGroupingData();
+		IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
 
 		CreateAndAddLoadoutItem(
-			ModelDb.AllCards,
+			allCards,
 			new SelectItemAdapter<CardModel>
 			{
 				GetId = card => card.Id.ToString(),
@@ -105,24 +106,20 @@ public partial class NLoadoutPanel : Panel
 				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
 			}, builder =>
 			{
+				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
 				AddCardPoolFilters(builder);
-				builder.FilterGroup("type", L("FILTER_GROUP_TYPE", "Type"));
-				builder.Filter("attack", L("CARD_TYPE_ATTACK", "Attack"), card => card.Type == CardType.Attack, "type");
-				builder.Filter("skill", L("CARD_TYPE_SKILL", "Skill"), card => card.Type == CardType.Skill, "type");
-				builder.Filter("power", L("CARD_TYPE_POWER", "Power"), card => card.Type == CardType.Power, "type");
-				builder.FilterGroup("rarity", L("FILTER_GROUP_RARITY", "Rarity"));
-				builder.Filter("basic", L("RARITY_BASIC", "Basic"), card => card.Rarity == CardRarity.Basic, "rarity");
-				builder.Filter("common", L("RARITY_COMMON", "Common"), card => card.Rarity == CardRarity.Common, "rarity");
-				builder.Filter("uncommon", L("RARITY_UNCOMMON", "Uncommon"), card => card.Rarity == CardRarity.Uncommon, "rarity");
-				builder.Filter("rare", L("RARITY_RARE", "Rare"), card => card.Rarity == CardRarity.Rare, "rarity");
-				builder.Toggle(ViewUpgradesToggleId, L("VIEW_UPGRADES", "View Upgrades"), checkedByDefault: false);
+				builder.FilterGroup("type", GameLoc("gameplay_ui", "SORT_TYPE", L("FILTER_GROUP_TYPE", "Type")));
+				AddCardTypeFilters(builder, allCards);
+				builder.FilterGroup("rarity", GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", L("FILTER_GROUP_RARITY", "Rarity")));
+				AddCardRarityFilters(builder, allCards);
+				builder.Toggle(ViewUpgradesToggleId, GameLoc("card_library", "VIEW_UPGRADES", GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
 				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
 				builder.Sorter("library", L("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
-				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
+				builder.Sorter("name", GameLoc("gameplay_ui", "SORT_ALPHABET", L("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("cost", L("SORT_COST", "Cost"), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
+				builder.Sorter("cost", GameLoc("gameplay_ui", "SORT_COST", L("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
 			},
 			ApplyCurrentCardClassFilter);
 
@@ -137,6 +134,7 @@ public partial class NLoadoutPanel : Panel
 				BindActivation = (_, view, activate) => BindGuiReleaseActivation(view, activate)
 			}, builder =>
 			{
+				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(60f, 60f), 32, 32);
 				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
 				AddPotionPoolFilters(builder);
@@ -144,7 +142,7 @@ public partial class NLoadoutPanel : Panel
 				AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
 				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPotionTitle(a), FormatPotionTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", L("SORT_RARITY", "Rarity"), ComparePotionRarity, activeByDefault: true);
+				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", L("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
 				builder.GroupBySorter(
 					"rarity",
 					GetPotionGroupKey,
@@ -163,6 +161,7 @@ public partial class NLoadoutPanel : Panel
 				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
 			}, builder =>
 			{
+				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
 				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
 				AddRelicPoolFilters(builder);
@@ -170,7 +169,7 @@ public partial class NLoadoutPanel : Panel
 				AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
 				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", L("SORT_RARITY", "Rarity"), CompareRelicRarity, activeByDefault: true);
+				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", L("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
 				builder.GroupBySorter(
 					"rarity",
 					relic => GetRelicGroupKey(relic, relicGroupingData),
@@ -188,6 +187,7 @@ public partial class NLoadoutPanel : Panel
 				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
 			}, builder =>
 			{
+				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(4, new Vector2(220f, 120f), 24, 24);
 				builder.FilterGroup("layout", L("FILTER_GROUP_LAYOUT", "Layout"));
 				builder.Filter("default", L("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
@@ -210,6 +210,7 @@ public partial class NLoadoutPanel : Panel
 				CreateView = (power, _) => CreatePowerGridItem(power)
 			}, builder =>
 			{
+				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(5, new Vector2(220f, 104f), 24, 24);
 				builder.FilterGroup("type", L("FILTER_GROUP_TYPE", "Type"));
 				builder.Filter("buff", L("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
@@ -221,7 +222,7 @@ public partial class NLoadoutPanel : Panel
 				builder.Filter("single", L("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
 				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("type", L("SORT_TYPE", "Type"), (a, b) => a.Type.CompareTo(b.Type));
+				builder.Sorter("type", GameLoc("gameplay_ui", "SORT_TYPE", L("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
 			});
 	}
 
@@ -648,12 +649,46 @@ public partial class NLoadoutPanel : Panel
 		}
 	}
 
+	private static void AddCardTypeFilters(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+	{
+		foreach (CardType type in cards
+			         .Select(card => card.Type)
+			         .Distinct()
+			         .OrderBy(type => Convert.ToInt32(type)))
+		{
+			CardType localType = type;
+			builder.Filter(
+				EnumFilterId("card_type", localType),
+				GetCardTypeLabel(localType),
+				card => card.Type == localType,
+				"type");
+		}
+	}
+
+	private static void AddCardRarityFilters(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+	{
+		foreach (CardRarity rarity in cards
+			         .Select(card => card.Rarity)
+			         .Distinct()
+			         .Where(rarity => rarity != CardRarity.None)
+			         .OrderBy(GetCardRaritySortValue)
+			         .ThenBy(rarity => Convert.ToInt32(rarity)))
+		{
+			CardRarity localRarity = rarity;
+			builder.Filter(
+				EnumFilterId("card_rarity", localRarity),
+				GetCardRarityLabel(localRarity),
+				card => card.Rarity == localRarity,
+				"rarity");
+		}
+	}
+
 	private static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()
 	{
 		return BuildOrderedPools(
 			ModelDb.AllCards.Select(card => card.Pool),
 			ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
-			pool => pool.IsColorless && !IsInternalPool(pool));
+			pool => !IsInternalPool(pool));
 	}
 
 	private static void AddPotionPoolFilters(SelectScreenBuilder<PotionModel> builder)
@@ -826,8 +861,6 @@ public partial class NLoadoutPanel : Panel
 		string typeName = pool.GetType().Name;
 		return typeName.StartsWith("Deprecated", StringComparison.Ordinal)
 			|| typeName.StartsWith("Mock", StringComparison.Ordinal)
-			|| typeName.StartsWith("Token", StringComparison.Ordinal)
-			|| typeName.StartsWith("Status", StringComparison.Ordinal)
 			|| typeName.StartsWith("Fallback", StringComparison.Ordinal);
 	}
 
@@ -940,7 +973,7 @@ public partial class NLoadoutPanel : Panel
 			["relic:uncommon"] = new(new LocString("relic_collection", "UNCOMMON").GetFormattedText()),
 			["relic:rare"] = new(new LocString("relic_collection", "RARE").GetFormattedText()),
 			["relic:shop"] = new(new LocString("relic_collection", "SHOP").GetFormattedText()),
-			["relic:ancient"] = new(new LocString("relic_collection", "ANCIENT").GetFormattedText()),
+			["relic:ancient"] = new(new LocString("relic_collection", "ANCIENT").GetFormattedText(), childGroupPrefix: "relic:ancient:"),
 			["relic:event"] = new(new LocString("relic_collection", "EVENT").GetFormattedText())
 		};
 		List<string> groupOrder = new()
@@ -1035,14 +1068,83 @@ public partial class NLoadoutPanel : Panel
 			if (EqualityComparer<TEnum>.Default.Equals(value, excludedValue))
 				continue;
 
-			string label = value.ToString();
-			builder.Filter(label.ToLowerInvariant(), L($"ENUM_{typeof(TEnum).Name.ToUpperInvariant()}_{label.ToUpperInvariant()}", label), model => EqualityComparer<TEnum>.Default.Equals(getValue(model), value), groupId);
+			string label = GetEnumLabel(value);
+			builder.Filter(EnumFilterId(typeof(TEnum).Name, value), label, model => EqualityComparer<TEnum>.Default.Equals(getValue(model), value), groupId);
 		}
 	}
 
 	private static string L(string key, string fallback)
 	{
 		return SelectScreenLoc.Text(key, fallback);
+	}
+
+	private static string GameLoc(string table, string key, string fallback)
+	{
+		try
+		{
+			return LocString.Exists(table, key)
+				? new LocString(table, key).GetFormattedText()
+				: fallback;
+		}
+		catch
+		{
+			return fallback;
+		}
+	}
+
+	private static string GetCardTypeLabel(CardType type)
+	{
+		try
+		{
+			return type.ToLocString().GetFormattedText();
+		}
+		catch
+		{
+			return PrettifyEnumValue(type);
+		}
+	}
+
+	private static string GetCardRarityLabel(CardRarity rarity)
+	{
+		try
+		{
+			return rarity.ToLocString().GetFormattedText();
+		}
+		catch
+		{
+			return PrettifyEnumValue(rarity);
+		}
+	}
+
+	private static string GetEnumLabel<TEnum>(TEnum value)
+		where TEnum : struct, Enum
+	{
+		try
+		{
+			return value switch
+			{
+				PotionRarity potionRarity => potionRarity.ToLocString().GetFormattedText(),
+				RelicRarity relicRarity => GameLoc("gameplay_ui", $"RELIC_RARITY.{relicRarity.ToString().ToUpperInvariant()}", PrettifyEnumValue(relicRarity)),
+				_ => PrettifyEnumValue(value)
+			};
+		}
+		catch
+		{
+			return PrettifyEnumValue(value);
+		}
+	}
+
+	private static string EnumFilterId<TEnum>(string prefix, TEnum value)
+		where TEnum : struct, Enum
+	{
+		string raw = $"{prefix}_{value}_{Convert.ToInt64(value)}";
+		return Regex.Replace(raw.ToLowerInvariant(), "[^a-z0-9_]+", "_");
+	}
+
+	private static string PrettifyEnumValue<TEnum>(TEnum value)
+		where TEnum : struct, Enum
+	{
+		return Regex.Replace(value.ToString(), "([a-z])([A-Z])", "$1 $2");
 	}
 
 	private static Font LoadGameFont()

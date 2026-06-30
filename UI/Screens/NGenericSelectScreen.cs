@@ -132,6 +132,7 @@ public partial class NGenericSelectScreen : Control
     private bool _isSyncingFilterDropdowns;
     private bool _isConfigured;
     private float _lastMeasuredItemWidth = -1f;
+    private SelectMaterializationMode _materializationMode = SelectMaterializationMode.Eager;
     private float _scrollY;
     private float _targetScrollY;
     private float _maxScrollY;
@@ -162,10 +163,17 @@ public partial class NGenericSelectScreen : Control
 
     public override void _ExitTree()
     {
+        CloseOpenDropdowns();
         _searchDelayCts?.Cancel();
         _searchDelayCts?.Dispose();
         _searchDelayCts = null;
         CancelPendingMaterialization();
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationVisibilityChanged && !Visible)
+            CloseOpenDropdowns();
     }
 
     public override void _Process(double delta)
@@ -244,6 +252,7 @@ public partial class NGenericSelectScreen : Control
 
         _options = new SelectScreenOptions();
         _layout = SelectLayoutDefinition.Default;
+        _materializationMode = SelectMaterializationMode.Eager;
         _query = string.Empty;
         _isConfigured = false;
         _lastMeasuredItemWidth = -1f;
@@ -272,6 +281,11 @@ public partial class NGenericSelectScreen : Control
         FallbackItemWidth = Mathf.CeilToInt(layout.ItemSize.X);
         FallbackItemHeight = Mathf.CeilToInt(layout.ItemSize.Y);
         ApplyLayoutSettings();
+    }
+
+    public void SetMaterializationMode(SelectMaterializationMode mode)
+    {
+        _materializationMode = mode;
     }
 
     public void AddFilterGroup(SelectFilterGroupDefinition group)
@@ -369,8 +383,16 @@ public partial class NGenericSelectScreen : Control
         if (resetScroll)
             ScrollToTop();
 
-        MaterializeViewportItemViews(InitialMaterializeBudget);
-        StartDeferredItemMaterialization();
+        if (_materializationMode == SelectMaterializationMode.Eager)
+        {
+            MaterializeAllItemViews();
+        }
+        else
+        {
+            MaterializeViewportItemViews(InitialMaterializeBudget);
+            StartDeferredItemMaterialization();
+        }
+
         UpdateViewportCulling();
     }
 
@@ -414,6 +436,8 @@ public partial class NGenericSelectScreen : Control
         if (!IsConfirmAllowed())
             return;
 
+        CloseOpenDropdowns();
+
         List<IGenericSelectItem> selected = _items
             .Where(item => _selectedAmounts.GetValueOrDefault(item.Id) > 0)
             .ToList();
@@ -423,6 +447,7 @@ public partial class NGenericSelectScreen : Control
 
     public void CancelSelection()
     {
+        CloseOpenDropdowns();
         Cancelled?.Invoke();
     }
 
@@ -466,7 +491,21 @@ public partial class NGenericSelectScreen : Control
     private void ApplyLocalizedSceneText()
     {
         if (_searchLineEdit is not null)
-            _searchLineEdit.PlaceholderText = SelectScreenLoc.Text("SEARCH", "Search");
+            _searchLineEdit.PlaceholderText = GameLoc("main_menu_ui", "CARD_LIBRARY_SEARCH", SelectScreenLoc.Text("SEARCH", "Search"));
+    }
+
+    private static string GameLoc(string table, string key, string fallback)
+    {
+        try
+        {
+            return LocString.Exists(table, key)
+                ? new LocString(table, key).GetFormattedText()
+                : fallback;
+        }
+        catch
+        {
+            return fallback;
+        }
     }
 
     private void BuildUtilityContainersIfMissing()
@@ -1018,7 +1057,10 @@ public partial class NGenericSelectScreen : Control
         {
             List<IGenericSelectItem> groupItems = itemsByKey.GetValueOrDefault(key) ?? new List<IGenericSelectItem>();
             SelectGroupHeader header = group.HeaderSelector(key);
-            if (groupItems.Count == 0 && !header.ShowWhenEmpty)
+            bool hasVisibleChildGroup = header.ChildGroupPrefix is not null
+                && itemsByKey.Any(pair => pair.Key.StartsWith(header.ChildGroupPrefix, StringComparison.Ordinal) && pair.Value.Count > 0);
+
+            if (groupItems.Count == 0 && !header.ShowWhenEmpty && !hasVisibleChildGroup)
                 continue;
 
             Control groupContainer = CreateGroupHeader(key, header);
@@ -1028,6 +1070,14 @@ public partial class NGenericSelectScreen : Control
             _generatedGroupContainers.Add(groupContainer);
             _visibleLayoutNodes.Add(groupContainer);
             y += _layout.GroupHeaderHeight + _layout.GroupHeaderGap;
+
+            if (groupItems.Count == 0)
+            {
+                if (!hasVisibleChildGroup)
+                    y += _layout.GroupSectionGap;
+
+                continue;
+            }
 
             for (int i = 0; i < groupItems.Count; i++)
             {
@@ -1076,6 +1126,20 @@ public partial class NGenericSelectScreen : Control
         }
     }
 
+    private void MaterializeAllItemViews()
+    {
+        if (_itemGrid is null)
+            return;
+
+        foreach (IGenericSelectItem item in _itemLayoutOrder)
+        {
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                continue;
+
+            MaterializeItemView(item, layout);
+        }
+    }
+
     private bool MaterializeItemView(IGenericSelectItem item, SelectItemLayout layout)
     {
         if (_itemGrid is null)
@@ -1092,6 +1156,22 @@ public partial class NGenericSelectScreen : Control
 
         item.UpdateView(BuildState(item, layout.VisibleIndex));
         return true;
+    }
+
+    private void CloseOpenDropdowns()
+    {
+        CloseOpenDropdowns(this);
+    }
+
+    private static void CloseOpenDropdowns(Node root)
+    {
+        foreach (Node child in root.GetChildren())
+        {
+            if (child is NLoadoutDropdown dropdown)
+                dropdown.CloseLoadoutDropdown(restoreFocus: false);
+
+            CloseOpenDropdowns(child);
+        }
     }
 
     private void StartDeferredItemMaterialization()
@@ -1234,8 +1314,8 @@ public partial class NGenericSelectScreen : Control
             label.AddThemeFontOverride("bold_italics_font", bold);
         }
 
-        label.AddThemeFontSizeOverride("normal_font_size", 26);
-        label.AddThemeFontSizeOverride("bold_font_size", 32);
+        label.AddThemeFontSizeOverride("normal_font_size", 24);
+        label.AddThemeFontSizeOverride("bold_font_size", 28);
         label.AddThemeColorOverride("default_color", StsColors.cream);
         label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
         label.AddThemeConstantOverride("shadow_offset_x", 3);
@@ -2047,6 +2127,12 @@ public sealed class SelectScreenBuilder<TModel>
         return this;
     }
 
+    public SelectScreenBuilder<TModel> Materialization(SelectMaterializationMode mode)
+    {
+        _screen.SetMaterializationMode(mode);
+        return this;
+    }
+
     public SelectScreenBuilder<TModel> Layout(
         int columns,
         Vector2 itemSize,
@@ -2317,29 +2403,31 @@ public sealed class SelectGroupHeader
 {
     private const string CategoryTitleColor = "#ffd75a";
 
-    public SelectGroupHeader(string text, Texture2D? icon = null, bool showWhenEmpty = false)
+    public SelectGroupHeader(string text, Texture2D? icon = null, bool showWhenEmpty = false, string? childGroupPrefix = null)
     {
         Text = text;
         Icon = icon;
         ShowWhenEmpty = showWhenEmpty;
+        ChildGroupPrefix = childGroupPrefix;
     }
 
-    public static SelectGroupHeader Category(string title, string? description = null, Texture2D? icon = null, bool showWhenEmpty = false)
+    public static SelectGroupHeader Category(string title, string? description = null, Texture2D? icon = null, bool showWhenEmpty = false, string? childGroupPrefix = null)
     {
-        return new SelectGroupHeader(FormatCategoryText(title, description), icon, showWhenEmpty);
+        return new SelectGroupHeader(FormatCategoryText(title, description), icon, showWhenEmpty, childGroupPrefix);
     }
 
     public static string FormatCategoryText(string title, string? description = null)
     {
         if (string.IsNullOrWhiteSpace(description))
-            return $"[color={CategoryTitleColor}][b]{title}[/b][/color]";
+            return $"[color={CategoryTitleColor}][font_size=28][b]{title}[/b][/font_size][/color]";
 
-        return $"[color={CategoryTitleColor}][b]{title}:[/b][/color] {description}";
+        return $"[color={CategoryTitleColor}][font_size=28][b]{title}:[/b][/font_size][/color] {description}";
     }
 
     public string Text { get; }
     public Texture2D? Icon { get; }
     public bool ShowWhenEmpty { get; }
+    public string? ChildGroupPrefix { get; }
 }
 
 public enum SelectSelectionMode
@@ -2353,6 +2441,12 @@ public enum SelectFilterGroupSelectionMode
 {
     Any,
     Single
+}
+
+public enum SelectMaterializationMode
+{
+    Lazy,
+    Eager
 }
 
 public sealed class SelectItemState
