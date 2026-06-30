@@ -108,20 +108,20 @@ public partial class NLoadoutPanel : Panel
 			{
 				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
-				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
+				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
 				AddCardPoolFilters(builder);
-				builder.FilterGroup("type", GameLoc("gameplay_ui", "SORT_TYPE", L("FILTER_GROUP_TYPE", "Type")));
+				builder.FilterGroup("type", GameLoc("gameplay_ui", "SORT_TYPE", SScreenLoc("FILTER_GROUP_TYPE", "Type")));
 				AddCardTypeFilters(builder, allCards);
-				builder.FilterGroup("rarity", GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", L("FILTER_GROUP_RARITY", "Rarity")));
+				builder.FilterGroup("rarity", GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", SScreenLoc("FILTER_GROUP_RARITY", "Rarity")));
 				AddCardRarityFilters(builder, allCards);
 				AddCardKeywordFilterGroup(builder, allCards);
 				AddCardTagFilterGroup(builder, allCards);
 				builder.Toggle(ViewUpgradesToggleId, GameLoc("card_library", "VIEW_UPGRADES", GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
 				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
-				builder.Sorter("library", L("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
-				builder.Sorter("name", GameLoc("gameplay_ui", "SORT_ALPHABET", L("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("cost", GameLoc("gameplay_ui", "SORT_COST", L("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
+				builder.Sorter("library", SScreenLoc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
+				builder.Sorter("name", GameLoc("gameplay_ui", "SORT_ALPHABET", SScreenLoc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("cost", GameLoc("gameplay_ui", "SORT_COST", SScreenLoc("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
 			},
 			ApplyCurrentCardClassFilter);
 
@@ -138,13 +138,13 @@ public partial class NLoadoutPanel : Panel
 			{
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(60f, 60f), 32, 32);
-				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
+				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
 				AddPotionPoolFilters(builder);
-				builder.FilterGroup("rarity", L("FILTER_GROUP_RARITY", "Rarity"));
+				builder.FilterGroup("rarity", SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
 				AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
-				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPotionTitle(a), FormatPotionTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", L("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
+				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPotionTitle(a), FormatPotionTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
 				builder.GroupBySorter(
 					"rarity",
 					GetPotionGroupKey,
@@ -166,13 +166,13 @@ public partial class NLoadoutPanel : Panel
 			{
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
-				builder.FilterGroup("class", L("FILTER_GROUP_CLASS", "Class"));
+				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
 				AddRelicPoolFilters(builder);
-				builder.FilterGroup("rarity", L("FILTER_GROUP_RARITY", "Rarity"));
+				builder.FilterGroup("rarity", SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
 				AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
-				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", L("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
+				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
 				builder.GroupBySorter(
 					"rarity",
 					relic => GetRelicGroupKey(relic, relicGroupingData),
@@ -193,15 +193,15 @@ public partial class NLoadoutPanel : Panel
 			{
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(4, new Vector2(220f, 120f), 24, 24);
-				builder.FilterGroup("layout", L("FILTER_GROUP_LAYOUT", "Layout"));
-				builder.Filter("default", L("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
-				builder.Filter("combat", L("LAYOUT_COMBAT", "Combat"), eventModel => eventModel.LayoutType == EventLayoutType.Combat, "layout");
-				builder.Filter("ancient", L("LAYOUT_ANCIENT", "Ancient"), eventModel => eventModel.LayoutType == EventLayoutType.Ancient, "layout");
-				builder.FilterGroup("sharing", L("FILTER_GROUP_SCOPE", "Scope"));
-				builder.Filter("shared", L("SCOPE_SHARED", "Shared"), eventModel => eventModel.IsShared, "sharing");
-				builder.Filter("solo", L("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
-				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatEventTitle(a), FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.FilterGroup("layout", SScreenLoc("FILTER_GROUP_LAYOUT", "Layout"));
+				builder.Filter("default", SScreenLoc("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
+				builder.Filter("combat", SScreenLoc("LAYOUT_COMBAT", "Combat"), eventModel => eventModel.LayoutType == EventLayoutType.Combat, "layout");
+				builder.Filter("ancient", SScreenLoc("LAYOUT_ANCIENT", "Ancient"), eventModel => eventModel.LayoutType == EventLayoutType.Ancient, "layout");
+				builder.FilterGroup("sharing", SScreenLoc("FILTER_GROUP_SCOPE", "Scope"));
+				builder.Filter("shared", SScreenLoc("SCOPE_SHARED", "Shared"), eventModel => eventModel.IsShared, "sharing");
+				builder.Filter("solo", SScreenLoc("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
+				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatEventTitle(a), FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 			});
 
 		CreateAndAddLoadoutItem(
@@ -216,17 +216,17 @@ public partial class NLoadoutPanel : Panel
 			{
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
-				builder.FilterGroup("type", L("FILTER_GROUP_TYPE", "Type"));
-				builder.Filter("buff", L("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
-				builder.Filter("debuff", L("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
-				builder.Filter("type_none", L("NONE", "None"), power => power.Type == PowerType.None, "type");
-				builder.FilterGroup("stack", L("FILTER_GROUP_STACK", "Stack"));
-				builder.Filter("stack_none", L("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
-				builder.Filter("counter", L("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
-				builder.Filter("single", L("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
-				builder.Sorter("name", L("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", L("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("type", GameLoc("gameplay_ui", "SORT_TYPE", L("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
+				builder.FilterGroup("type", SScreenLoc("FILTER_GROUP_TYPE", "Type"));
+				builder.Filter("buff", SScreenLoc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
+				builder.Filter("debuff", SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
+				builder.Filter("type_none", SScreenLoc("NONE", "None"), power => power.Type == PowerType.None, "type");
+				builder.FilterGroup("stack", SScreenLoc("FILTER_GROUP_STACK", "Stack"));
+				builder.Filter("stack_none", SScreenLoc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
+				builder.Filter("counter", SScreenLoc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
+				builder.Filter("single", SScreenLoc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
+				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("type", GameLoc("gameplay_ui", "SORT_TYPE", SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
 			});
 	}
 
@@ -339,7 +339,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NLabPotionHolder? holder = NLabPotionHolder.Create(model.ToMutable(), ModelVisibility.Visible);
 		if (holder is null)
-			return CreateTextModelGridItem(model, FormatPotionTitle(model), model.Id.Entry, L("CATEGORY_POTION", "Potion"));
+			return CreateTextModelGridItem(model, FormatPotionTitle(model), model.Id.Entry, SScreenLoc("CATEGORY_POTION", "Potion"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(60f, 60f);
@@ -350,7 +350,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NRelicCollectionEntry? holder = NRelicCollectionEntry.Create(model, ModelVisibility.Visible);
 		if (holder is null)
-			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, L("CATEGORY_RELIC", "Relic"));
+			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, SScreenLoc("CATEGORY_RELIC", "Relic"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(68f, 68f);
@@ -699,7 +699,7 @@ public partial class NLoadoutPanel : Panel
 		if (keywords.Count == 0)
 			return;
 
-		builder.FilterGroup("keyword", L("FILTER_GROUP_KEYWORD", "Keyword"));
+		builder.FilterGroup("keyword", SScreenLoc("FILTER_GROUP_KEYWORD", "Keyword"));
 		foreach (CardKeyword keyword in keywords)
 		{
 			CardKeyword localKeyword = keyword;
@@ -728,7 +728,7 @@ public partial class NLoadoutPanel : Panel
 		if (tags.Count == 0)
 			return;
 
-		builder.FilterGroup("tag", L("FILTER_GROUP_TAG", "Tag"));
+		builder.FilterGroup("tag", SScreenLoc("FILTER_GROUP_TAG", "Tag"));
 		foreach (CardTag tag in tags)
 		{
 			CardTag localTag = tag;
@@ -831,13 +831,13 @@ public partial class NLoadoutPanel : Panel
 
 		string typeName = pool.GetType().Name;
 		if (typeName.StartsWith("Shared", StringComparison.Ordinal))
-			return L("POOL_SHARED", "Shared");
+			return SScreenLoc("POOL_SHARED", "Shared");
 
 		if (typeName.StartsWith("Colorless", StringComparison.Ordinal))
-			return L("POOL_COLORLESS", "Colorless");
+			return SScreenLoc("POOL_COLORLESS", "Colorless");
 
 		if (typeName.StartsWith("Event", StringComparison.Ordinal))
-			return L("POOL_EVENT", "Event");
+			return SScreenLoc("POOL_EVENT", "Event");
 
 		return PrettifyPoolTypeName(typeName);
 	}
@@ -1012,7 +1012,7 @@ public partial class NLoadoutPanel : Panel
 			"potion:uncommon" => new SelectGroupHeader(new LocString("potion_lab", "UNCOMMON").GetFormattedText()),
 			"potion:rare" => new SelectGroupHeader(new LocString("potion_lab", "RARE").GetFormattedText()),
 			"potion:special" => new SelectGroupHeader(new LocString("potion_lab", "SPECIAL").GetFormattedText()),
-			_ => SelectGroupHeader.Category(L("OTHER", "Other"))
+			_ => SelectGroupHeader.Category(SScreenLoc("OTHER", "Other"))
 		};
 	}
 
@@ -1109,7 +1109,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		return groupingData.HeadersByKey.TryGetValue(key, out SelectGroupHeader? header)
 			? header
-			: SelectGroupHeader.Category(L("OTHER", "Other"));
+			: SelectGroupHeader.Category(SScreenLoc("OTHER", "Other"));
 	}
 
 	private static Texture2D? TryGetValidTexture(Texture2D? texture)
@@ -1148,7 +1148,7 @@ public partial class NLoadoutPanel : Panel
 		}
 	}
 
-	private static string L(string key, string fallback)
+	private static string SScreenLoc(string key, string fallback)
 	{
 		return SelectScreenLoc.Text(key, fallback);
 	}
@@ -1274,8 +1274,8 @@ public partial class NLoadoutPanel : Panel
 	private static string FormatEventCategory(EventModel eventModel)
 	{
 		return eventModel.LayoutType == EventLayoutType.Ancient
-			? L("LAYOUT_ANCIENT", "Ancient")
-			: L("CATEGORY_EVENT", "Event");
+			? SScreenLoc("LAYOUT_ANCIENT", "Ancient")
+			: SScreenLoc("CATEGORY_EVENT", "Event");
 	}
 
 	private static string GetFirstEventDescriptionParagraph(LocString description)
@@ -1309,9 +1309,9 @@ public partial class NLoadoutPanel : Panel
 	{
 		return type switch
 		{
-			PowerType.Buff => L("POWER_TYPE_BUFF", "Buff"),
-			PowerType.Debuff => L("POWER_TYPE_DEBUFF", "Debuff"),
-			_ => L("NONE", "None")
+			PowerType.Buff => SScreenLoc("POWER_TYPE_BUFF", "Buff"),
+			PowerType.Debuff => SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"),
+			_ => SScreenLoc("NONE", "None")
 		};
 	}
 
