@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.UI.Screens;
@@ -108,6 +109,7 @@ public partial class NLoadoutPanel : Panel
 				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
 			}, builder =>
 			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
 				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
@@ -126,13 +128,14 @@ public partial class NLoadoutPanel : Panel
 			},null,
 			"LoadoutBag.png",
 			"Loadout Bag",
-			"A bag that contains everthing.");
+			"A bag that contains everthing.",
+			HandleAddRelicActivatedAsync);
 		//02 - TRASH BIN
 		CreateAndAddDynamicLoadoutItem(
 			GetLocalRelics,
 			new SelectItemAdapter<RelicModel>
 			{
-				GetId = relic => relic.Id.ToString(),
+				GetId = RuntimeItemId,
 				GetName = relic => FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
 				CreateView = (relic, _) => CreateRelicGridItem(relic),
@@ -160,6 +163,7 @@ public partial class NLoadoutPanel : Panel
 				BindActivation = (_, view, activate) => BindGuiReleaseActivation(view, activate)
 			}, builder =>
 			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(60f, 60f), 32, 32);
 				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
@@ -178,7 +182,8 @@ public partial class NLoadoutPanel : Panel
 			}, null,
 			"LoadoutCauldron.png",
 			"Loadout Cauldron",
-			"A cauldron that creates any potion.");
+			"A cauldron that creates any potion.",
+			HandleAddPotionActivatedAsync);
 
 		//04 - CARD PRINTER
 		CreateAndAddLoadoutItem(
@@ -194,6 +199,7 @@ public partial class NLoadoutPanel : Panel
 				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
 			}, builder =>
 			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
@@ -214,13 +220,14 @@ public partial class NLoadoutPanel : Panel
 			ApplyCurrentCardClassFilter, 
 			"CardPrinter.png",
 			"Card Printer",
-			"It prints any cards you want.");
+			"It prints any cards you want.",
+			HandleAddCardActivatedAsync);
 		//05 - CARD SHREDDER
 		CreateAndAddDynamicLoadoutItem(
 			GetLocalDeckCards,
 			new SelectItemAdapter<CardModel>
 			{
-				GetId = card => card.Id.ToString(),
+				GetId = RuntimeItemId,
 				GetName = card => FormatCardTitle(card),
 				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
 				CreateView = CreateCardGridItem,
@@ -344,20 +351,58 @@ public partial class NLoadoutPanel : Panel
 		Action<NGenericSelectScreen>? beforeOpen,
 		string textureFileName,
 		string title,
-		string description)
+		string description,
+		Func<NGenericSelectScreen, IGenericSelectItem, Task>? onActivated = null)
 	{
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
+		bool activationInFlight = false;
+
 		screen.Configure(models, adapter, builder);
 		screen.Cancelled += CloseTopLoadoutScreen;
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
+		if (onActivated is not null)
+		{
+			screen.ItemActivated += (selectItem, state) =>
+			{
+				if (activationInFlight)
+					return;
+
+				activationInFlight = true;
+				_ = HandleStaticItemActivatedAsync(
+					screen,
+					selectItem,
+					onActivated,
+					() => activationInFlight = false);
+			};
+		}
 
 		item.BoundScreen = screen;
 		if (beforeOpen is not null)
 			item.BeforeOpen = beforeOpen;
 
 		_itemsContainer.AddChild(item);
+	}
+
+	private static async Task HandleStaticItemActivatedAsync(
+		NGenericSelectScreen screen,
+		IGenericSelectItem selectItem,
+		Func<NGenericSelectScreen, IGenericSelectItem, Task> onActivated,
+		Action clearActivation)
+	{
+		try
+		{
+			await onActivated(screen, selectItem);
+		}
+		catch (Exception exception)
+		{
+			GD.PushError($"LoadoutPanel: item activation failed for '{selectItem.Id}' ({selectItem.Name}): {exception}");
+		}
+		finally
+		{
+			clearActivation();
+		}
 	}
 
 	private void CreateAndAddDynamicLoadoutItem<TModel>(
@@ -374,9 +419,18 @@ public partial class NLoadoutPanel : Panel
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool activationInFlight = false;
 
-		void ConfigureCurrentModels(NGenericSelectScreen target)
+		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
 		{
-			target.Configure(getModels(), adapter, builder);
+			IReadOnlyList<TModel> models = getModels();
+			if (models.Count == 0)
+				LogEmptyDynamicScreen(title);
+
+			if (preserveViews)
+				target.ConfigurePreservingViews(models, adapter, builder, animateRelayout: true);
+			else
+				target.Configure(models, adapter, builder);
+
+			target.RequestDeferredVisibleRefresh();
 		}
 
 		ConfigureCurrentModels(screen);
@@ -392,14 +446,25 @@ public partial class NLoadoutPanel : Panel
 				screen,
 				selectItem,
 				onActivated,
-				ConfigureCurrentModels,
+				target => ConfigureCurrentModels(target, preserveViews: true),
 				() => activationInFlight = false);
 		};
 
 		item.BoundScreen = screen;
-		item.BeforeOpen = ConfigureCurrentModels;
+		item.BeforeOpen = target => ConfigureCurrentModels(target);
 
 		_itemsContainer.AddChild(item);
+	}
+
+	private static void LogEmptyDynamicScreen(string title)
+	{
+		bool isInProgress = RunManager.Instance.IsInProgress;
+		Player? localPlayer = GetLocalRunPlayer();
+		int deckCount = localPlayer?.Deck.Cards.Count ?? -1;
+		int relicCount = localPlayer?.Relics.Count ?? -1;
+		GD.PushWarning(
+			$"LoadoutPanel: dynamic screen '{title}' has no items. " +
+			$"isInProgress={isInProgress}, localPlayerResolved={localPlayer is not null}, deckCount={deckCount}, relicCount={relicCount}.");
 	}
 
 	private static async Task HandleDynamicItemActivatedAsync(
@@ -443,12 +508,103 @@ public partial class NLoadoutPanel : Panel
 			if (!RunManager.Instance.IsInProgress)
 				return null;
 
-			return LocalContext.GetMe(AccessTools.Field(typeof(RunManager),"State").GetValue(RunManager.Instance) as RunState);
+			return LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState());
 		}
 		catch (Exception exception)
 		{
 			GD.PushWarning($"LoadoutPanel: could not resolve local run player. {exception.Message}");
 			return null;
+		}
+	}
+
+	private static string RuntimeItemId(AbstractModel model)
+	{
+		return $"{model.Id}:{RuntimeHelpers.GetHashCode(model)}";
+	}
+
+	private static async Task HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	{
+		if (selectItem.UntypedModel is not CardModel canonicalCard)
+			return;
+
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null)
+			return;
+
+		int multiplier = screen.GetCurrentActivationMultiplier();
+		List<CardPileAddResult> results = new();
+		for (int i = 0; i < multiplier; i++)
+		{
+			try
+			{
+				CardModel card = localPlayer.RunState.CreateCard(canonicalCard, localPlayer);
+				CardPileAddResult result = await CardPileCmd.Add(card, PileType.Deck);
+				if (!result.success)
+					break;
+
+				results.Add(result);
+			}
+			catch (Exception exception)
+			{
+				GD.PushWarning($"LoadoutPanel: stopped adding card '{selectItem.Id}' after {results.Count}/{multiplier} copies. {exception.Message}");
+				break;
+			}
+		}
+
+		if (results.Count == 0)
+			return;
+
+		CardPreviewStyle previewStyle = results.Count > 5 ? CardPreviewStyle.MessyLayout : CardPreviewStyle.HorizontalLayout;
+		CardCmd.PreviewCardPileAdd(results, 2f, previewStyle);
+	}
+
+	private static async Task HandleAddRelicActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	{
+		if (selectItem.UntypedModel is not RelicModel canonicalRelic)
+			return;
+
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null)
+			return;
+
+		int multiplier = screen.GetCurrentActivationMultiplier();
+		for (int i = 0; i < multiplier; i++)
+		{
+			try
+			{
+				await RelicCmd.Obtain(canonicalRelic.ToMutable(), localPlayer);
+			}
+			catch (Exception exception)
+			{
+				GD.PushWarning($"LoadoutPanel: stopped adding relic '{selectItem.Id}' after {i}/{multiplier} copies. {exception.Message}");
+				break;
+			}
+		}
+	}
+
+	private static async Task HandleAddPotionActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	{
+		if (selectItem.UntypedModel is not PotionModel canonicalPotion)
+			return;
+
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null)
+			return;
+
+		int multiplier = screen.GetCurrentActivationMultiplier();
+		for (int i = 0; i < multiplier; i++)
+		{
+			try
+			{
+				PotionProcureResult result = await PotionCmd.TryToProcure(canonicalPotion.ToMutable(), localPlayer);
+				if (!result.success)
+					break;
+			}
+			catch (Exception exception)
+			{
+				GD.PushWarning($"LoadoutPanel: stopped adding potion '{selectItem.Id}' after {i}/{multiplier} copies. {exception.Message}");
+				break;
+			}
 		}
 	}
 

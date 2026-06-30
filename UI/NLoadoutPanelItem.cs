@@ -2,9 +2,9 @@ using Godot;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.HoverTips;
-using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System;
+using System.Reflection;
 
 namespace Loadout.UI;
 
@@ -42,6 +42,8 @@ public partial class NLoadoutPanelItem : TextureButton
 	private Vector2 _basePosition;
 	private NGenericSelectScreen _boundScreen;
 	private Action<NGenericSelectScreen> _beforeOpen;
+	private static readonly FieldInfo HoverTipTitleField = typeof(HoverTip).GetField("<Title>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
+	private static readonly FieldInfo HoverTipDescriptionField = typeof(HoverTip).GetField("<Description>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
 
 	public NLoadoutPanelItem()
 	{
@@ -179,12 +181,20 @@ public partial class NLoadoutPanelItem : TextureButton
 		if (string.IsNullOrWhiteSpace(DisplayName) && string.IsNullOrWhiteSpace(Description))
 			return;
 
-		LocString title = new("loadout", "LOADOUT_PANEL_ITEM_TITLE");
-		title.Add("Title", string.IsNullOrWhiteSpace(DisplayName) ? TextureFileName : DisplayName);
-
 		NHoverTipSet.Remove(this);
-		NHoverTipSet.CreateAndShow(this, new HoverTip(title, Description), HoverTip.GetHoverTipAlignment(this))?.SetFollowOwner();
+		NHoverTipSet.CreateAndShow(this, CreatePlainHoverTip(), HoverTip.GetHoverTipAlignment(this))?.SetFollowOwner();
 		NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+	}
+
+	private HoverTip CreatePlainHoverTip()
+	{
+		HoverTip hoverTip = default;
+		object boxed = hoverTip;
+		HoverTipTitleField?.SetValue(boxed, string.IsNullOrWhiteSpace(DisplayName) ? TextureFileName : DisplayName);
+		HoverTipDescriptionField?.SetValue(boxed, Description);
+		hoverTip = (HoverTip)boxed;
+		hoverTip.Id = $"loadout_panel_item:{TextureFileName}:{DisplayName}";
+		return hoverTip;
 	}
 
 	private void OnResized()

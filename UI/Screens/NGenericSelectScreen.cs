@@ -36,6 +36,8 @@ public partial class NGenericSelectScreen : Control
     private const float MaterializeRowsAhead = 3f;
     private const float MaterializeRowsBehind = 2f;
     private const float CullRetentionRows = 0.75f;
+    private const float RelayoutTweenSeconds = 0.18f;
+    private const float RelayoutTweenMinDistance = 1f;
 
     [Export]
     public NodePath SearchLineEditPath = "Sidebar/MarginContainer/TopVBox/SearchBar/TextArea";
@@ -143,6 +145,8 @@ public partial class NGenericSelectScreen : Control
     private ulong _scheduledEagerRefreshGeneration;
     private ulong _scheduledVisibleRefreshGeneration;
     private ulong _lastEagerMismatchWarningGeneration;
+    private Control? _multiplierBadge;
+    private MegaLabel? _multiplierBadgeLabel;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -185,6 +189,7 @@ public partial class NGenericSelectScreen : Control
     public override void _Process(double delta)
     {
         UpdateSelectScroll(delta);
+        UpdateMultiplierBadge();
         KeepHoverTipsAboveSelectScreen();
     }
 
@@ -233,10 +238,76 @@ public partial class NGenericSelectScreen : Control
         RefreshNow(resetScroll: true);
     }
 
-    public void ResetConfiguration()
+    public void ConfigurePreservingViews<TModel>(
+        IEnumerable<TModel> models,
+        SelectItemAdapter<TModel> adapter,
+        Action<SelectScreenBuilder<TModel>>? build = null,
+        bool animateRelayout = false)
+    {
+        Dictionary<string, Control> reusableViews = CaptureReusableItemViewsById();
+        Dictionary<string, Vector2> previousPositions = CaptureItemPositionsById();
+
+        ResetConfiguration(clearItemViews: false);
+
+        SelectScreenBuilder<TModel> builder = new(this, adapter);
+        build?.Invoke(builder);
+
+        int index = 0;
+        foreach (TModel model in models)
+        {
+            GenericSelectItem<TModel> item = new(model, adapter, index);
+            if (reusableViews.Remove(item.Id, out Control? view) && GodotObject.IsInstanceValid(view))
+                item.SetView(view);
+
+            _items.Add(item);
+            index++;
+        }
+
+        foreach (Control staleView in reusableViews.Values)
+        {
+            if (!GodotObject.IsInstanceValid(staleView))
+                continue;
+
+            staleView.GetParent()?.RemoveChild(staleView);
+            staleView.QueueFreeSafely();
+        }
+
+        _isConfigured = true;
+        RefreshNow(resetScroll: false);
+
+        if (animateRelayout)
+            AnimateRelayoutFrom(previousPositions);
+    }
+
+    public void RequestDeferredVisibleRefresh()
+    {
+        ScheduleDeferredVisibleRefresh();
+    }
+
+    public int GetCurrentActivationMultiplier()
+    {
+        return GetCurrentInputMultiplier();
+    }
+
+    public static int GetCurrentInputMultiplier()
+    {
+        bool shift = Input.IsKeyPressed(Key.Shift);
+        bool ctrl = Input.IsKeyPressed(Key.Ctrl);
+
+        return (shift, ctrl) switch
+        {
+            (true, true) => 50,
+            (true, false) => 10,
+            (false, true) => 5,
+            _ => 1
+        };
+    }
+
+    public void ResetConfiguration(bool clearItemViews = true)
     {
         CancelPendingMaterialization();
-        ClearItemViews();
+        if (clearItemViews)
+            ClearItemViews();
 
         _items.Clear();
         _visibleItems.Clear();
@@ -401,6 +472,60 @@ public partial class NGenericSelectScreen : Control
         }
 
         UpdateViewportCulling();
+    }
+
+    private Dictionary<string, Control> CaptureReusableItemViewsById()
+    {
+        Dictionary<string, Control> views = new(StringComparer.Ordinal);
+        foreach (IGenericSelectItem item in _items)
+        {
+            if (item.View is null || !GodotObject.IsInstanceValid(item.View) || views.ContainsKey(item.Id))
+                continue;
+
+            views[item.Id] = item.View;
+        }
+
+        return views;
+    }
+
+    private Dictionary<string, Vector2> CaptureItemPositionsById()
+    {
+        Dictionary<string, Vector2> positions = new(StringComparer.Ordinal);
+        foreach (IGenericSelectItem item in _items)
+        {
+            if (item.View is null || !GodotObject.IsInstanceValid(item.View) || positions.ContainsKey(item.Id))
+                continue;
+
+            positions[item.Id] = item.View.Position;
+        }
+
+        return positions;
+    }
+
+    private void AnimateRelayoutFrom(IReadOnlyDictionary<string, Vector2> previousPositions)
+    {
+        if (previousPositions.Count == 0)
+            return;
+
+        foreach (IGenericSelectItem item in _items)
+        {
+            if (item.View is null || !GodotObject.IsInstanceValid(item.View))
+                continue;
+
+            if (!previousPositions.TryGetValue(item.Id, out Vector2 previousPosition))
+                continue;
+
+            Control view = item.View;
+            Vector2 targetPosition = view.Position;
+            if (previousPosition.DistanceTo(targetPosition) <= RelayoutTweenMinDistance)
+                continue;
+
+            view.Position = previousPosition;
+            Tween tween = view.CreateTween();
+            tween.TweenProperty(view, "position", targetPosition, RelayoutTweenSeconds)
+                .SetEase(Tween.EaseType.Out)
+                .SetTrans(Tween.TransitionType.Cubic);
+        }
     }
 
     public void ClearSelection()
@@ -1849,6 +1974,80 @@ public partial class NGenericSelectScreen : Control
     private static void KeepHoverTipsAboveSelectScreen()
     {
         NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+    }
+
+    private void UpdateMultiplierBadge()
+    {
+        int multiplier = GetCurrentInputMultiplier();
+        if (multiplier <= 1 || !IsVisibleInTree())
+        {
+            if (_multiplierBadge is not null)
+                _multiplierBadge.Visible = false;
+
+            return;
+        }
+
+        EnsureMultiplierBadge();
+        if (_multiplierBadge is null || _multiplierBadgeLabel is null)
+            return;
+
+        _multiplierBadge.Visible = true;
+        _multiplierBadgeLabel.Text = $"x{multiplier}";
+
+        Vector2 globalMouse = GetViewport().GetMousePosition();
+        Vector2 localMouse = GetGlobalTransformWithCanvas().AffineInverse() * globalMouse;
+        _multiplierBadge.Position = localMouse + new Vector2(22f, 18f);
+        _multiplierBadge.MoveToFront();
+    }
+
+    private void EnsureMultiplierBadge()
+    {
+        if (_multiplierBadge is not null && GodotObject.IsInstanceValid(_multiplierBadge))
+            return;
+
+        Control badge = new()
+        {
+            Name = "MultiplierBadge",
+            MouseFilter = MouseFilterEnum.Ignore,
+            ZIndex = 200,
+            Size = new Vector2(70f, 38f),
+            CustomMinimumSize = new Vector2(70f, 38f),
+            Visible = false
+        };
+
+        ColorRect background = new()
+        {
+            Name = "Background",
+            MouseFilter = MouseFilterEnum.Ignore,
+            Color = new Color(0.02f, 0.025f, 0.03f, 0.82f),
+            Size = badge.Size
+        };
+        badge.AddChild(background);
+
+        MegaLabel label = new()
+        {
+            Name = "Label",
+            Text = "x5",
+            AutoSizeEnabled = false,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore,
+            Position = Vector2.Zero,
+            Size = badge.Size
+        };
+        if (LoadGameFont("res://themes/kreon_bold_glyph_space_one.tres") is { } font)
+            label.AddThemeFontOverride("font", font);
+
+        label.AddThemeFontSizeOverride("font_size", 26);
+        label.AddThemeColorOverride("font_color", StsColors.gold);
+        label.AddThemeColorOverride("font_shadow_color", Colors.Black);
+        label.AddThemeConstantOverride("shadow_offset_x", 3);
+        label.AddThemeConstantOverride("shadow_offset_y", 2);
+        badge.AddChild(label);
+
+        AddChild(badge);
+        _multiplierBadge = badge;
+        _multiplierBadgeLabel = label;
     }
 
     private void ApplyLayoutSettings()
