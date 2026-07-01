@@ -83,6 +83,7 @@ public partial class NGenericSelectScreen : Control
 
     public event Action<IReadOnlyList<IGenericSelectItem>>? Confirmed;
     public event Action? Cancelled;
+    public event Action? ScreenClosed;
     public event Action<IGenericSelectItem, SelectItemState>? ItemActivated;
     public event Action<IGenericSelectItem, SelectItemState>? ItemSelectionChanged;
     public event Action? LocaleChanged;
@@ -205,6 +206,7 @@ public partial class NGenericSelectScreen : Control
             CloseOpenDropdowns();
             ReleaseFocusInsideScreen();
             SetActionButtonsActive(false);
+            ScreenClosed?.Invoke();
         }
 
         if (what == NotificationVisibilityChanged && Visible)

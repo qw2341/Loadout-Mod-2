@@ -43,12 +43,37 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using System.Text.RegularExpressions;
 using HarmonyLib;
+using Loadout.Services.LastActions;
 using Loadout.Services.PowerGiver;
 
 namespace  Loadout.UI;
 
 public partial class NLoadoutPanel : Panel
 {
+	private delegate Task<IReadOnlyList<LastActionEntry>> SelectActivationHandler(NGenericSelectScreen screen, IGenericSelectItem selectItem);
+
+	private sealed class LastActionCaptureSession
+	{
+		private readonly string _itemKey;
+		private readonly List<LastActionEntry> _entries = new();
+
+		public LastActionCaptureSession(string itemKey)
+		{
+			_itemKey = itemKey;
+		}
+
+		public void Add(IReadOnlyList<LastActionEntry> entries)
+		{
+			_entries.AddRange(entries);
+		}
+
+		public void Commit()
+		{
+			if (_entries.Count > 0)
+				LastActionService.SaveAction(_itemKey, _entries);
+		}
+	}
+
 	private const int MaxLoadoutItemInitAttempts = 120;
 	private const string ViewUpgradesToggleId = "view_upgrades";
 	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
@@ -149,7 +174,9 @@ public partial class NLoadoutPanel : Panel
 			"LoadoutBag.png",
 			"Loadout Bag",
 			"A bag that contains everthing.",
-			HandleAddRelicActivatedAsync);
+			HandleAddRelicActivatedAsync,
+			LastActionService.LoadoutBagKey,
+			ReplayLoadoutBagLastActionAsync);
 		//02 - TRASH BIN
 		CreateAndAddDynamicLoadoutItem(
 			GetLocalRelics,
@@ -241,7 +268,9 @@ public partial class NLoadoutPanel : Panel
 			"CardPrinter.png",
 			"Card Printer",
 			"It prints any cards you want.",
-			HandleAddCardActivatedAsync);
+			HandleAddCardActivatedAsync,
+			LastActionService.CardPrinterKey,
+			ReplayCardPrinterLastActionAsync);
 		//05 - CARD SHREDDER
 		CreateAndAddDynamicLoadoutItem(
 			GetLocalDeckCards,
@@ -329,7 +358,9 @@ public partial class NLoadoutPanel : Panel
 			"EventfulCompass.png",
 			"Eventful Compass",
 			"A compass that leads to your heart's desire.",
-			HandleEnterEventActivatedAsync);
+			HandleEnterEventActivatedAsync,
+			LastActionService.EventfulCompassKey,
+			ReplayEventfulCompassLastActionAsync);
 		//08 - POWER GIVER
 		CreateAndAddPowerGiverItem(
 			"PowerGiver.png",
@@ -386,12 +417,15 @@ public partial class NLoadoutPanel : Panel
 		string textureFileName,
 		string title,
 		string description,
-		Func<NGenericSelectScreen, IGenericSelectItem, Task>? onActivated = null)
+		SelectActivationHandler? onActivated = null,
+		string? lastActionItemKey = null,
+		Func<Task>? replayQuickAction = null)
 	{
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool activationInFlight = false;
+		LastActionCaptureSession? captureSession = null;
 
 		void ConfigureScreen(NGenericSelectScreen target)
 		{
@@ -409,6 +443,11 @@ public partial class NLoadoutPanel : Panel
 		};
 		screen.Cancelled += CloseTopLoadoutScreen;
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
+		screen.ScreenClosed += () =>
+		{
+			captureSession?.Commit();
+			captureSession = null;
+		};
 		if (onActivated is not null)
 		{
 			screen.ItemActivated += (selectItem, state) =>
@@ -421,11 +460,15 @@ public partial class NLoadoutPanel : Panel
 					screen,
 					selectItem,
 					onActivated,
+					entries => captureSession?.Add(entries),
 					() => activationInFlight = false);
 			};
 		}
 
 		item.BoundScreen = screen;
+		item.QuickAction = replayQuickAction;
+		if (lastActionItemKey is not null)
+			item.AfterOpen = _ => captureSession = new LastActionCaptureSession(lastActionItemKey);
 		item.BeforeOpen = target =>
 		{
 			if (!target.IsConfiguredForCurrentLocale)
@@ -443,12 +486,15 @@ public partial class NLoadoutPanel : Panel
 	private static async Task HandleStaticItemActivatedAsync(
 		NGenericSelectScreen screen,
 		IGenericSelectItem selectItem,
-		Func<NGenericSelectScreen, IGenericSelectItem, Task> onActivated,
+		SelectActivationHandler onActivated,
+		Action<IReadOnlyList<LastActionEntry>> recordLastActions,
 		Action clearActivation)
 	{
 		try
 		{
-			await onActivated(screen, selectItem);
+			IReadOnlyList<LastActionEntry> entries = await onActivated(screen, selectItem);
+			if (entries.Count > 0)
+				recordLastActions(entries);
 		}
 		catch (Exception exception)
 		{
@@ -469,6 +515,7 @@ public partial class NLoadoutPanel : Panel
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
+		LastActionCaptureSession? captureSession = null;
 
 		SelectItemAdapter<PowerModel> adapter = new()
 		{
@@ -480,7 +527,11 @@ public partial class NLoadoutPanel : Panel
 				PowerGiverStateService.GetCounter(PowerId(power)),
 				PowerGiverStateService.IsFavorite(PowerId(power)) && !showPowerGiverFavoritesOnly),
 			UpdateView = (power, view, _) => UpdatePowerGridItem(view, power, showPowerGiverFavoritesOnly),
-			BindActivation = (power, view, _) => BindPowerGiverActivation(screen, power, view)
+			BindActivation = (power, view, _) => BindPowerGiverActivation(
+				screen,
+				power,
+				view,
+				entry => captureSession?.Add([entry]))
 		};
 
 		void ConfigurePowerGiverScreen(NGenericSelectScreen target, bool resetFavoriteMode = true)
@@ -540,8 +591,18 @@ public partial class NLoadoutPanel : Panel
 		};
 		screen.Cancelled += CloseTopLoadoutScreen;
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
+		screen.ScreenClosed += () =>
+		{
+			captureSession?.Commit();
+			captureSession = null;
+		};
 		item.BoundScreen = screen;
-		item.BeforeOpen = RefreshPowerGiverScreenForOpen;
+		item.QuickAction = ReplayPowerGiverLastActionAsync;
+		item.AfterOpen = _ => captureSession = new LastActionCaptureSession(LastActionService.PowerGiverKey);
+		item.BeforeOpen = target =>
+		{
+			RefreshPowerGiverScreenForOpen(target);
+		};
 		_itemsContainer.AddChild(item);
 	}
 
@@ -549,7 +610,7 @@ public partial class NLoadoutPanel : Panel
 		Func<IReadOnlyList<TModel>> getModels,
 		SelectItemAdapter<TModel> adapter,
 		Action<SelectScreenBuilder<TModel>> builder,
-		Func<NGenericSelectScreen, IGenericSelectItem, Task> onActivated,
+		SelectActivationHandler onActivated,
 		string textureFileName,
 		string title,
 		string description)
@@ -655,7 +716,7 @@ public partial class NLoadoutPanel : Panel
 	private static async Task HandleDynamicItemActivatedAsync(
 		NGenericSelectScreen screen,
 		IGenericSelectItem selectItem,
-		Func<NGenericSelectScreen, IGenericSelectItem, Task> onActivated,
+		SelectActivationHandler onActivated,
 		Action<NGenericSelectScreen> refresh,
 		Action clearActivation)
 	{
@@ -707,18 +768,35 @@ public partial class NLoadoutPanel : Panel
 		return $"{model.Id}:{RuntimeHelpers.GetHashCode(model)}";
 	}
 
-	private static async Task HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	private static async Task<IReadOnlyList<LastActionEntry>> HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not CardModel canonicalCard)
-			return;
-
-		Player? localPlayer = GetLocalRunPlayer();
-		if (localPlayer is null)
-			return;
+			return [];
 
 		int multiplier = screen.GetCurrentActivationMultiplier();
+		int added = await AddCardCopiesAsync(canonicalCard, multiplier, selectItem.Id);
+
+		return added > 0
+			?
+			[
+				new LastActionEntry
+				{
+					Kind = LastActionService.AddCardKind,
+					ContentId = canonicalCard.Id.ToString(),
+					Amount = added
+				}
+			]
+			: [];
+	}
+
+	private static async Task<int> AddCardCopiesAsync(CardModel canonicalCard, int amount, string logId)
+	{
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null || amount <= 0)
+			return 0;
+
 		List<CardPileAddResult> results = new();
-		for (int i = 0; i < multiplier; i++)
+		for (int i = 0; i < amount; i++)
 		{
 			try
 			{
@@ -731,50 +809,71 @@ public partial class NLoadoutPanel : Panel
 			}
 			catch (Exception exception)
 			{
-				GD.PushWarning($"LoadoutPanel: stopped adding card '{selectItem.Id}' after {results.Count}/{multiplier} copies. {exception.Message}");
+				GD.PushWarning($"LoadoutPanel: stopped adding card '{logId}' after {results.Count}/{amount} copies. {exception.Message}");
 				break;
 			}
 		}
 
 		if (results.Count == 0)
-			return;
+			return 0;
 
 		CardPreviewStyle previewStyle = results.Count > 5 ? CardPreviewStyle.MessyLayout : CardPreviewStyle.HorizontalLayout;
 		CardCmd.PreviewCardPileAdd(results, 2f, previewStyle);
+		return results.Count;
 	}
 
-	private static async Task HandleAddRelicActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	private static async Task<IReadOnlyList<LastActionEntry>> HandleAddRelicActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not RelicModel canonicalRelic)
-			return;
+			return [];
 
+		int obtained = await ObtainRelicCopiesAsync(canonicalRelic, screen.GetCurrentActivationMultiplier(), selectItem.Id);
+
+		return obtained > 0
+			?
+			[
+				new LastActionEntry
+				{
+					Kind = LastActionService.AddRelicKind,
+					ContentId = canonicalRelic.Id.ToString(),
+					Amount = obtained
+				}
+			]
+			: [];
+	}
+
+	private static async Task<int> ObtainRelicCopiesAsync(RelicModel canonicalRelic, int amount, string logId)
+	{
 		Player? localPlayer = GetLocalRunPlayer();
-		if (localPlayer is null)
-			return;
+		if (localPlayer is null || amount <= 0)
+			return 0;
 
-		int multiplier = screen.GetCurrentActivationMultiplier();
-		for (int i = 0; i < multiplier; i++)
+		int obtained = 0;
+		for (int i = 0; i < amount; i++)
 		{
 			try
 			{
 				await RelicCmd.Obtain(canonicalRelic.ToMutable(), localPlayer);
+				obtained++;
 			}
 			catch (Exception exception)
 			{
-				GD.PushWarning($"LoadoutPanel: stopped adding relic '{selectItem.Id}' after {i}/{multiplier} copies. {exception.Message}");
+				GD.PushWarning($"LoadoutPanel: stopped adding relic '{logId}' after {obtained}/{amount} copies. {exception.Message}");
 				break;
 			}
 		}
+
+		return obtained;
 	}
 
-	private static async Task HandleAddPotionActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	private static async Task<IReadOnlyList<LastActionEntry>> HandleAddPotionActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not PotionModel canonicalPotion)
-			return;
+			return [];
 
 		Player? localPlayer = GetLocalRunPlayer();
 		if (localPlayer is null)
-			return;
+			return [];
 
 		int multiplier = screen.GetCurrentActivationMultiplier();
 		for (int i = 0; i < multiplier; i++)
@@ -791,12 +890,14 @@ public partial class NLoadoutPanel : Panel
 				break;
 			}
 		}
+
+		return [];
 	}
 
-	private static async Task HandleRemoveCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	private static async Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not CardModel card)
-			return;
+			return [];
 
 		Player? localPlayer = GetLocalRunPlayer();
 		if (localPlayer is null
@@ -804,20 +905,21 @@ public partial class NLoadoutPanel : Panel
 		    || card.Pile?.Type != PileType.Deck
 		    || !localPlayer.Deck.Cards.Contains(card))
 		{
-			return;
+			return [];
 		}
 
 		await CardPileCmd.RemoveFromDeck(card);
+		return [];
 	}
 
-	private static Task HandleUpgradeCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	private static Task<IReadOnlyList<LastActionEntry>> HandleUpgradeCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not CardModel card)
-			return Task.CompletedTask;
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
 
 		Player? localPlayer = GetLocalRunPlayer();
 		if (localPlayer is null)
-			return Task.CompletedTask;
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
 
 		
 		int multiplier = screen.GetCurrentActivationMultiplier();
@@ -832,7 +934,7 @@ public partial class NLoadoutPanel : Panel
 			RefreshCardVisuals(view);
 		}
 
-		return Task.CompletedTask;
+		return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
 	}
 
 	private static void HandleUpgradeAllDeckCards(NGenericSelectScreen _)
@@ -851,32 +953,53 @@ public partial class NLoadoutPanel : Panel
 		
 	}
 
-	private static async Task HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	private static async Task<IReadOnlyList<LastActionEntry>> HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not RelicModel relic)
-			return;
+			return [];
 
 		Player? localPlayer = GetLocalRunPlayer();
 		if (localPlayer is null
 		    || !LocalContext.IsMine(relic)
 		    || !localPlayer.Relics.Contains(relic))
 		{
-			return;
+			return [];
 		}
 
 		await RelicCmd.Remove(relic);
+		return [];
 	}
 
-	private static async Task HandleEnterEventActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	private static async Task<IReadOnlyList<LastActionEntry>> HandleEnterEventActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not EventModel eventModel)
-			return;
+			return [];
+
+		bool entered = await EnterEventAsync(eventModel, selectItem.Id);
+		if (entered)
+			Callable.From(CloseTopLoadoutScreen).CallDeferred();
+
+		return entered
+			?
+			[
+				new LastActionEntry
+				{
+					Kind = LastActionService.EnterEventKind,
+					ContentId = eventModel.Id.ToString(),
+					Amount = 1
+				}
+			]
+			: [];
+	}
+
+	private static async Task<bool> EnterEventAsync(EventModel eventModel, string logId)
+	{
 
 		Player? localPlayer = GetLocalRunPlayer();
 		if (localPlayer is null || !RunManager.Instance.IsInProgress)
 		{
-			GD.PushWarning($"LoadoutPanel: cannot enter event '{selectItem.Id}' because no local run player was resolved.");
-			return;
+			GD.PushWarning($"LoadoutPanel: cannot enter event '{logId}' because no local run player was resolved.");
+			return false;
 		}
 
 		try
@@ -886,8 +1009,7 @@ public partial class NLoadoutPanel : Panel
 				string command = $"event {eventModel.Id.Entry}";
 				RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
 					new ConsoleCmdGameAction(localPlayer, command, CombatManager.Instance.IsInProgress));
-				CloseTopLoadoutScreen();
-				return;
+				return true;
 			}
 
 			MapPointType mapPointType = eventModel is AncientEventModel
@@ -895,12 +1017,105 @@ public partial class NLoadoutPanel : Panel
 				: MapPointType.Unknown;
 			localPlayer.RunState.AppendToMapPointHistory(mapPointType, RoomType.Event, eventModel.Id);
 			await RunManager.Instance.EnterRoom(new EventRoom(eventModel));
-			CloseTopLoadoutScreen();
+			return true;
 		}
 		catch (Exception exception)
 		{
 			GD.PushError($"LoadoutPanel: failed to enter event '{eventModel.Id}': {exception}");
+			return false;
 		}
+	}
+
+	private static async Task ReplayLoadoutBagLastActionAsync()
+	{
+		foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.LoadoutBagKey))
+		{
+			if (entry.Kind != LastActionService.AddRelicKind || entry.Amount <= 0)
+				continue;
+
+			RelicModel? relic = ResolveCanonicalRelic(entry.ContentId);
+			if (relic is null)
+			{
+				GD.PushWarning($"LoadoutPanel: cannot replay relic action for unknown relic '{entry.ContentId}'.");
+				continue;
+			}
+
+			await ObtainRelicCopiesAsync(relic, entry.Amount, entry.ContentId);
+		}
+	}
+
+	private static async Task ReplayCardPrinterLastActionAsync()
+	{
+		foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.CardPrinterKey))
+		{
+			if (entry.Kind != LastActionService.AddCardKind || entry.Amount <= 0)
+				continue;
+
+			CardModel? card = ResolveCanonicalCard(entry.ContentId);
+			if (card is null)
+			{
+				GD.PushWarning($"LoadoutPanel: cannot replay card action for unknown card '{entry.ContentId}'.");
+				continue;
+			}
+
+			await AddCardCopiesAsync(card, entry.Amount, entry.ContentId);
+		}
+	}
+
+	private static async Task ReplayEventfulCompassLastActionAsync()
+	{
+		LastActionEntry? entry = LastActionService.GetAction(LastActionService.EventfulCompassKey)
+			.LastOrDefault(action => action.Kind == LastActionService.EnterEventKind && action.Amount > 0);
+		if (entry is null)
+			return;
+
+		EventModel? eventModel = ResolveEvent(entry.ContentId);
+		if (eventModel is null)
+		{
+			GD.PushWarning($"LoadoutPanel: cannot replay event action for unknown event '{entry.ContentId}'.");
+			return;
+		}
+
+		await EnterEventAsync(eventModel, entry.ContentId);
+	}
+
+	private static Task ReplayPowerGiverLastActionAsync()
+	{
+		foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.PowerGiverKey))
+		{
+			if (entry.Kind != LastActionService.AdjustPowerKind || entry.Amount == 0)
+				continue;
+
+			PowerGiverTarget target = entry.Target ?? PowerGiverTarget.Player;
+			if (!PowerGiverStateService.AdjustCounter(entry.ContentId, entry.Amount, target))
+				GD.PushWarning($"LoadoutPanel: could not replay power action for '{entry.ContentId}'.");
+		}
+
+		return Task.CompletedTask;
+	}
+
+	private static CardModel? ResolveCanonicalCard(string cardId)
+	{
+		return ModelDb.AllCards.FirstOrDefault(card => ModelIdMatches(card, cardId));
+	}
+
+	private static RelicModel? ResolveCanonicalRelic(string relicId)
+	{
+		return ModelDb.AllRelics.FirstOrDefault(relic => ModelIdMatches(relic, relicId));
+	}
+
+	private static EventModel? ResolveEvent(string eventId)
+	{
+		return ModelDb.AllEvents
+			.Concat(ModelDb.AllAncients)
+			.Distinct()
+			.FirstOrDefault(eventModel => ModelIdMatches(eventModel, eventId));
+	}
+
+	private static bool ModelIdMatches(AbstractModel model, string id)
+	{
+		return string.Equals(model.Id.ToString(), id, StringComparison.Ordinal)
+		       || string.Equals(model.Id.Entry, id, StringComparison.OrdinalIgnoreCase);
 	}
 
 	private void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)
@@ -1510,7 +1725,11 @@ public partial class NLoadoutPanel : Panel
 		return true;
 	}
 
-	private static bool BindPowerGiverActivation(NGenericSelectScreen screen, PowerModel power, Control view)
+	private static bool BindPowerGiverActivation(
+		NGenericSelectScreen screen,
+		PowerModel power,
+		Control view,
+		Action<LastActionEntry>? recordLastAction = null)
 	{
 		string powerId = PowerId(power);
 		view.GuiInput += input =>
@@ -1531,7 +1750,18 @@ public partial class NLoadoutPanel : Panel
 
 			int multiplier = screen.GetCurrentActivationMultiplier();
 			int delta = mouseButton.ButtonIndex == MouseButton.Right ? -multiplier : multiplier;
-			PowerGiverStateService.AdjustCounter(powerId, delta);
+			PowerGiverTarget target = PowerGiverStateService.SelectedTarget;
+			if (PowerGiverStateService.AdjustCounter(powerId, delta, target))
+			{
+				recordLastAction?.Invoke(new LastActionEntry
+				{
+					Kind = LastActionService.AdjustPowerKind,
+					ContentId = powerId,
+					Amount = delta,
+					Target = target
+				});
+			}
+
 			screen.RefreshCurrentItemStates();
 			view.AcceptEvent();
 		};

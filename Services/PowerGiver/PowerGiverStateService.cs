@@ -102,30 +102,58 @@ public static class PowerGiverStateService
         }
     }
 
-    public static void AdjustCounter(string powerId, int delta)
+    public static bool AdjustCounter(string powerId, int delta)
     {
-        if (string.IsNullOrWhiteSpace(powerId) || delta == 0)
-            return;
-
         PowerGiverTarget target;
+        bool adjusted;
         EnsureLoaded();
         lock (SyncRoot)
         {
             target = _selectedTarget;
-            Dictionary<string, int>? counters = GetCounters(target, createPlayerBucket: true);
-            if (counters is null)
-                return;
-
-            int next = counters.GetValueOrDefault(powerId, 0) + delta;
-            if (next == 0)
-                counters.Remove(powerId);
-            else
-                counters[powerId] = next;
-
-            SaveRunState();
+            adjusted = AdjustCounterLocked(powerId, delta, target);
         }
 
-        TaskHelper.RunSafely(ApplyCurrentCombatDeltaAsync(powerId, delta, target));
+        if (adjusted)
+            TaskHelper.RunSafely(ApplyCurrentCombatDeltaAsync(powerId, delta, target));
+
+        return adjusted;
+    }
+
+    public static bool AdjustCounter(string powerId, int delta, PowerGiverTarget target)
+    {
+        if (string.IsNullOrWhiteSpace(powerId) || delta == 0)
+            return false;
+
+        EnsureLoaded();
+        bool adjusted;
+        lock (SyncRoot)
+        {
+            adjusted = AdjustCounterLocked(powerId, delta, target);
+        }
+
+        if (adjusted)
+            TaskHelper.RunSafely(ApplyCurrentCombatDeltaAsync(powerId, delta, target));
+
+        return adjusted;
+    }
+
+    private static bool AdjustCounterLocked(string powerId, int delta, PowerGiverTarget target)
+    {
+        if (string.IsNullOrWhiteSpace(powerId) || delta == 0)
+            return false;
+
+        Dictionary<string, int>? counters = GetCounters(target, createPlayerBucket: true);
+        if (counters is null)
+            return false;
+
+        int next = counters.GetValueOrDefault(powerId, 0) + delta;
+        if (next == 0)
+            counters.Remove(powerId);
+        else
+            counters[powerId] = next;
+
+        SaveRunState();
+        return true;
     }
 
     public static bool IsFavorite(string powerId)

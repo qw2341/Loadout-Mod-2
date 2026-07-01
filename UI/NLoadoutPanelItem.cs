@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System;
 using System.Reflection;
+using System.Threading.Tasks;
 
 namespace Loadout.UI;
 
@@ -38,10 +39,12 @@ public partial class NLoadoutPanelItem : TextureButton
 	private float _hoverProgress;
 	private bool _isHovered;
 	private bool _isInsideContainer;
+	private bool _quickActionInFlight;
 	private Vector2 _baseScale = Vector2.One;
 	private Vector2 _basePosition;
 	private NGenericSelectScreen _boundScreen;
 	private Action<NGenericSelectScreen> _beforeOpen;
+	private Action<NGenericSelectScreen> _afterOpen;
 	private static readonly FieldInfo HoverTipTitleField = typeof(HoverTip).GetField("<Title>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
 	private static readonly FieldInfo HoverTipDescriptionField = typeof(HoverTip).GetField("<Description>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -111,6 +114,24 @@ public partial class NLoadoutPanelItem : TextureButton
 			(float)delta);
 
 		ApplyAnimationVisuals();
+	}
+
+	public override void _GuiInput(InputEvent @event)
+	{
+		base._GuiInput(@event);
+
+		if (@event is not InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: false } mouseButton)
+			return;
+
+		if (!mouseButton.CtrlPressed && !Input.IsKeyPressed(Key.Ctrl))
+			return;
+
+		if (QuickAction is null || _quickActionInFlight)
+			return;
+
+		AcceptEvent();
+		_quickActionInFlight = true;
+		_ = RunQuickActionAsync();
 	}
 
 	public void RefreshVisuals()
@@ -238,6 +259,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		}
 
 		root.OpenScreen(_boundScreen);
+		_afterOpen?.Invoke(_boundScreen);
 	}
 
 	public NGenericSelectScreen BoundScreen
@@ -250,5 +272,30 @@ public partial class NLoadoutPanelItem : TextureButton
 	{
 		get => _beforeOpen;
 		set => _beforeOpen = value;
+	}
+
+	public Action<NGenericSelectScreen> AfterOpen
+	{
+		get => _afterOpen;
+		set => _afterOpen = value;
+	}
+
+	public Func<Task> QuickAction { get; set; }
+
+	private async Task RunQuickActionAsync()
+	{
+		try
+		{
+			if (QuickAction is not null)
+				await QuickAction();
+		}
+		catch (Exception exception)
+		{
+			GD.PushError($"LoadoutPanelItem: quick action failed for '{DisplayName}': {exception}");
+		}
+		finally
+		{
+			_quickActionInFlight = false;
+		}
 	}
 }

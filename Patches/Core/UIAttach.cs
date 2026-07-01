@@ -1,4 +1,5 @@
 using Loadout.Services.PowerGiver;
+using Loadout.Services.LastActions;
 
 namespace Loadout.Patches.Core;
 
@@ -17,6 +18,7 @@ public class UIAttach
     public static void Postfix(NMainMenu __instance)
     {
         PowerGiverStateService.Register();
+        LastActionService.Register();
 
         if (_attached || _attachScheduled)
             return;
