@@ -36,7 +36,7 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Relics;
-using MegaCrit.Sts2.Core.Nodes.Screens;
+using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
@@ -1006,7 +1006,7 @@ public partial class NLoadoutPanel : Panel
 
 		try
 		{
-			CloseActiveRewardsScreen();
+			CloseBlockingRunScreens();
 
 			if (!RunManager.Instance.IsSingleplayerOrFakeMultiplayer)
 			{
@@ -1141,11 +1141,10 @@ public partial class NLoadoutPanel : Panel
 		NLoadoutPanelRoot.Instance?.CloseTopScreen();
 	}
 
-	private static void CloseActiveRewardsScreen()
+	private static void CloseBlockingRunScreens()
 	{
-		NOverlayStack? overlayStack = NOverlayStack.Instance;
-		if (overlayStack?.Peek() is NRewardsScreen rewardsScreen)
-			overlayStack.Remove(rewardsScreen);
+		NOverlayStack.Instance?.Clear();
+		NCapstoneContainer.Instance?.Close();
 	}
 
 	private static Control CreateCardGridItem(CardModel model, SelectItemState state)
