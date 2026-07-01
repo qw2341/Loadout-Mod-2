@@ -40,6 +40,7 @@ public partial class NLoadoutDropdown : NDropdown
     private ulong _pendingFallbackReleaseFrame;
     private ulong _lastToggleFrame;
     private bool _isButtonHovered;
+    private bool _signalsConnected;
 
     public float DropdownWidth { get; set; } = DefaultDropdownWidth;
     public float ItemHeight { get; set; } = DefaultItemHeight;
@@ -56,11 +57,12 @@ public partial class NLoadoutDropdown : NDropdown
         _dropdownContainer = GetNode<Control>("%DropdownContainer");
         _buttonHoverHighlight = GetNodeOrNull<ColorRect>("%HoverHighlight");
         _dismisser = GetNode<NButton>("%Dismisser");
-        _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => CloseLoadoutDropdown(restoreFocus: false)));
+        _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(OnDismisserReleased));
         MouseEntered += OnButtonHoverStart;
         MouseExited += OnButtonHoverEnd;
         FocusEntered += RefreshButtonHighlight;
         FocusExited += RefreshButtonHighlight;
+        _signalsConnected = true;
         _isReady = true;
         ApplyItems();
         SetEnabled(true);
@@ -68,7 +70,32 @@ public partial class NLoadoutDropdown : NDropdown
 
     public override void _ExitTree()
     {
+        base._ExitTree();
+
         CloseLoadoutDropdown(restoreFocus: false);
+        if (_signalsConnected)
+        {
+            MouseEntered -= OnButtonHoverStart;
+            MouseExited -= OnButtonHoverEnd;
+            FocusEntered -= RefreshButtonHighlight;
+            FocusExited -= RefreshButtonHighlight;
+
+            if (_container is not null)
+                _container.GuiInput -= OnContainerGuiInput;
+
+            if (_dismisser is not null)
+                _dismisser.Disconnect(NClickableControl.SignalName.Released, Callable.From<NButton>(OnDismisserReleased));
+
+            _signalsConnected = false;
+        }
+
+        _itemIdsByNode.Clear();
+        _dropdownOriginalParent = null;
+        _dropdownContainer = null;
+        _buttonHoverHighlight = null;
+        _dismisser = null;
+        _container = null;
+        _isReady = false;
     }
 
     public override void _Process(double delta)
@@ -150,6 +177,11 @@ public partial class NLoadoutDropdown : NDropdown
             return;
 
         ToggleLoadoutDropdown();
+    }
+
+    private void OnDismisserReleased(NButton _)
+    {
+        CloseLoadoutDropdown(restoreFocus: false);
     }
 
     private void ApplyItems()
@@ -363,6 +395,9 @@ public partial class NLoadoutDropdown : NDropdown
 
     private void BuildControlTree()
     {
+        if (GetNodeOrNull<Control>("Container") is not null)
+            return;
+
         CustomMinimumSize = new Vector2(256f, ButtonHeight);
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         FocusMode = FocusModeEnum.All;
@@ -580,6 +615,7 @@ public partial class NLoadoutDropdownContainer : Control
     private float _contentHeight;
     private float _targetItemsY;
     private bool _isDraggingTrain;
+    private bool _signalsConnected;
 
     public override void _Ready()
     {
@@ -591,7 +627,25 @@ public partial class NLoadoutDropdownContainer : Control
             _scrollbar.GuiInput += OnScrollbarGuiInput;
 
         VisibilityChanged += OnVisibilityChanged;
+        _signalsConnected = true;
         RefreshLayout();
+    }
+
+    public override void _ExitTree()
+    {
+        if (_signalsConnected)
+        {
+            if (_scrollbar is not null)
+                _scrollbar.GuiInput -= OnScrollbarGuiInput;
+
+            VisibilityChanged -= OnVisibilityChanged;
+            _signalsConnected = false;
+        }
+
+        _isDraggingTrain = false;
+        _dropdownItems = null;
+        _scrollbar = null;
+        _train = null;
     }
 
     public override void _Process(double delta)

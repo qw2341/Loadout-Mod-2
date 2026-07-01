@@ -1161,6 +1161,21 @@ public partial class NLoadoutPanel : Panel
 		}
 	}
 
+	public static void ReleaseAncientPreviewCache()
+	{
+		foreach (SubViewport viewport in AncientPreviewViewports.Values)
+		{
+			if (!GodotObject.IsInstanceValid(viewport))
+				continue;
+
+			viewport.GetParent()?.RemoveChild(viewport);
+			viewport.QueueFree();
+		}
+
+		AncientPreviewViewports.Clear();
+		AncientPreviewTextures.Clear();
+	}
+
 	private static void AttachEventTileHoverAnimation(Control tile, TextureRect? background, ColorRect shade, float restingShadeAlpha)
 	{
 		tile.MouseEntered += () => AnimateEventTileHover(tile, background, shade, EventTilePortraitHoverAlpha, EventTileShadeHoverAlpha);

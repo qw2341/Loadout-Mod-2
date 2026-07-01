@@ -62,15 +62,21 @@ public static class PowerGiverStateService
             return;
 
         _registered = true;
-        RunManager.Instance.RunStarted += _ => ReloadRunState(resetTarget: true);
-        SaveManager.Instance.ProfileIdChanged += _ =>
-        {
-            Favorites.Reset();
-            ReloadRunState(resetTarget: true);
-        };
-
+        RunManager.Instance.RunStarted += OnRunStarted;
+        SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp += OnCombatSetUp;
         EnsureLoaded();
+    }
+
+    public static void Unregister()
+    {
+        if (!_registered)
+            return;
+
+        RunManager.Instance.RunStarted -= OnRunStarted;
+        SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
+        CombatManager.Instance.CombatSetUp -= OnCombatSetUp;
+        _registered = false;
     }
 
     public static void EnsureLoaded()
@@ -165,6 +171,17 @@ public static class PowerGiverStateService
         }
 
         TaskHelper.RunSafely(ApplyConfiguredPowersAsync(combatState, localPlayer, playerCounters, monsterCounters));
+    }
+
+    private static void OnRunStarted(RunState _)
+    {
+        ReloadRunState(resetTarget: true);
+    }
+
+    private static void OnProfileIdChanged(int _)
+    {
+        Favorites.Reset();
+        ReloadRunState(resetTarget: true);
     }
 
     private static void ReloadRunState(bool resetTarget)

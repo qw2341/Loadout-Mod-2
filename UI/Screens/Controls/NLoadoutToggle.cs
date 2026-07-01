@@ -23,6 +23,7 @@ public partial class NLoadoutToggle : Control
     private TextureRect? _notTickedImage;
     private MegaLabel? _label;
     private Tween? _tween;
+    private bool _signalsConnected;
 
     public string ToggleId { get; private set; } = string.Empty;
 
@@ -57,9 +58,28 @@ public partial class NLoadoutToggle : Control
         FocusEntered += OnHoverStart;
         FocusExited += OnHoverEnd;
         GuiInput += OnGuiInput;
+        _signalsConnected = true;
 
         SetLabel(_pendingLabel);
         RefreshVisualState();
+    }
+
+    public override void _ExitTree()
+    {
+        if (_signalsConnected)
+        {
+            MouseEntered -= OnHoverStart;
+            MouseExited -= OnHoverEnd;
+            FocusEntered -= OnHoverStart;
+            FocusExited -= OnHoverEnd;
+            GuiInput -= OnGuiInput;
+            _signalsConnected = false;
+        }
+
+        if (_tween is not null && GodotObject.IsInstanceValid(_tween))
+            _tween.Kill();
+
+        _tween = null;
     }
 
     public void SetChecked(bool isChecked, bool emit = false)

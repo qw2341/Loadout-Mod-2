@@ -80,6 +80,11 @@ public partial class NLoadoutPanelRoot : Control
 	public override void _ExitTree()
 	{
 		LoadoutThemeManager.ThemeChanged -= OnThemeChanged;
+		NLoadoutPanel.ReleaseAncientPreviewCache();
+		_screens.Clear();
+		_screenProcessModes.Clear();
+		_screenMouseFilters.Clear();
+		_screenHistory.Clear();
 
 		if (_instance == this)
 			_instance = null;
@@ -443,7 +448,7 @@ public partial class NLoadoutPanelRoot : Control
 		if (IsValid(existingLayer))
 		{
 			existingLayer.Layer = OverlayLayer;
-			_overlayLayer = existingLayer;
+			SetOverlayLayer(existingLayer);
 			return existingLayer;
 		}
 
@@ -457,9 +462,30 @@ public partial class NLoadoutPanelRoot : Control
 			Layer = OverlayLayer
 		};
 
-		_overlayLayer = overlayLayer;
+		SetOverlayLayer(overlayLayer);
 		tree.Root.AddChild(overlayLayer);
 		return overlayLayer;
+	}
+
+	private static void SetOverlayLayer(CanvasLayer overlayLayer)
+	{
+		if (_overlayLayer == overlayLayer)
+			return;
+
+		if (IsValid(_overlayLayer))
+			_overlayLayer.TreeExiting -= OnOverlayLayerTreeExiting;
+
+		_overlayLayer = overlayLayer;
+		if (IsValid(_overlayLayer))
+			_overlayLayer.TreeExiting += OnOverlayLayerTreeExiting;
+	}
+
+	private static void OnOverlayLayerTreeExiting()
+	{
+		if (IsValid(_overlayLayer))
+			_overlayLayer.TreeExiting -= OnOverlayLayerTreeExiting;
+
+		_overlayLayer = null;
 	}
 
 	private static bool IsValid(GodotObject instance)

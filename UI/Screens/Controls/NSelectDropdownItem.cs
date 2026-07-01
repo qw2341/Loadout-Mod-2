@@ -12,6 +12,7 @@ public partial class NSelectDropdownItem : NDropdownItem
     public string OptionId { get; private set; } = string.Empty;
     private string _pendingLabel = "DropdownItem";
     private ColorRect? _highlight;
+    private bool _signalsConnected;
 
     public void Init(string optionId, string label)
     {
@@ -30,7 +31,22 @@ public partial class NSelectDropdownItem : NDropdownItem
         MouseExited += HideHoverHighlight;
         FocusEntered += ShowHoverHighlight;
         FocusExited += HideHoverHighlight;
+        _signalsConnected = true;
         Text = _pendingLabel;
+    }
+
+    public override void _ExitTree()
+    {
+        base._ExitTree();
+
+        if (!_signalsConnected)
+            return;
+
+        MouseEntered -= ShowHoverHighlight;
+        MouseExited -= HideHoverHighlight;
+        FocusEntered -= ShowHoverHighlight;
+        FocusExited -= HideHoverHighlight;
+        _signalsConnected = false;
     }
 
     private void EnsureControlTree()
