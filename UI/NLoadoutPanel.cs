@@ -6,7 +6,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
-using Loadout.PowerGiver;
 using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
@@ -42,6 +41,7 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using System.Text.RegularExpressions;
 using HarmonyLib;
+using Loadout.Services.PowerGiver;
 
 namespace  Loadout.UI;
 

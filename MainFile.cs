@@ -1,7 +1,6 @@
 using System.Reflection;
 using Godot;
 using HarmonyLib;
-using Loadout.PowerGiver;
 using MegaCrit.Sts2.Core.Modding;
 
 namespace Loadout;
@@ -22,7 +21,6 @@ public partial class MainFile : Node
 
         Harmony harmony = new(ModId);
         harmony.PatchAll();
-        PowerGiverStateService.Register();
 
     }
 }

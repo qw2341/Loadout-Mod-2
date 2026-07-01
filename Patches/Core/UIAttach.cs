@@ -1,3 +1,5 @@
+using Loadout.Services.PowerGiver;
+
 namespace Loadout.Patches.Core;
 
 using Godot;
@@ -14,6 +16,8 @@ public class UIAttach
     [HarmonyPostfix]
     public static void Postfix(NMainMenu __instance)
     {
+        PowerGiverStateService.Register();
+
         if (_attached || _attachScheduled)
             return;
 
