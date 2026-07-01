@@ -118,7 +118,10 @@ public partial class NGenericSelectScreen : Control
 
     private LineEdit? _searchLineEdit;
     private BaseButton? _clearSearchButton;
+    private NButton? _clearSearchNButton;
     private NClickableControl? _clearSearchClickable;
+    private Control? _clearSearchControl;
+    private bool _clearSearchPressStarted;
     private VBoxContainer? _filterControls;
     private Container? _sortButtonsContainer;
     private VBoxContainer? _customControlsContainer;
@@ -783,7 +786,9 @@ public partial class NGenericSelectScreen : Control
     {
         _searchLineEdit = GetNodeOrNull<LineEdit>(SearchLineEditPath);
         _clearSearchButton = GetNodeOrNull<BaseButton>(ClearSearchButtonPath);
+        _clearSearchNButton = GetNodeOrNull<NButton>(ClearSearchButtonPath);
         _clearSearchClickable = GetNodeOrNull<NClickableControl>(ClearSearchButtonPath);
+        _clearSearchControl = GetNodeOrNull<Control>(ClearSearchButtonPath);
         _filterControls = GetNodeOrNull<VBoxContainer>(FilterControlsPath);
         _itemGrid = GetNodeOrNull<Control>(ItemGridPath);
         _scrollMask = _itemGrid?.GetParent() as Control;
@@ -910,6 +915,11 @@ public partial class NGenericSelectScreen : Control
             _filterControls.AddChild(_togglesContainer);
         }
 
+        _sortButtonsContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        _filtersContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        _customControlsContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        _togglesContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+
         if (_sortButtonsContainer.GetParent() == _filterControls && _filtersContainer.GetParent() == _filterControls)
             _filterControls.MoveChild(_filtersContainer, _sortButtonsContainer.GetIndex() + 1);
 
@@ -981,11 +991,14 @@ public partial class NGenericSelectScreen : Control
             _searchLineEdit.TextSubmitted += OnSearchTextSubmitted;
         }
 
-        if (_clearSearchButton is not null)
+        if (_clearSearchNButton is not null)
+            _clearSearchNButton.Connect(NClickableControl.SignalName.Released, Callable.From((Action<NButton>)(_ => ClearSearch())));
+        else if (_clearSearchButton is not null)
             _clearSearchButton.Pressed += ClearSearch;
-
-        if (_clearSearchClickable is not null)
+        else if (_clearSearchClickable is not null)
             _clearSearchClickable.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => ClearSearch()));
+        else if (_clearSearchControl is not null)
+            _clearSearchControl.GuiInput += OnClearSearchControlGuiInput;
 
         if (_confirmButton is not null)
             _confirmButton.Pressed += ConfirmSelection;
@@ -1050,6 +1063,25 @@ public partial class NGenericSelectScreen : Control
         RefreshNow(resetScroll: true);
     }
 
+    private void OnClearSearchControlGuiInput(InputEvent inputEvent)
+    {
+        if (inputEvent is not InputEventMouseButton { ButtonIndex: MouseButton.Left } mouseButton)
+            return;
+
+        if (mouseButton.Pressed)
+        {
+            _clearSearchPressStarted = true;
+            return;
+        }
+
+        if (!_clearSearchPressStarted)
+            return;
+
+        _clearSearchPressStarted = false;
+        ClearSearch();
+        _clearSearchControl?.AcceptEvent();
+    }
+
     private void CancelPendingSearchRefresh()
     {
         _searchDelayCts?.Cancel();
@@ -1099,7 +1131,7 @@ public partial class NGenericSelectScreen : Control
         {
             Name = "CustomControlsTopSpacer",
             MouseFilter = MouseFilterEnum.Ignore,
-            CustomMinimumSize = new Vector2(0f, 12f),
+            CustomMinimumSize = new Vector2(0f, 52f),
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         _customControlsContainer.AddChild(spacer);

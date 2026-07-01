@@ -113,7 +113,6 @@ public partial class NLoadoutPanel : Panel
 
 	private void AddLoadoutItems()
 	{
-		RelicGroupingData relicGroupingData = BuildRelicGroupingData();
 		IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
 		//01 - LOADOUT BAG
 		CreateAndAddLoadoutItem(
@@ -137,6 +136,7 @@ public partial class NLoadoutPanel : Panel
 				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
+				RelicGroupingData relicGroupingData = BuildRelicGroupingData();
 				builder.GroupBySorter(
 					"rarity",
 					relic => GetRelicGroupKey(relic, relicGroupingData),
@@ -355,12 +355,18 @@ public partial class NLoadoutPanel : Panel
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool activationInFlight = false;
 
-		screen.Configure(models, adapter, builder);
+		void ConfigureScreen(NGenericSelectScreen target)
+		{
+			target.Configure(models, adapter, builder);
+			beforeOpen?.Invoke(target);
+			target.RequestDeferredVisibleRefresh();
+		}
+
+		ConfigureScreen(screen);
 		screen.LocaleChanged += () =>
 		{
 			SelectScreenUiState state = screen.CaptureUiState();
-			screen.Configure(models, adapter, builder);
-			beforeOpen?.Invoke(screen);
+			ConfigureScreen(screen);
 			screen.RestoreUiState(state);
 		};
 		screen.Cancelled += CloseTopLoadoutScreen;
@@ -382,8 +388,7 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		item.BoundScreen = screen;
-		if (beforeOpen is not null)
-			item.BeforeOpen = beforeOpen;
+		item.BeforeOpen = ConfigureScreen;
 
 		_itemsContainer.AddChild(item);
 	}
@@ -508,7 +513,7 @@ public partial class NLoadoutPanel : Panel
 		screen.LocaleChanged += () =>
 		{
 			SelectScreenUiState state = screen.CaptureUiState();
-			ConfigureCurrentModels(screen, preserveViews: true);
+			ConfigureCurrentModels(screen, preserveViews: false);
 			screen.RestoreUiState(state);
 		};
 		screen.Cancelled += CloseTopLoadoutScreen;
