@@ -55,7 +55,13 @@ public static class SaveUtility
     {
         try
         {
-            string globalPath = ProjectSettings.GlobalizePath(GetProfileScopedPath(relativePath));
+            if (!TryGetProfileScopedPath(relativePath, out string? profilePath))
+            {
+                GD.PushWarning($"Loadout: profile is not initialized; skipped saving profile JSON '{relativePath}'.");
+                return;
+            }
+
+            string globalPath = ProjectSettings.GlobalizePath(profilePath);
             string? directory = Path.GetDirectoryName(globalPath);
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
@@ -72,6 +78,25 @@ public static class SaveUtility
         {
             GD.PushWarning($"Loadout: failed to save profile JSON '{relativePath}'. {exception.Message}");
         }
+    }
+
+    public static bool TryGetProfileScopedPath(string relativePath, out string? profilePath)
+    {
+        try
+        {
+            if (SaveManager.Instance.IsProfileInitialized)
+            {
+                profilePath = SaveManager.Instance.GetProfileScopedPath(relativePath);
+                return true;
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Loadout: could not resolve profile data path for '{relativePath}'. {exception.Message}");
+        }
+
+        profilePath = null;
+        return false;
     }
 
     public static string GetProfileScopedPath(string relativePath)

@@ -85,6 +85,7 @@ public partial class NGenericSelectScreen : Control
     public event Action? Cancelled;
     public event Action<IGenericSelectItem, SelectItemState>? ItemActivated;
     public event Action<IGenericSelectItem, SelectItemState>? ItemSelectionChanged;
+    public event Action? LocaleChanged;
 
     private readonly List<IGenericSelectItem> _items = new();
     private readonly List<IGenericSelectItem> _visibleItems = new();
@@ -152,6 +153,8 @@ public partial class NGenericSelectScreen : Control
     private ulong _lastEagerMismatchWarningGeneration;
     private Control? _multiplierBadge;
     private MegaLabel? _multiplierBadgeLabel;
+    private Func<IGenericSelectItem, bool>? _customVisibilityPredicate;
+    private bool _isSubscribedToLocaleChanges;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -164,6 +167,7 @@ public partial class NGenericSelectScreen : Control
         EnsureGameScrollbar();
         EnsureActionButtons();
         BindSceneSignals();
+        SubscribeToLocaleChanges();
         RebuildSortButtons();
         RebuildCustomControls();
         RebuildToggleButtons();
@@ -181,6 +185,7 @@ public partial class NGenericSelectScreen : Control
         _searchDelayCts?.Dispose();
         _searchDelayCts = null;
         CancelPendingMaterialization();
+        UnsubscribeFromLocaleChanges();
     }
 
     public override void _Notification(int what)
@@ -305,6 +310,69 @@ public partial class NGenericSelectScreen : Control
         RefreshVisibleItemStates();
     }
 
+    public void SetCustomVisibilityPredicate(Func<IGenericSelectItem, bool>? predicate)
+    {
+        _customVisibilityPredicate = predicate;
+    }
+
+    public SelectScreenUiState CaptureUiState()
+    {
+        return new SelectScreenUiState(
+            _query,
+            _filters
+                .Select(filter => filter.GroupId)
+                .Distinct(StringComparer.Ordinal)
+                .ToDictionary(groupId => groupId, groupId => GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId, StringComparer.Ordinal),
+            new Dictionary<string, bool>(_toggleStates, StringComparer.Ordinal),
+            _sortPriority.ToList(),
+            _sorters.ToDictionary(sorter => sorter.Id, sorter => sorter.IsDescending, StringComparer.Ordinal),
+            _targetScrollY);
+    }
+
+    public void RestoreUiState(SelectScreenUiState state)
+    {
+        _query = state.Query ?? string.Empty;
+        if (_searchLineEdit is not null)
+            _searchLineEdit.Text = _query;
+
+        foreach ((string groupId, string selectedFilterId) in state.FilterSelections)
+        {
+            if (_filterGroupsById.ContainsKey(groupId))
+                ApplyExclusiveFilterSelection(groupId, selectedFilterId == AllFilterOptionId ? null : selectedFilterId);
+        }
+
+        foreach ((string toggleId, bool isChecked) in state.ToggleStates)
+        {
+            if (_toggleStates.ContainsKey(toggleId))
+                _toggleStates[toggleId] = isChecked;
+        }
+
+        foreach ((string sorterId, bool isDescending) in state.SortDescendingStates)
+        {
+            if (_sortersById.TryGetValue(sorterId, out SelectSorterDefinition? sorter))
+                sorter.IsDescending = isDescending;
+        }
+
+        _sortPriority.Clear();
+        foreach (string sorterId in state.SortPriority)
+        {
+            if (_sortersById.ContainsKey(sorterId) && !_sortPriority.Contains(sorterId))
+                _sortPriority.Add(sorterId);
+        }
+
+        foreach (SelectSorterDefinition sorter in _sorters.Where(sorter => sorter.ActiveByDefault))
+        {
+            if (!_sortPriority.Contains(sorter.Id))
+                _sortPriority.Add(sorter.Id);
+        }
+
+        RebuildSortButtons();
+        RebuildToggleButtons();
+        RebuildFilterButtons();
+        RefreshNow(resetScroll: false);
+        SetTargetScroll(state.ScrollY);
+    }
+
     public int GetCurrentActivationMultiplier()
     {
         return GetCurrentInputMultiplier();
@@ -352,6 +420,7 @@ public partial class NGenericSelectScreen : Control
         _options = new SelectScreenOptions();
         _layout = SelectLayoutDefinition.Default;
         _materializationMode = SelectMaterializationMode.Eager;
+        _customVisibilityPredicate = null;
         _query = string.Empty;
         _isConfigured = false;
         _lastMeasuredItemWidth = -1f;
@@ -457,6 +526,7 @@ public partial class NGenericSelectScreen : Control
             return;
         }
 
+        EnsureCustomControlsSpacer();
         _customControlsContainer.AddChild(control);
     }
 
@@ -757,6 +827,40 @@ public partial class NGenericSelectScreen : Control
         }
     }
 
+    private void SubscribeToLocaleChanges()
+    {
+        if (_isSubscribedToLocaleChanges)
+            return;
+
+        LocString.SubscribeToLocaleChange(OnLocaleChanged);
+        _isSubscribedToLocaleChanges = true;
+    }
+
+    private void UnsubscribeFromLocaleChanges()
+    {
+        if (!_isSubscribedToLocaleChanges)
+            return;
+
+        LocString.UnsubscribeToLocaleChange(OnLocaleChanged);
+        _isSubscribedToLocaleChanges = false;
+    }
+
+    private void OnLocaleChanged()
+    {
+        LocaleChanged?.Invoke();
+        RefreshLocaleSensitiveText();
+    }
+
+    private void RefreshLocaleSensitiveText()
+    {
+        ApplyLocalizedSceneText();
+        RebuildSortButtons();
+        RebuildToggleButtons();
+        RebuildFilterButtons();
+        UpdateConfirmButtonState();
+        RefreshVisibleItemStates();
+    }
+
     private void BuildUtilityContainersIfMissing()
     {
         if (_filterControls is null)
@@ -806,14 +910,14 @@ public partial class NGenericSelectScreen : Control
             _filterControls.AddChild(_togglesContainer);
         }
 
-        if (_sortButtonsContainer.GetParent() == _filterControls && _customControlsContainer.GetParent() == _filterControls)
-            _filterControls.MoveChild(_customControlsContainer, _sortButtonsContainer.GetIndex() + 1);
+        if (_sortButtonsContainer.GetParent() == _filterControls && _filtersContainer.GetParent() == _filterControls)
+            _filterControls.MoveChild(_filtersContainer, _sortButtonsContainer.GetIndex() + 1);
 
-        if (_customControlsContainer.GetParent() == _filterControls && _filtersContainer.GetParent() == _filterControls)
-            _filterControls.MoveChild(_filtersContainer, _customControlsContainer.GetIndex() + 1);
+        if (_filtersContainer.GetParent() == _filterControls && _customControlsContainer.GetParent() == _filterControls)
+            _filterControls.MoveChild(_customControlsContainer, _filtersContainer.GetIndex() + 1);
 
-        if (_filtersContainer.GetParent() == _filterControls && _togglesContainer.GetParent() == _filterControls)
-            _filterControls.MoveChild(_togglesContainer, _filtersContainer.GetIndex() + 1);
+        if (_customControlsContainer.GetParent() == _filterControls && _togglesContainer.GetParent() == _filterControls)
+            _filterControls.MoveChild(_togglesContainer, _customControlsContainer.GetIndex() + 1);
     }
 
     private void EnsureGameScrollbar()
@@ -968,6 +1072,9 @@ public partial class NGenericSelectScreen : Control
 
         _customControlsContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 
+        if (_pendingCustomSidebarControls.Count > 0)
+            EnsureCustomControlsSpacer();
+
         foreach (Control control in _pendingCustomSidebarControls.ToList())
         {
             if (!GodotObject.IsInstanceValid(control))
@@ -978,6 +1085,25 @@ public partial class NGenericSelectScreen : Control
         }
 
         _pendingCustomSidebarControls.Clear();
+    }
+
+    private void EnsureCustomControlsSpacer()
+    {
+        if (_customControlsContainer is null)
+            return;
+
+        if (_customControlsContainer.GetNodeOrNull<Control>("CustomControlsTopSpacer") is not null)
+            return;
+
+        Control spacer = new()
+        {
+            Name = "CustomControlsTopSpacer",
+            MouseFilter = MouseFilterEnum.Ignore,
+            CustomMinimumSize = new Vector2(0f, 12f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        _customControlsContainer.AddChild(spacer);
+        _customControlsContainer.MoveChild(spacer, 0);
     }
 
     private void RebuildSortButtons()
@@ -1233,6 +1359,9 @@ public partial class NGenericSelectScreen : Control
             if (!item.MatchesSearch(normalizedQuery))
                 return false;
         }
+
+        if (_customVisibilityPredicate is not null && !_customVisibilityPredicate(item))
+            return false;
 
         foreach (string groupId in _filters.Select(filter => filter.GroupId).Distinct(StringComparer.Ordinal))
         {
@@ -2761,6 +2890,13 @@ public sealed class SelectScreenBuilder<TModel>
         return this;
     }
 
+    public SelectScreenBuilder<TModel> CustomVisibilityPredicate(Func<TModel, bool> predicate)
+    {
+        _screen.SetCustomVisibilityPredicate(item =>
+            item is GenericSelectItem<TModel> typed && predicate(typed.Model));
+        return this;
+    }
+
     public SelectScreenBuilder<TModel> Sorter(
         string id,
         string label,
@@ -2907,6 +3043,32 @@ public sealed class SelectScreenOptions
     public int MinSelection { get; init; } = 0;
     public int MaxTotalSelection { get; init; } = int.MaxValue;
     public int MaxCopiesPerItem { get; init; } = 1;
+}
+
+public sealed class SelectScreenUiState
+{
+    public SelectScreenUiState(
+        string query,
+        IReadOnlyDictionary<string, string> filterSelections,
+        IReadOnlyDictionary<string, bool> toggleStates,
+        IReadOnlyList<string> sortPriority,
+        IReadOnlyDictionary<string, bool> sortDescendingStates,
+        float scrollY)
+    {
+        Query = query;
+        FilterSelections = filterSelections;
+        ToggleStates = toggleStates;
+        SortPriority = sortPriority;
+        SortDescendingStates = sortDescendingStates;
+        ScrollY = scrollY;
+    }
+
+    public string Query { get; }
+    public IReadOnlyDictionary<string, string> FilterSelections { get; }
+    public IReadOnlyDictionary<string, bool> ToggleStates { get; }
+    public IReadOnlyList<string> SortPriority { get; }
+    public IReadOnlyDictionary<string, bool> SortDescendingStates { get; }
+    public float ScrollY { get; }
 }
 
 public sealed class SelectLayoutDefinition

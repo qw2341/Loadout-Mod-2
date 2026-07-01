@@ -10,24 +10,30 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 
+public enum FavoriteCategory
+{
+    Power,
+    Card,
+    Relic,
+    Potion,
+    Event
+}
+
 public sealed class FavoritesUtility
 {
     private const int CurrentSchemaVersion = 1;
     private readonly string _relativePath;
     private readonly IReadOnlyList<string> _fallbackRelativePaths;
-    private readonly string _legacyIdsPropertyName;
     private readonly object _syncRoot = new();
     private SaveData _save = new();
     private bool _loaded;
 
     public FavoritesUtility(
         string relativePath,
-        IEnumerable<string>? fallbackRelativePaths = null,
-        string legacyIdsPropertyName = "favoritePowerIds")
+        IEnumerable<string>? fallbackRelativePaths = null)
     {
         _relativePath = relativePath;
         _fallbackRelativePaths = fallbackRelativePaths?.ToList() ?? [];
-        _legacyIdsPropertyName = legacyIdsPropertyName;
     }
 
     public void Reset()
@@ -39,25 +45,25 @@ public sealed class FavoritesUtility
         }
     }
 
-    public bool Contains(string id)
+    public bool Contains(FavoriteCategory category, string id)
     {
         EnsureLoaded();
         lock (_syncRoot)
         {
-            return _save.FavoriteIds.Contains(id, StringComparer.Ordinal);
+            return GetSet(_save, category).Contains(id);
         }
     }
 
-    public bool Any()
+    public bool Any(FavoriteCategory category)
     {
         EnsureLoaded();
         lock (_syncRoot)
         {
-            return _save.FavoriteIds.Count > 0;
+            return GetSet(_save, category).Count > 0;
         }
     }
 
-    public void Toggle(string id)
+    public void Toggle(FavoriteCategory category, string id)
     {
         if (string.IsNullOrWhiteSpace(id))
             return;
@@ -65,22 +71,20 @@ public sealed class FavoritesUtility
         EnsureLoaded();
         lock (_syncRoot)
         {
-            if (_save.FavoriteIds.Contains(id, StringComparer.Ordinal))
-                _save.FavoriteIds = _save.FavoriteIds.Where(savedId => !string.Equals(savedId, id, StringComparison.Ordinal)).ToList();
-            else
-                _save.FavoriteIds.Add(id);
-
-            _save = NormalizeSave(_save);
+            HashSet<string> set = GetSet(_save, category);
+            if (!set.Remove(id))
+                set.Add(id);
+            
             Save();
         }
     }
 
-    public IReadOnlyList<string> Snapshot()
+    public IReadOnlySet<string> Snapshot(FavoriteCategory category)
     {
         EnsureLoaded();
         lock (_syncRoot)
         {
-            return _save.FavoriteIds.ToList();
+            return new HashSet<string>(GetSet(_save, category), StringComparer.Ordinal);
         }
     }
 
@@ -96,11 +100,11 @@ public sealed class FavoritesUtility
                 new SaveData(),
                 _fallbackRelativePaths);
 
-            _save = loaded.Value;
-            _save = NormalizeSave(_save);
+            bool shouldMigrate = loaded.Loaded && ShouldSaveLoadedData(loaded.Value, loaded.SourceRelativePath);
+            _save = NormalizeSave(loaded.Value);
             _loaded = true;
 
-            if (loaded.Loaded && !loaded.LoadedFrom(_relativePath))
+            if (shouldMigrate)
                 Save();
         }
     }
@@ -108,24 +112,79 @@ public sealed class FavoritesUtility
     private void Save()
     {
         _save.SchemaVersion = CurrentSchemaVersion;
-        _save.LegacyFavoritePowerIds = null;
         SaveUtility.SaveProfileJson(_relativePath, _save);
     }
 
-    private SaveData NormalizeSave(SaveData save)
+    private bool ShouldSaveLoadedData(SaveData save, string? sourceRelativePath)
     {
-        IReadOnlyList<string> legacyIds = _legacyIdsPropertyName == "favoritePowerIds"
-            ? save.LegacyFavoritePowerIds ?? []
-            : [];
+        return !string.Equals(sourceRelativePath, _relativePath, StringComparison.Ordinal)
+            || save.SchemaVersion != CurrentSchemaVersion
+            || HasAny(save.LegacyFavoriteIds)
+            || HasAny(save.LegacyFavoriteIdsPascal)
+            || HasAny(save.LegacyFavoritePowerIdsPascal);
+    }
 
-        save.FavoriteIds = (save.FavoriteIds ?? [])
-            .Concat(legacyIds)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(id => id, StringComparer.Ordinal)
-            .ToList();
+    private static bool HasAny(IEnumerable<string>? ids)
+    {
+        return ids is not null && ids.Any(id => !string.IsNullOrWhiteSpace(id));
+    }
 
+    private static SaveData NormalizeSave(SaveData save)
+    {
+        save.SchemaVersion = CurrentSchemaVersion;
+        save.FavoritePowerIds = NormalizeSet(save.FavoritePowerIds);
+        save.FavoriteCardIds = NormalizeSet(save.FavoriteCardIds);
+        save.FavoriteRelicIds = NormalizeSet(save.FavoriteRelicIds);
+        save.FavoritePotionIds = NormalizeSet(save.FavoritePotionIds);
+        save.FavoriteEventIds = NormalizeSet(save.FavoriteEventIds);
+
+        MergeSet(save.FavoritePowerIds, save.LegacyFavoriteIds);
+        MergeSet(save.FavoritePowerIds, save.LegacyFavoriteIdsPascal);
+        MergeSet(save.FavoritePowerIds, save.LegacyFavoritePowerIdsPascal);
+
+        save.LegacyFavoriteIds = null;
+        save.LegacyFavoriteIdsPascal = null;
+        save.LegacyFavoritePowerIdsPascal = null;
         return save;
+    }
+
+    private static HashSet<string> NormalizeSet(HashSet<string>? ids)
+    {
+        HashSet<string> normalized = new(StringComparer.Ordinal);
+        if (ids is null)
+            return normalized;
+
+        foreach (string id in ids)
+        {
+            if (!string.IsNullOrWhiteSpace(id))
+                normalized.Add(id);
+        }
+
+        return normalized;
+    }
+
+    private static void MergeSet(HashSet<string> destination, IEnumerable<string>? source)
+    {
+        if (source is null)
+            return;
+
+        foreach (string id in source)
+        {
+            if (!string.IsNullOrWhiteSpace(id))
+                destination.Add(id);
+        }
+    }
+
+    private static HashSet<string> GetSet(SaveData save, FavoriteCategory category)
+    {
+        return category switch
+        {
+            FavoriteCategory.Card => save.FavoriteCardIds,
+            FavoriteCategory.Relic => save.FavoriteRelicIds,
+            FavoriteCategory.Potion => save.FavoritePotionIds,
+            FavoriteCategory.Event => save.FavoriteEventIds,
+            _ => save.FavoritePowerIds
+        };
     }
 
     private struct SaveData : ISerializable
@@ -137,18 +196,38 @@ public sealed class FavoritesUtility
         [JsonPropertyName("schemaVersion")]
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
-        [JsonPropertyName("favoriteIds")]
-        public List<string> FavoriteIds { get; set; } = [];
-
         [JsonPropertyName("favoritePowerIds")]
-        public List<string>? LegacyFavoritePowerIds { get; set; }
+        public HashSet<string> FavoritePowerIds { get; set; } = new(StringComparer.Ordinal);
 
+        [JsonPropertyName("favoriteCardIds")]
+        public HashSet<string> FavoriteCardIds { get; set; } = new(StringComparer.Ordinal);
+
+        [JsonPropertyName("favoriteRelicIds")]
+        public HashSet<string> FavoriteRelicIds { get; set; } = new(StringComparer.Ordinal);
+
+        [JsonPropertyName("favoritePotionIds")]
+        public HashSet<string> FavoritePotionIds { get; set; } = new(StringComparer.Ordinal);
+
+        [JsonPropertyName("favoriteEventIds")]
+        public HashSet<string> FavoriteEventIds { get; set; } = new(StringComparer.Ordinal);
+
+        [JsonPropertyName("favoriteIds")]
+        public HashSet<string>? LegacyFavoriteIds { get; set; }
+
+        [JsonPropertyName("FavoriteIds")]
+        public HashSet<string>? LegacyFavoriteIdsPascal { get; set; }
+
+        [JsonPropertyName("FavoritePowerIds")]
+        public HashSet<string>? LegacyFavoritePowerIdsPascal { get; set; }
 
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             info.AddValue(nameof(SchemaVersion), SchemaVersion);
-            info.AddValue(nameof(FavoriteIds), FavoriteIds);
-            info.AddValue(nameof(LegacyFavoritePowerIds), LegacyFavoritePowerIds);
+            info.AddValue(nameof(FavoritePowerIds), FavoritePowerIds);
+            info.AddValue(nameof(FavoriteCardIds), FavoriteCardIds);
+            info.AddValue(nameof(FavoriteRelicIds), FavoriteRelicIds);
+            info.AddValue(nameof(FavoritePotionIds), FavoritePotionIds);
+            info.AddValue(nameof(FavoriteEventIds), FavoriteEventIds);
         }
     }
 }

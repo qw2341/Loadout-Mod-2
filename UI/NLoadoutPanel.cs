@@ -50,7 +50,9 @@ public partial class NLoadoutPanel : Panel
 	private const int MaxLoadoutItemInitAttempts = 120;
 	private const string ViewUpgradesToggleId = "view_upgrades";
 	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
-	private static readonly Vector2 EventTileSize = new(220f, 120f);
+	private const string PowerGiverFavoriteModeAll = "all";
+	private const string PowerGiverFavoriteModeFavorites = "favorites";
+	private static readonly Vector2 EventTileSize = new(264f, 144f);
 	private static readonly Vector2I AncientPreviewTextureSize = new(360, 196);
 	private const float EventTilePortraitRestAlpha = 0.45f;
 	private const float EventTilePortraitHoverAlpha = 0.78f;
@@ -354,6 +356,13 @@ public partial class NLoadoutPanel : Panel
 		bool activationInFlight = false;
 
 		screen.Configure(models, adapter, builder);
+		screen.LocaleChanged += () =>
+		{
+			SelectScreenUiState state = screen.CaptureUiState();
+			screen.Configure(models, adapter, builder);
+			beforeOpen?.Invoke(screen);
+			screen.RestoreUiState(state);
+		};
 		screen.Cancelled += CloseTopLoadoutScreen;
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
 		if (onActivated is not null)
@@ -407,6 +416,7 @@ public partial class NLoadoutPanel : Panel
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
+		bool showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
 
 		SelectItemAdapter<PowerModel> adapter = new()
 		{
@@ -416,26 +426,23 @@ public partial class NLoadoutPanel : Panel
 			CreateView = (power, _) => CreatePowerGridItem(
 				power,
 				PowerGiverStateService.GetCounter(PowerId(power)),
-				PowerGiverStateService.IsFavorite(PowerId(power))),
-			UpdateView = (power, view, _) => UpdatePowerGridItem(view, power),
+				PowerGiverStateService.IsFavorite(PowerId(power)) && !showPowerGiverFavoritesOnly),
+			UpdateView = (power, view, _) => UpdatePowerGridItem(view, power, showPowerGiverFavoritesOnly),
 			BindActivation = (power, view, _) => BindPowerGiverActivation(screen, power, view)
 		};
 
-		void ConfigurePowerGiverScreen(NGenericSelectScreen target)
+		void ConfigurePowerGiverScreen(NGenericSelectScreen target, bool resetFavoriteMode = true)
 		{
 			PowerGiverStateService.EnsureLoaded();
+			if (resetFavoriteMode)
+				showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
+
 			target.Configure(ModelDb.AllPowers, adapter, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
-				builder.FilterGroup("favorite", SScreenLoc("FILTER_GROUP_FAVORITES", "Favorites"));
-				builder.Filter(
-					"favorites_only",
-					SScreenLoc("FAVORITES_ONLY", "Favorites"),
-					power => PowerGiverStateService.IsFavorite(PowerId(power)),
-					"favorite",
-					enabledByDefault: PowerGiverStateService.HasFavorites());
+				builder.CustomVisibilityPredicate(power => !showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
 				builder.FilterGroup("type", SScreenLoc("FILTER_GROUP_TYPE", "Type"));
 				builder.Filter("buff", SScreenLoc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
 				builder.Filter("debuff", SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
@@ -448,14 +455,23 @@ public partial class NLoadoutPanel : Panel
 				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("type", GameLoc("gameplay_ui", "SORT_TYPE", SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
 			});
-			AddPowerGiverTargetDropdown(target);
+			AddPowerGiverSidebarDropdowns(
+				target,
+				() => showPowerGiverFavoritesOnly,
+				value => showPowerGiverFavoritesOnly = value);
 		}
 
 		ConfigurePowerGiverScreen(screen);
+		screen.LocaleChanged += () =>
+		{
+			SelectScreenUiState state = screen.CaptureUiState();
+			ConfigurePowerGiverScreen(screen, resetFavoriteMode: false);
+			screen.RestoreUiState(state);
+		};
 		screen.Cancelled += CloseTopLoadoutScreen;
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
 		item.BoundScreen = screen;
-		item.BeforeOpen = ConfigurePowerGiverScreen;
+		item.BeforeOpen = target => ConfigurePowerGiverScreen(target);
 		_itemsContainer.AddChild(item);
 	}
 
@@ -489,6 +505,12 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		ConfigureCurrentModels(screen);
+		screen.LocaleChanged += () =>
+		{
+			SelectScreenUiState state = screen.CaptureUiState();
+			ConfigureCurrentModels(screen, preserveViews: true);
+			screen.RestoreUiState(state);
+		};
 		screen.Cancelled += CloseTopLoadoutScreen;
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
 		screen.ItemActivated += (selectItem, state) =>
@@ -841,6 +863,7 @@ public partial class NLoadoutPanel : Panel
 			18,
 			HorizontalAlignment.Center,
 			StsColors.cream);
+		ConfigureWrappingPowerName(nameLabel);
 		button.AddChild(nameLabel);
 
 		MegaLabel amountLabel = CreatePowerAmountLabel(model, selectedAmount);
@@ -883,28 +906,28 @@ public partial class NLoadoutPanel : Panel
 	{
 		MegaLabel amountLabel = CreateButtonLabel(
 			"PowerAmount",
-			selectedAmount > 0 ? selectedAmount.ToString() : string.Empty,
+			selectedAmount != 0 ? selectedAmount.ToString() : string.Empty,
 			new Vector2(160f, 72f),
 			new Vector2(50f, 26f),
 			22,
 			HorizontalAlignment.Right,
 			model.AmountLabelColor);
-		amountLabel.Visible = selectedAmount > 0;
+		amountLabel.Visible = selectedAmount != 0;
 		return amountLabel;
 	}
 
-	private static void UpdatePowerGridItem(Control view, PowerModel model)
+	private static void UpdatePowerGridItem(Control view, PowerModel model, bool favoritesOnly)
 	{
 		string powerId = PowerId(model);
 		int selectedAmount = PowerGiverStateService.GetCounter(powerId);
 		if (view.GetNodeOrNull<MegaLabel>("PowerAmount") is { } amountLabel)
 		{
-			amountLabel.Text = selectedAmount > 0 ? selectedAmount.ToString() : string.Empty;
-			amountLabel.Visible = selectedAmount > 0;
+			amountLabel.Text = selectedAmount != 0 ? selectedAmount.ToString() : string.Empty;
+			amountLabel.Visible = selectedAmount != 0;
 		}
 
 		if (view.GetNodeOrNull<CanvasItem>("FavoriteGlow") is { } favoriteGlow)
-			favoriteGlow.Visible = PowerGiverStateService.IsFavorite(powerId);
+			favoriteGlow.Visible = !favoritesOnly && PowerGiverStateService.IsFavorite(powerId);
 	}
 
 	private static Control CreateEventGridItem(EventModel model)
@@ -932,9 +955,9 @@ public partial class NLoadoutPanel : Panel
 		MegaLabel titleLabel = CreateButtonLabel(
 			"EventTitle",
 			isAncient ? FormatEventTitle(model).ToUpperInvariant() : FormatEventTitle(model),
-			isAncient ? new Vector2(12f, 22f) : new Vector2(12f, 16f),
-			isAncient ? new Vector2(196f, 42f) : new Vector2(196f, 88f),
-			isAncient ? 27 : 22,
+			isAncient ? new Vector2(14f, 26f) : new Vector2(14f, 19f),
+			isAncient ? new Vector2(235f, 50f) : new Vector2(235f, 106f),
+			isAncient ? 32 : 26,
 			HorizontalAlignment.Center,
 			isAncient ? new Color(0.937255f, 0.784314f, 0.317647f, 1f) : StsColors.cream);
 		if (isAncient)
@@ -948,9 +971,9 @@ public partial class NLoadoutPanel : Panel
 			MegaLabel epithetLabel = CreateButtonLabel(
 				"AncientEpithet",
 				SafeFormatLocString(ancientEvent.Epithet, string.Empty),
-				new Vector2(12f, 62f),
-				new Vector2(196f, 44f),
-				16,
+				new Vector2(14f, 74f),
+				new Vector2(235f, 53f),
+				19,
 				HorizontalAlignment.Center,
 				new Color(0.529412f, 0.807843f, 0.921569f, 0.88f));
 			epithetLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/bitter_medium_italic_glyph_space_one.tres"));
@@ -1138,8 +1161,18 @@ public partial class NLoadoutPanel : Panel
 		label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		label.TextOverrunBehavior = TextServer.OverrunBehavior.NoTrimming;
 		label.AutoSizeEnabled = true;
-		label.MinFontSize = 16;
-		label.MaxFontSize = 22;
+		label.MinFontSize = 19;
+		label.MaxFontSize = 26;
+		label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
+	}
+
+	private static void ConfigureWrappingPowerName(MegaLabel label)
+	{
+		label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		label.TextOverrunBehavior = TextServer.OverrunBehavior.NoTrimming;
+		label.AutoSizeEnabled = true;
+		label.MinFontSize = 13;
+		label.MaxFontSize = 18;
 		label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
 	}
 
@@ -1318,6 +1351,34 @@ public partial class NLoadoutPanel : Panel
 		};
 
 		return true;
+	}
+
+	private static void AddPowerGiverSidebarDropdowns(
+		NGenericSelectScreen screen,
+		Func<bool> getFavoritesOnly,
+		Action<bool> setFavoritesOnly)
+	{
+		NLoadoutDropdown favoritesDropdown = new()
+		{
+			Name = "PowerGiverFavoritesDropdown",
+			SizeFlagsHorizontal = SizeFlags.ExpandFill,
+			CustomMinimumSize = new Vector2(256f, 52f)
+		};
+		favoritesDropdown.SetItems(
+			SScreenLoc("POWER_GIVER_FAVORITES_MODE", "Powers"),
+			[
+				new LoadoutDropdownOption(PowerGiverFavoriteModeAll, SScreenLoc("POWER_GIVER_ALL_POWERS", "All Powers")),
+				new LoadoutDropdownOption(PowerGiverFavoriteModeFavorites, SScreenLoc("FAVORITES_ONLY", "Favorites"))
+			],
+			getFavoritesOnly() ? PowerGiverFavoriteModeFavorites : PowerGiverFavoriteModeAll);
+		favoritesDropdown.SelectedItemChanged += selectedId =>
+		{
+			setFavoritesOnly(selectedId == PowerGiverFavoriteModeFavorites);
+			screen.RefreshNow(resetScroll: true);
+		};
+
+		screen.AddCustomSidebarControl(favoritesDropdown);
+		AddPowerGiverTargetDropdown(screen);
 	}
 
 	private static void AddPowerGiverTargetDropdown(NGenericSelectScreen screen)
