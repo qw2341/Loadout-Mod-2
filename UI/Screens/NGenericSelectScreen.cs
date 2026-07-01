@@ -196,10 +196,18 @@ public partial class NGenericSelectScreen : Control
     public override void _Notification(int what)
     {
         if (what == NotificationVisibilityChanged && !Visible)
+        {
             CloseOpenDropdowns();
+            ReleaseFocusInsideScreen();
+            SetActionButtonsActive(false);
+        }
 
         if (what == NotificationVisibilityChanged && Visible)
+        {
+            SetActionButtonsActive(true);
+            UpdateConfirmButtonState();
             ScheduleDeferredVisibleRefresh();
+        }
     }
 
     public override void _Process(double delta)
@@ -228,6 +236,49 @@ public partial class NGenericSelectScreen : Control
             SetTargetScroll(_targetScrollY - drag);
 
         GetViewport().SetInputAsHandled();
+    }
+    
+    private void SetActionButtonsActive(bool active)
+    {
+        if (_cancelButton is not null)
+        {
+            _cancelButton.Visible = active;
+            _cancelButton.Disabled = !active;
+        }
+
+        if (_cancelClickable is not null)
+        {
+            _cancelClickable.Visible = active;
+            _cancelClickable.SetEnabled(active);
+            ResetActionButtonVisualState(_cancelClickable);
+        }
+
+        bool usesSelection = _options.SelectionMode != SelectSelectionMode.None;
+
+        if (_confirmButton is not null)
+        {
+            _confirmButton.Visible = active && usesSelection;
+            _confirmButton.Disabled = !active || !usesSelection || !IsConfirmAllowed();
+        }
+
+        if (_confirmClickable is not null)
+        {
+            _confirmClickable.Visible = active && usesSelection;
+            _confirmClickable.SetEnabled(active && usesSelection && IsConfirmAllowed());
+            ResetActionButtonVisualState(_confirmClickable);
+        }
+    }
+
+    private void ReleaseFocusInsideScreen()
+    {
+        Viewport viewport = GetViewport();
+        Control focusOwner = viewport?.GuiGetFocusOwner();
+
+        if (GodotObject.IsInstanceValid(focusOwner)
+            && (focusOwner == this || IsAncestorOf(focusOwner)))
+        {
+            focusOwner.ReleaseFocus();
+        }
     }
 
     /// <summary>
@@ -776,6 +827,8 @@ public partial class NGenericSelectScreen : Control
 
     public void CancelSelection()
     {
+        // GD.Print($"NGenericSelectScreen CancelSelection fired. Visible={Visible}, IsVisibleInTree={IsVisibleInTree()}, Path={GetPath()}");
+
         CloseOpenDropdowns();
         Cancelled?.Invoke();
     }

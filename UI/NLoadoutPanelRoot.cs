@@ -67,8 +67,8 @@ public partial class NLoadoutPanelRoot : Control
 		if (!HasOpenScreen)
 			return;
 
-		CloseTopScreen();
-		GetViewport().SetInputAsHandled();
+		if(CloseTopScreen())
+			GetViewport().SetInputAsHandled();
 	}
 
 	public override void _Process(double delta)
@@ -297,10 +297,20 @@ public partial class NLoadoutPanelRoot : Control
 		while (_screenHistory.Count > 0)
 		{
 			screen = _screenHistory.Peek();
-			if (IsInstanceValid(screen))
-				return true;
 
-			_screenHistory.Pop();
+			if (!IsInstanceValid(screen))
+			{
+				_screenHistory.Pop();
+				continue;
+			}
+
+			if (!screen.Visible)
+			{
+				_screenHistory.Pop();
+				continue;
+			}
+
+			return true;
 		}
 
 		screen = null;
