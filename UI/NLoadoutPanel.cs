@@ -479,12 +479,11 @@ public partial class NLoadoutPanel : Panel
 		{
 			if (!target.IsConfiguredForCurrentLocale)
 			{
-				ConfigurePowerGiverScreen(target);
+				ConfigurePowerGiverScreen(target, resetFavoriteMode: false);
 				return;
 			}
 
 			PowerGiverStateService.EnsureLoaded();
-			showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
 			target.SetCustomVisibilityPredicate(item =>
 				item.UntypedModel is PowerModel power
 				&& (!showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power))));
@@ -1391,16 +1390,26 @@ public partial class NLoadoutPanel : Panel
 		Func<bool> getFavoritesOnly,
 		Action<bool> setFavoritesOnly)
 	{
+		AddFavoritesModeDropdown(screen, "PowerGiverFavoritesDropdown", getFavoritesOnly, setFavoritesOnly);
+		AddPowerGiverTargetDropdown(screen);
+	}
+
+	private static void AddFavoritesModeDropdown(
+		NGenericSelectScreen screen,
+		string name,
+		Func<bool> getFavoritesOnly,
+		Action<bool> setFavoritesOnly)
+	{
 		NLoadoutDropdown favoritesDropdown = new()
 		{
-			Name = "PowerGiverFavoritesDropdown",
+			Name = name,
 			SizeFlagsHorizontal = SizeFlags.ExpandFill,
 			CustomMinimumSize = new Vector2(256f, 52f)
 		};
 		favoritesDropdown.SetItems(
-			SScreenLoc("POWER_GIVER_FAVORITES_MODE", "Powers"),
+			SScreenLoc("FILTER_GROUP_FAVORITES", "Favorites"),
 			[
-				new LoadoutDropdownOption(PowerGiverFavoriteModeAll, SScreenLoc("POWER_GIVER_ALL_POWERS", "All Powers")),
+				new LoadoutDropdownOption(PowerGiverFavoriteModeAll, SScreenLoc("ALL", "All")),
 				new LoadoutDropdownOption(PowerGiverFavoriteModeFavorites, SScreenLoc("FAVORITES_ONLY", "Favorites"))
 			],
 			getFavoritesOnly() ? PowerGiverFavoriteModeFavorites : PowerGiverFavoriteModeAll);
@@ -1411,7 +1420,6 @@ public partial class NLoadoutPanel : Panel
 		};
 
 		screen.AddCustomSidebarControl(favoritesDropdown);
-		AddPowerGiverTargetDropdown(screen);
 	}
 
 	private static void AddPowerGiverTargetDropdown(NGenericSelectScreen screen)

@@ -509,21 +509,6 @@ public partial class NLoadoutDropdown : NDropdown
         scrollbar.OffsetRight = 0f;
         dropdownContainer.AddChild(scrollbar);
 
-        Control track = new()
-        {
-            Name = "Track",
-            Modulate = new Color(0f, 0f, 0f, 0.501961f),
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        track.SetAnchorsPreset(LayoutPreset.FullRect);
-        track.OffsetTop = 5f;
-        track.OffsetBottom = 5f;
-        scrollbar.AddChild(track);
-
-        AddSmallScrollbarTrack(track, "TrackTop", false);
-        AddSmallScrollbarTrack(track, "TrackBody", false, body: true);
-        AddSmallScrollbarTrack(track, "TrackBot", true);
-
         NinePatchRect train = new()
         {
             Name = "Train",
@@ -544,49 +529,6 @@ public partial class NLoadoutDropdown : NDropdown
         dropdownContainer.SetMaxHeight(maxHeight);
 
         return dropdownContainer;
-    }
-
-    private static void AddSmallScrollbarTrack(Control parent, string name, bool flipV, bool body = false)
-    {
-        TextureRect track = new()
-        {
-            Name = name,
-            Texture = LoadTexture(body
-                ? "res://images/packed/common_ui/small_scrollbar_track_center.png"
-                : "res://images/packed/common_ui/small_scrollbar_track_edge.png")
-                ?? LoadTexture(body
-                    ? "res://images/atlases/ui_atlas.sprites/small_scrollbar_track_center.tres"
-                    : "res://images/atlases/ui_atlas.sprites/small_scrollbar_track_edge.tres"),
-            ExpandMode = body ? TextureRect.ExpandModeEnum.IgnoreSize : TextureRect.ExpandModeEnum.FitWidth,
-            FlipV = flipV,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-
-        if (body)
-        {
-            track.SetAnchorsPreset(LayoutPreset.FullRect);
-            track.OffsetLeft = 8f;
-            track.OffsetRight = -8f;
-            track.OffsetTop = 32f;
-            track.OffsetBottom = -32f;
-        }
-        else if (flipV)
-        {
-            track.SetAnchorsPreset(LayoutPreset.BottomWide);
-            track.OffsetLeft = 8f;
-            track.OffsetRight = -8f;
-            track.OffsetTop = -41f;
-            track.OffsetBottom = -9f;
-        }
-        else
-        {
-            track.SetAnchorsPreset(LayoutPreset.TopWide);
-            track.OffsetLeft = 8f;
-            track.OffsetRight = -8f;
-            track.OffsetBottom = 32f;
-        }
-
-        parent.AddChild(track);
     }
 
     private static Font? LoadFont(string path)
