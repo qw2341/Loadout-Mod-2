@@ -29,6 +29,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Models.PotionPools;
 using MegaCrit.Sts2.Core.Models.RelicPools;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -37,6 +38,7 @@ using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using System.Text.RegularExpressions;
@@ -757,27 +759,26 @@ public partial class NLoadoutPanel : Panel
 		await CardPileCmd.RemoveFromDeck(card);
 	}
 
-	private static Task HandleUpgradeCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	private static Task HandleUpgradeCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not CardModel card)
 			return Task.CompletedTask;
 
 		Player? localPlayer = GetLocalRunPlayer();
-		if (localPlayer is null
-		    || !LocalContext.IsMine(card)
-		    || card.Pile?.Type != PileType.Deck
-		    || !localPlayer.Deck.Cards.Contains(card)
-		    || !card.IsUpgradable)
-		{
+		if (localPlayer is null)
 			return Task.CompletedTask;
-		}
 
-		CardCmd.Upgrade(card, CardPreviewStyle.None);
+		
+		int multiplier = screen.GetCurrentActivationMultiplier();
+		for (int i = 0; i < multiplier; i++)
+		{
+			CardCmd.Upgrade(card, CardPreviewStyle.None);
+		}
 
 		if (selectItem.View is Control view)
 		{
+			PlayCardSmithFeedback(view);
 			RefreshCardVisuals(view);
-			PlayFastUpgradeFeedback(view);
 		}
 
 		return Task.CompletedTask;
@@ -1373,20 +1374,26 @@ public partial class NLoadoutPanel : Panel
 		return true;
 	}
 
-	private static void PlayFastUpgradeFeedback(Control view)
+	private static void PlayCardSmithFeedback(Control view)
 	{
 		if (!GodotObject.IsInstanceValid(view) || !TryFindDescendantOrSelf(view, out NGridCardHolder? holder))
 			return;
 
-		Control pulseTarget = holder!.CardNode is Control cardNode ? cardNode : holder;
-		if (!GodotObject.IsInstanceValid(pulseTarget))
+		if (holder!.CardNode is not NCard cardNode || !GodotObject.IsInstanceValid(cardNode))
 			return;
 
-		Vector2 baseScale = pulseTarget.Scale;
-		Tween tween = pulseTarget.CreateTween();
-		tween.SetTrans(Tween.TransitionType.Cubic);
-		tween.TweenProperty(pulseTarget, "scale", baseScale * 1.08f, 0.08f).SetEase(Tween.EaseType.Out);
-		tween.TweenProperty(pulseTarget, "scale", baseScale, 0.12f).SetEase(Tween.EaseType.In);
+		NCardSmithVfx? smithVfx = NCardSmithVfx.Create(cardNode);
+		if (smithVfx is null)
+			return;
+
+		Node? host = NLoadoutPanelRoot.Instance?.HoverTipLayer;
+		if (host is null)
+		{
+			smithVfx.QueueFree();
+			return;
+		}
+
+		host.AddChildSafely(smithVfx);
 	}
 
 	private static bool BindRelicActivation(Control view, Action activate)

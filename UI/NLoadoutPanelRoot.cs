@@ -312,6 +312,9 @@ public partial class NLoadoutPanelRoot : Control
 		if (!IsInstanceValid(screen))
 			return;
 
+		if (!isActive)
+			ReleaseFocusOwnedBy(screen);
+
 		screen.Visible = isActive;
 
 		if (!_screenProcessModes.TryGetValue(screen, out var originalMode))
@@ -328,6 +331,17 @@ public partial class NLoadoutPanelRoot : Control
 
 		screen.ProcessMode = isActive ? originalMode : ProcessModeEnum.Disabled;
 		screen.MouseFilter = isActive ? MouseFilterEnum.Ignore : originalMouseFilter;
+	}
+
+	private void ReleaseFocusOwnedBy(Control screen)
+	{
+		Viewport viewport = GetViewport();
+		Control focusOwner = viewport?.GuiGetFocusOwner();
+		if (!IsInstanceValid(focusOwner))
+			return;
+
+		if (focusOwner == screen || screen.IsAncestorOf(focusOwner))
+			focusOwner.ReleaseFocus();
 	}
 
 	private void UpdateModalInputState()
