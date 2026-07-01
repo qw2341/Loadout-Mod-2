@@ -108,12 +108,25 @@ public partial class NLoadoutDropdown : NDropdown
     {
         base._Input(inputEvent);
 
-        if (!_isOpen || inputEvent is not InputEventMouseButton { Pressed: true } mouseButton)
+        if (!_isOpen || inputEvent is not InputEventMouseButton mouseButton)
             return;
 
         Vector2 globalPosition = mouseButton.GlobalPosition;
         bool insideButton = GetGlobalRect().HasPoint(globalPosition);
         bool insideDropdown = _dropdownContainer?.GetGlobalRect().HasPoint(globalPosition) ?? false;
+
+        if (insideDropdown
+            && mouseButton.Pressed
+            && _dropdownContainer is NLoadoutDropdownContainer dropdownContainer
+            && dropdownContainer.TryScrollFromInput(inputEvent))
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (!mouseButton.Pressed)
+            return;
+
         if (!insideButton && !insideDropdown)
             CloseLoadoutDropdown(restoreFocus: false);
     }
@@ -617,17 +630,16 @@ public partial class NLoadoutDropdownContainer : Control
     private bool _isDraggingTrain;
     private bool _signalsConnected;
 
+    public override void _EnterTree()
+    {
+        BindNodes();
+        ConnectContainerSignals();
+    }
+
     public override void _Ready()
     {
-        _dropdownItems = GetNodeOrNull<VBoxContainer>("VBoxContainer");
-        _scrollbar = GetNodeOrNull<Control>("Scrollbar");
-        _train = GetNodeOrNull<Control>("Scrollbar/Train");
-
-        if (_scrollbar is not null)
-            _scrollbar.GuiInput += OnScrollbarGuiInput;
-
-        VisibilityChanged += OnVisibilityChanged;
-        _signalsConnected = true;
+        BindNodes();
+        ConnectContainerSignals();
         RefreshLayout();
     }
 
@@ -643,9 +655,6 @@ public partial class NLoadoutDropdownContainer : Control
         }
 
         _isDraggingTrain = false;
-        _dropdownItems = null;
-        _scrollbar = null;
-        _train = null;
     }
 
     public override void _Process(double delta)
@@ -665,11 +674,29 @@ public partial class NLoadoutDropdownContainer : Control
         }
     }
 
+    public override void _Input(InputEvent inputEvent)
+    {
+        if (!IsVisibleInTree() || !_isDraggingTrain)
+            return;
+
+        if (inputEvent is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
+        {
+            _isDraggingTrain = false;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (inputEvent is InputEventMouseMotion motion)
+        {
+            DragScrollbarBy(motion.Relative.Y);
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
     public override void _GuiInput(InputEvent inputEvent)
     {
-        float drag = ScrollHelper.GetDragForScrollEvent(inputEvent);
-        if (!Mathf.IsZeroApprox(drag))
-            ScrollItemsBy(drag);
+        if (TryScrollFromInput(inputEvent))
+            GetViewport().SetInputAsHandled();
     }
 
     public void SetMaxHeight(float maxHeight)
@@ -716,6 +743,16 @@ public partial class NLoadoutDropdownContainer : Control
         UpdateScrollbarTrain();
     }
 
+    public bool TryScrollFromInput(InputEvent inputEvent)
+    {
+        float drag = ScrollHelper.GetDragForScrollEvent(inputEvent);
+        if (Mathf.IsZeroApprox(drag) || !IsScrollbarNeeded())
+            return false;
+
+        ScrollItemsBy(drag);
+        return true;
+    }
+
     private void OnVisibilityChanged()
     {
         if (!Visible)
@@ -723,6 +760,25 @@ public partial class NLoadoutDropdownContainer : Control
 
         _isDraggingTrain = false;
         RefreshLayout();
+    }
+
+    private void BindNodes()
+    {
+        _dropdownItems = GetNodeOrNull<VBoxContainer>("VBoxContainer");
+        _scrollbar = GetNodeOrNull<Control>("Scrollbar");
+        _train = GetNodeOrNull<Control>("Scrollbar/Train");
+    }
+
+    private void ConnectContainerSignals()
+    {
+        if (_signalsConnected)
+            return;
+
+        if (_scrollbar is not null)
+            _scrollbar.GuiInput += OnScrollbarGuiInput;
+
+        VisibilityChanged += OnVisibilityChanged;
+        _signalsConnected = true;
     }
 
     private void OnScrollbarGuiInput(InputEvent inputEvent)
@@ -738,21 +794,26 @@ public partial class NLoadoutDropdownContainer : Control
 
         if (_isDraggingTrain && inputEvent is InputEventMouseMotion motion)
         {
-            float trainRange = GetTrainTravelRange();
-            if (trainRange <= 0f)
-                return;
-
-            float contentRange = _contentHeight - Size.Y;
-            _targetItemsY = ClampItemsY(_targetItemsY - motion.Relative.Y * contentRange / trainRange);
-            if (_dropdownItems is not null)
-                _dropdownItems.Position = new Vector2(_dropdownItems.Position.X, _targetItemsY);
-            UpdateScrollbarTrain();
+            DragScrollbarBy(motion.Relative.Y);
             return;
         }
 
         float drag = ScrollHelper.GetDragForScrollEvent(inputEvent);
         if (!Mathf.IsZeroApprox(drag))
             ScrollItemsBy(drag);
+    }
+
+    private void DragScrollbarBy(float relativeY)
+    {
+        float trainRange = GetTrainTravelRange();
+        if (trainRange <= 0f)
+            return;
+
+        float contentRange = _contentHeight - Size.Y;
+        _targetItemsY = ClampItemsY(_targetItemsY - relativeY * contentRange / trainRange);
+        if (_dropdownItems is not null)
+            _dropdownItems.Position = new Vector2(_dropdownItems.Position.X, _targetItemsY);
+        UpdateScrollbarTrain();
     }
 
     private void ScrollItemsBy(float deltaY)

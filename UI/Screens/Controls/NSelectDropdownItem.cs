@@ -49,6 +49,17 @@ public partial class NSelectDropdownItem : NDropdownItem
         _signalsConnected = false;
     }
 
+    public override void _GuiInput(InputEvent inputEvent)
+    {
+        base._GuiInput(inputEvent);
+
+        if (GetParent()?.GetParent() is not NLoadoutDropdownContainer dropdownContainer)
+            return;
+
+        if (dropdownContainer.TryScrollFromInput(inputEvent))
+            GetViewport().SetInputAsHandled();
+    }
+
     private void EnsureControlTree()
     {
         _highlight = GetNodeOrNull<ColorRect>("Highlight");
