@@ -266,24 +266,37 @@ public partial class NLoadoutPanel : Panel
 			"Remove Card",
 			"Remove a card from your current deck.");
 		//06 - CARD MODIFIER
+		SelectItemAdapter<CardModel> cardModifierAdapter = new()
+		{
+			GetId = RuntimeItemId,
+			GetName = card => FormatCardTitle(card),
+			GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
+			CreateView = CreateCardGridItem,
+			ViewReady = (_, view) => RefreshCardVisuals(view),
+			UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
+			BindActivation = (_, view, activate) => BindCardActivation(view, activate)
+		};
+
+		void BuildCardModifierScreen(SelectScreenBuilder<CardModel> builder)
+		{
+			builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+			builder.Materialization(SelectMaterializationMode.Lazy);
+			builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
+			builder.ActionButton(
+				"upgrade_all",
+				SScreenLoc("UPGRADE_ALL", "Upgrade All"),
+				screen =>
+				{
+					HandleUpgradeAllDeckCards(screen);
+					screen.ConfigurePreservingViews(GetLocalDeckCards(), cardModifierAdapter, BuildCardModifierScreen, animateRelayout: true);
+				},
+				LoadActionButtonIcon("CardModifier.png"));
+		}
+
 		CreateAndAddDynamicLoadoutItem(
 			GetLocalDeckCards,
-			new SelectItemAdapter<CardModel>
-			{
-				GetId = RuntimeItemId,
-				GetName = card => FormatCardTitle(card),
-				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
-				CreateView = CreateCardGridItem,
-				ViewReady = (_, view) => RefreshCardVisuals(view),
-				UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
-				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
-			},
-			builder =>
-			{
-				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Lazy);
-				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
-			},
+			cardModifierAdapter,
+			BuildCardModifierScreen,
 			HandleUpgradeCardActivatedAsync,
 			"CardModifier.png",
 			"Card Modifier",
@@ -782,6 +795,22 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		return Task.CompletedTask;
+	}
+
+	private static void HandleUpgradeAllDeckCards(NGenericSelectScreen _)
+	{
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null)
+			return;
+		int i = 0;
+		foreach (CardModel card in localPlayer.Deck.Cards)
+		{
+			CardCmd.Upgrade(card, CardPreviewStyle.None);
+			if (_.Items[i++].View is not Control view) continue;
+			PlayCardSmithFeedback(view);
+			RefreshCardVisuals(view);
+		}
+		
 	}
 
 	private static async Task HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
@@ -2046,6 +2075,25 @@ public partial class NLoadoutPanel : Panel
 		{
 			return null;
 		}
+	}
+
+	private static Texture2D? LoadActionButtonIcon(string fileName)
+	{
+		string[] paths =
+		[
+			$"res://Loadout/images/relics/default/{fileName}",
+			$"res://Loadout/images/relics/xggg/{fileName}",
+			$"res://Loadout/images/relics/legacy/{fileName}",
+			$"res://Loadout/images/relics/isaac/{fileName}"
+		];
+
+		foreach (string path in paths)
+		{
+			if (ResourceLoader.Exists(path))
+				return GD.Load<Texture2D>(path);
+		}
+
+		return null;
 	}
 
 	private static void AddEnumFilters<TModel, TEnum>(
