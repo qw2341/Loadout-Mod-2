@@ -77,7 +77,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		MouseEntered += OnMouseEntered;
 		MouseExited += OnMouseExited;
 		Resized += OnResized;
-		Pressed += OnLeftClick;
+		Pressed += OpenSelectScreen;
 
 		if (UseGlobalSkin)
 			LoadoutSkinManager.SkinChanged += OnSkinChanged;
@@ -93,7 +93,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		MouseEntered -= OnMouseEntered;
 		MouseExited -= OnMouseExited;
 		Resized -= OnResized;
-		Pressed -= OnLeftClick;
+		Pressed -= OpenSelectScreen;
 
 		if (UseGlobalSkin)
 			LoadoutSkinManager.SkinChanged -= OnSkinChanged;
@@ -123,15 +123,19 @@ public partial class NLoadoutPanelItem : TextureButton
 		if (@event is not InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: false } mouseButton)
 			return;
 
-		if (!mouseButton.CtrlPressed && !Input.IsKeyPressed(Key.Ctrl))
+		if (IsQuickActionGesture(mouseButton) && QuickAction is not null)
+		{
+			AcceptEvent();
+			if (!_quickActionInFlight)
+			{
+				_quickActionInFlight = true;
+				_ = RunQuickActionAsync();
+			}
 			return;
-
-		if (QuickAction is null || _quickActionInFlight)
-			return;
+		}
 
 		AcceptEvent();
-		_quickActionInFlight = true;
-		_ = RunQuickActionAsync();
+		OpenSelectScreen();
 	}
 
 	public void RefreshVisuals()
@@ -240,7 +244,12 @@ public partial class NLoadoutPanelItem : TextureButton
 		UpdatePivotOffset();
 	}
 
-	private void OnLeftClick()
+	private static bool IsQuickActionGesture(InputEventMouseButton mouseButton)
+	{
+		return mouseButton.CtrlPressed || Input.IsKeyPressed(Key.Ctrl);
+	}
+
+	private void OpenSelectScreen()
 	{
 		//open select screen
 		if (_boundScreen == null)
