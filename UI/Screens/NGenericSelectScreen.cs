@@ -158,10 +158,12 @@ public partial class NGenericSelectScreen : Control
     private MegaLabel? _multiplierBadgeLabel;
     private Func<IGenericSelectItem, bool>? _customVisibilityPredicate;
     private bool _isSubscribedToLocaleChanges;
+    private string _configuredLocaleLanguage = string.Empty;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
     public IReadOnlyDictionary<string, int> SelectedAmounts => _selectedAmounts;
+    public bool IsConfiguredForCurrentLocale => string.Equals(_configuredLocaleLanguage, GetCurrentLocaleLanguage(), StringComparison.Ordinal);
 
     public override void _Ready()
     {
@@ -250,6 +252,7 @@ public partial class NGenericSelectScreen : Control
         }
 
         _isConfigured = true;
+        _configuredLocaleLanguage = GetCurrentLocaleLanguage();
         RefreshNow(resetScroll: true);
     }
 
@@ -297,6 +300,7 @@ public partial class NGenericSelectScreen : Control
             LockRelayoutPositions(relayoutStartPositions);
 
         _isConfigured = true;
+        _configuredLocaleLanguage = GetCurrentLocaleLanguage();
         RefreshNow(resetScroll: false);
 
         if (animateRelayout)
@@ -547,7 +551,10 @@ public partial class NGenericSelectScreen : Control
             return;
 
         foreach (Node child in _customControlsContainer.GetChildren())
+        {
+            _customControlsContainer.RemoveChild(child);
             child.QueueFree();
+        }
     }
 
     public void RefreshNow(bool resetScroll = false)
@@ -852,8 +859,15 @@ public partial class NGenericSelectScreen : Control
 
     private void OnLocaleChanged()
     {
-        LocaleChanged?.Invoke();
+        if (!IsConfiguredForCurrentLocale)
+            LocaleChanged?.Invoke();
+
         RefreshLocaleSensitiveText();
+    }
+
+    private static string GetCurrentLocaleLanguage()
+    {
+        return LocManager.Instance?.Language ?? string.Empty;
     }
 
     private void RefreshLocaleSensitiveText()
@@ -1124,7 +1138,7 @@ public partial class NGenericSelectScreen : Control
         if (_customControlsContainer is null)
             return;
 
-        if (_customControlsContainer.GetNodeOrNull<Control>("CustomControlsTopSpacer") is not null)
+        if (_customControlsContainer.GetChildren().OfType<Control>().Any(child => child.Name == "CustomControlsTopSpacer" && !child.IsQueuedForDeletion()))
             return;
 
         Control spacer = new()
@@ -1132,7 +1146,8 @@ public partial class NGenericSelectScreen : Control
             Name = "CustomControlsTopSpacer",
             MouseFilter = MouseFilterEnum.Ignore,
             CustomMinimumSize = new Vector2(0f, 52f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ShrinkBegin
         };
         _customControlsContainer.AddChild(spacer);
         _customControlsContainer.MoveChild(spacer, 0);

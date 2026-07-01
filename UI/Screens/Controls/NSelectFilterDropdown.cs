@@ -628,7 +628,6 @@ public partial class NLoadoutDropdown : NDropdown
 
 public partial class NLoadoutDropdownContainer : Control
 {
-    private const float ScrollbarLaneWidth = 42f;
     private const float ScrollbarPadding = 9f;
     private const float MinimumTrainHeight = 32f;
 
@@ -703,7 +702,6 @@ public partial class NLoadoutDropdownContainer : Control
         bool needsScrollbar = IsScrollbarNeeded();
         Size = new Vector2(Size.X, needsScrollbar ? _maxHeight : _contentHeight);
         CustomMinimumSize = new Vector2(CustomMinimumSize.X, Size.Y);
-        ResizeItemsForScrollbar(needsScrollbar);
 
         if (_scrollbar is not null)
             _scrollbar.Visible = needsScrollbar;
@@ -720,24 +718,6 @@ public partial class NLoadoutDropdownContainer : Control
         }
 
         UpdateScrollbarTrain();
-    }
-
-    private void ResizeItemsForScrollbar(bool needsScrollbar)
-    {
-        if (_dropdownItems is null)
-            return;
-
-        _dropdownItems.OffsetRight = needsScrollbar ? -ScrollbarLaneWidth : 0f;
-        float itemWidth = MathF.Max(1f, Size.X - (needsScrollbar ? ScrollbarLaneWidth : 0f));
-
-        foreach (Node child in _dropdownItems.GetChildren())
-        {
-            if (child is not Control control)
-                continue;
-
-            control.CustomMinimumSize = new Vector2(itemWidth, control.CustomMinimumSize.Y);
-            control.Size = new Vector2(itemWidth, control.Size.Y);
-        }
     }
 
     private void OnVisibilityChanged()

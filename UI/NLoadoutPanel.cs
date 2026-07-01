@@ -388,7 +388,16 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		item.BoundScreen = screen;
-		item.BeforeOpen = ConfigureScreen;
+		item.BeforeOpen = target =>
+		{
+			if (!target.IsConfiguredForCurrentLocale)
+			{
+				ConfigureScreen(target);
+				return;
+			}
+
+			beforeOpen?.Invoke(target);
+		};
 
 		_itemsContainer.AddChild(item);
 	}
@@ -466,6 +475,25 @@ public partial class NLoadoutPanel : Panel
 				value => showPowerGiverFavoritesOnly = value);
 		}
 
+		void RefreshPowerGiverScreenForOpen(NGenericSelectScreen target)
+		{
+			if (!target.IsConfiguredForCurrentLocale)
+			{
+				ConfigurePowerGiverScreen(target);
+				return;
+			}
+
+			PowerGiverStateService.EnsureLoaded();
+			showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
+			target.SetCustomVisibilityPredicate(item =>
+				item.UntypedModel is PowerModel power
+				&& (!showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power))));
+			target.GetNodeOrNull<NLoadoutDropdown>("Sidebar/MarginContainer/TopVBox/CustomControls/PowerGiverFavoritesDropdown")
+				?.SetSelectedItem(showPowerGiverFavoritesOnly ? PowerGiverFavoriteModeFavorites : PowerGiverFavoriteModeAll);
+			target.RefreshNow(resetScroll: true);
+			target.RefreshCurrentItemStates();
+		}
+
 		ConfigurePowerGiverScreen(screen);
 		screen.LocaleChanged += () =>
 		{
@@ -476,7 +504,7 @@ public partial class NLoadoutPanel : Panel
 		screen.Cancelled += CloseTopLoadoutScreen;
 		screen.Confirmed += _ => CloseTopLoadoutScreen();
 		item.BoundScreen = screen;
-		item.BeforeOpen = target => ConfigurePowerGiverScreen(target);
+		item.BeforeOpen = RefreshPowerGiverScreenForOpen;
 		_itemsContainer.AddChild(item);
 	}
 
