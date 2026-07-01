@@ -549,8 +549,8 @@ public partial class NLoadoutPanel : Panel
 		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
 		{
 			IReadOnlyList<TModel> models = getModels();
-			if (models.Count == 0)
-				LogEmptyDynamicScreen(title);
+			// if (models.Count == 0)
+			// 	LogEmptyDynamicScreen(title);
 
 			if (preserveViews)
 				target.ConfigurePreservingViews(models, adapter, builder, animateRelayout: true);
