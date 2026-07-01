@@ -2189,6 +2189,12 @@ public partial class NLoadoutPanel : Panel
 
 	private static string GetFirstEventDescriptionParagraph(EventModel model)
 	{
+		
+		if (model is AncientEventModel ancient)
+		{
+			return SafeFormatLocString(ancient.Epithet, string.Empty);
+		}
+		
 		string text;
 		try
 		{
@@ -2198,9 +2204,7 @@ public partial class NLoadoutPanel : Panel
 		catch (Exception exception)
 		{
 			GD.PushWarning($"LoadoutPanel: could not format initial event description for '{model.Id}'. {exception.Message}");
-			return model is AncientEventModel ancient
-				? SafeFormatLocString(ancient.Epithet, string.Empty)
-				: string.Empty;
+			return string.Empty;
 		}
 
 		foreach (string paragraph in Regex.Split(text, @"(?:\r?\n){2,}"))
