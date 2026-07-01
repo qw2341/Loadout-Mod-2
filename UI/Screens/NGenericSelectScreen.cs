@@ -113,12 +113,14 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<Control, Tween> _relayoutTweens = new();
     private readonly Dictionary<Control, Vector2> _relayoutTargets = new();
     private readonly HashSet<Control> _relayoutPositionLockedViews = new();
+    private readonly List<Control> _pendingCustomSidebarControls = new();
 
     private LineEdit? _searchLineEdit;
     private BaseButton? _clearSearchButton;
     private NClickableControl? _clearSearchClickable;
     private VBoxContainer? _filterControls;
     private Container? _sortButtonsContainer;
+    private VBoxContainer? _customControlsContainer;
     private VBoxContainer? _togglesContainer;
     private VBoxContainer? _filtersContainer;
     private Control? _itemGrid;
@@ -163,6 +165,7 @@ public partial class NGenericSelectScreen : Control
         EnsureActionButtons();
         BindSceneSignals();
         RebuildSortButtons();
+        RebuildCustomControls();
         RebuildToggleButtons();
         RebuildFilterButtons();
         ApplyLayoutSettings();
@@ -297,6 +300,11 @@ public partial class NGenericSelectScreen : Control
         ScheduleDeferredVisibleRefresh();
     }
 
+    public void RefreshCurrentItemStates()
+    {
+        RefreshVisibleItemStates();
+    }
+
     public int GetCurrentActivationMultiplier()
     {
         return GetCurrentInputMultiplier();
@@ -352,6 +360,7 @@ public partial class NGenericSelectScreen : Control
             _searchLineEdit.Text = string.Empty;
 
         RebuildSortButtons();
+        ClearCustomSidebarControls();
         RebuildToggleButtons();
         RebuildFilterButtons();
         UpdateConfirmButtonState();
@@ -438,6 +447,34 @@ public partial class NGenericSelectScreen : Control
         _togglesById[toggle.Id] = toggle;
         _toggleStates[toggle.Id] = toggle.CheckedByDefault;
         RebuildToggleButtons();
+    }
+
+    public void AddCustomSidebarControl(Control control)
+    {
+        if (_customControlsContainer is null)
+        {
+            _pendingCustomSidebarControls.Add(control);
+            return;
+        }
+
+        _customControlsContainer.AddChild(control);
+    }
+
+    public void ClearCustomSidebarControls()
+    {
+        foreach (Control pendingControl in _pendingCustomSidebarControls)
+        {
+            if (GodotObject.IsInstanceValid(pendingControl) && pendingControl.GetParent() is null)
+                pendingControl.QueueFree();
+        }
+
+        _pendingCustomSidebarControls.Clear();
+
+        if (_customControlsContainer is null)
+            return;
+
+        foreach (Node child in _customControlsContainer.GetChildren())
+            child.QueueFree();
     }
 
     public void RefreshNow(bool resetScroll = false)
@@ -736,6 +773,17 @@ public partial class NGenericSelectScreen : Control
             _filterControls.AddChild(_sortButtonsContainer);
         }
 
+        _customControlsContainer = _filterControls.GetNodeOrNull<VBoxContainer>("CustomControls");
+        if (_customControlsContainer is null)
+        {
+            _customControlsContainer = new VBoxContainer
+            {
+                Name = "CustomControls",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            _filterControls.AddChild(_customControlsContainer);
+        }
+
         _filtersContainer = _filterControls.GetNodeOrNull<VBoxContainer>("FilterGroups");
         if (_filtersContainer is null)
         {
@@ -757,6 +805,12 @@ public partial class NGenericSelectScreen : Control
             };
             _filterControls.AddChild(_togglesContainer);
         }
+
+        if (_sortButtonsContainer.GetParent() == _filterControls && _customControlsContainer.GetParent() == _filterControls)
+            _filterControls.MoveChild(_customControlsContainer, _sortButtonsContainer.GetIndex() + 1);
+
+        if (_customControlsContainer.GetParent() == _filterControls && _filtersContainer.GetParent() == _filterControls)
+            _filterControls.MoveChild(_filtersContainer, _customControlsContainer.GetIndex() + 1);
 
         if (_filtersContainer.GetParent() == _filterControls && _togglesContainer.GetParent() == _filterControls)
             _filterControls.MoveChild(_togglesContainer, _filtersContainer.GetIndex() + 1);
@@ -905,6 +959,25 @@ public partial class NGenericSelectScreen : Control
         _materializeCts?.Cancel();
         _materializeCts?.Dispose();
         _materializeCts = null;
+    }
+
+    private void RebuildCustomControls()
+    {
+        if (_customControlsContainer is null)
+            return;
+
+        _customControlsContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+
+        foreach (Control control in _pendingCustomSidebarControls.ToList())
+        {
+            if (!GodotObject.IsInstanceValid(control))
+                continue;
+
+            control.GetParent()?.RemoveChild(control);
+            _customControlsContainer.AddChild(control);
+        }
+
+        _pendingCustomSidebarControls.Clear();
     }
 
     private void RebuildSortButtons()

@@ -6,7 +6,9 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.PowerGiver;
 using Loadout.UI.Screens;
+using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Combat;
@@ -289,31 +291,7 @@ public partial class NLoadoutPanel : Panel
 			"A compass that leads to your heart's desire.",
 			HandleEnterEventActivatedAsync);
 		//08 - POWER GIVER
-		CreateAndAddLoadoutItem(
-			ModelDb.AllPowers,
-			new SelectItemAdapter<PowerModel>
-			{
-				GetId = power => power.Id.ToString(),
-				GetName = power => FormatPowerTitle(power),
-				GetSearchText = power => $"{power.Id} {FormatPowerTitle(power)} {power.Description}",
-				CreateView = (power, _) => CreatePowerGridItem(power)
-			}, builder =>
-			{
-				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
-				builder.FilterGroup("type", SScreenLoc("FILTER_GROUP_TYPE", "Type"));
-				builder.Filter("buff", SScreenLoc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
-				builder.Filter("debuff", SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
-				builder.Filter("type_none", SScreenLoc("NONE", "None"), power => power.Type == PowerType.None, "type");
-				builder.FilterGroup("stack", SScreenLoc("FILTER_GROUP_STACK", "Stack"));
-				builder.Filter("stack_none", SScreenLoc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
-				builder.Filter("counter", SScreenLoc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
-				builder.Filter("single", SScreenLoc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
-				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("type", GameLoc("gameplay_ui", "SORT_TYPE", SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
-			},
-			null,
+		CreateAndAddPowerGiverItem(
 			"PowerGiver.png",
 			"Power Giver",
 			"Potion that gives power.");
@@ -419,6 +397,66 @@ public partial class NLoadoutPanel : Panel
 		{
 			clearActivation();
 		}
+	}
+
+	private void CreateAndAddPowerGiverItem(
+		string textureFileName,
+		string title,
+		string description)
+	{
+		var item = new NLoadoutPanelItem(textureFileName, title, description);
+		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+		var screen = scene.Instantiate<NGenericSelectScreen>();
+
+		SelectItemAdapter<PowerModel> adapter = new()
+		{
+			GetId = PowerId,
+			GetName = FormatPowerTitle,
+			GetSearchText = power => $"{power.Id} {FormatPowerTitle(power)} {power.Description}",
+			CreateView = (power, _) => CreatePowerGridItem(
+				power,
+				PowerGiverStateService.GetCounter(PowerId(power)),
+				PowerGiverStateService.IsFavorite(PowerId(power))),
+			UpdateView = (power, view, _) => UpdatePowerGridItem(view, power),
+			BindActivation = (power, view, _) => BindPowerGiverActivation(screen, power, view)
+		};
+
+		void ConfigurePowerGiverScreen(NGenericSelectScreen target)
+		{
+			PowerGiverStateService.EnsureLoaded();
+			target.Configure(ModelDb.AllPowers, adapter, builder =>
+			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
+				builder.FilterGroup("favorite", SScreenLoc("FILTER_GROUP_FAVORITES", "Favorites"));
+				builder.Filter(
+					"favorites_only",
+					SScreenLoc("FAVORITES_ONLY", "Favorites"),
+					power => PowerGiverStateService.IsFavorite(PowerId(power)),
+					"favorite",
+					enabledByDefault: PowerGiverStateService.HasFavorites());
+				builder.FilterGroup("type", SScreenLoc("FILTER_GROUP_TYPE", "Type"));
+				builder.Filter("buff", SScreenLoc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
+				builder.Filter("debuff", SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
+				builder.Filter("type_none", SScreenLoc("NONE", "None"), power => power.Type == PowerType.None, "type");
+				builder.FilterGroup("stack", SScreenLoc("FILTER_GROUP_STACK", "Stack"));
+				builder.Filter("stack_none", SScreenLoc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
+				builder.Filter("counter", SScreenLoc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
+				builder.Filter("single", SScreenLoc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
+				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("type", GameLoc("gameplay_ui", "SORT_TYPE", SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
+			});
+			AddPowerGiverTargetDropdown(target);
+		}
+
+		ConfigurePowerGiverScreen(screen);
+		screen.Cancelled += CloseTopLoadoutScreen;
+		screen.Confirmed += _ => CloseTopLoadoutScreen();
+		item.BoundScreen = screen;
+		item.BeforeOpen = ConfigurePowerGiverScreen;
+		_itemsContainer.AddChild(item);
 	}
 
 	private void CreateAndAddDynamicLoadoutItem<TModel>(
@@ -771,13 +809,16 @@ public partial class NLoadoutPanel : Panel
 		return holder;
 	}
 
-	private static Control CreatePowerGridItem(PowerModel model)
+	private static Control CreatePowerGridItem(PowerModel model, int selectedAmount = 0, bool isFavorite = false)
 	{
 		Texture2D? icon = null;
 		if (ResourceLoader.Exists(model.IconPath))
 			icon = model.Icon;
 
 		Button button = CreateModelButton(new Vector2(220f, 104f));
+		button.ClipContents = false;
+		Panel favoriteGlow = CreateFavoriteGlow(button.CustomMinimumSize, isFavorite);
+		button.AddChild(favoriteGlow);
 
 		if (icon is not null)
 		{
@@ -802,21 +843,68 @@ public partial class NLoadoutPanel : Panel
 			StsColors.cream);
 		button.AddChild(nameLabel);
 
-		if (model.StackType == PowerStackType.Counter)
-		{
-			MegaLabel amountLabel = CreateButtonLabel(
-				"PowerAmount",
-				model.DisplayAmount.ToString(),
-				new Vector2(160f, 72f),
-				new Vector2(50f, 26f),
-				22,
-				HorizontalAlignment.Right,
-				model.AmountLabelColor);
-			button.AddChild(amountLabel);
-		}
+		MegaLabel amountLabel = CreatePowerAmountLabel(model, selectedAmount);
+		button.AddChild(amountLabel);
 
 		AttachHoverTips(button, model.HoverTips);
 		return button;
+	}
+
+	private static Panel CreateFavoriteGlow(Vector2 size, bool visible)
+	{
+		StyleBoxFlat style = new()
+		{
+			BgColor = new Color(1f, 0.78f, 0.08f, 0.09f),
+			BorderColor = new Color(1f, 0.82f, 0.08f, 0.92f),
+			CornerRadiusTopLeft = 4,
+			CornerRadiusTopRight = 4,
+			CornerRadiusBottomLeft = 4,
+			CornerRadiusBottomRight = 4,
+			BorderWidthLeft = 3,
+			BorderWidthTop = 3,
+			BorderWidthRight = 3,
+			BorderWidthBottom = 3
+		};
+
+		Panel panel = new()
+		{
+			Name = "FavoriteGlow",
+			Visible = visible,
+			MouseFilter = MouseFilterEnum.Ignore,
+			Position = new Vector2(-4f, -4f),
+			Size = size + new Vector2(8f, 8f),
+			CustomMinimumSize = size + new Vector2(8f, 8f)
+		};
+		panel.AddThemeStyleboxOverride("panel", style);
+		return panel;
+	}
+
+	private static MegaLabel CreatePowerAmountLabel(PowerModel model, int selectedAmount)
+	{
+		MegaLabel amountLabel = CreateButtonLabel(
+			"PowerAmount",
+			selectedAmount > 0 ? selectedAmount.ToString() : string.Empty,
+			new Vector2(160f, 72f),
+			new Vector2(50f, 26f),
+			22,
+			HorizontalAlignment.Right,
+			model.AmountLabelColor);
+		amountLabel.Visible = selectedAmount > 0;
+		return amountLabel;
+	}
+
+	private static void UpdatePowerGridItem(Control view, PowerModel model)
+	{
+		string powerId = PowerId(model);
+		int selectedAmount = PowerGiverStateService.GetCounter(powerId);
+		if (view.GetNodeOrNull<MegaLabel>("PowerAmount") is { } amountLabel)
+		{
+			amountLabel.Text = selectedAmount > 0 ? selectedAmount.ToString() : string.Empty;
+			amountLabel.Visible = selectedAmount > 0;
+		}
+
+		if (view.GetNodeOrNull<CanvasItem>("FavoriteGlow") is { } favoriteGlow)
+			favoriteGlow.Visible = PowerGiverStateService.IsFavorite(powerId);
 	}
 
 	private static Control CreateEventGridItem(EventModel model)
@@ -1201,6 +1289,62 @@ public partial class NLoadoutPanel : Panel
 		};
 
 		return true;
+	}
+
+	private static bool BindPowerGiverActivation(NGenericSelectScreen screen, PowerModel power, Control view)
+	{
+		string powerId = PowerId(power);
+		view.GuiInput += input =>
+		{
+			if (input is not InputEventMouseButton mouseButton || mouseButton.Pressed)
+				return;
+
+			if (mouseButton.ButtonIndex != MouseButton.Left && mouseButton.ButtonIndex != MouseButton.Right)
+				return;
+
+			if (mouseButton.AltPressed || Input.IsKeyPressed(Key.Alt))
+			{
+				PowerGiverStateService.ToggleFavorite(powerId);
+				screen.RefreshNow();
+				view.AcceptEvent();
+				return;
+			}
+
+			int multiplier = screen.GetCurrentActivationMultiplier();
+			int delta = mouseButton.ButtonIndex == MouseButton.Right ? -multiplier : multiplier;
+			PowerGiverStateService.AdjustCounter(powerId, delta);
+			screen.RefreshCurrentItemStates();
+			view.AcceptEvent();
+		};
+
+		return true;
+	}
+
+	private static void AddPowerGiverTargetDropdown(NGenericSelectScreen screen)
+	{
+		NLoadoutDropdown dropdown = new()
+		{
+			Name = "PowerGiverTargetDropdown",
+			SizeFlagsHorizontal = SizeFlags.ExpandFill,
+			CustomMinimumSize = new Vector2(256f, 52f)
+		};
+		dropdown.SetItems(
+			SScreenLoc("POWER_GIVER_TARGET", "Target"),
+			[
+				new LoadoutDropdownOption(PowerGiverTarget.Player.ToString(), SScreenLoc("POWER_GIVER_TARGET_PLAYER", "Player")),
+				new LoadoutDropdownOption(PowerGiverTarget.Monsters.ToString(), SScreenLoc("POWER_GIVER_TARGET_MONSTERS", "Monsters"))
+			],
+			PowerGiverStateService.SelectedTarget.ToString());
+		dropdown.SelectedItemChanged += selectedId =>
+		{
+			if (Enum.TryParse(selectedId, ignoreCase: true, out PowerGiverTarget target))
+			{
+				PowerGiverStateService.SetSelectedTarget(target);
+				screen.RefreshCurrentItemStates();
+			}
+		};
+
+		screen.AddCustomSidebarControl(dropdown);
 	}
 
 	private static bool TryFindDescendantOrSelf<TControl>(Node root, out TControl? control)
@@ -1918,6 +2062,11 @@ public partial class NLoadoutPanel : Panel
 	private static string FormatPowerTitle(PowerModel power)
 	{
 		return power.Title.GetFormattedText();
+	}
+
+	private static string PowerId(PowerModel power)
+	{
+		return power.Id.ToString();
 	}
 
 	private static string FormatPowerCategory(PowerType type)
