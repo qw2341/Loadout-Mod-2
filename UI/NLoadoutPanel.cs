@@ -263,6 +263,29 @@ public partial class NLoadoutPanel : Panel
 			"CardShredder.png",
 			"Remove Card",
 			"Remove a card from your current deck.");
+		//06 - CARD MODIFIER
+		CreateAndAddDynamicLoadoutItem(
+			GetLocalDeckCards,
+			new SelectItemAdapter<CardModel>
+			{
+				GetId = RuntimeItemId,
+				GetName = card => FormatCardTitle(card),
+				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
+				CreateView = CreateCardGridItem,
+				ViewReady = (_, view) => RefreshCardVisuals(view),
+				UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
+				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
+			},
+			builder =>
+			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+				builder.Materialization(SelectMaterializationMode.Lazy);
+				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
+			},
+			HandleUpgradeCardActivatedAsync,
+			"CardModifier.png",
+			"Card Modifier",
+			"Modifies cards in your current deck.");
 				
 		//07 - EVENTFUL COMPASS
 		CreateAndAddLoadoutItem(
@@ -732,6 +755,32 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		await CardPileCmd.RemoveFromDeck(card);
+	}
+
+	private static Task HandleUpgradeCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	{
+		if (selectItem.UntypedModel is not CardModel card)
+			return Task.CompletedTask;
+
+		Player? localPlayer = GetLocalRunPlayer();
+		if (localPlayer is null
+		    || !LocalContext.IsMine(card)
+		    || card.Pile?.Type != PileType.Deck
+		    || !localPlayer.Deck.Cards.Contains(card)
+		    || !card.IsUpgradable)
+		{
+			return Task.CompletedTask;
+		}
+
+		CardCmd.Upgrade(card, CardPreviewStyle.None);
+
+		if (selectItem.View is Control view)
+		{
+			RefreshCardVisuals(view);
+			PlayFastUpgradeFeedback(view);
+		}
+
+		return Task.CompletedTask;
 	}
 
 	private static async Task HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
@@ -1322,6 +1371,22 @@ public partial class NLoadoutPanel : Panel
 
 		holder!.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
 		return true;
+	}
+
+	private static void PlayFastUpgradeFeedback(Control view)
+	{
+		if (!GodotObject.IsInstanceValid(view) || !TryFindDescendantOrSelf(view, out NGridCardHolder? holder))
+			return;
+
+		Control pulseTarget = holder!.CardNode is Control cardNode ? cardNode : holder;
+		if (!GodotObject.IsInstanceValid(pulseTarget))
+			return;
+
+		Vector2 baseScale = pulseTarget.Scale;
+		Tween tween = pulseTarget.CreateTween();
+		tween.SetTrans(Tween.TransitionType.Cubic);
+		tween.TweenProperty(pulseTarget, "scale", baseScale * 1.08f, 0.08f).SetEase(Tween.EaseType.Out);
+		tween.TweenProperty(pulseTarget, "scale", baseScale, 0.12f).SetEase(Tween.EaseType.In);
 	}
 
 	private static bool BindRelicActivation(Control view, Action activate)
