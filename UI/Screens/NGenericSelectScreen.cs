@@ -2091,10 +2091,11 @@ public partial class NGenericSelectScreen : Control
             MouseFilter = MouseFilterEnum.Ignore
         };
         headerRow.SetAnchorsPreset(LayoutPreset.FullRect);
-        headerRow.AddThemeConstantOverride("separation", header.Icon is null ? 0 : 12);
+        bool hasHeaderIcon = TryGetValidTexture(header.Icon, out Texture2D? headerIcon);
+        headerRow.AddThemeConstantOverride("separation", hasHeaderIcon ? 12 : 0);
         container.AddChild(headerRow);
 
-        if (TryGetValidTexture(header.Icon, out Texture2D? headerIcon))
+        if (hasHeaderIcon)
         {
             TextureRect icon = new()
             {
@@ -2102,6 +2103,8 @@ public partial class NGenericSelectScreen : Control
                 CustomMinimumSize = new Vector2(48f, 48f),
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                 StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+                SizeFlagsVertical = SizeFlags.ShrinkCenter,
                 MouseFilter = MouseFilterEnum.Ignore
             };
             headerRow.AddChild(icon);
@@ -3420,11 +3423,21 @@ public sealed class SelectGroupHeader
     private static readonly Regex LocalizedCategoryPattern = new(
         @"^(?<title>\[(?<color>gold|blue)\]\[font_size=)\d+(?<titleTail>\]\[b\].+?\[/b\]\[/font_size\]\[/\k<color>\])(?<description>\s+.+)$",
         RegexOptions.CultureInvariant | RegexOptions.Singleline);
+    private readonly Texture2D? _icon;
+    private readonly Func<Texture2D?>? _iconProvider;
 
     public SelectGroupHeader(string text, Texture2D? icon = null, bool showWhenEmpty = false, string? childGroupPrefix = null)
     {
         Text = NormalizeCategoryText(text);
-        Icon = icon;
+        _icon = icon;
+        ShowWhenEmpty = showWhenEmpty;
+        ChildGroupPrefix = childGroupPrefix;
+    }
+
+    public SelectGroupHeader(string text, Func<Texture2D?> iconProvider, bool showWhenEmpty = false, string? childGroupPrefix = null)
+    {
+        Text = NormalizeCategoryText(text);
+        _iconProvider = iconProvider;
         ShowWhenEmpty = showWhenEmpty;
         ChildGroupPrefix = childGroupPrefix;
     }
@@ -3456,7 +3469,7 @@ public sealed class SelectGroupHeader
     }
 
     public string Text { get; }
-    public Texture2D? Icon { get; }
+    public Texture2D? Icon => _iconProvider?.Invoke() ?? _icon;
     public bool ShowWhenEmpty { get; }
     public string? ChildGroupPrefix { get; }
 }

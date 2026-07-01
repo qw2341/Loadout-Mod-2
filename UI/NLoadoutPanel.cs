@@ -2283,7 +2283,8 @@ public partial class NLoadoutPanel : Panel
 			string groupKey = $"relic:ancient:{ancient.Id.Entry}";
 			LocString headerText = new("relic_collection", "ANCIENT_SUBCATEGORY");
 			headerText.Add("Ancient", ancient.Title);
-			headers[groupKey] = new SelectGroupHeader(headerText.GetFormattedText(), TryGetValidTexture(ancient.RunHistoryIcon));
+			AncientEventModel headerAncient = ancient;
+			headers[groupKey] = new SelectGroupHeader(headerText.GetFormattedText(), () => TryGetValidTexture(headerAncient.RunHistoryIcon));
 			groupOrder.Add(groupKey);
 			ancientGroupOrder.Add(groupKey);
 
