@@ -363,6 +363,62 @@ public partial class NGenericSelectScreen : Control
             AnimateRelayoutFrom(relayoutStartPositions);
     }
 
+    public void RefreshItemsPreservingViews<TModel>(
+        IEnumerable<TModel> models,
+        SelectItemAdapter<TModel> adapter,
+        bool animateRelayout = false,
+        bool resetScroll = false)
+    {
+        CancelRelayoutAnimations(applyFinalPositions: false);
+        CancelPendingMaterialization();
+        Dictionary<string, Control> reusableViews = CaptureReusableItemViewsById();
+        Dictionary<string, Vector2> previousPositions = CaptureItemPositionsById();
+        Dictionary<Control, Vector2> relayoutStartPositions = new();
+
+        _items.Clear();
+        _visibleItems.Clear();
+        _itemLayouts.Clear();
+        _itemLayoutOrder.Clear();
+        _visibleLayoutNodes.Clear();
+
+        int index = 0;
+        foreach (TModel model in models)
+        {
+            GenericSelectItem<TModel> item = new(model, adapter, index);
+            if (reusableViews.Remove(item.Id, out Control? view) && GodotObject.IsInstanceValid(view))
+            {
+                item.SetView(view);
+                if (animateRelayout && previousPositions.TryGetValue(item.Id, out Vector2 previousPosition))
+                    relayoutStartPositions[view] = previousPosition;
+            }
+
+            _items.Add(item);
+            index++;
+        }
+
+        foreach (Control staleView in reusableViews.Values)
+        {
+            if (!GodotObject.IsInstanceValid(staleView))
+                continue;
+
+            staleView.GetParent()?.RemoveChild(staleView);
+            staleView.QueueFreeSafely();
+        }
+
+        HashSet<string> currentItemIds = _items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (string staleSelectionId in _selectedAmounts.Keys.Where(id => !currentItemIds.Contains(id)).ToList())
+            _selectedAmounts.Remove(staleSelectionId);
+
+        if (animateRelayout)
+            LockRelayoutPositions(relayoutStartPositions);
+
+        _configuredLocaleLanguage = GetCurrentLocaleLanguage();
+        RefreshNow(resetScroll);
+
+        if (animateRelayout)
+            AnimateRelayoutFrom(relayoutStartPositions);
+    }
+
     public void RequestDeferredVisibleRefresh()
     {
         ScheduleDeferredVisibleRefresh();

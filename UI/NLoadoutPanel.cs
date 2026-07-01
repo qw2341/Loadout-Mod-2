@@ -288,7 +288,7 @@ public partial class NLoadoutPanel : Panel
 				screen =>
 				{
 					HandleUpgradeAllDeckCards(screen);
-					screen.ConfigurePreservingViews(GetLocalDeckCards(), cardModifierAdapter, BuildCardModifierScreen, animateRelayout: true);
+					screen.RefreshItemsPreservingViews(GetLocalDeckCards(), cardModifierAdapter, animateRelayout: true);
 				},
 				LoadActionButtonIcon("CardModifier.png"));
 		}
@@ -558,9 +558,11 @@ public partial class NLoadoutPanel : Panel
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool activationInFlight = false;
+		object? configuredRunState = null;
 
 		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
 		{
+			object? currentRunState = GetCurrentDynamicRunStateIdentity();
 			IReadOnlyList<TModel> models = getModels();
 			// if (models.Count == 0)
 			// 	LogEmptyDynamicScreen(title);
@@ -572,6 +574,27 @@ public partial class NLoadoutPanel : Panel
 
 			if (!preserveViews)
 				target.RequestDeferredVisibleRefresh();
+
+			configuredRunState = currentRunState;
+		}
+
+		void RefreshCurrentModels(NGenericSelectScreen target, bool animateRelayout = false, bool resetScroll = false)
+		{
+			object? currentRunState = GetCurrentDynamicRunStateIdentity();
+			target.RefreshItemsPreservingViews(getModels(), adapter, animateRelayout, resetScroll);
+			configuredRunState = currentRunState;
+		}
+
+		void RefreshDynamicScreenForOpen(NGenericSelectScreen target)
+		{
+			object? currentRunState = GetCurrentDynamicRunStateIdentity();
+			if (!target.IsConfiguredForCurrentLocale || !ReferenceEquals(configuredRunState, currentRunState))
+			{
+				ConfigureCurrentModels(target);
+				return;
+			}
+
+			RefreshCurrentModels(target, resetScroll: true);
 		}
 
 		ConfigureCurrentModels(screen);
@@ -593,14 +616,29 @@ public partial class NLoadoutPanel : Panel
 				screen,
 				selectItem,
 				onActivated,
-				target => ConfigureCurrentModels(target, preserveViews: true),
+				target => RefreshCurrentModels(target, animateRelayout: true),
 				() => activationInFlight = false);
 		};
 
 		item.BoundScreen = screen;
-		item.BeforeOpen = target => ConfigureCurrentModels(target);
+		item.BeforeOpen = RefreshDynamicScreenForOpen;
 
 		_itemsContainer.AddChild(item);
+	}
+
+	private static object? GetCurrentDynamicRunStateIdentity()
+	{
+		try
+		{
+			return RunManager.Instance.IsInProgress
+				? RunManager.Instance.DebugOnlyGetState()
+				: null;
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not resolve current run state. {exception.Message}");
+			return null;
+		}
 	}
 
 	private static void LogEmptyDynamicScreen(string title)
