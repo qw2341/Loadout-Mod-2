@@ -1,0 +1,452 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Godot;
+using Loadout.Services.LastActions;
+using Loadout.UI;
+using Loadout.UI.Managers;
+using Loadout.UI.Screens;
+using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Runs;
+
+namespace Loadout.PanelItems;
+
+public class CardPrinter
+{
+	private const string ViewUpgradesToggleId = "view_upgrades";
+	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
+	private static string? _currentCardFilterId;
+	
+    public static void Initialize()
+    {
+	    IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
+        
+		CommonHelpers.CreateAndAddLoadoutItem(
+			allCards,
+			new SelectItemAdapter<CardModel>
+			{
+				GetId = card => card.Id.ToString(),
+				GetName = card => FormatCardTitle(card),
+				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
+				CreateView = CreateCardGridItem,
+				ViewReady = (_, view) => RefreshCardVisuals(view),
+				UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
+				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
+			}, builder =>
+			{
+				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+				builder.Materialization(SelectMaterializationMode.Lazy);
+				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
+				builder.FilterGroup("class", LocMan.SScreenLoc("FILTER_GROUP_CLASS", "Class"));
+				AddCardPoolFilters(builder);
+				builder.FilterGroup("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.SScreenLoc("FILTER_GROUP_TYPE", "Type")));
+				AddCardTypeFilters(builder, allCards);
+				builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.SScreenLoc("FILTER_GROUP_RARITY", "Rarity")));
+				AddCardRarityFilters(builder, allCards);
+				AddCardKeywordFilterGroup(builder, allCards);
+				AddCardTagFilterGroup(builder, allCards);
+				builder.Toggle(ViewUpgradesToggleId, LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
+				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
+				builder.Sorter("library", LocMan.SScreenLoc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
+				builder.Sorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.SScreenLoc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.SScreenLoc("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
+			},
+			ApplyCurrentCardClassFilter, 
+			"CardPrinter.png",
+			"Card Printer",
+			"It prints any cards you want.",
+			HandleAddCardActivatedAsync,
+			LastActionService.CardPrinterKey,
+			ReplayCardPrinterLastActionAsync);
+    }
+
+    private static async Task<IReadOnlyList<LastActionEntry>> HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+    {
+	    if (selectItem.UntypedModel is not CardModel canonicalCard)
+		    return [];
+
+	    int multiplier = screen.GetCurrentActivationMultiplier();
+	    int added = await AddCardCopiesAsync(canonicalCard, multiplier, selectItem.Id);
+
+	    return added > 0
+		    ?
+		    [
+			    new LastActionEntry
+			    {
+				    Kind = LastActionService.AddCardKind,
+				    ContentId = canonicalCard.Id.ToString(),
+				    Amount = added
+			    }
+		    ]
+		    : [];
+    }
+
+    private static async Task<int> AddCardCopiesAsync(CardModel canonicalCard, int amount, string logId)
+    {
+	    Player localPlayer = CommonHelpers.GetLocalRunPlayer();
+	    if (localPlayer is null || amount <= 0)
+		    return 0;
+
+	    List<CardPileAddResult> results = new();
+	    for (int i = 0; i < amount; i++)
+	    {
+		    try
+		    {
+			    CardModel card = localPlayer.RunState.CreateCard(canonicalCard, localPlayer);
+			    CardPileAddResult result = await CardPileCmd.Add(card, PileType.Deck);
+			    if (!result.success)
+				    break;
+
+			    results.Add(result);
+		    }
+		    catch (Exception exception)
+		    {
+			    GD.PushWarning($"LoadoutPanel: stopped adding card '{logId}' after {results.Count}/{amount} copies. {exception.Message}");
+			    break;
+		    }
+	    }
+
+	    if (results.Count == 0)
+		    return 0;
+
+	    CardPreviewStyle previewStyle = results.Count > 5 ? CardPreviewStyle.MessyLayout : CardPreviewStyle.HorizontalLayout;
+	    CardCmd.PreviewCardPileAdd(results, 2f, previewStyle);
+	    return results.Count;
+    }
+
+    private static async Task ReplayCardPrinterLastActionAsync()
+    {
+	    foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.CardPrinterKey))
+	    {
+		    if (entry.Kind != LastActionService.AddCardKind || entry.Amount <= 0)
+			    continue;
+
+		    CardModel card = ResolveCanonicalCard(entry.ContentId);
+		    if (card is null)
+		    {
+			    GD.PushWarning($"LoadoutPanel: cannot replay card action for unknown card '{entry.ContentId}'.");
+			    continue;
+		    }
+
+		    await AddCardCopiesAsync(card, entry.Amount, entry.ContentId);
+	    }
+    }
+
+    public static Control CreateCardGridItem(CardModel model, SelectItemState state)
+    {
+	    var card = NCard.Create(model);
+	    if (card is null)
+	    {
+		    return new Control
+		    {
+			    CustomMinimumSize = NCard.defaultSize
+		    };
+	    }
+
+	    var holder = NGridCardHolder.Create(card);
+	    if (holder is null)
+	    {
+		    card.CustomMinimumSize = card.GetCurrentSize();
+		    return card;
+	    }
+
+	    holder.MouseFilter = Control.MouseFilterEnum.Pass;
+	    holder.Scale = holder.SmallScale;
+	    holder.CustomMinimumSize = NCard.defaultSize * holder.SmallScale;
+	    ApplyCardUpgradePreview(holder, state);
+	    return holder;
+    }
+
+    private static void AddCardPoolFilters(SelectScreenBuilder<CardModel> builder)
+    {
+	    IReadOnlyList<CardPoolModel> pools = BuildOrderedCardPools();
+
+	    foreach (CardPoolModel pool in pools)
+	    {
+		    CardPoolModel localPool = pool;
+		    builder.Filter(
+			    CommonHelpers.PoolFilterId("card", localPool),
+			    CommonHelpers.GetPoolLabel(localPool),
+			    card => CommonHelpers.SamePool(card.Pool, localPool),
+			    "class");
+	    }
+    }
+
+    private static void AddCardTypeFilters(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+    {
+	    foreach (CardType type in cards
+		             .Select(card => card.Type)
+		             .Distinct()
+		             .OrderBy(type => Convert.ToInt32(type)))
+	    {
+		    CardType localType = type;
+		    builder.Filter(
+			    CommonHelpers.EnumFilterId("card_type", localType), GetCardTypeLabel(localType),
+			    card => card.Type == localType,
+			    "type");
+	    }
+    }
+
+    private static void AddCardRarityFilters(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+    {
+	    foreach (CardRarity rarity in cards
+		             .Select(card => card.Rarity)
+		             .Distinct()
+		             .Where(rarity => rarity != CardRarity.None)
+		             .OrderBy(GetCardRaritySortValue)
+		             .ThenBy(rarity => Convert.ToInt32(rarity)))
+	    {
+		    CardRarity localRarity = rarity;
+		    builder.Filter(
+			    CommonHelpers.EnumFilterId("card_rarity", localRarity), GetCardRarityLabel(localRarity),
+			    card => card.Rarity == localRarity,
+			    "rarity");
+	    }
+    }
+
+    private static void AddCardKeywordFilterGroup(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+    {
+	    IReadOnlyList<CardKeyword> keywords = cards
+		    .SelectMany(GetLocalCardKeywords)
+		    .Where<CardKeyword>(keyword => keyword != CardKeyword.None)
+		    .Distinct()
+		    .OrderBy(keyword => Convert.ToInt32(keyword))
+		    .ToList();
+
+	    if (keywords.Count == 0)
+		    return;
+
+	    builder.FilterGroup("keyword", LocMan.SScreenLoc("FILTER_GROUP_KEYWORD", "Keyword"));
+	    foreach (CardKeyword keyword in keywords)
+	    {
+		    CardKeyword localKeyword = keyword;
+		    builder.Filter(
+			    CommonHelpers.EnumFilterId("card_keyword", localKeyword), GetCardKeywordLabel(localKeyword),
+			    card => Enumerable.Contains(GetLocalCardKeywords(card), localKeyword),
+			    "keyword");
+	    }
+    }
+
+    private static IEnumerable<CardKeyword> GetLocalCardKeywords(CardModel card)
+    {
+	    return card.GetKeywordsWithSources(KeywordSources.Local);
+    }
+
+    private static void AddCardTagFilterGroup(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+    {
+	    IReadOnlyList<CardTag> tags = cards
+		    .SelectMany(card => card.Tags)
+		    .Where(tag => tag != CardTag.None)
+		    .Distinct()
+		    .OrderBy(tag => Convert.ToInt32(tag))
+		    .ToList();
+
+	    if (tags.Count == 0)
+		    return;
+
+	    builder.FilterGroup("tag", LocMan.SScreenLoc("FILTER_GROUP_TAG", "Tag"));
+	    foreach (CardTag tag in tags)
+	    {
+		    CardTag localTag = tag;
+		    builder.Filter(
+			    CommonHelpers.EnumFilterId("card_tag", localTag), GetCardTagLabel(localTag),
+			    card => card.Tags.Contains(localTag),
+			    "tag");
+	    }
+    }
+
+    private static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()
+    {
+	    return CommonHelpers.BuildOrderedPools(
+		    ModelDb.AllCards.Select(card => card.Pool),
+		    ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
+		    pool => !CommonHelpers.IsInternalPool(pool));
+    }
+
+    public static string GetCardTypeLabel(CardType type)
+    {
+	    try
+	    {
+		    return type.ToLocString().GetFormattedText();
+	    }
+	    catch
+	    {
+		    return CommonHelpers.PrettifyEnumValue(type);
+	    }
+    }
+
+    public static string GetCardRarityLabel(CardRarity rarity)
+    {
+	    try
+	    {
+		    return rarity.ToLocString().GetFormattedText();
+	    }
+	    catch
+	    {
+		    return CommonHelpers.PrettifyEnumValue(rarity);
+	    }
+    }
+
+    public static string GetCardKeywordLabel(CardKeyword keyword)
+    {
+	    try
+	    {
+		    if (HoverTipFactory.FromKeyword(keyword) is HoverTip hoverTip && !string.IsNullOrWhiteSpace(hoverTip.Title))
+			    return hoverTip.Title;
+	    }
+	    catch
+	    {
+		    // Fall back below for unknown or modded keyword values.
+	    }
+
+	    return CommonHelpers.PrettifyEnumValue(keyword);
+    }
+
+    public static string GetCardTagLabel(CardTag tag)
+    {
+	    return CommonHelpers.PrettifyEnumValue(tag);
+    }
+
+    public static string FormatCardTitle(CardModel card)
+    {
+	    return card.Title;
+    }
+
+    public static void RefreshCardVisuals(Control view)
+    {
+	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder) || holder!.CardNode is null)
+		    return;
+
+	    holder.CardNode.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+
+	    if (holder.CardModel is not null
+	        && holder.CardModel.IsUpgradable
+	        && holder.GetMeta(PreviewUpgradeMetaKey, false).AsBool())
+	    {
+		    holder.SetIsPreviewingUpgrade(true);
+	    }
+    }
+
+    public static void UpdateCardGridItem(Control view, SelectItemState state)
+    {
+	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))
+		    return;
+
+	    ApplyCardUpgradePreview(holder!, state);
+    }
+
+    public static bool BindCardActivation(Control view, Action activate)
+    {
+	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))
+		    return false;
+
+	    holder!.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
+	    return true;
+    }
+
+    
+    
+    private static void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)
+    {
+	    CardPoolModel? currentCardPool = GetCurrentCharacterCardPool();
+	    if (currentCardPool is null)
+		    return;
+
+	    string filterId = CommonHelpers.PoolFilterId("card", currentCardPool);
+	    if (string.Equals(_currentCardFilterId, filterId, StringComparison.Ordinal))
+		    return;
+
+	    if (screen.SetExclusiveFilterSelection("class", filterId, resetScroll: true))
+		    _currentCardFilterId = filterId;
+    }
+    
+    private static int CompareCardLibraryOrder(CardModel left, CardModel right, IReadOnlyList<CardPoolModel> orderedPools)
+    {
+	    int pool = GetCardPoolSortIndex(left.Pool, orderedPools).CompareTo(GetCardPoolSortIndex(right.Pool, orderedPools));
+	    if (pool != 0)
+		    return pool;
+
+	    int rarity = GetCardRaritySortValue(left.Rarity).CompareTo(GetCardRaritySortValue(right.Rarity));
+	    if (rarity != 0)
+		    return rarity;
+
+	    int type = left.Type.CompareTo(right.Type);
+	    if (type != 0)
+		    return type;
+
+	    int cost = left.EnergyCost.GetResolved().CompareTo(right.EnergyCost.GetResolved());
+	    if (cost != 0)
+		    return cost;
+
+	    return string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
+    }
+
+    private static CardPoolModel GetCurrentCharacterCardPool()
+    {
+	    try
+	    {
+		    return LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState())?.Character.CardPool;
+	    }
+	    catch (Exception exception)
+	    {
+		    GD.PushWarning($"LoadoutPanel: could not detect current character card pool; showing all cards by default. {exception.Message}");
+		    return null;
+	    }
+    }
+
+    private static void ApplyCardUpgradePreview(NGridCardHolder holder, SelectItemState state)
+    {
+	    bool shouldPreviewUpgrade = holder.CardModel is not null
+	                                && holder.CardModel.IsUpgradable
+	                                && state.IsToggleEnabled(CardPrinter.ViewUpgradesToggleId);
+
+	    holder.SetMeta(CardPrinter.PreviewUpgradeMetaKey, shouldPreviewUpgrade);
+
+	    if (holder.CardModel is null || !holder.CardModel.IsUpgradable)
+		    return;
+
+	    holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
+    }
+
+    private static int GetCardPoolSortIndex(CardPoolModel pool, IReadOnlyList<CardPoolModel> orderedPools)
+    {
+	    for (int i = 0; i < orderedPools.Count; i++)
+	    {
+		    if (CommonHelpers.SamePool(pool, orderedPools[i]))
+			    return i;
+	    }
+
+	    return orderedPools.Count;
+    }
+
+    public static int GetCardRaritySortValue(CardRarity rarity)
+    {
+	    if (rarity <= CardRarity.Ancient)
+		    return (int)rarity;
+
+	    return rarity switch
+	    {
+		    CardRarity.Status => 6,
+		    CardRarity.Curse => 7,
+		    CardRarity.Event => 8,
+		    CardRarity.Quest => 9,
+		    CardRarity.Token => 10,
+		    _ => (int)rarity
+	    };
+    }
+
+    private static CardModel ResolveCanonicalCard(string cardId)
+    {
+	    return ModelDb.AllCards.FirstOrDefault(card => CommonHelpers.ModelIdMatches(card, cardId));
+    }
+}

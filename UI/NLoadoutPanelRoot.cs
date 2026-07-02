@@ -4,6 +4,8 @@ using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System.Collections.Generic;
+using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
+using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 
 namespace Loadout.UI;
 
@@ -496,5 +498,16 @@ public partial class NLoadoutPanelRoot : Control
 	private void OnThemeChanged(string _)
 	{
 		// LoadoutThemeManager.ApplyTheme(this);
+	}
+	
+	public static void CloseTopLoadoutScreen()
+	{
+		Instance?.CloseTopScreen();
+	}
+
+	public static void CloseBlockingRunScreens()
+	{
+		NOverlayStack.Instance?.Clear();
+		NCapstoneContainer.Instance?.Close();
 	}
 }

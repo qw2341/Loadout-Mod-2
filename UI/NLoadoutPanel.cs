@@ -45,40 +45,18 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using System.Text.RegularExpressions;
 using HarmonyLib;
+using Loadout.PanelItems;
 using Loadout.Services.LastActions;
 using Loadout.Services.PowerGiver;
+using Loadout.UI.Managers;
 
 namespace  Loadout.UI;
 
 public partial class NLoadoutPanel : Panel
 {
-	private delegate Task<IReadOnlyList<LastActionEntry>> SelectActivationHandler(NGenericSelectScreen screen, IGenericSelectItem selectItem);
-
-	private sealed class LastActionCaptureSession
-	{
-		private readonly string _itemKey;
-		private readonly List<LastActionEntry> _entries = new();
-
-		public LastActionCaptureSession(string itemKey)
-		{
-			_itemKey = itemKey;
-		}
-
-		public void Add(IReadOnlyList<LastActionEntry> entries)
-		{
-			_entries.AddRange(entries);
-		}
-
-		public void Commit()
-		{
-			if (_entries.Count > 0)
-				LastActionService.SaveAction(_itemKey, _entries);
-		}
-	}
+	public delegate Task<IReadOnlyList<LastActionEntry>> SelectActivationHandler(NGenericSelectScreen screen, IGenericSelectItem selectItem);
 
 	private const int MaxLoadoutItemInitAttempts = 120;
-	private const string ViewUpgradesToggleId = "view_upgrades";
-	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
 	private const string PowerGiverFavoriteModeAll = "all";
 	private const string PowerGiverFavoriteModeFavorites = "favorites";
 	private static readonly Vector2 EventTileSize = new(264f, 144f);
@@ -99,10 +77,13 @@ public partial class NLoadoutPanel : Panel
 	private PanelContainer _panelContainer = null!;
 	private MarginContainer _marginContainer = null!;
 	private Control _itemsContainer = null!;
+
+	public static Control ItemsContainer = null!;
+
 	private int _loadoutItemInitAttempts;
 	private bool _loadoutItemsAdded;
 	private bool _loadoutItemRetryScheduled;
-	private string? _currentCardFilterId;
+	
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
@@ -110,7 +91,7 @@ public partial class NLoadoutPanel : Panel
 		_panelContainer = GetNode<PanelContainer>("PanelContainer");
 		_marginContainer = GetNode<MarginContainer>("PanelContainer/MarginContainer");
 		_itemsContainer = GetNode<Control>("PanelContainer/MarginContainer/VBoxContainer");
-		
+		ItemsContainer = _itemsContainer;
 		
 		
 		TryAddLoadoutItems();
@@ -142,9 +123,9 @@ public partial class NLoadoutPanel : Panel
 
 	private void AddLoadoutItems()
 	{
-		IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
+		
 		//01 - LOADOUT BAG
-		CreateAndAddLoadoutItem(
+		CommonHelpers.CreateAndAddLoadoutItem(
 			ModelDb.AllRelics,
 			new SelectItemAdapter<RelicModel>
 			{
@@ -158,13 +139,13 @@ public partial class NLoadoutPanel : Panel
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
-				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
+				builder.FilterGroup("class", LocMan.SScreenLoc("FILTER_GROUP_CLASS", "Class"));
 				AddRelicPoolFilters(builder);
-				builder.FilterGroup("rarity", SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
-				AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
-				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
+				builder.FilterGroup("rarity", LocMan.SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
+				CommonHelpers.AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
+				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.SScreenLoc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
 				RelicGroupingData relicGroupingData = BuildRelicGroupingData();
 				builder.GroupBySorter(
 					"rarity",
@@ -180,8 +161,7 @@ public partial class NLoadoutPanel : Panel
 			LastActionService.LoadoutBagKey,
 			ReplayLoadoutBagLastActionAsync);
 		//02 - TRASH BIN
-		CreateAndAddDynamicLoadoutItem(
-			GetLocalRelics,
+		CreateAndAddDynamicLoadoutItem(CommonHelpers.GetLocalRelics,
 			new SelectItemAdapter<RelicModel>
 			{
 				GetId = RuntimeItemId,
@@ -201,7 +181,7 @@ public partial class NLoadoutPanel : Panel
 			"Remove Relic",
 			"Remove one of your current relics.");
 		//03 - LOADOUT CAULDRON
-		CreateAndAddLoadoutItem(
+		CommonHelpers.CreateAndAddLoadoutItem(
 			ModelDb.AllPotions,
 			new SelectItemAdapter<PotionModel>
 			{
@@ -209,19 +189,19 @@ public partial class NLoadoutPanel : Panel
 				GetName = potion => FormatPotionTitle(potion),
 				GetSearchText = potion => $"{potion.Id} {FormatPotionTitle(potion)} {potion.DynamicDescription}",
 				CreateView = (potion, _) => CreatePotionGridItem(potion),
-				BindActivation = (_, view, activate) => BindGuiReleaseActivation(view, activate)
+				BindActivation = (_, view, activate) => CommonHelpers.BindGuiReleaseActivation(view, activate)
 			}, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(60f, 60f), 32, 32);
-				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
+				builder.FilterGroup("class", LocMan.SScreenLoc("FILTER_GROUP_CLASS", "Class"));
 				AddPotionPoolFilters(builder);
-				builder.FilterGroup("rarity", SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
-				AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
-				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPotionTitle(a), FormatPotionTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", GameLoc("gameplay_ui", "SORT_RARITY", SScreenLoc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
+				builder.FilterGroup("rarity", LocMan.SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
+				CommonHelpers.AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
+				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPotionTitle(a), FormatPotionTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.SScreenLoc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
 				builder.GroupBySorter(
 					"rarity",
 					GetPotionGroupKey,
@@ -235,56 +215,18 @@ public partial class NLoadoutPanel : Panel
 			HandleAddPotionActivatedAsync);
 
 		//04 - CARD PRINTER
-		CreateAndAddLoadoutItem(
-			allCards,
-			new SelectItemAdapter<CardModel>
-			{
-				GetId = card => card.Id.ToString(),
-				GetName = card => FormatCardTitle(card),
-				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
-				CreateView = CreateCardGridItem,
-				ViewReady = (_, view) => RefreshCardVisuals(view),
-				UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
-				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
-			}, builder =>
-			{
-				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Lazy);
-				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
-				builder.FilterGroup("class", SScreenLoc("FILTER_GROUP_CLASS", "Class"));
-				AddCardPoolFilters(builder);
-				builder.FilterGroup("type", GameLoc("gameplay_ui", "SORT_TYPE", SScreenLoc("FILTER_GROUP_TYPE", "Type")));
-				AddCardTypeFilters(builder, allCards);
-				builder.FilterGroup("rarity", GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", SScreenLoc("FILTER_GROUP_RARITY", "Rarity")));
-				AddCardRarityFilters(builder, allCards);
-				AddCardKeywordFilterGroup(builder, allCards);
-				AddCardTagFilterGroup(builder, allCards);
-				builder.Toggle(ViewUpgradesToggleId, GameLoc("card_library", "VIEW_UPGRADES", GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
-				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
-				builder.Sorter("library", SScreenLoc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
-				builder.Sorter("name", GameLoc("gameplay_ui", "SORT_ALPHABET", SScreenLoc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("cost", GameLoc("gameplay_ui", "SORT_COST", SScreenLoc("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
-			},
-			ApplyCurrentCardClassFilter, 
-			"CardPrinter.png",
-			"Card Printer",
-			"It prints any cards you want.",
-			HandleAddCardActivatedAsync,
-			LastActionService.CardPrinterKey,
-			ReplayCardPrinterLastActionAsync);
+		CardPrinter.Initialize();
 		//05 - CARD SHREDDER
-		CreateAndAddDynamicLoadoutItem(
-			GetLocalDeckCards,
+		CreateAndAddDynamicLoadoutItem(CommonHelpers.GetLocalDeckCards,
 			new SelectItemAdapter<CardModel>
 			{
 				GetId = RuntimeItemId,
-				GetName = card => FormatCardTitle(card),
-				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
-				CreateView = CreateCardGridItem,
-				ViewReady = (_, view) => RefreshCardVisuals(view),
-				UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
-				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
+				GetName = card => CardPrinter.FormatCardTitle(card),
+				GetSearchText = card => $"{card.Id} {CardPrinter.FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
+				CreateView = CardPrinter.CreateCardGridItem,
+				ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
+				UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
+				BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
 			},
 			builder =>
 			{
@@ -300,12 +242,12 @@ public partial class NLoadoutPanel : Panel
 		SelectItemAdapter<CardModel> cardModifierAdapter = new()
 		{
 			GetId = RuntimeItemId,
-			GetName = card => FormatCardTitle(card),
-			GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
-			CreateView = CreateCardGridItem,
-			ViewReady = (_, view) => RefreshCardVisuals(view),
-			UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
-			BindActivation = (_, view, activate) => BindCardActivation(view, activate)
+			GetName = card => CardPrinter.FormatCardTitle(card),
+			GetSearchText = card => $"{card.Id} {CardPrinter.FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
+			CreateView = CardPrinter.CreateCardGridItem,
+			ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
+			UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
+			BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
 		};
 
 		void BuildCardModifierScreen(SelectScreenBuilder<CardModel> builder)
@@ -314,18 +256,15 @@ public partial class NLoadoutPanel : Panel
 			builder.Materialization(SelectMaterializationMode.Lazy);
 			builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 			builder.ActionButton(
-				"upgrade_all",
-				SScreenLoc("UPGRADE_ALL", "Upgrade All"),
+				"upgrade_all", LocMan.SScreenLoc("UPGRADE_ALL", "Upgrade All"),
 				screen =>
 				{
 					HandleUpgradeAllDeckCards(screen);
-					screen.RefreshItemsPreservingViews(GetLocalDeckCards(), cardModifierAdapter, animateRelayout: true);
-				},
-				LoadActionButtonIcon("CardModifier.png"));
+					screen.RefreshItemsPreservingViews(CommonHelpers.GetLocalDeckCards(), cardModifierAdapter, animateRelayout: true);
+				}, CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
 		}
 
-		CreateAndAddDynamicLoadoutItem(
-			GetLocalDeckCards,
+		CreateAndAddDynamicLoadoutItem(CommonHelpers.GetLocalDeckCards,
 			cardModifierAdapter,
 			BuildCardModifierScreen,
 			HandleUpgradeCardActivatedAsync,
@@ -334,35 +273,7 @@ public partial class NLoadoutPanel : Panel
 			"Modifies cards in your current deck.");
 				
 		//07 - EVENTFUL COMPASS
-		CreateAndAddLoadoutItem(
-			ModelDb.AllEvents.Concat(ModelDb.AllAncients).Distinct(),
-			new SelectItemAdapter<EventModel>
-			{
-				GetId = eventModel => eventModel.Id.ToString(),
-				GetName = eventModel => FormatEventTitle(eventModel),
-				GetSearchText = eventModel => $"{eventModel.Id} {FormatEventTitle(eventModel)} {eventModel.InitialDescription}",
-				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
-			}, builder =>
-			{
-				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(4, EventTileSize, 24, 24);
-				builder.FilterGroup("layout", SScreenLoc("FILTER_GROUP_LAYOUT", "Layout"));
-				builder.Filter("default", SScreenLoc("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
-				builder.Filter("combat", SScreenLoc("LAYOUT_COMBAT", "Combat"), eventModel => eventModel.LayoutType == EventLayoutType.Combat, "layout");
-				builder.Filter("ancient", SScreenLoc("LAYOUT_ANCIENT", "Ancient"), eventModel => eventModel.LayoutType == EventLayoutType.Ancient, "layout");
-				builder.FilterGroup("sharing", SScreenLoc("FILTER_GROUP_SCOPE", "Scope"));
-				builder.Filter("shared", SScreenLoc("SCOPE_SHARED", "Shared"), eventModel => eventModel.IsShared, "sharing");
-				builder.Filter("solo", SScreenLoc("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
-				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatEventTitle(a), FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-			},null,
-			"EventfulCompass.png",
-			"Eventful Compass",
-			"A compass that leads to your heart's desire.",
-			HandleEnterEventActivatedAsync,
-			LastActionService.EventfulCompassKey,
-			ReplayEventfulCompassLastActionAsync);
+		EventfulCompass.Initialize();
 		//08 - POWER GIVER
 		CreateAndAddPowerGiverItem(
 			"PowerGiver.png",
@@ -411,103 +322,6 @@ public partial class NLoadoutPanel : Panel
 			TryAddLoadoutItems();
 	}
 
-	private void CreateAndAddLoadoutItem<TModel>(
-		IEnumerable<TModel> models,
-		SelectItemAdapter<TModel> adapter,
-		Action<SelectScreenBuilder<TModel>> builder,
-		Action<NGenericSelectScreen>? beforeOpen,
-		string textureFileName,
-		string title,
-		string description,
-		SelectActivationHandler? onActivated = null,
-		string? lastActionItemKey = null,
-		Func<Task>? replayQuickAction = null)
-	{
-		var item = new NLoadoutPanelItem(textureFileName, title, description);
-		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
-		var screen = scene.Instantiate<NGenericSelectScreen>();
-		bool activationInFlight = false;
-		LastActionCaptureSession? captureSession = null;
-
-		void ConfigureScreen(NGenericSelectScreen target)
-		{
-			target.Configure(models, adapter, builder);
-			beforeOpen?.Invoke(target);
-			target.RequestDeferredVisibleRefresh();
-		}
-
-		ConfigureScreen(screen);
-		screen.LocaleChanged += () =>
-		{
-			SelectScreenUiState state = screen.CaptureUiState();
-			ConfigureScreen(screen);
-			screen.RestoreUiState(state);
-		};
-		screen.Cancelled += CloseTopLoadoutScreen;
-		screen.Confirmed += _ => CloseTopLoadoutScreen();
-		screen.ScreenClosed += () =>
-		{
-			captureSession?.Commit();
-			captureSession = null;
-		};
-		if (onActivated is not null)
-		{
-			screen.ItemActivated += (selectItem, state) =>
-			{
-				if (activationInFlight)
-					return;
-
-				activationInFlight = true;
-				_ = HandleStaticItemActivatedAsync(
-					screen,
-					selectItem,
-					onActivated,
-					entries => captureSession?.Add(entries),
-					() => activationInFlight = false);
-			};
-		}
-
-		item.BoundScreen = screen;
-		item.QuickAction = replayQuickAction;
-		if (lastActionItemKey is not null)
-			item.AfterOpen = _ => captureSession = new LastActionCaptureSession(lastActionItemKey);
-		item.BeforeOpen = target =>
-		{
-			if (!target.IsConfiguredForCurrentLocale)
-			{
-				ConfigureScreen(target);
-				return;
-			}
-
-			beforeOpen?.Invoke(target);
-		};
-
-		_itemsContainer.AddChild(item);
-	}
-
-	private static async Task HandleStaticItemActivatedAsync(
-		NGenericSelectScreen screen,
-		IGenericSelectItem selectItem,
-		SelectActivationHandler onActivated,
-		Action<IReadOnlyList<LastActionEntry>> recordLastActions,
-		Action clearActivation)
-	{
-		try
-		{
-			IReadOnlyList<LastActionEntry> entries = await onActivated(screen, selectItem);
-			if (entries.Count > 0)
-				recordLastActions(entries);
-		}
-		catch (Exception exception)
-		{
-			GD.PushError($"LoadoutPanel: item activation failed for '{selectItem.Id}' ({selectItem.Name}): {exception}");
-		}
-		finally
-		{
-			clearActivation();
-		}
-	}
-
 	private void CreateAndAddPowerGiverItem(
 		string textureFileName,
 		string title,
@@ -517,7 +331,7 @@ public partial class NLoadoutPanel : Panel
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
-		LastActionCaptureSession? captureSession = null;
+		CommonHelpers.LastActionCaptureSession? captureSession = null;
 
 		SelectItemAdapter<PowerModel> adapter = new()
 		{
@@ -548,17 +362,17 @@ public partial class NLoadoutPanel : Panel
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
 				builder.CustomVisibilityPredicate(power => !showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
-				builder.FilterGroup("type", SScreenLoc("FILTER_GROUP_TYPE", "Type"));
-				builder.Filter("buff", SScreenLoc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
-				builder.Filter("debuff", SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
-				builder.Filter("type_none", SScreenLoc("NONE", "None"), power => power.Type == PowerType.None, "type");
-				builder.FilterGroup("stack", SScreenLoc("FILTER_GROUP_STACK", "Stack"));
-				builder.Filter("stack_none", SScreenLoc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
-				builder.Filter("counter", SScreenLoc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
-				builder.Filter("single", SScreenLoc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
-				builder.Sorter("name", SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("type", GameLoc("gameplay_ui", "SORT_TYPE", SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
+				builder.FilterGroup("type", LocMan.SScreenLoc("FILTER_GROUP_TYPE", "Type"));
+				builder.Filter("buff", LocMan.SScreenLoc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
+				builder.Filter("debuff", LocMan.SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
+				builder.Filter("type_none", LocMan.SScreenLoc("NONE", "None"), power => power.Type == PowerType.None, "type");
+				builder.FilterGroup("stack", LocMan.SScreenLoc("FILTER_GROUP_STACK", "Stack"));
+				builder.Filter("stack_none", LocMan.SScreenLoc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
+				builder.Filter("counter", LocMan.SScreenLoc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
+				builder.Filter("single", LocMan.SScreenLoc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
+				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
 			});
 			AddPowerGiverSidebarDropdowns(
 				target,
@@ -591,8 +405,8 @@ public partial class NLoadoutPanel : Panel
 			ConfigurePowerGiverScreen(screen, resetFavoriteMode: false);
 			screen.RestoreUiState(state);
 		};
-		screen.Cancelled += CloseTopLoadoutScreen;
-		screen.Confirmed += _ => CloseTopLoadoutScreen();
+		screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
+		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
 		screen.ScreenClosed += () =>
 		{
 			captureSession?.Commit();
@@ -600,7 +414,7 @@ public partial class NLoadoutPanel : Panel
 		};
 		item.BoundScreen = screen;
 		item.QuickAction = ReplayPowerGiverLastActionAsync;
-		item.AfterOpen = _ => captureSession = new LastActionCaptureSession(LastActionService.PowerGiverKey);
+		item.AfterOpen = _ => captureSession = new CommonHelpers.LastActionCaptureSession(LastActionService.PowerGiverKey);
 		item.BeforeOpen = target =>
 		{
 			RefreshPowerGiverScreenForOpen(target);
@@ -667,8 +481,8 @@ public partial class NLoadoutPanel : Panel
 			ConfigureCurrentModels(screen, preserveViews: false);
 			screen.RestoreUiState(state);
 		};
-		screen.Cancelled += CloseTopLoadoutScreen;
-		screen.Confirmed += _ => CloseTopLoadoutScreen();
+		screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
+		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
 		screen.ItemActivated += (selectItem, state) =>
 		{
 			if (activationInFlight)
@@ -704,17 +518,6 @@ public partial class NLoadoutPanel : Panel
 		}
 	}
 
-	private static void LogEmptyDynamicScreen(string title)
-	{
-		bool isInProgress = RunManager.Instance.IsInProgress;
-		Player? localPlayer = GetLocalRunPlayer();
-		int deckCount = localPlayer?.Deck.Cards.Count ?? -1;
-		int relicCount = localPlayer?.Relics.Count ?? -1;
-		GD.PushWarning(
-			$"LoadoutPanel: dynamic screen '{title}' has no items. " +
-			$"isInProgress={isInProgress}, localPlayerResolved={localPlayer is not null}, deckCount={deckCount}, relicCount={relicCount}.");
-	}
-
 	private static async Task HandleDynamicItemActivatedAsync(
 		NGenericSelectScreen screen,
 		IGenericSelectItem selectItem,
@@ -737,91 +540,9 @@ public partial class NLoadoutPanel : Panel
 		}
 	}
 
-	private static IReadOnlyList<CardModel> GetLocalDeckCards()
-	{
-		Player? localPlayer = GetLocalRunPlayer();
-		return localPlayer is null ? Array.Empty<CardModel>() : localPlayer.Deck.Cards.ToList();
-	}
-
-	private static IReadOnlyList<RelicModel> GetLocalRelics()
-	{
-		Player? localPlayer = GetLocalRunPlayer();
-		return localPlayer is null ? Array.Empty<RelicModel>() : localPlayer.Relics.ToList();
-	}
-
-	private static Player? GetLocalRunPlayer()
-	{
-		try
-		{
-			if (!RunManager.Instance.IsInProgress)
-				return null;
-
-			return LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState());
-		}
-		catch (Exception exception)
-		{
-			GD.PushWarning($"LoadoutPanel: could not resolve local run player. {exception.Message}");
-			return null;
-		}
-	}
-
 	private static string RuntimeItemId(AbstractModel model)
 	{
 		return $"{model.Id}:{RuntimeHelpers.GetHashCode(model)}";
-	}
-
-	private static async Task<IReadOnlyList<LastActionEntry>> HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
-	{
-		if (selectItem.UntypedModel is not CardModel canonicalCard)
-			return [];
-
-		int multiplier = screen.GetCurrentActivationMultiplier();
-		int added = await AddCardCopiesAsync(canonicalCard, multiplier, selectItem.Id);
-
-		return added > 0
-			?
-			[
-				new LastActionEntry
-				{
-					Kind = LastActionService.AddCardKind,
-					ContentId = canonicalCard.Id.ToString(),
-					Amount = added
-				}
-			]
-			: [];
-	}
-
-	private static async Task<int> AddCardCopiesAsync(CardModel canonicalCard, int amount, string logId)
-	{
-		Player? localPlayer = GetLocalRunPlayer();
-		if (localPlayer is null || amount <= 0)
-			return 0;
-
-		List<CardPileAddResult> results = new();
-		for (int i = 0; i < amount; i++)
-		{
-			try
-			{
-				CardModel card = localPlayer.RunState.CreateCard(canonicalCard, localPlayer);
-				CardPileAddResult result = await CardPileCmd.Add(card, PileType.Deck);
-				if (!result.success)
-					break;
-
-				results.Add(result);
-			}
-			catch (Exception exception)
-			{
-				GD.PushWarning($"LoadoutPanel: stopped adding card '{logId}' after {results.Count}/{amount} copies. {exception.Message}");
-				break;
-			}
-		}
-
-		if (results.Count == 0)
-			return 0;
-
-		CardPreviewStyle previewStyle = results.Count > 5 ? CardPreviewStyle.MessyLayout : CardPreviewStyle.HorizontalLayout;
-		CardCmd.PreviewCardPileAdd(results, 2f, previewStyle);
-		return results.Count;
 	}
 
 	private static async Task<IReadOnlyList<LastActionEntry>> HandleAddRelicActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
@@ -846,7 +567,7 @@ public partial class NLoadoutPanel : Panel
 
 	private static async Task<int> ObtainRelicCopiesAsync(RelicModel canonicalRelic, int amount, string logId)
 	{
-		Player? localPlayer = GetLocalRunPlayer();
+		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
 		if (localPlayer is null || amount <= 0)
 			return 0;
 
@@ -873,7 +594,7 @@ public partial class NLoadoutPanel : Panel
 		if (selectItem.UntypedModel is not PotionModel canonicalPotion)
 			return [];
 
-		Player? localPlayer = GetLocalRunPlayer();
+		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
 		if (localPlayer is null)
 			return [];
 
@@ -901,7 +622,7 @@ public partial class NLoadoutPanel : Panel
 		if (selectItem.UntypedModel is not CardModel card)
 			return [];
 
-		Player? localPlayer = GetLocalRunPlayer();
+		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
 		if (localPlayer is null
 		    || !LocalContext.IsMine(card)
 		    || card.Pile?.Type != PileType.Deck
@@ -919,7 +640,7 @@ public partial class NLoadoutPanel : Panel
 		if (selectItem.UntypedModel is not CardModel card)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
 
-		Player? localPlayer = GetLocalRunPlayer();
+		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
 		if (localPlayer is null)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
 
@@ -933,7 +654,7 @@ public partial class NLoadoutPanel : Panel
 		if (selectItem.View is Control view)
 		{
 			PlayCardSmithFeedback(view);
-			RefreshCardVisuals(view);
+			CardPrinter.RefreshCardVisuals(view);
 		}
 
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
@@ -941,7 +662,7 @@ public partial class NLoadoutPanel : Panel
 
 	private static void HandleUpgradeAllDeckCards(NGenericSelectScreen _)
 	{
-		Player? localPlayer = GetLocalRunPlayer();
+		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
 		if (localPlayer is null)
 			return;
 		int i = 0;
@@ -950,7 +671,7 @@ public partial class NLoadoutPanel : Panel
 			CardCmd.Upgrade(card, CardPreviewStyle.None);
 			if (_.Items[i++].View is not Control view) continue;
 			PlayCardSmithFeedback(view);
-			RefreshCardVisuals(view);
+			CardPrinter.RefreshCardVisuals(view);
 		}
 		
 	}
@@ -960,7 +681,7 @@ public partial class NLoadoutPanel : Panel
 		if (selectItem.UntypedModel is not RelicModel relic)
 			return [];
 
-		Player? localPlayer = GetLocalRunPlayer();
+		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
 		if (localPlayer is null
 		    || !LocalContext.IsMine(relic)
 		    || !localPlayer.Relics.Contains(relic))
@@ -979,7 +700,7 @@ public partial class NLoadoutPanel : Panel
 
 		bool entered = await EnterEventAsync(eventModel, selectItem.Id);
 		if (entered)
-			Callable.From(CloseTopLoadoutScreen).CallDeferred();
+			Callable.From(NLoadoutPanelRoot.CloseTopLoadoutScreen).CallDeferred();
 
 		return entered
 			?
@@ -997,7 +718,7 @@ public partial class NLoadoutPanel : Panel
 	private static async Task<bool> EnterEventAsync(EventModel eventModel, string logId)
 	{
 
-		Player? localPlayer = GetLocalRunPlayer();
+		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
 		if (localPlayer is null || !RunManager.Instance.IsInProgress)
 		{
 			GD.PushWarning($"LoadoutPanel: cannot enter event '{logId}' because no local run player was resolved.");
@@ -1006,7 +727,7 @@ public partial class NLoadoutPanel : Panel
 
 		try
 		{
-			CloseBlockingRunScreens();
+			NLoadoutPanelRoot.CloseBlockingRunScreens();
 
 			if (!RunManager.Instance.IsSingleplayerOrFakeMultiplayer)
 			{
@@ -1048,24 +769,6 @@ public partial class NLoadoutPanel : Panel
 		}
 	}
 
-	private static async Task ReplayCardPrinterLastActionAsync()
-	{
-		foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.CardPrinterKey))
-		{
-			if (entry.Kind != LastActionService.AddCardKind || entry.Amount <= 0)
-				continue;
-
-			CardModel? card = ResolveCanonicalCard(entry.ContentId);
-			if (card is null)
-			{
-				GD.PushWarning($"LoadoutPanel: cannot replay card action for unknown card '{entry.ContentId}'.");
-				continue;
-			}
-
-			await AddCardCopiesAsync(card, entry.Amount, entry.ContentId);
-		}
-	}
-
 	private static async Task ReplayEventfulCompassLastActionAsync()
 	{
 		LastActionEntry? entry = LastActionService.GetAction(LastActionService.EventfulCompassKey)
@@ -1098,14 +801,9 @@ public partial class NLoadoutPanel : Panel
 		return Task.CompletedTask;
 	}
 
-	private static CardModel? ResolveCanonicalCard(string cardId)
-	{
-		return ModelDb.AllCards.FirstOrDefault(card => ModelIdMatches(card, cardId));
-	}
-
 	private static RelicModel? ResolveCanonicalRelic(string relicId)
 	{
-		return ModelDb.AllRelics.FirstOrDefault(relic => ModelIdMatches(relic, relicId));
+		return ModelDb.AllRelics.FirstOrDefault(relic => CommonHelpers.ModelIdMatches(relic, relicId));
 	}
 
 	private static EventModel? ResolveEvent(string eventId)
@@ -1113,70 +811,17 @@ public partial class NLoadoutPanel : Panel
 		return ModelDb.AllEvents
 			.Concat(ModelDb.AllAncients)
 			.Distinct()
-			.FirstOrDefault(eventModel => ModelIdMatches(eventModel, eventId));
+			.FirstOrDefault(eventModel => CommonHelpers.ModelIdMatches(eventModel, eventId));
 	}
 
-	private static bool ModelIdMatches(AbstractModel model, string id)
-	{
-		return string.Equals(model.Id.ToString(), id, StringComparison.Ordinal)
-		       || string.Equals(model.Id.Entry, id, StringComparison.OrdinalIgnoreCase);
-	}
 
-	private void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)
-	{
-		CardPoolModel? currentCardPool = GetCurrentCharacterCardPool();
-		if (currentCardPool is null)
-			return;
-
-		string filterId = PoolFilterId("card", currentCardPool);
-		if (string.Equals(_currentCardFilterId, filterId, StringComparison.Ordinal))
-			return;
-
-		if (screen.SetExclusiveFilterSelection("class", filterId, resetScroll: true))
-			_currentCardFilterId = filterId;
-	}
-
-	private static void CloseTopLoadoutScreen()
-	{
-		NLoadoutPanelRoot.Instance?.CloseTopScreen();
-	}
-
-	private static void CloseBlockingRunScreens()
-	{
-		NOverlayStack.Instance?.Clear();
-		NCapstoneContainer.Instance?.Close();
-	}
-
-	private static Control CreateCardGridItem(CardModel model, SelectItemState state)
-	{
-		var card = NCard.Create(model);
-		if (card is null)
-		{
-			return new Control
-			{
-				CustomMinimumSize = NCard.defaultSize
-			};
-		}
-
-		var holder = NGridCardHolder.Create(card);
-		if (holder is null)
-		{
-			card.CustomMinimumSize = card.GetCurrentSize();
-			return card;
-		}
-
-		holder.MouseFilter = MouseFilterEnum.Pass;
-		holder.Scale = holder.SmallScale;
-		holder.CustomMinimumSize = NCard.defaultSize * holder.SmallScale;
-		ApplyCardUpgradePreview(holder, state);
-		return holder;
-	}
+	
 
 	private static Control CreatePotionGridItem(PotionModel model)
 	{
 		NLabPotionHolder? holder = NLabPotionHolder.Create(model.ToMutable(), ModelVisibility.Visible);
 		if (holder is null)
-			return CreateTextModelGridItem(model, FormatPotionTitle(model), model.Id.Entry, SScreenLoc("CATEGORY_POTION", "Potion"));
+			return CreateTextModelGridItem(model, FormatPotionTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_POTION", "Potion"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(60f, 60f);
@@ -1187,7 +832,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NRelicCollectionEntry? holder = NRelicCollectionEntry.Create(model, ModelVisibility.Visible);
 		if (holder is null)
-			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, SScreenLoc("CATEGORY_RELIC", "Relic"));
+			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_RELIC", "Relic"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(68f, 68f);
@@ -1198,7 +843,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NRelicBasicHolder? holder = NRelicBasicHolder.Create(model);
 		if (holder is null)
-			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, SScreenLoc("CATEGORY_RELIC", "Relic"));
+			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_RELIC", "Relic"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(68f, 68f);
@@ -1335,7 +980,7 @@ public partial class NLoadoutPanel : Panel
 			HorizontalAlignment.Center,
 			isAncient ? new Color(0.937255f, 0.784314f, 0.317647f, 1f) : StsColors.cream);
 		if (isAncient)
-			titleLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/spectral_bold_shared.tres"));
+			titleLabel.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/spectral_bold_shared.tres"));
 		else
 			ConfigureWrappingEventTitle(titleLabel);
 		button.AddChild(titleLabel);
@@ -1343,14 +988,13 @@ public partial class NLoadoutPanel : Panel
 		if (model is AncientEventModel ancientEvent)
 		{
 			MegaLabel epithetLabel = CreateButtonLabel(
-				"AncientEpithet",
-				SafeFormatLocString(ancientEvent.Epithet, string.Empty),
+				"AncientEpithet", LocMan.SafeFormatLocString(ancientEvent.Epithet, string.Empty),
 				new Vector2(14f, 74f),
 				new Vector2(235f, 53f),
 				19,
 				HorizontalAlignment.Center,
 				new Color(0.529412f, 0.807843f, 0.921569f, 0.88f));
-			epithetLabel.AddThemeFontOverride("font", LoadGameFont("res://themes/bitter_medium_italic_glyph_space_one.tres"));
+			epithetLabel.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/bitter_medium_italic_glyph_space_one.tres"));
 			button.AddChild(epithetLabel);
 		}
 
@@ -1424,7 +1068,7 @@ public partial class NLoadoutPanel : Panel
 		{
 			SubViewport viewport = new()
 			{
-				Name = $"LoadoutAncientPreview_{MakeSafeNodeName(id)}",
+				Name = $"LoadoutAncientPreview_{CommonHelpers.MakeSafeNodeName(id)}",
 				Size = AncientPreviewTextureSize,
 				TransparentBg = false,
 				Disable3D = false,
@@ -1510,7 +1154,7 @@ public partial class NLoadoutPanel : Panel
 			SizeFlagsVertical = SizeFlags.ShrinkBegin,
 			Text = string.Empty
 		};
-		button.AddThemeFontOverride("font", LoadGameFont());
+		button.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
 		button.AddThemeFontSizeOverride("font_size", 18);
 		button.AddThemeColorOverride("font_color", StsColors.cream);
 		return button;
@@ -1536,7 +1180,7 @@ public partial class NLoadoutPanel : Panel
 			Position = position,
 			Size = size
 		};
-		label.AddThemeFontOverride("font", LoadGameFont());
+		label.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
 		label.AddThemeFontSizeOverride("font_size", fontSize);
 		label.AddThemeColorOverride("font_color", color);
 		label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
@@ -1611,7 +1255,7 @@ public partial class NLoadoutPanel : Panel
 			SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
 			SizeFlagsVertical = SizeFlags.ShrinkBegin
 		};
-		button.AddThemeFontOverride("font", LoadGameFont());
+		button.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
 		button.AddThemeFontSizeOverride("font_size", 18);
 		button.AddThemeColorOverride("font_color", StsColors.cream);
 		button.Text = icon is null
@@ -1635,55 +1279,9 @@ public partial class NLoadoutPanel : Panel
 		return button;
 	}
 
-	private static void RefreshCardVisuals(Control view)
-	{
-		if (!TryFindDescendantOrSelf(view, out NGridCardHolder? holder) || holder!.CardNode is null)
-			return;
-
-		holder.CardNode.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
-
-		if (holder.CardModel is not null
-		    && holder.CardModel.IsUpgradable
-		    && holder.GetMeta(PreviewUpgradeMetaKey, false).AsBool())
-		{
-			holder.SetIsPreviewingUpgrade(true);
-		}
-	}
-
-	private static void UpdateCardGridItem(Control view, SelectItemState state)
-	{
-		if (!TryFindDescendantOrSelf(view, out NGridCardHolder? holder))
-			return;
-
-		ApplyCardUpgradePreview(holder!, state);
-	}
-
-	private static void ApplyCardUpgradePreview(NGridCardHolder holder, SelectItemState state)
-	{
-		bool shouldPreviewUpgrade = holder.CardModel is not null
-			&& holder.CardModel.IsUpgradable
-			&& state.IsToggleEnabled(ViewUpgradesToggleId);
-
-		holder.SetMeta(PreviewUpgradeMetaKey, shouldPreviewUpgrade);
-
-		if (holder.CardModel is null || !holder.CardModel.IsUpgradable)
-			return;
-
-		holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
-	}
-
-	private static bool BindCardActivation(Control view, Action activate)
-	{
-		if (!TryFindDescendantOrSelf(view, out NGridCardHolder? holder))
-			return false;
-
-		holder!.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
-		return true;
-	}
-
 	private static void PlayCardSmithFeedback(Control view)
 	{
-		if (!GodotObject.IsInstanceValid(view) || !TryFindDescendantOrSelf(view, out NGridCardHolder? holder))
+		if (!GodotObject.IsInstanceValid(view) || !CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder? holder))
 			return;
 
 		if (holder!.CardNode is not NCard cardNode || !GodotObject.IsInstanceValid(cardNode))
@@ -1705,34 +1303,19 @@ public partial class NLoadoutPanel : Panel
 
 	private static bool BindRelicActivation(Control view, Action activate)
 	{
-		if (TryFindDescendantOrSelf(view, out NRelicCollectionEntry? collectionEntry))
+		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicCollectionEntry? collectionEntry))
 		{
 			collectionEntry!.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicCollectionEntry>(_ => activate()));
 			return true;
 		}
 
-		if (TryFindDescendantOrSelf(view, out NRelicBasicHolder? basicHolder))
+		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder? basicHolder))
 		{
 			basicHolder!.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicBasicHolder>(_ => activate()));
 			return true;
 		}
 
 		return false;
-	}
-
-	private static bool BindGuiReleaseActivation(Control view, Action activate)
-	{
-		Control control = TryFindDescendantOrSelf(view, out NLabPotionHolder? potionHolder)
-			? potionHolder!
-			: view;
-
-		control.GuiInput += input =>
-		{
-			if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
-				activate();
-		};
-
-		return true;
 	}
 
 	private static bool BindPowerGiverActivation(
@@ -1800,11 +1383,10 @@ public partial class NLoadoutPanel : Panel
 			SizeFlagsHorizontal = SizeFlags.ExpandFill,
 			CustomMinimumSize = new Vector2(256f, 52f)
 		};
-		favoritesDropdown.SetItems(
-			SScreenLoc("FILTER_GROUP_FAVORITES", "Favorites"),
+		favoritesDropdown.SetItems(LocMan.SScreenLoc("FILTER_GROUP_FAVORITES", "Favorites"),
 			[
-				new LoadoutDropdownOption(PowerGiverFavoriteModeAll, SScreenLoc("ALL", "All")),
-				new LoadoutDropdownOption(PowerGiverFavoriteModeFavorites, SScreenLoc("FAVORITES_ONLY", "Favorites"))
+				new LoadoutDropdownOption(PowerGiverFavoriteModeAll, LocMan.SScreenLoc("ALL", "All")),
+				new LoadoutDropdownOption(PowerGiverFavoriteModeFavorites, LocMan.SScreenLoc("FAVORITES_ONLY", "Favorites"))
 			],
 			getFavoritesOnly() ? PowerGiverFavoriteModeFavorites : PowerGiverFavoriteModeAll);
 		favoritesDropdown.SelectedItemChanged += selectedId =>
@@ -1824,11 +1406,10 @@ public partial class NLoadoutPanel : Panel
 			SizeFlagsHorizontal = SizeFlags.ExpandFill,
 			CustomMinimumSize = new Vector2(256f, 52f)
 		};
-		dropdown.SetItems(
-			SScreenLoc("POWER_GIVER_TARGET", "Target"),
+		dropdown.SetItems(LocMan.SScreenLoc("POWER_GIVER_TARGET", "Target"),
 			[
-				new LoadoutDropdownOption(PowerGiverTarget.Player.ToString(), SScreenLoc("POWER_GIVER_TARGET_PLAYER", "Player")),
-				new LoadoutDropdownOption(PowerGiverTarget.Monsters.ToString(), SScreenLoc("POWER_GIVER_TARGET_MONSTERS", "Monsters"))
+				new LoadoutDropdownOption(PowerGiverTarget.Player.ToString(), LocMan.SScreenLoc("POWER_GIVER_TARGET_PLAYER", "Player")),
+				new LoadoutDropdownOption(PowerGiverTarget.Monsters.ToString(), LocMan.SScreenLoc("POWER_GIVER_TARGET_MONSTERS", "Monsters"))
 			],
 			PowerGiverStateService.SelectedTarget.ToString());
 		dropdown.SelectedItemChanged += selectedId =>
@@ -1843,330 +1424,38 @@ public partial class NLoadoutPanel : Panel
 		screen.AddCustomSidebarControl(dropdown);
 	}
 
-	private static bool TryFindDescendantOrSelf<TControl>(Node root, out TControl? control)
-		where TControl : class
-	{
-		if (root is TControl direct)
-		{
-			control = direct;
-			return true;
-		}
-
-		foreach (Node child in root.GetChildren())
-		{
-			if (TryFindDescendantOrSelf(child, out control))
-				return true;
-		}
-
-		control = null;
-		return false;
-	}
-
-	private static void AddCardPoolFilters(SelectScreenBuilder<CardModel> builder)
-	{
-		IReadOnlyList<CardPoolModel> pools = BuildOrderedCardPools();
-
-		foreach (CardPoolModel pool in pools)
-		{
-			CardPoolModel localPool = pool;
-			builder.Filter(
-				PoolFilterId("card", localPool),
-				GetPoolLabel(localPool),
-				card => SamePool(card.Pool, localPool),
-				"class");
-		}
-	}
-
-	private static void AddCardTypeFilters(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
-	{
-		foreach (CardType type in cards
-			         .Select(card => card.Type)
-			         .Distinct()
-			         .OrderBy(type => Convert.ToInt32(type)))
-		{
-			CardType localType = type;
-			builder.Filter(
-				EnumFilterId("card_type", localType),
-				GetCardTypeLabel(localType),
-				card => card.Type == localType,
-				"type");
-		}
-	}
-
-	private static void AddCardRarityFilters(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
-	{
-		foreach (CardRarity rarity in cards
-			         .Select(card => card.Rarity)
-			         .Distinct()
-			         .Where(rarity => rarity != CardRarity.None)
-			         .OrderBy(GetCardRaritySortValue)
-			         .ThenBy(rarity => Convert.ToInt32(rarity)))
-		{
-			CardRarity localRarity = rarity;
-			builder.Filter(
-				EnumFilterId("card_rarity", localRarity),
-				GetCardRarityLabel(localRarity),
-				card => card.Rarity == localRarity,
-				"rarity");
-		}
-	}
-
-	private static void AddCardKeywordFilterGroup(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
-	{
-		IReadOnlyList<CardKeyword> keywords = cards
-			.SelectMany(GetLocalCardKeywords)
-			.Where(keyword => keyword != CardKeyword.None)
-			.Distinct()
-			.OrderBy(keyword => Convert.ToInt32(keyword))
-			.ToList();
-
-		if (keywords.Count == 0)
-			return;
-
-		builder.FilterGroup("keyword", SScreenLoc("FILTER_GROUP_KEYWORD", "Keyword"));
-		foreach (CardKeyword keyword in keywords)
-		{
-			CardKeyword localKeyword = keyword;
-			builder.Filter(
-				EnumFilterId("card_keyword", localKeyword),
-				GetCardKeywordLabel(localKeyword),
-				card => GetLocalCardKeywords(card).Contains(localKeyword),
-				"keyword");
-		}
-	}
-
-	private static IEnumerable<CardKeyword> GetLocalCardKeywords(CardModel card)
-	{
-		return card.GetKeywordsWithSources(KeywordSources.Local);
-	}
-
-	private static void AddCardTagFilterGroup(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
-	{
-		IReadOnlyList<CardTag> tags = cards
-			.SelectMany(card => card.Tags)
-			.Where(tag => tag != CardTag.None)
-			.Distinct()
-			.OrderBy(tag => Convert.ToInt32(tag))
-			.ToList();
-
-		if (tags.Count == 0)
-			return;
-
-		builder.FilterGroup("tag", SScreenLoc("FILTER_GROUP_TAG", "Tag"));
-		foreach (CardTag tag in tags)
-		{
-			CardTag localTag = tag;
-			builder.Filter(
-				EnumFilterId("card_tag", localTag),
-				GetCardTagLabel(localTag),
-				card => card.Tags.Contains(localTag),
-				"tag");
-		}
-	}
-
-	private static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()
-	{
-		return BuildOrderedPools(
-			ModelDb.AllCards.Select(card => card.Pool),
-			ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
-			pool => !IsInternalPool(pool));
-	}
-
 	private static void AddPotionPoolFilters(SelectScreenBuilder<PotionModel> builder)
 	{
-		IReadOnlyList<PotionPoolModel> pools = BuildOrderedPools(
+		IReadOnlyList<PotionPoolModel> pools = CommonHelpers.BuildOrderedPools(
 			ModelDb.AllPotions.Select(potion => potion.Pool),
 			ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.PotionPool),
-			pool => IsSharedPool(pool) && !IsInternalPool(pool));
+			pool => CommonHelpers.IsSharedPool(pool) && !CommonHelpers.IsInternalPool(pool));
 
 		foreach (PotionPoolModel pool in pools)
 		{
 			PotionPoolModel localPool = pool;
-			builder.Filter(
-				PoolFilterId("potion", localPool),
-				GetPoolLabel(localPool),
-				potion => SamePool(potion.Pool, localPool),
+			builder.Filter(CommonHelpers.PoolFilterId("potion", localPool), CommonHelpers.GetPoolLabel(localPool),
+				potion => CommonHelpers.SamePool(potion.Pool, localPool),
 				"class");
 		}
 	}
 
 	private static void AddRelicPoolFilters(SelectScreenBuilder<RelicModel> builder)
 	{
-		IReadOnlyList<RelicPoolModel> pools = BuildOrderedPools(
+		IReadOnlyList<RelicPoolModel> pools = CommonHelpers.BuildOrderedPools(
 			ModelDb.AllRelics.Select(relic => relic.Pool),
 			ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.RelicPool),
-			pool => IsSharedPool(pool) && !IsInternalPool(pool));
+			pool => CommonHelpers.IsSharedPool(pool) && !CommonHelpers.IsInternalPool(pool));
 
 		foreach (RelicPoolModel pool in pools)
 		{
 			RelicPoolModel localPool = pool;
-			builder.Filter(
-				PoolFilterId("relic", localPool),
-				GetPoolLabel(localPool),
-				relic => SamePool(relic.Pool, localPool),
+			builder.Filter(CommonHelpers.PoolFilterId("relic", localPool), CommonHelpers.GetPoolLabel(localPool),
+				relic => CommonHelpers.SamePool(relic.Pool, localPool),
 				"class");
 		}
 	}
 
-	private static IReadOnlyList<TPool> BuildOrderedPools<TPool>(
-		IEnumerable<TPool> usedPools,
-		IEnumerable<TPool> characterPools,
-		Func<TPool, bool> includeSharedPool)
-		where TPool : AbstractModel
-	{
-		Dictionary<string, TPool> usedByKey = usedPools
-			.GroupBy(PoolKey, StringComparer.Ordinal)
-			.ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
-
-		List<TPool> ordered = new();
-		HashSet<string> added = new(StringComparer.Ordinal);
-
-		foreach (TPool pool in characterPools)
-		{
-			string key = PoolKey(pool);
-			if (usedByKey.ContainsKey(key) && added.Add(key))
-				ordered.Add(pool);
-		}
-
-		foreach (TPool pool in usedByKey.Values.OrderBy(GetPoolLabel, StringComparer.Ordinal))
-		{
-			string key = PoolKey(pool);
-			if (!added.Contains(key) && includeSharedPool(pool) && added.Add(key))
-				ordered.Add(pool);
-		}
-
-		return ordered;
-	}
-
-	private static string GetPoolLabel(AbstractModel pool)
-	{
-		CharacterModel? character = ModelDb.AllCharacters
-			.Where(candidate => candidate.IsPlayable)
-			.FirstOrDefault(candidate =>
-				SamePool(candidate.CardPool, pool)
-				|| SamePool(candidate.PotionPool, pool)
-				|| SamePool(candidate.RelicPool, pool));
-
-		if (character is not null)
-			return character.Title.GetFormattedText();
-
-		if (pool is CardPoolModel cardPool && !string.IsNullOrWhiteSpace(cardPool.Title))
-			return cardPool.Title;
-
-		string typeName = pool.GetType().Name;
-		if (typeName.StartsWith("Shared", StringComparison.Ordinal))
-			return SScreenLoc("POOL_SHARED", "Shared");
-
-		if (typeName.StartsWith("Colorless", StringComparison.Ordinal))
-			return SScreenLoc("POOL_COLORLESS", "Colorless");
-
-		if (typeName.StartsWith("Event", StringComparison.Ordinal))
-			return SScreenLoc("POOL_EVENT", "Event");
-
-		return PrettifyPoolTypeName(typeName);
-	}
-
-	private static string PoolFilterId(string prefix, AbstractModel pool)
-	{
-		return $"{prefix}_pool_{Regex.Replace(PoolKey(pool).ToLowerInvariant(), "[^a-z0-9_]+", "_")}";
-	}
-
-	private static string PoolKey(AbstractModel pool)
-	{
-		return $"{pool.GetType().FullName}:{pool.Id}";
-	}
-
-	private static bool SamePool(AbstractModel left, AbstractModel right)
-	{
-		return string.Equals(PoolKey(left), PoolKey(right), StringComparison.Ordinal);
-	}
-
-	private static int CompareCardLibraryOrder(CardModel left, CardModel right, IReadOnlyList<CardPoolModel> orderedPools)
-	{
-		int pool = GetCardPoolSortIndex(left.Pool, orderedPools).CompareTo(GetCardPoolSortIndex(right.Pool, orderedPools));
-		if (pool != 0)
-			return pool;
-
-		int rarity = GetCardRaritySortValue(left.Rarity).CompareTo(GetCardRaritySortValue(right.Rarity));
-		if (rarity != 0)
-			return rarity;
-
-		int type = left.Type.CompareTo(right.Type);
-		if (type != 0)
-			return type;
-
-		int cost = left.EnergyCost.GetResolved().CompareTo(right.EnergyCost.GetResolved());
-		if (cost != 0)
-			return cost;
-
-		return string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
-	}
-
-	private static int GetCardPoolSortIndex(CardPoolModel pool, IReadOnlyList<CardPoolModel> orderedPools)
-	{
-		for (int i = 0; i < orderedPools.Count; i++)
-		{
-			if (SamePool(pool, orderedPools[i]))
-				return i;
-		}
-
-		return orderedPools.Count;
-	}
-
-	private static int GetCardRaritySortValue(CardRarity rarity)
-	{
-		if (rarity <= CardRarity.Ancient)
-			return (int)rarity;
-
-		return rarity switch
-		{
-			CardRarity.Status => 6,
-			CardRarity.Curse => 7,
-			CardRarity.Event => 8,
-			CardRarity.Quest => 9,
-			CardRarity.Token => 10,
-			_ => (int)rarity
-		};
-	}
-
-	private static bool IsSharedPool(AbstractModel pool)
-	{
-		string typeName = pool.GetType().Name;
-		return typeName.StartsWith("Shared", StringComparison.Ordinal)
-			|| typeName.StartsWith("Event", StringComparison.Ordinal)
-			|| typeName.StartsWith("Colorless", StringComparison.Ordinal);
-	}
-
-	private static bool IsInternalPool(AbstractModel pool)
-	{
-		string typeName = pool.GetType().Name;
-		return typeName.StartsWith("Deprecated", StringComparison.Ordinal)
-			|| typeName.StartsWith("Mock", StringComparison.Ordinal)
-			|| typeName.StartsWith("Fallback", StringComparison.Ordinal);
-	}
-
-	private static string PrettifyPoolTypeName(string typeName)
-	{
-		string name = typeName
-			.Replace("CardPool", string.Empty, StringComparison.Ordinal)
-			.Replace("PotionPool", string.Empty, StringComparison.Ordinal)
-			.Replace("RelicPool", string.Empty, StringComparison.Ordinal);
-
-		return Regex.Replace(name, "([a-z])([A-Z])", "$1 $2");
-	}
-
-	private static CardPoolModel? GetCurrentCharacterCardPool()
-	{
-		try
-		{
-			return LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState())?.Character.CardPool;
-		}
-		catch (Exception exception)
-		{
-			GD.PushWarning($"LoadoutPanel: could not detect current character card pool; showing all cards by default. {exception.Message}");
-			return null;
-		}
-	}
 
 	private static int ComparePotionRarity(PotionModel left, PotionModel right)
 	{
@@ -2236,7 +1525,7 @@ public partial class NLoadoutPanel : Panel
 			"potion:uncommon" => new SelectGroupHeader(new LocString("potion_lab", "UNCOMMON").GetFormattedText()),
 			"potion:rare" => new SelectGroupHeader(new LocString("potion_lab", "RARE").GetFormattedText()),
 			"potion:special" => new SelectGroupHeader(new LocString("potion_lab", "SPECIAL").GetFormattedText()),
-			_ => SelectGroupHeader.Category(SScreenLoc("OTHER", "Other"))
+			_ => SelectGroupHeader.Category(LocMan.SScreenLoc("OTHER", "Other"))
 		};
 	}
 
@@ -2284,7 +1573,7 @@ public partial class NLoadoutPanel : Panel
 			LocString headerText = new("relic_collection", "ANCIENT_SUBCATEGORY");
 			headerText.Add("Ancient", ancient.Title);
 			AncientEventModel headerAncient = ancient;
-			headers[groupKey] = new SelectGroupHeader(headerText.GetFormattedText(), () => TryGetValidTexture(headerAncient.RunHistoryIcon));
+			headers[groupKey] = new SelectGroupHeader(headerText.GetFormattedText(), () => CommonHelpers.TryGetValidTexture(headerAncient.RunHistoryIcon));
 			groupOrder.Add(groupKey);
 			ancientGroupOrder.Add(groupKey);
 
@@ -2334,184 +1623,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		return groupingData.HeadersByKey.TryGetValue(key, out SelectGroupHeader? header)
 			? header
-			: SelectGroupHeader.Category(SScreenLoc("OTHER", "Other"));
-	}
-
-	private static Texture2D? TryGetValidTexture(Texture2D? texture)
-	{
-		if (texture is null)
-			return null;
-
-		try
-		{
-			if (!GodotObject.IsInstanceValid(texture))
-				return null;
-
-			_ = texture.GetRid();
-			return texture;
-		}
-		catch (ObjectDisposedException)
-		{
-			return null;
-		}
-	}
-
-	private static Texture2D? LoadActionButtonIcon(string fileName)
-	{
-		string[] paths =
-		[
-			$"res://Loadout/images/relics/default/{fileName}",
-			$"res://Loadout/images/relics/xggg/{fileName}",
-			$"res://Loadout/images/relics/legacy/{fileName}",
-			$"res://Loadout/images/relics/isaac/{fileName}"
-		];
-
-		foreach (string path in paths)
-		{
-			if (ResourceLoader.Exists(path))
-				return GD.Load<Texture2D>(path);
-		}
-
-		return null;
-	}
-
-	private static void AddEnumFilters<TModel, TEnum>(
-		SelectScreenBuilder<TModel> builder,
-		string groupId,
-		Func<TModel, TEnum> getValue,
-		TEnum excludedValue)
-		where TEnum : struct, Enum
-	{
-		foreach (TEnum value in Enum.GetValues<TEnum>())
-		{
-			if (EqualityComparer<TEnum>.Default.Equals(value, excludedValue))
-				continue;
-
-			string label = GetEnumLabel(value);
-			builder.Filter(EnumFilterId(typeof(TEnum).Name, value), label, model => EqualityComparer<TEnum>.Default.Equals(getValue(model), value), groupId);
-		}
-	}
-
-	private static string SScreenLoc(string key, string fallback)
-	{
-		return SelectScreenLoc.Text(key, fallback);
-	}
-
-	private static string GameLoc(string table, string key, string fallback)
-	{
-		try
-		{
-			return LocString.Exists(table, key)
-				? new LocString(table, key).GetFormattedText()
-				: fallback;
-		}
-		catch
-		{
-			return fallback;
-		}
-	}
-
-	private static string GetCardTypeLabel(CardType type)
-	{
-		try
-		{
-			return type.ToLocString().GetFormattedText();
-		}
-		catch
-		{
-			return PrettifyEnumValue(type);
-		}
-	}
-
-	private static string GetCardRarityLabel(CardRarity rarity)
-	{
-		try
-		{
-			return rarity.ToLocString().GetFormattedText();
-		}
-		catch
-		{
-			return PrettifyEnumValue(rarity);
-		}
-	}
-
-	private static string GetCardKeywordLabel(CardKeyword keyword)
-	{
-		try
-		{
-			if (HoverTipFactory.FromKeyword(keyword) is HoverTip hoverTip && !string.IsNullOrWhiteSpace(hoverTip.Title))
-				return hoverTip.Title;
-		}
-		catch
-		{
-			// Fall back below for unknown or modded keyword values.
-		}
-
-		return PrettifyEnumValue(keyword);
-	}
-
-	private static string GetCardTagLabel(CardTag tag)
-	{
-		return PrettifyEnumValue(tag);
-	}
-
-	private static string GetEnumLabel<TEnum>(TEnum value)
-		where TEnum : struct, Enum
-	{
-		try
-		{
-			return value switch
-			{
-				PotionRarity potionRarity => potionRarity.ToLocString().GetFormattedText(),
-				RelicRarity relicRarity => GameLoc("gameplay_ui", $"RELIC_RARITY.{relicRarity.ToString().ToUpperInvariant()}", PrettifyEnumValue(relicRarity)),
-				_ => PrettifyEnumValue(value)
-			};
-		}
-		catch
-		{
-			return PrettifyEnumValue(value);
-		}
-	}
-
-	private static string EnumFilterId<TEnum>(string prefix, TEnum value)
-		where TEnum : struct, Enum
-	{
-		string raw = $"{prefix}_{value}_{Convert.ToInt64(value)}";
-		return Regex.Replace(raw.ToLowerInvariant(), "[^a-z0-9_]+", "_");
-	}
-
-	private static string PrettifyEnumValue<TEnum>(TEnum value)
-		where TEnum : struct, Enum
-	{
-		return Regex.Replace(value.ToString(), "([a-z])([A-Z])", "$1 $2");
-	}
-
-	private static Font LoadGameFont()
-	{
-		const string localPath = "res://Loadout/themes/default/kreon_bold_glyph_space_one.tres";
-		if (ResourceLoader.Exists(localPath))
-			return GD.Load<Font>(localPath);
-
-		return GD.Load<Font>("res://themes/kreon_bold_glyph_space_one.tres");
-	}
-
-	private static Font LoadGameFont(string path)
-	{
-		if (ResourceLoader.Exists(path))
-			return GD.Load<Font>(path);
-
-		return LoadGameFont();
-	}
-
-	private static string MakeSafeNodeName(string value)
-	{
-		string safeName = Regex.Replace(value, @"[^A-Za-z0-9_]", "_");
-		return string.IsNullOrWhiteSpace(safeName) ? "GeneratedControl" : safeName;
-	}
-
-	private static string FormatCardTitle(CardModel card)
-	{
-		return card.Title;
+			: SelectGroupHeader.Category(LocMan.SScreenLoc("OTHER", "Other"));
 	}
 
 	private static string FormatPotionTitle(PotionModel potion)
@@ -2534,7 +1646,7 @@ public partial class NLoadoutPanel : Panel
 		
 		if (model is AncientEventModel ancient)
 		{
-			return SafeFormatLocString(ancient.Epithet, string.Empty);
+			return LocMan.SafeFormatLocString(ancient.Epithet, string.Empty);
 		}
 		
 		string text;
@@ -2559,19 +1671,6 @@ public partial class NLoadoutPanel : Panel
 		return string.Empty;
 	}
 
-	private static string SafeFormatLocString(LocString locString, string fallback)
-	{
-		try
-		{
-			return locString.GetFormattedText();
-		}
-		catch (Exception exception)
-		{
-			GD.PushWarning($"LoadoutPanel: could not format loc string '{locString.LocTable}.{locString.LocEntryKey}'. {exception.Message}");
-			return fallback;
-		}
-	}
-
 	private static string StripUiMarkup(string text)
 	{
 		string withoutBbcode = Regex.Replace(text, @"\[[^\]]+\]", " ");
@@ -2593,9 +1692,9 @@ public partial class NLoadoutPanel : Panel
 	{
 		return type switch
 		{
-			PowerType.Buff => SScreenLoc("POWER_TYPE_BUFF", "Buff"),
-			PowerType.Debuff => SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"),
-			_ => SScreenLoc("NONE", "None")
+			PowerType.Buff => LocMan.SScreenLoc("POWER_TYPE_BUFF", "Buff"),
+			PowerType.Debuff => LocMan.SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"),
+			_ => LocMan.SScreenLoc("NONE", "None")
 		};
 	}
 
