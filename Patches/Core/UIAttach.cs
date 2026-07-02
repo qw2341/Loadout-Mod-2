@@ -1,5 +1,6 @@
 using Loadout.Services.PowerGiver;
 using Loadout.Services.LastActions;
+using Loadout.Services.CardModification;
 
 namespace Loadout.Patches.Core;
 
@@ -19,6 +20,7 @@ public class UIAttach
     {
         PowerGiverStateService.Register();
         LastActionService.Register();
+        CardModificationStateService.Register();
 
         if (_attached || _attachScheduled)
             return;

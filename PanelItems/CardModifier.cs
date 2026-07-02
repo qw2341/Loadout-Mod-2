@@ -28,7 +28,10 @@ public class CardModifier
             CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
             ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
             UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
-            BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
+            BindActivation = (item, view, activate) => CardPrinter.BindCardActivation(
+                view,
+                activate,
+                () => OpenCardModificationScreen(item, view))
         };
 
         void BuildCardModifierScreen(SelectScreenBuilder<LoadoutOwnedItem<CardModel>> builder)
@@ -89,7 +92,19 @@ public class CardModifier
         LoadoutActionService.Request(LoadoutActionKind.UpgradeAllDeckCards, ModelId.none, 1, target);
     }
 
-    
+    private static void OpenCardModificationScreen(LoadoutOwnedItem<CardModel> item, Control sourceView)
+    {
+        NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance;
+        if (root is null)
+            return;
+
+        NCardModificationScreen screen = new()
+        {
+            Name = $"CardModification_{CommonHelpers.MakeSafeNodeName(CommonHelpers.OwnedItemId(item))}"
+        };
+        screen.Init(item, () => CardPrinter.RefreshCardVisuals(sourceView));
+        root.OpenScreen(screen);
+    }
 
     private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetDeckCardsForModifier()
     {

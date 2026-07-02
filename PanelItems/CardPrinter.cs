@@ -375,6 +375,16 @@ public class CardPrinter
 	    return true;
     }
 
+    public static bool BindCardActivation(Control view, Action activate, Action alternateActivate)
+    {
+	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))
+		    return false;
+
+	    holder!.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
+	    holder.Connect(NCardHolder.SignalName.AltPressed, Callable.From<NCardHolder>(_ => alternateActivate()));
+	    return true;
+    }
+
     
     
     private static void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)
