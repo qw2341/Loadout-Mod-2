@@ -59,14 +59,6 @@ public partial class NLoadoutPanel : Panel
 	private const int MaxLoadoutItemInitAttempts = 120;
 	private const string PowerGiverFavoriteModeAll = "all";
 	private const string PowerGiverFavoriteModeFavorites = "favorites";
-	private static readonly Vector2 EventTileSize = new(264f, 144f);
-	private static readonly Vector2I AncientPreviewTextureSize = new(360, 196);
-	private const float EventTilePortraitRestAlpha = 0.45f;
-	private const float EventTilePortraitHoverAlpha = 0.78f;
-	private const float EventTileShadeHoverAlpha = 0.16f;
-	private static readonly Dictionary<Control, Tween> EventTileHoverTweens = new();
-	private static readonly Dictionary<string, SubViewport> AncientPreviewViewports = new(StringComparer.Ordinal);
-	private static readonly Dictionary<string, Texture2D> AncientPreviewTextures = new(StringComparer.Ordinal);
 
 	[Export]
 	public bool Shown = true;
@@ -130,8 +122,8 @@ public partial class NLoadoutPanel : Panel
 			new SelectItemAdapter<RelicModel>
 			{
 				GetId = relic => relic.Id.ToString(),
-				GetName = relic => FormatRelicTitle(relic),
-				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
+				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
+				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription}",
 				CreateView = (relic, _) => CreateRelicGridItem(relic),
 				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
 			}, builder =>
@@ -143,7 +135,7 @@ public partial class NLoadoutPanel : Panel
 				AddRelicPoolFilters(builder);
 				builder.FilterGroup("rarity", LocMan.SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
 				CommonHelpers.AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
-				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatRelicTitle(a), FormatRelicTitle(b), StringComparison.Ordinal));
+				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatRelicTitle(a), CommonHelpers.FormatRelicTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.SScreenLoc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
 				RelicGroupingData relicGroupingData = BuildRelicGroupingData();
@@ -165,8 +157,8 @@ public partial class NLoadoutPanel : Panel
 			new SelectItemAdapter<RelicModel>
 			{
 				GetId = RuntimeItemId,
-				GetName = relic => FormatRelicTitle(relic),
-				GetSearchText = relic => $"{relic.Id} {FormatRelicTitle(relic)} {relic.DynamicDescription}",
+				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
+				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription}",
 				CreateView = (relic, _) => CreateOwnedRelicGridItem(relic),
 				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
 			},
@@ -186,8 +178,8 @@ public partial class NLoadoutPanel : Panel
 			new SelectItemAdapter<PotionModel>
 			{
 				GetId = potion => potion.Id.ToString(),
-				GetName = potion => FormatPotionTitle(potion),
-				GetSearchText = potion => $"{potion.Id} {FormatPotionTitle(potion)} {potion.DynamicDescription}",
+				GetName = potion => CommonHelpers.FormatPotionTitle(potion),
+				GetSearchText = potion => $"{potion.Id} {CommonHelpers.FormatPotionTitle(potion)} {potion.DynamicDescription}",
 				CreateView = (potion, _) => CreatePotionGridItem(potion),
 				BindActivation = (_, view, activate) => CommonHelpers.BindGuiReleaseActivation(view, activate)
 			}, builder =>
@@ -199,7 +191,7 @@ public partial class NLoadoutPanel : Panel
 				AddPotionPoolFilters(builder);
 				builder.FilterGroup("rarity", LocMan.SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
 				CommonHelpers.AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
-				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPotionTitle(a), FormatPotionTitle(b), StringComparison.Ordinal));
+				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPotionTitle(a), CommonHelpers.FormatPotionTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.SScreenLoc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
 				builder.GroupBySorter(
@@ -336,8 +328,8 @@ public partial class NLoadoutPanel : Panel
 		SelectItemAdapter<PowerModel> adapter = new()
 		{
 			GetId = PowerId,
-			GetName = FormatPowerTitle,
-			GetSearchText = power => $"{power.Id} {FormatPowerTitle(power)} {power.Description}",
+			GetName = CommonHelpers.FormatPowerTitle,
+			GetSearchText = power => $"{power.Id} {CommonHelpers.FormatPowerTitle(power)} {power.Description}",
 			CreateView = (power, _) => CreatePowerGridItem(
 				power,
 				PowerGiverStateService.GetCounter(PowerId(power)),
@@ -370,7 +362,7 @@ public partial class NLoadoutPanel : Panel
 				builder.Filter("stack_none", LocMan.SScreenLoc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
 				builder.Filter("counter", LocMan.SScreenLoc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
 				builder.Filter("single", LocMan.SScreenLoc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
-				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatPowerTitle(a), FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPowerTitle(a), CommonHelpers.FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
 			});
@@ -693,64 +685,6 @@ public partial class NLoadoutPanel : Panel
 		return [];
 	}
 
-	private static async Task<IReadOnlyList<LastActionEntry>> HandleEnterEventActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
-	{
-		if (selectItem.UntypedModel is not EventModel eventModel)
-			return [];
-
-		bool entered = await EnterEventAsync(eventModel, selectItem.Id);
-		if (entered)
-			Callable.From(NLoadoutPanelRoot.CloseTopLoadoutScreen).CallDeferred();
-
-		return entered
-			?
-			[
-				new LastActionEntry
-				{
-					Kind = LastActionService.EnterEventKind,
-					ContentId = eventModel.Id.ToString(),
-					Amount = 1
-				}
-			]
-			: [];
-	}
-
-	private static async Task<bool> EnterEventAsync(EventModel eventModel, string logId)
-	{
-
-		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
-		if (localPlayer is null || !RunManager.Instance.IsInProgress)
-		{
-			GD.PushWarning($"LoadoutPanel: cannot enter event '{logId}' because no local run player was resolved.");
-			return false;
-		}
-
-		try
-		{
-			NLoadoutPanelRoot.CloseBlockingRunScreens();
-
-			if (!RunManager.Instance.IsSingleplayerOrFakeMultiplayer)
-			{
-				string command = $"event {eventModel.Id.Entry}";
-				RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
-					new ConsoleCmdGameAction(localPlayer, command, CombatManager.Instance.IsInProgress));
-				return true;
-			}
-
-			MapPointType mapPointType = eventModel is AncientEventModel
-				? MapPointType.Ancient
-				: MapPointType.Unknown;
-			localPlayer.RunState.AppendToMapPointHistory(mapPointType, RoomType.Event, eventModel.Id);
-			await RunManager.Instance.EnterRoom(new EventRoom(eventModel));
-			return true;
-		}
-		catch (Exception exception)
-		{
-			GD.PushError($"LoadoutPanel: failed to enter event '{eventModel.Id}': {exception}");
-			return false;
-		}
-	}
-
 	private static async Task ReplayLoadoutBagLastActionAsync()
 	{
 		foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.LoadoutBagKey))
@@ -767,23 +701,6 @@ public partial class NLoadoutPanel : Panel
 
 			await ObtainRelicCopiesAsync(relic, entry.Amount, entry.ContentId);
 		}
-	}
-
-	private static async Task ReplayEventfulCompassLastActionAsync()
-	{
-		LastActionEntry? entry = LastActionService.GetAction(LastActionService.EventfulCompassKey)
-			.LastOrDefault(action => action.Kind == LastActionService.EnterEventKind && action.Amount > 0);
-		if (entry is null)
-			return;
-
-		EventModel? eventModel = ResolveEvent(entry.ContentId);
-		if (eventModel is null)
-		{
-			GD.PushWarning($"LoadoutPanel: cannot replay event action for unknown event '{entry.ContentId}'.");
-			return;
-		}
-
-		await EnterEventAsync(eventModel, entry.ContentId);
 	}
 
 	private static Task ReplayPowerGiverLastActionAsync()
@@ -806,22 +723,12 @@ public partial class NLoadoutPanel : Panel
 		return ModelDb.AllRelics.FirstOrDefault(relic => CommonHelpers.ModelIdMatches(relic, relicId));
 	}
 
-	private static EventModel? ResolveEvent(string eventId)
-	{
-		return ModelDb.AllEvents
-			.Concat(ModelDb.AllAncients)
-			.Distinct()
-			.FirstOrDefault(eventModel => CommonHelpers.ModelIdMatches(eventModel, eventId));
-	}
-
-
-	
 
 	private static Control CreatePotionGridItem(PotionModel model)
 	{
 		NLabPotionHolder? holder = NLabPotionHolder.Create(model.ToMutable(), ModelVisibility.Visible);
 		if (holder is null)
-			return CreateTextModelGridItem(model, FormatPotionTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_POTION", "Potion"));
+			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatPotionTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_POTION", "Potion"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(60f, 60f);
@@ -832,7 +739,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NRelicCollectionEntry? holder = NRelicCollectionEntry.Create(model, ModelVisibility.Visible);
 		if (holder is null)
-			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_RELIC", "Relic"));
+			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatRelicTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_RELIC", "Relic"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(68f, 68f);
@@ -843,7 +750,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NRelicBasicHolder? holder = NRelicBasicHolder.Create(model);
 		if (holder is null)
-			return CreateTextModelGridItem(model, FormatRelicTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_RELIC", "Relic"));
+			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatRelicTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_RELIC", "Relic"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(68f, 68f);
@@ -856,7 +763,7 @@ public partial class NLoadoutPanel : Panel
 		if (ResourceLoader.Exists(model.IconPath))
 			icon = model.Icon;
 
-		Button button = CreateModelButton(new Vector2(220f, 104f));
+		Button button = CommonHelpers.CreateModelButton(new Vector2(220f, 104f));
 		button.ClipContents = false;
 		Panel favoriteGlow = CreateFavoriteGlow(button.CustomMinimumSize, isFavorite);
 		button.AddChild(favoriteGlow);
@@ -874,9 +781,8 @@ public partial class NLoadoutPanel : Panel
 			button.AddChild(iconRect);
 		}
 
-		MegaLabel nameLabel = CreateButtonLabel(
-			"PowerName",
-			FormatPowerTitle(model),
+		MegaLabel nameLabel = CommonHelpers.CreateButtonLabel(
+			"PowerName", CommonHelpers.FormatPowerTitle(model),
 			new Vector2(82f, 8f),
 			new Vector2(126f, 78f),
 			18,
@@ -888,7 +794,7 @@ public partial class NLoadoutPanel : Panel
 		MegaLabel amountLabel = CreatePowerAmountLabel(model, selectedAmount);
 		button.AddChild(amountLabel);
 
-		AttachHoverTips(button, model.HoverTips);
+		CommonHelpers.AttachHoverTips(button, model.HoverTips);
 		return button;
 	}
 
@@ -923,7 +829,7 @@ public partial class NLoadoutPanel : Panel
 
 	private static MegaLabel CreatePowerAmountLabel(PowerModel model, int selectedAmount)
 	{
-		MegaLabel amountLabel = CreateButtonLabel(
+		MegaLabel amountLabel = CommonHelpers.CreateButtonLabel(
 			"PowerAmount",
 			selectedAmount != 0 ? selectedAmount.ToString() : string.Empty,
 			new Vector2(160f, 72f),
@@ -949,256 +855,6 @@ public partial class NLoadoutPanel : Panel
 			favoriteGlow.Visible = !favoritesOnly && PowerGiverStateService.IsFavorite(powerId);
 	}
 
-	private static Control CreateEventGridItem(EventModel model)
-	{
-		Button button = CreateModelButton(EventTileSize);
-		button.ClipContents = true;
-
-		TextureRect? background = CreateEventTileBackground(model);
-		if (background is not null)
-			button.AddChild(background);
-
-		float restingShadeAlpha = model is AncientEventModel ? 0.38f : 0.35f;
-		ColorRect shade = new()
-		{
-			Color = new Color(0f, 0f, 0f, restingShadeAlpha),
-			MouseFilter = MouseFilterEnum.Ignore,
-			Position = Vector2.Zero,
-			Size = EventTileSize
-		};
-		button.AddChild(shade);
-		AttachEventTileHoverAnimation(button, background, shade, restingShadeAlpha);
-
-		bool isAncient = model is AncientEventModel;
-
-		MegaLabel titleLabel = CreateButtonLabel(
-			"EventTitle",
-			isAncient ? FormatEventTitle(model).ToUpperInvariant() : FormatEventTitle(model),
-			isAncient ? new Vector2(14f, 26f) : new Vector2(14f, 19f),
-			isAncient ? new Vector2(235f, 50f) : new Vector2(235f, 106f),
-			isAncient ? 32 : 26,
-			HorizontalAlignment.Center,
-			isAncient ? new Color(0.937255f, 0.784314f, 0.317647f, 1f) : StsColors.cream);
-		if (isAncient)
-			titleLabel.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/spectral_bold_shared.tres"));
-		else
-			ConfigureWrappingEventTitle(titleLabel);
-		button.AddChild(titleLabel);
-
-		if (model is AncientEventModel ancientEvent)
-		{
-			MegaLabel epithetLabel = CreateButtonLabel(
-				"AncientEpithet", LocMan.SafeFormatLocString(ancientEvent.Epithet, string.Empty),
-				new Vector2(14f, 74f),
-				new Vector2(235f, 53f),
-				19,
-				HorizontalAlignment.Center,
-				new Color(0.529412f, 0.807843f, 0.921569f, 0.88f));
-			epithetLabel.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/bitter_medium_italic_glyph_space_one.tres"));
-			button.AddChild(epithetLabel);
-		}
-
-		AttachHoverTips(button, CreateEventHoverTips(model));
-		return button;
-	}
-
-	private static TextureRect? CreateEventTileBackground(EventModel model)
-	{
-		if (model is AncientEventModel ancientEvent)
-		{
-			Texture2D? ancientPreview = GetAncientBackgroundPreviewTexture(ancientEvent);
-			if (ancientPreview is not null)
-				return CreateTileBackground(ancientPreview);
-		}
-
-		try
-		{
-			Texture2D portrait = model.CreateInitialPortrait();
-			return CreateTileBackground(portrait);
-		}
-		catch (Exception exception)
-		{
-			if (model is not AncientEventModel ancient)
-			{
-				GD.PushWarning($"LoadoutPanel: could not load event portrait for '{model.Id}'. {exception.Message}");
-				return null;
-			}
-
-			try
-			{
-				return CreateTileBackground(ancient.RunHistoryIcon);
-			}
-			catch (Exception iconException)
-			{
-				try
-				{
-					return CreateTileBackground(ancient.MapIcon);
-				}
-				catch (Exception mapIconException)
-				{
-					GD.PushWarning(
-						$"LoadoutPanel: could not load ancient portrait/icon for '{model.Id}'. portrait={exception.Message}; runHistory={iconException.Message}; map={mapIconException.Message}");
-					return null;
-				}
-			}
-		}
-	}
-
-	private static TextureRect CreateTileBackground(Texture2D texture)
-	{
-		return new TextureRect
-		{
-			Texture = texture,
-			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-			StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
-			MouseFilter = MouseFilterEnum.Ignore,
-			Modulate = new Color(1f, 1f, 1f, EventTilePortraitRestAlpha),
-			Position = Vector2.Zero,
-			Size = EventTileSize
-		};
-	}
-
-	private static Texture2D? GetAncientBackgroundPreviewTexture(AncientEventModel model)
-	{
-		string id = model.Id.ToString();
-		if (AncientPreviewTextures.TryGetValue(id, out Texture2D? cachedTexture))
-			return cachedTexture;
-
-		try
-		{
-			SubViewport viewport = new()
-			{
-				Name = $"LoadoutAncientPreview_{CommonHelpers.MakeSafeNodeName(id)}",
-				Size = AncientPreviewTextureSize,
-				TransparentBg = false,
-				Disable3D = false,
-				RenderTargetUpdateMode = SubViewport.UpdateMode.Always
-			};
-
-			Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);
-			backgroundScene.MouseFilter = MouseFilterEnum.Ignore;
-			backgroundScene.Position = Vector2.Zero;
-			backgroundScene.Size = new Vector2(1920f, 1080f);
-			backgroundScene.Scale = Vector2.One * Math.Max(
-				AncientPreviewTextureSize.X / 1920f,
-				AncientPreviewTextureSize.Y / 1080f);
-			viewport.AddChild(backgroundScene);
-
-			NLoadoutPanelRoot.Instance?.AddChild(viewport);
-			Texture2D texture = viewport.GetTexture();
-			AncientPreviewViewports[id] = viewport;
-			AncientPreviewTextures[id] = texture;
-			return texture;
-		}
-		catch (Exception exception)
-		{
-			GD.PushWarning($"LoadoutPanel: could not create ancient background preview for '{model.Id}'. {exception.Message}");
-			return null;
-		}
-	}
-
-	public static void ReleaseAncientPreviewCache()
-	{
-		foreach (SubViewport viewport in AncientPreviewViewports.Values)
-		{
-			if (!GodotObject.IsInstanceValid(viewport))
-				continue;
-
-			viewport.GetParent()?.RemoveChild(viewport);
-			viewport.QueueFree();
-		}
-
-		AncientPreviewViewports.Clear();
-		AncientPreviewTextures.Clear();
-	}
-
-	private static void AttachEventTileHoverAnimation(Control tile, TextureRect? background, ColorRect shade, float restingShadeAlpha)
-	{
-		tile.MouseEntered += () => AnimateEventTileHover(tile, background, shade, EventTilePortraitHoverAlpha, EventTileShadeHoverAlpha);
-		tile.MouseExited += () => AnimateEventTileHover(tile, background, shade, EventTilePortraitRestAlpha, restingShadeAlpha);
-		tile.TreeExiting += () =>
-		{
-			if (EventTileHoverTweens.TryGetValue(tile, out Tween? tween) && GodotObject.IsInstanceValid(tween))
-				tween.Kill();
-
-			EventTileHoverTweens.Remove(tile);
-		};
-	}
-
-	private static void AnimateEventTileHover(Control tile, TextureRect? background, ColorRect shade, float portraitAlpha, float shadeAlpha)
-	{
-		if (EventTileHoverTweens.TryGetValue(tile, out Tween? oldTween) && GodotObject.IsInstanceValid(oldTween))
-			oldTween.Kill();
-
-		Tween tween = tile.CreateTween().SetParallel();
-		if (background is not null && GodotObject.IsInstanceValid(background))
-			tween.TweenProperty(background, "modulate", new Color(1f, 1f, 1f, portraitAlpha), 0.12)
-				.SetEase(Tween.EaseType.Out)
-				.SetTrans(Tween.TransitionType.Cubic);
-
-		tween.TweenProperty(shade, "color", new Color(0f, 0f, 0f, shadeAlpha), 0.12)
-			.SetEase(Tween.EaseType.Out)
-			.SetTrans(Tween.TransitionType.Cubic);
-
-		EventTileHoverTweens[tile] = tween;
-	}
-
-	private static Button CreateModelButton(Vector2 size)
-	{
-		Button button = new()
-		{
-			CustomMinimumSize = size,
-			MouseFilter = MouseFilterEnum.Stop,
-			FocusMode = FocusModeEnum.All,
-			SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-			SizeFlagsVertical = SizeFlags.ShrinkBegin,
-			Text = string.Empty
-		};
-		button.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
-		button.AddThemeFontSizeOverride("font_size", 18);
-		button.AddThemeColorOverride("font_color", StsColors.cream);
-		return button;
-	}
-
-	private static MegaLabel CreateButtonLabel(
-		string name,
-		string text,
-		Vector2 position,
-		Vector2 size,
-		int fontSize,
-		HorizontalAlignment horizontalAlignment,
-		Color color)
-	{
-		MegaLabel label = new()
-		{
-			Name = name,
-			Text = text,
-			AutoSizeEnabled = false,
-			HorizontalAlignment = horizontalAlignment,
-			VerticalAlignment = VerticalAlignment.Center,
-			MouseFilter = MouseFilterEnum.Ignore,
-			Position = position,
-			Size = size
-		};
-		label.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
-		label.AddThemeFontSizeOverride("font_size", fontSize);
-		label.AddThemeColorOverride("font_color", color);
-		label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
-		label.AddThemeConstantOverride("shadow_offset_x", 3);
-		label.AddThemeConstantOverride("shadow_offset_y", 2);
-		return label;
-	}
-
-	private static void ConfigureWrappingEventTitle(MegaLabel label)
-	{
-		label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-		label.TextOverrunBehavior = TextServer.OverrunBehavior.NoTrimming;
-		label.AutoSizeEnabled = true;
-		label.MinFontSize = 19;
-		label.MaxFontSize = 26;
-		label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
-	}
-
 	private static void ConfigureWrappingPowerName(MegaLabel label)
 	{
 		label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
@@ -1207,76 +863,6 @@ public partial class NLoadoutPanel : Panel
 		label.MinFontSize = 13;
 		label.MaxFontSize = 18;
 		label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
-	}
-
-	private static void AttachHoverTips(Control owner, IEnumerable<IHoverTip> hoverTips)
-	{
-		IReadOnlyList<IHoverTip> tips = hoverTips.Where(tip => tip is not null).ToList();
-		if (tips.Count == 0)
-			return;
-
-		owner.MouseEntered += () => ShowHoverTips(owner, tips);
-		owner.MouseExited += () => NHoverTipSet.Remove(owner);
-		owner.TreeExiting += () => NHoverTipSet.Remove(owner);
-	}
-
-	private static void ShowHoverTips(Control owner, IReadOnlyList<IHoverTip> tips)
-	{
-		NHoverTipSet.Remove(owner);
-		NHoverTipSet.CreateAndShow(owner, tips, HoverTip.GetHoverTipAlignment(owner))?.SetFollowOwner();
-		NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
-	}
-
-	private static IReadOnlyList<IHoverTip> CreateEventHoverTips(EventModel model)
-	{
-		string description = GetFirstEventDescriptionParagraph(model);
-		string idLine = $"[color=#9a9a9a]{model.Id}[/color]";
-		string hoverDescription = string.IsNullOrWhiteSpace(description)
-			? idLine
-			: $"{description}\n\n{idLine}";
-
-		return [new HoverTip(model.Title, hoverDescription)];
-	}
-
-	private static Button CreateTextModelGridItem(
-		AbstractModel model,
-		string title,
-		string subtitle,
-		string category,
-		Texture2D? icon = null,
-		Vector2? itemSize = null)
-	{
-		Vector2 size = itemSize ?? new Vector2(220f, icon is null ? 120f : 148f);
-		Button button = new()
-		{
-			CustomMinimumSize = size,
-			MouseFilter = MouseFilterEnum.Stop,
-			FocusMode = FocusModeEnum.All,
-			SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-			SizeFlagsVertical = SizeFlags.ShrinkBegin
-		};
-		button.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
-		button.AddThemeFontSizeOverride("font_size", 18);
-		button.AddThemeColorOverride("font_color", StsColors.cream);
-		button.Text = icon is null
-			? $"{title}\n{category}\n{subtitle}"
-			: $"{title}\n{category}";
-
-		if (icon is not null)
-		{
-			TextureRect iconRect = new()
-			{
-				Texture = icon,
-				CustomMinimumSize = new Vector2(64f, 64f),
-				StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-				MouseFilter = MouseFilterEnum.Ignore,
-				Position = new Vector2(Mathf.Max(0f, (size.X - 64f) * 0.5f), Mathf.Max(0f, size.Y - 70f)),
-				Size = new Vector2(64f, 64f)
-			};
-			button.AddChild(iconRect);
-		}
-
-		return button;
 	}
 
 	private static void PlayCardSmithFeedback(Control view)
@@ -1460,7 +1046,7 @@ public partial class NLoadoutPanel : Panel
 	private static int ComparePotionRarity(PotionModel left, PotionModel right)
 	{
 		int rarity = GetPotionRaritySortValue(left.Rarity).CompareTo(GetPotionRaritySortValue(right.Rarity));
-		return rarity != 0 ? rarity : string.Compare(FormatPotionTitle(left), FormatPotionTitle(right), StringComparison.Ordinal);
+		return rarity != 0 ? rarity : string.Compare(CommonHelpers.FormatPotionTitle(left), CommonHelpers.FormatPotionTitle(right), StringComparison.Ordinal);
 	}
 
 	private static int GetPotionRaritySortValue(PotionRarity rarity)
@@ -1479,7 +1065,7 @@ public partial class NLoadoutPanel : Panel
 	private static int CompareRelicRarity(RelicModel left, RelicModel right)
 	{
 		int rarity = GetRelicRaritySortValue(left.Rarity).CompareTo(GetRelicRaritySortValue(right.Rarity));
-		return rarity != 0 ? rarity : string.Compare(FormatRelicTitle(left), FormatRelicTitle(right), StringComparison.Ordinal);
+		return rarity != 0 ? rarity : string.Compare(CommonHelpers.FormatRelicTitle(left), CommonHelpers.FormatRelicTitle(right), StringComparison.Ordinal);
 	}
 
 	private static int GetRelicRaritySortValue(RelicRarity rarity)
@@ -1624,63 +1210,6 @@ public partial class NLoadoutPanel : Panel
 		return groupingData.HeadersByKey.TryGetValue(key, out SelectGroupHeader? header)
 			? header
 			: SelectGroupHeader.Category(LocMan.SScreenLoc("OTHER", "Other"));
-	}
-
-	private static string FormatPotionTitle(PotionModel potion)
-	{
-		return potion.Title.GetFormattedText();
-	}
-
-	private static string FormatRelicTitle(RelicModel relic)
-	{
-		return relic.Title.GetFormattedText();
-	}
-
-	private static string FormatEventTitle(EventModel eventModel)
-	{
-		return eventModel.Title.GetFormattedText();
-	}
-
-	private static string GetFirstEventDescriptionParagraph(EventModel model)
-	{
-		
-		if (model is AncientEventModel ancient)
-		{
-			return LocMan.SafeFormatLocString(ancient.Epithet, string.Empty);
-		}
-		
-		string text;
-		try
-		{
-			text = model.InitialDescription.GetFormattedText()
-				.Replace("[p]", "\n\n", StringComparison.OrdinalIgnoreCase);
-		}
-		catch (Exception exception)
-		{
-			GD.PushWarning($"LoadoutPanel: could not format initial event description for '{model.Id}'. {exception.Message}");
-			return string.Empty;
-		}
-
-		foreach (string paragraph in Regex.Split(text, @"(?:\r?\n){2,}"))
-		{
-			string cleaned = StripUiMarkup(paragraph);
-			if (!string.IsNullOrWhiteSpace(cleaned))
-				return cleaned;
-		}
-
-		return string.Empty;
-	}
-
-	private static string StripUiMarkup(string text)
-	{
-		string withoutBbcode = Regex.Replace(text, @"\[[^\]]+\]", " ");
-		string withoutTags = Regex.Replace(withoutBbcode, @"<[^>]+>", " ");
-		return Regex.Replace(withoutTags, @"\s+", " ").Trim();
-	}
-
-	private static string FormatPowerTitle(PowerModel power)
-	{
-		return power.Title.GetFormattedText();
 	}
 
 	private static string PowerId(PowerModel power)

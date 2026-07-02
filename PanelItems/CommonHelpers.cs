@@ -8,11 +8,15 @@ using Loadout.Services.LastActions;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -423,5 +427,137 @@ public class CommonHelpers
         {
             clearActivation();
         }
+    }
+
+    public static string FormatPotionTitle(PotionModel potion)
+    {
+        return potion.Title.GetFormattedText();
+    }
+
+    public static string FormatRelicTitle(RelicModel relic)
+    {
+        return relic.Title.GetFormattedText();
+    }
+
+    public static string FormatEventTitle(EventModel eventModel)
+    {
+        return eventModel.Title.GetFormattedText();
+    }
+
+    public static string StripUiMarkup(string text)
+    {
+        string withoutBbcode = Regex.Replace(text, @"\[[^\]]+\]", " ");
+        string withoutTags = Regex.Replace(withoutBbcode, @"<[^>]+>", " ");
+        return Regex.Replace(withoutTags, @"\s+", " ").Trim();
+    }
+
+    public static string FormatPowerTitle(PowerModel power)
+    {
+        return power.Title.GetFormattedText();
+    }
+
+    public static Button CreateModelButton(Vector2 size)
+    {
+        Button button = new()
+        {
+            CustomMinimumSize = size,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            FocusMode = Control.FocusModeEnum.All,
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkBegin,
+            Text = string.Empty
+        };
+        button.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
+        button.AddThemeFontSizeOverride("font_size", 18);
+        button.AddThemeColorOverride("font_color", StsColors.cream);
+        return button;
+    }
+
+    public static MegaLabel CreateButtonLabel(
+        string name,
+        string text,
+        Vector2 position,
+        Vector2 size,
+        int fontSize,
+        HorizontalAlignment horizontalAlignment,
+        Color color)
+    {
+        MegaLabel label = new()
+        {
+            Name = name,
+            Text = text,
+            AutoSizeEnabled = false,
+            HorizontalAlignment = horizontalAlignment,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Position = position,
+            Size = size
+        };
+        label.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
+        label.AddThemeFontSizeOverride("font_size", fontSize);
+        label.AddThemeColorOverride("font_color", color);
+        label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
+        label.AddThemeConstantOverride("shadow_offset_x", 3);
+        label.AddThemeConstantOverride("shadow_offset_y", 2);
+        return label;
+    }
+
+    public static void AttachHoverTips(Control owner, IEnumerable<IHoverTip> hoverTips)
+    {
+        IReadOnlyList<IHoverTip> tips = hoverTips.Where(tip => tip is not null).ToList();
+        if (tips.Count == 0)
+            return;
+
+        owner.MouseEntered += () => ShowHoverTips(owner, tips);
+        owner.MouseExited += () => NHoverTipSet.Remove(owner);
+        owner.TreeExiting += () => NHoverTipSet.Remove(owner);
+    }
+
+    private static void ShowHoverTips(Control owner, IReadOnlyList<IHoverTip> tips)
+    {
+        NHoverTipSet.Remove(owner);
+        NHoverTipSet.CreateAndShow(owner, tips, HoverTip.GetHoverTipAlignment(owner))?.SetFollowOwner();
+        NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+    }
+
+    public static Button CreateTextModelGridItem(
+        AbstractModel model,
+        string title,
+        string subtitle,
+        string category,
+        Texture2D icon = null,
+        Vector2? itemSize = null)
+    {
+        Vector2 size = itemSize ?? new Vector2(220f, icon is null ? 120f : 148f);
+        Button button = new()
+        {
+            CustomMinimumSize = size,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            FocusMode = Control.FocusModeEnum.All,
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkBegin
+        };
+        button.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
+        button.AddThemeFontSizeOverride("font_size", 18);
+        button.AddThemeColorOverride("font_color", StsColors.cream);
+        button.Text = icon is null
+            ? $"{title}\n{category}\n{subtitle}"
+            : $"{title}\n{category}";
+
+        if (icon is not null)
+        {
+            TextureRect iconRect = new()
+            {
+                Texture = icon,
+                CustomMinimumSize = new Vector2(64f, 64f),
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                Position = new Vector2(Mathf.Max(0f, (size.X - 64f) * 0.5f), Mathf.Max(0f, size.Y - 70f)),
+                Size = new Vector2(64f, 64f)
+            };
+            button.AddChild(iconRect);
+        }
+
+        return button;
     }
 }

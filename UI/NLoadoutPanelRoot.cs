@@ -4,6 +4,7 @@ using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System.Collections.Generic;
+using Loadout.PanelItems;
 using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 
@@ -82,7 +83,7 @@ public partial class NLoadoutPanelRoot : Control
 	public override void _ExitTree()
 	{
 		LoadoutThemeManager.ThemeChanged -= OnThemeChanged;
-		NLoadoutPanel.ReleaseAncientPreviewCache();
+		EventfulCompass.ReleaseAncientPreviewCache();
 		_screens.Clear();
 		_screenProcessModes.Clear();
 		_screenMouseFilters.Clear();
