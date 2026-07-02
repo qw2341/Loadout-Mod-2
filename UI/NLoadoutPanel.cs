@@ -57,8 +57,7 @@ public partial class NLoadoutPanel : Panel
 	public delegate Task<IReadOnlyList<LastActionEntry>> SelectActivationHandler(NGenericSelectScreen screen, IGenericSelectItem selectItem);
 
 	private const int MaxLoadoutItemInitAttempts = 120;
-	private const string PowerGiverFavoriteModeAll = "all";
-	private const string PowerGiverFavoriteModeFavorites = "favorites";
+
 
 	[Export]
 	public bool Shown = true;
@@ -156,7 +155,7 @@ public partial class NLoadoutPanel : Panel
 		CreateAndAddDynamicLoadoutItem(CommonHelpers.GetLocalRelics,
 			new SelectItemAdapter<RelicModel>
 			{
-				GetId = RuntimeItemId,
+				GetId = CommonHelpers.RuntimeItemId,
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription}",
 				CreateView = (relic, _) => CreateOwnedRelicGridItem(relic),
@@ -212,7 +211,7 @@ public partial class NLoadoutPanel : Panel
 		CreateAndAddDynamicLoadoutItem(CommonHelpers.GetLocalDeckCards,
 			new SelectItemAdapter<CardModel>
 			{
-				GetId = RuntimeItemId,
+				GetId = CommonHelpers.RuntimeItemId,
 				GetName = card => CardPrinter.FormatCardTitle(card),
 				GetSearchText = card => $"{card.Id} {CardPrinter.FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
 				CreateView = CardPrinter.CreateCardGridItem,
@@ -233,7 +232,7 @@ public partial class NLoadoutPanel : Panel
 		//06 - CARD MODIFIER
 		SelectItemAdapter<CardModel> cardModifierAdapter = new()
 		{
-			GetId = RuntimeItemId,
+			GetId = CommonHelpers.RuntimeItemId,
 			GetName = card => CardPrinter.FormatCardTitle(card),
 			GetSearchText = card => $"{card.Id} {CardPrinter.FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
 			CreateView = CardPrinter.CreateCardGridItem,
@@ -267,10 +266,7 @@ public partial class NLoadoutPanel : Panel
 		//07 - EVENTFUL COMPASS
 		EventfulCompass.Initialize();
 		//08 - POWER GIVER
-		CreateAndAddPowerGiverItem(
-			"PowerGiver.png",
-			"Power Giver",
-			"Potion that gives power.");
+		PowerGiver.Initialize();
 	}
 
 	private void TryAddLoadoutItems()
@@ -314,105 +310,7 @@ public partial class NLoadoutPanel : Panel
 			TryAddLoadoutItems();
 	}
 
-	private void CreateAndAddPowerGiverItem(
-		string textureFileName,
-		string title,
-		string description)
-	{
-		var item = new NLoadoutPanelItem(textureFileName, title, description);
-		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
-		var screen = scene.Instantiate<NGenericSelectScreen>();
-		bool showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
-		CommonHelpers.LastActionCaptureSession? captureSession = null;
-
-		SelectItemAdapter<PowerModel> adapter = new()
-		{
-			GetId = PowerId,
-			GetName = CommonHelpers.FormatPowerTitle,
-			GetSearchText = power => $"{power.Id} {CommonHelpers.FormatPowerTitle(power)} {power.Description}",
-			CreateView = (power, _) => CreatePowerGridItem(
-				power,
-				PowerGiverStateService.GetCounter(PowerId(power)),
-				PowerGiverStateService.IsFavorite(PowerId(power)) && !showPowerGiverFavoritesOnly),
-			UpdateView = (power, view, _) => UpdatePowerGridItem(view, power, showPowerGiverFavoritesOnly),
-			BindActivation = (power, view, _) => BindPowerGiverActivation(
-				screen,
-				power,
-				view,
-				entry => captureSession?.Add([entry]))
-		};
-
-		void ConfigurePowerGiverScreen(NGenericSelectScreen target, bool resetFavoriteMode = true)
-		{
-			PowerGiverStateService.EnsureLoaded();
-			if (resetFavoriteMode)
-				showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
-
-			target.Configure(ModelDb.AllPowers, adapter, builder =>
-			{
-				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
-				builder.CustomVisibilityPredicate(power => !showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
-				builder.FilterGroup("type", LocMan.SScreenLoc("FILTER_GROUP_TYPE", "Type"));
-				builder.Filter("buff", LocMan.SScreenLoc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
-				builder.Filter("debuff", LocMan.SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
-				builder.Filter("type_none", LocMan.SScreenLoc("NONE", "None"), power => power.Type == PowerType.None, "type");
-				builder.FilterGroup("stack", LocMan.SScreenLoc("FILTER_GROUP_STACK", "Stack"));
-				builder.Filter("stack_none", LocMan.SScreenLoc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
-				builder.Filter("counter", LocMan.SScreenLoc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
-				builder.Filter("single", LocMan.SScreenLoc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
-				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPowerTitle(a), CommonHelpers.FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
-			});
-			AddPowerGiverSidebarDropdowns(
-				target,
-				() => showPowerGiverFavoritesOnly,
-				value => showPowerGiverFavoritesOnly = value);
-		}
-
-		void RefreshPowerGiverScreenForOpen(NGenericSelectScreen target)
-		{
-			if (!target.IsConfiguredForCurrentLocale)
-			{
-				ConfigurePowerGiverScreen(target, resetFavoriteMode: false);
-				return;
-			}
-
-			PowerGiverStateService.EnsureLoaded();
-			target.SetCustomVisibilityPredicate(item =>
-				item.UntypedModel is PowerModel power
-				&& (!showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power))));
-			target.GetNodeOrNull<NLoadoutDropdown>("Sidebar/MarginContainer/TopVBox/CustomControls/PowerGiverFavoritesDropdown")
-				?.SetSelectedItem(showPowerGiverFavoritesOnly ? PowerGiverFavoriteModeFavorites : PowerGiverFavoriteModeAll);
-			target.RefreshNow(resetScroll: true);
-			target.RefreshCurrentItemStates();
-		}
-
-		ConfigurePowerGiverScreen(screen);
-		screen.LocaleChanged += () =>
-		{
-			SelectScreenUiState state = screen.CaptureUiState();
-			ConfigurePowerGiverScreen(screen, resetFavoriteMode: false);
-			screen.RestoreUiState(state);
-		};
-		screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
-		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
-		screen.ScreenClosed += () =>
-		{
-			captureSession?.Commit();
-			captureSession = null;
-		};
-		item.BoundScreen = screen;
-		item.QuickAction = ReplayPowerGiverLastActionAsync;
-		item.AfterOpen = _ => captureSession = new CommonHelpers.LastActionCaptureSession(LastActionService.PowerGiverKey);
-		item.BeforeOpen = target =>
-		{
-			RefreshPowerGiverScreenForOpen(target);
-		};
-		_itemsContainer.AddChild(item);
-	}
+	
 
 	private void CreateAndAddDynamicLoadoutItem<TModel>(
 		Func<IReadOnlyList<TModel>> getModels,
@@ -431,7 +329,7 @@ public partial class NLoadoutPanel : Panel
 
 		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
 		{
-			object? currentRunState = GetCurrentDynamicRunStateIdentity();
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
 			IReadOnlyList<TModel> models = getModels();
 			// if (models.Count == 0)
 			// 	LogEmptyDynamicScreen(title);
@@ -449,14 +347,14 @@ public partial class NLoadoutPanel : Panel
 
 		void RefreshCurrentModels(NGenericSelectScreen target, bool animateRelayout = false, bool resetScroll = false)
 		{
-			object? currentRunState = GetCurrentDynamicRunStateIdentity();
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
 			target.RefreshItemsPreservingViews(getModels(), adapter, animateRelayout, resetScroll);
 			configuredRunState = currentRunState;
 		}
 
 		void RefreshDynamicScreenForOpen(NGenericSelectScreen target)
 		{
-			object? currentRunState = GetCurrentDynamicRunStateIdentity();
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
 			if (!target.IsConfiguredForCurrentLocale || !ReferenceEquals(configuredRunState, currentRunState))
 			{
 				ConfigureCurrentModels(target);
@@ -495,21 +393,6 @@ public partial class NLoadoutPanel : Panel
 		_itemsContainer.AddChild(item);
 	}
 
-	private static object? GetCurrentDynamicRunStateIdentity()
-	{
-		try
-		{
-			return RunManager.Instance.IsInProgress
-				? RunManager.Instance.DebugOnlyGetState()
-				: null;
-		}
-		catch (Exception exception)
-		{
-			GD.PushWarning($"LoadoutPanel: could not resolve current run state. {exception.Message}");
-			return null;
-		}
-	}
-
 	private static async Task HandleDynamicItemActivatedAsync(
 		NGenericSelectScreen screen,
 		IGenericSelectItem selectItem,
@@ -530,11 +413,6 @@ public partial class NLoadoutPanel : Panel
 			refresh(screen);
 			clearActivation();
 		}
-	}
-
-	private static string RuntimeItemId(AbstractModel model)
-	{
-		return $"{model.Id}:{RuntimeHelpers.GetHashCode(model)}";
 	}
 
 	private static async Task<IReadOnlyList<LastActionEntry>> HandleAddRelicActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
@@ -645,7 +523,7 @@ public partial class NLoadoutPanel : Panel
 
 		if (selectItem.View is Control view)
 		{
-			PlayCardSmithFeedback(view);
+			CommonHelpers.PlayCardSmithFeedback(view);
 			CardPrinter.RefreshCardVisuals(view);
 		}
 
@@ -662,7 +540,7 @@ public partial class NLoadoutPanel : Panel
 		{
 			CardCmd.Upgrade(card, CardPreviewStyle.None);
 			if (_.Items[i++].View is not Control view) continue;
-			PlayCardSmithFeedback(view);
+			CommonHelpers.PlayCardSmithFeedback(view);
 			CardPrinter.RefreshCardVisuals(view);
 		}
 		
@@ -701,21 +579,6 @@ public partial class NLoadoutPanel : Panel
 
 			await ObtainRelicCopiesAsync(relic, entry.Amount, entry.ContentId);
 		}
-	}
-
-	private static Task ReplayPowerGiverLastActionAsync()
-	{
-		foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.PowerGiverKey))
-		{
-			if (entry.Kind != LastActionService.AdjustPowerKind || entry.Amount == 0)
-				continue;
-
-			PowerGiverTarget target = entry.Target ?? PowerGiverTarget.Player;
-			if (!PowerGiverStateService.AdjustCounter(entry.ContentId, entry.Amount, target))
-				GD.PushWarning($"LoadoutPanel: could not replay power action for '{entry.ContentId}'.");
-		}
-
-		return Task.CompletedTask;
 	}
 
 	private static RelicModel? ResolveCanonicalRelic(string relicId)
@@ -757,136 +620,6 @@ public partial class NLoadoutPanel : Panel
 		return holder;
 	}
 
-	private static Control CreatePowerGridItem(PowerModel model, int selectedAmount = 0, bool isFavorite = false)
-	{
-		Texture2D? icon = null;
-		if (ResourceLoader.Exists(model.IconPath))
-			icon = model.Icon;
-
-		Button button = CommonHelpers.CreateModelButton(new Vector2(220f, 104f));
-		button.ClipContents = false;
-		Panel favoriteGlow = CreateFavoriteGlow(button.CustomMinimumSize, isFavorite);
-		button.AddChild(favoriteGlow);
-
-		if (icon is not null)
-		{
-			TextureRect iconRect = new()
-			{
-				Texture = icon,
-				StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-				MouseFilter = MouseFilterEnum.Ignore,
-				Position = new Vector2(18f, 22f),
-				Size = new Vector2(62f, 62f)
-			};
-			button.AddChild(iconRect);
-		}
-
-		MegaLabel nameLabel = CommonHelpers.CreateButtonLabel(
-			"PowerName", CommonHelpers.FormatPowerTitle(model),
-			new Vector2(82f, 8f),
-			new Vector2(126f, 78f),
-			18,
-			HorizontalAlignment.Center,
-			StsColors.cream);
-		ConfigureWrappingPowerName(nameLabel);
-		button.AddChild(nameLabel);
-
-		MegaLabel amountLabel = CreatePowerAmountLabel(model, selectedAmount);
-		button.AddChild(amountLabel);
-
-		CommonHelpers.AttachHoverTips(button, model.HoverTips);
-		return button;
-	}
-
-	private static Panel CreateFavoriteGlow(Vector2 size, bool visible)
-	{
-		StyleBoxFlat style = new()
-		{
-			BgColor = new Color(1f, 0.78f, 0.08f, 0.09f),
-			BorderColor = new Color(1f, 0.82f, 0.08f, 0.92f),
-			CornerRadiusTopLeft = 4,
-			CornerRadiusTopRight = 4,
-			CornerRadiusBottomLeft = 4,
-			CornerRadiusBottomRight = 4,
-			BorderWidthLeft = 3,
-			BorderWidthTop = 3,
-			BorderWidthRight = 3,
-			BorderWidthBottom = 3
-		};
-
-		Panel panel = new()
-		{
-			Name = "FavoriteGlow",
-			Visible = visible,
-			MouseFilter = MouseFilterEnum.Ignore,
-			Position = new Vector2(-4f, -4f),
-			Size = size + new Vector2(8f, 8f),
-			CustomMinimumSize = size + new Vector2(8f, 8f)
-		};
-		panel.AddThemeStyleboxOverride("panel", style);
-		return panel;
-	}
-
-	private static MegaLabel CreatePowerAmountLabel(PowerModel model, int selectedAmount)
-	{
-		MegaLabel amountLabel = CommonHelpers.CreateButtonLabel(
-			"PowerAmount",
-			selectedAmount != 0 ? selectedAmount.ToString() : string.Empty,
-			new Vector2(160f, 72f),
-			new Vector2(50f, 26f),
-			22,
-			HorizontalAlignment.Right,
-			model.AmountLabelColor);
-		amountLabel.Visible = selectedAmount != 0;
-		return amountLabel;
-	}
-
-	private static void UpdatePowerGridItem(Control view, PowerModel model, bool favoritesOnly)
-	{
-		string powerId = PowerId(model);
-		int selectedAmount = PowerGiverStateService.GetCounter(powerId);
-		if (view.GetNodeOrNull<MegaLabel>("PowerAmount") is { } amountLabel)
-		{
-			amountLabel.Text = selectedAmount != 0 ? selectedAmount.ToString() : string.Empty;
-			amountLabel.Visible = selectedAmount != 0;
-		}
-
-		if (view.GetNodeOrNull<CanvasItem>("FavoriteGlow") is { } favoriteGlow)
-			favoriteGlow.Visible = !favoritesOnly && PowerGiverStateService.IsFavorite(powerId);
-	}
-
-	private static void ConfigureWrappingPowerName(MegaLabel label)
-	{
-		label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-		label.TextOverrunBehavior = TextServer.OverrunBehavior.NoTrimming;
-		label.AutoSizeEnabled = true;
-		label.MinFontSize = 13;
-		label.MaxFontSize = 18;
-		label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
-	}
-
-	private static void PlayCardSmithFeedback(Control view)
-	{
-		if (!GodotObject.IsInstanceValid(view) || !CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder? holder))
-			return;
-
-		if (holder!.CardNode is not NCard cardNode || !GodotObject.IsInstanceValid(cardNode))
-			return;
-
-		NCardSmithVfx? smithVfx = NCardSmithVfx.Create(cardNode);
-		if (smithVfx is null)
-			return;
-
-		Node? host = NLoadoutPanelRoot.Instance?.HoverTipLayer;
-		if (host is null)
-		{
-			smithVfx.QueueFree();
-			return;
-		}
-
-		host.AddChildSafely(smithVfx);
-	}
-
 	private static bool BindRelicActivation(Control view, Action activate)
 	{
 		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicCollectionEntry? collectionEntry))
@@ -902,112 +635,6 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		return false;
-	}
-
-	private static bool BindPowerGiverActivation(
-		NGenericSelectScreen screen,
-		PowerModel power,
-		Control view,
-		Action<LastActionEntry>? recordLastAction = null)
-	{
-		string powerId = PowerId(power);
-		view.GuiInput += input =>
-		{
-			if (input is not InputEventMouseButton mouseButton || mouseButton.Pressed)
-				return;
-
-			if (mouseButton.ButtonIndex != MouseButton.Left && mouseButton.ButtonIndex != MouseButton.Right)
-				return;
-
-			if (mouseButton.AltPressed || Input.IsKeyPressed(Key.Alt))
-			{
-				PowerGiverStateService.ToggleFavorite(powerId);
-				screen.RefreshNow();
-				view.AcceptEvent();
-				return;
-			}
-
-			int multiplier = screen.GetCurrentActivationMultiplier();
-			int delta = mouseButton.ButtonIndex == MouseButton.Right ? -multiplier : multiplier;
-			PowerGiverTarget target = PowerGiverStateService.SelectedTarget;
-			if (PowerGiverStateService.AdjustCounter(powerId, delta, target))
-			{
-				recordLastAction?.Invoke(new LastActionEntry
-				{
-					Kind = LastActionService.AdjustPowerKind,
-					ContentId = powerId,
-					Amount = delta,
-					Target = target
-				});
-			}
-
-			screen.RefreshCurrentItemStates();
-			view.AcceptEvent();
-		};
-
-		return true;
-	}
-
-	private static void AddPowerGiverSidebarDropdowns(
-		NGenericSelectScreen screen,
-		Func<bool> getFavoritesOnly,
-		Action<bool> setFavoritesOnly)
-	{
-		AddFavoritesModeDropdown(screen, "PowerGiverFavoritesDropdown", getFavoritesOnly, setFavoritesOnly);
-		AddPowerGiverTargetDropdown(screen);
-	}
-
-	private static void AddFavoritesModeDropdown(
-		NGenericSelectScreen screen,
-		string name,
-		Func<bool> getFavoritesOnly,
-		Action<bool> setFavoritesOnly)
-	{
-		NLoadoutDropdown favoritesDropdown = new()
-		{
-			Name = name,
-			SizeFlagsHorizontal = SizeFlags.ExpandFill,
-			CustomMinimumSize = new Vector2(256f, 52f)
-		};
-		favoritesDropdown.SetItems(LocMan.SScreenLoc("FILTER_GROUP_FAVORITES", "Favorites"),
-			[
-				new LoadoutDropdownOption(PowerGiverFavoriteModeAll, LocMan.SScreenLoc("ALL", "All")),
-				new LoadoutDropdownOption(PowerGiverFavoriteModeFavorites, LocMan.SScreenLoc("FAVORITES_ONLY", "Favorites"))
-			],
-			getFavoritesOnly() ? PowerGiverFavoriteModeFavorites : PowerGiverFavoriteModeAll);
-		favoritesDropdown.SelectedItemChanged += selectedId =>
-		{
-			setFavoritesOnly(selectedId == PowerGiverFavoriteModeFavorites);
-			screen.RefreshNow(resetScroll: true);
-		};
-
-		screen.AddCustomSidebarControl(favoritesDropdown);
-	}
-
-	private static void AddPowerGiverTargetDropdown(NGenericSelectScreen screen)
-	{
-		NLoadoutDropdown dropdown = new()
-		{
-			Name = "PowerGiverTargetDropdown",
-			SizeFlagsHorizontal = SizeFlags.ExpandFill,
-			CustomMinimumSize = new Vector2(256f, 52f)
-		};
-		dropdown.SetItems(LocMan.SScreenLoc("POWER_GIVER_TARGET", "Target"),
-			[
-				new LoadoutDropdownOption(PowerGiverTarget.Player.ToString(), LocMan.SScreenLoc("POWER_GIVER_TARGET_PLAYER", "Player")),
-				new LoadoutDropdownOption(PowerGiverTarget.Monsters.ToString(), LocMan.SScreenLoc("POWER_GIVER_TARGET_MONSTERS", "Monsters"))
-			],
-			PowerGiverStateService.SelectedTarget.ToString());
-		dropdown.SelectedItemChanged += selectedId =>
-		{
-			if (Enum.TryParse(selectedId, ignoreCase: true, out PowerGiverTarget target))
-			{
-				PowerGiverStateService.SetSelectedTarget(target);
-				screen.RefreshCurrentItemStates();
-			}
-		};
-
-		screen.AddCustomSidebarControl(dropdown);
 	}
 
 	private static void AddPotionPoolFilters(SelectScreenBuilder<PotionModel> builder)
@@ -1210,21 +837,6 @@ public partial class NLoadoutPanel : Panel
 		return groupingData.HeadersByKey.TryGetValue(key, out SelectGroupHeader? header)
 			? header
 			: SelectGroupHeader.Category(LocMan.SScreenLoc("OTHER", "Other"));
-	}
-
-	private static string PowerId(PowerModel power)
-	{
-		return power.Id.ToString();
-	}
-
-	private static string FormatPowerCategory(PowerType type)
-	{
-		return type switch
-		{
-			PowerType.Buff => LocMan.SScreenLoc("POWER_TYPE_BUFF", "Buff"),
-			PowerType.Debuff => LocMan.SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"),
-			_ => LocMan.SScreenLoc("NONE", "None")
-		};
 	}
 
 	private sealed class RelicGroupingData

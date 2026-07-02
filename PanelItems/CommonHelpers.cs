@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
@@ -8,6 +9,7 @@ using Loadout.Services.LastActions;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -16,14 +18,19 @@ using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace Loadout.PanelItems;
 
 public class CommonHelpers
 {
+    public const string FavoriteModeAllKey = "all";
+    public const string FavoriteModeFavoritesKey = "favorites";
     public static void CreateAndAddLoadoutItem<TModel>(
         IEnumerable<TModel> models,
         SelectItemAdapter<TModel> adapter,
@@ -559,5 +566,103 @@ public class CommonHelpers
         }
 
         return button;
+    }
+
+    public static object GetCurrentDynamicRunStateIdentity()
+    {
+        try
+        {
+            return RunManager.Instance.IsInProgress
+                ? RunManager.Instance.DebugOnlyGetState()
+                : null;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutPanel: could not resolve current run state. {exception.Message}");
+            return null;
+        }
+    }
+
+    public static string RuntimeItemId(AbstractModel model)
+    {
+        return $"{model.Id}:{RuntimeHelpers.GetHashCode(model)}";
+    }
+
+    public static Panel CreateFavoriteGlow(Vector2 size, bool visible)
+    {
+        StyleBoxFlat style = new()
+        {
+            BgColor = new Color(1f, 0.78f, 0.08f, 0.09f),
+            BorderColor = new Color(1f, 0.82f, 0.08f, 0.92f),
+            CornerRadiusTopLeft = 4,
+            CornerRadiusTopRight = 4,
+            CornerRadiusBottomLeft = 4,
+            CornerRadiusBottomRight = 4,
+            BorderWidthLeft = 3,
+            BorderWidthTop = 3,
+            BorderWidthRight = 3,
+            BorderWidthBottom = 3
+        };
+
+        Panel panel = new()
+        {
+            Name = "FavoriteGlow",
+            Visible = visible,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Position = new Vector2(-4f, -4f),
+            Size = size + new Vector2(8f, 8f),
+            CustomMinimumSize = size + new Vector2(8f, 8f)
+        };
+        panel.AddThemeStyleboxOverride("panel", style);
+        return panel;
+    }
+
+    public static void PlayCardSmithFeedback(Control view)
+    {
+        if (!GodotObject.IsInstanceValid(view) || !CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))
+            return;
+
+        if (holder!.CardNode is not NCard cardNode || !GodotObject.IsInstanceValid(cardNode))
+            return;
+
+        NCardSmithVfx smithVfx = NCardSmithVfx.Create(cardNode);
+        if (smithVfx is null)
+            return;
+
+        Node host = NLoadoutPanelRoot.Instance?.HoverTipLayer;
+        if (host is null)
+        {
+            smithVfx.QueueFree();
+            return;
+        }
+
+        host.AddChildSafely(smithVfx);
+    }
+
+    public static void AddFavoritesModeDropdown(
+        NGenericSelectScreen screen,
+        string name,
+        Func<bool> getFavoritesOnly,
+        Action<bool> setFavoritesOnly)
+    {
+        NLoadoutDropdown favoritesDropdown = new()
+        {
+            Name = name,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(256f, 52f)
+        };
+        favoritesDropdown.SetItems(LocMan.SScreenLoc("FILTER_GROUP_FAVORITES", "Favorites"),
+            [
+                new LoadoutDropdownOption(FavoriteModeAllKey, LocMan.SScreenLoc("ALL", "All")),
+                new LoadoutDropdownOption(FavoriteModeFavoritesKey, LocMan.SScreenLoc("FAVORITES_ONLY", "Favorites"))
+            ],
+            getFavoritesOnly() ? FavoriteModeFavoritesKey : FavoriteModeAllKey);
+        favoritesDropdown.SelectedItemChanged += selectedId =>
+        {
+            setFavoritesOnly(selectedId == FavoriteModeFavoritesKey);
+            screen.RefreshNow(resetScroll: true);
+        };
+
+        screen.AddCustomSidebarControl(favoritesDropdown);
     }
 }
