@@ -46,20 +46,20 @@ public class CardPrinter
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
-				builder.FilterGroup("class", LocMan.SScreenLoc("FILTER_GROUP_CLASS", "Class"));
+				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 				AddCardPoolFilters(builder);
-				builder.FilterGroup("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.SScreenLoc("FILTER_GROUP_TYPE", "Type")));
+				builder.FilterGroup("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")));
 				AddCardTypeFilters(builder, allCards);
-				builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.SScreenLoc("FILTER_GROUP_RARITY", "Rarity")));
+				builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity")));
 				AddCardRarityFilters(builder, allCards);
 				AddCardKeywordFilterGroup(builder, allCards);
 				AddCardTagFilterGroup(builder, allCards);
 				builder.Toggle(ViewUpgradesToggleId, LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
 				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
-				builder.Sorter("library", LocMan.SScreenLoc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
-				builder.Sorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.SScreenLoc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.SScreenLoc("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
+				builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
+				builder.Sorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.Loc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.Loc("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
 			},
 			ApplyCurrentCardClassFilter, 
 			"CardPrinter.png",
@@ -226,7 +226,7 @@ public class CardPrinter
 	    if (keywords.Count == 0)
 		    return;
 
-	    builder.FilterGroup("keyword", LocMan.SScreenLoc("FILTER_GROUP_KEYWORD", "Keyword"));
+	    builder.FilterGroup("keyword", LocMan.Loc("FILTER_GROUP_KEYWORD", "Keyword"));
 	    foreach (CardKeyword keyword in keywords)
 	    {
 		    CardKeyword localKeyword = keyword;
@@ -254,7 +254,7 @@ public class CardPrinter
 	    if (tags.Count == 0)
 		    return;
 
-	    builder.FilterGroup("tag", LocMan.SScreenLoc("FILTER_GROUP_TAG", "Tag"));
+	    builder.FilterGroup("tag", LocMan.Loc("FILTER_GROUP_TAG", "Tag"));
 	    foreach (CardTag tag in tags)
 	    {
 		    CardTag localTag = tag;

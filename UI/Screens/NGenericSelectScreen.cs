@@ -1,5 +1,7 @@
 #nullable enable
 
+using Loadout.UI.Managers;
+
 namespace Loadout.UI.Screens;
 
 using Godot;
@@ -3045,29 +3047,12 @@ public static class SelectScreenLoc
 
     public static string Text(string key, string fallback)
     {
-        try
-        {
-            return LocString.Exists(Table, key)
-                ? new LocString(Table, key).GetFormattedText()
-                : fallback;
-        }
-        catch
-        {
-            return fallback;
-        }
+        return LocMan.Loc(key, fallback);
     }
 
     public static string Text(string key, string fallback, params object[] args)
     {
-        string format = Text(key, fallback);
-        try
-        {
-            return string.Format(format, args);
-        }
-        catch
-        {
-            return fallback;
-        }
+        return LocMan.Loc(key, fallback, args);
     }
 }
 

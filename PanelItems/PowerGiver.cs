@@ -64,17 +64,17 @@ public class PowerGiver
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
 				builder.CustomVisibilityPredicate(power => !showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
-				builder.FilterGroup("type", LocMan.SScreenLoc("FILTER_GROUP_TYPE", "Type"));
-				builder.Filter("buff", LocMan.SScreenLoc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
-				builder.Filter("debuff", LocMan.SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
-				builder.Filter("type_none", LocMan.SScreenLoc("NONE", "None"), power => power.Type == PowerType.None, "type");
-				builder.FilterGroup("stack", LocMan.SScreenLoc("FILTER_GROUP_STACK", "Stack"));
-				builder.Filter("stack_none", LocMan.SScreenLoc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
-				builder.Filter("counter", LocMan.SScreenLoc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
-				builder.Filter("single", LocMan.SScreenLoc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
-				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPowerTitle(a), CommonHelpers.FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.SScreenLoc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
+				builder.FilterGroup("type", LocMan.Loc("FILTER_GROUP_TYPE", "Type"));
+				builder.Filter("buff", LocMan.Loc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
+				builder.Filter("debuff", LocMan.Loc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
+				builder.Filter("type_none", LocMan.Loc("NONE", "None"), power => power.Type == PowerType.None, "type");
+				builder.FilterGroup("stack", LocMan.Loc("FILTER_GROUP_STACK", "Stack"));
+				builder.Filter("stack_none", LocMan.Loc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
+				builder.Filter("counter", LocMan.Loc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
+				builder.Filter("single", LocMan.Loc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
+				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPowerTitle(a), CommonHelpers.FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
 			});
 			AddPowerGiverSidebarDropdowns(
 				target,
@@ -279,10 +279,10 @@ public class PowerGiver
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 			CustomMinimumSize = new Vector2(256f, 52f)
 		};
-		dropdown.SetItems(LocMan.SScreenLoc("POWER_GIVER_TARGET", "Target"),
+		dropdown.SetItems(LocMan.Loc("POWER_GIVER_TARGET", "Target"),
 			[
-				new LoadoutDropdownOption(PowerGiverTarget.Player.ToString(), LocMan.SScreenLoc("POWER_GIVER_TARGET_PLAYER", "Player")),
-				new LoadoutDropdownOption(PowerGiverTarget.Monsters.ToString(), LocMan.SScreenLoc("POWER_GIVER_TARGET_MONSTERS", "Monsters"))
+				new LoadoutDropdownOption(PowerGiverTarget.Player.ToString(), LocMan.Loc("POWER_GIVER_TARGET_PLAYER", "Player")),
+				new LoadoutDropdownOption(PowerGiverTarget.Monsters.ToString(), LocMan.Loc("POWER_GIVER_TARGET_MONSTERS", "Monsters"))
 			],
 			PowerGiverStateService.SelectedTarget.ToString());
 		dropdown.SelectedItemChanged += selectedId =>
@@ -306,9 +306,9 @@ public class PowerGiver
 	{
 		return type switch
 		{
-			PowerType.Buff => LocMan.SScreenLoc("POWER_TYPE_BUFF", "Buff"),
-			PowerType.Debuff => LocMan.SScreenLoc("POWER_TYPE_DEBUFF", "Debuff"),
-			_ => LocMan.SScreenLoc("NONE", "None")
+			PowerType.Buff => LocMan.Loc("POWER_TYPE_BUFF", "Buff"),
+			PowerType.Debuff => LocMan.Loc("POWER_TYPE_DEBUFF", "Debuff"),
+			_ => LocMan.Loc("NONE", "None")
 		};
 	}
 }

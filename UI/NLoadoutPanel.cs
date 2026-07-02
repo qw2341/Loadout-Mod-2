@@ -130,13 +130,13 @@ public partial class NLoadoutPanel : Panel
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
-				builder.FilterGroup("class", LocMan.SScreenLoc("FILTER_GROUP_CLASS", "Class"));
+				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 				AddRelicPoolFilters(builder);
-				builder.FilterGroup("rarity", LocMan.SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
+				builder.FilterGroup("rarity", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity"));
 				CommonHelpers.AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
-				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatRelicTitle(a), CommonHelpers.FormatRelicTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.SScreenLoc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
+				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatRelicTitle(a), CommonHelpers.FormatRelicTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.Loc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
 				RelicGroupingData relicGroupingData = BuildRelicGroupingData();
 				builder.GroupBySorter(
 					"rarity",
@@ -186,13 +186,13 @@ public partial class NLoadoutPanel : Panel
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(60f, 60f), 32, 32);
-				builder.FilterGroup("class", LocMan.SScreenLoc("FILTER_GROUP_CLASS", "Class"));
+				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 				AddPotionPoolFilters(builder);
-				builder.FilterGroup("rarity", LocMan.SScreenLoc("FILTER_GROUP_RARITY", "Rarity"));
+				builder.FilterGroup("rarity", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity"));
 				CommonHelpers.AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
-				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPotionTitle(a), CommonHelpers.FormatPotionTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.SScreenLoc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
+				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPotionTitle(a), CommonHelpers.FormatPotionTitle(b), StringComparison.Ordinal));
+				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.Loc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
 				builder.GroupBySorter(
 					"rarity",
 					GetPotionGroupKey,
@@ -247,7 +247,7 @@ public partial class NLoadoutPanel : Panel
 			builder.Materialization(SelectMaterializationMode.Lazy);
 			builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 			builder.ActionButton(
-				"upgrade_all", LocMan.SScreenLoc("UPGRADE_ALL", "Upgrade All"),
+				"upgrade_all", LocMan.Loc("UPGRADE_ALL", "Upgrade All"),
 				screen =>
 				{
 					HandleUpgradeAllDeckCards(screen);
@@ -591,7 +591,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NLabPotionHolder? holder = NLabPotionHolder.Create(model.ToMutable(), ModelVisibility.Visible);
 		if (holder is null)
-			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatPotionTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_POTION", "Potion"));
+			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatPotionTitle(model), model.Id.Entry, LocMan.Loc("CATEGORY_POTION", "Potion"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(60f, 60f);
@@ -602,7 +602,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NRelicCollectionEntry? holder = NRelicCollectionEntry.Create(model, ModelVisibility.Visible);
 		if (holder is null)
-			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatRelicTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_RELIC", "Relic"));
+			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatRelicTitle(model), model.Id.Entry, LocMan.Loc("CATEGORY_RELIC", "Relic"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(68f, 68f);
@@ -613,7 +613,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		NRelicBasicHolder? holder = NRelicBasicHolder.Create(model);
 		if (holder is null)
-			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatRelicTitle(model), model.Id.Entry, LocMan.SScreenLoc("CATEGORY_RELIC", "Relic"));
+			return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatRelicTitle(model), model.Id.Entry, LocMan.Loc("CATEGORY_RELIC", "Relic"));
 
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(68f, 68f);
@@ -738,7 +738,7 @@ public partial class NLoadoutPanel : Panel
 			"potion:uncommon" => new SelectGroupHeader(new LocString("potion_lab", "UNCOMMON").GetFormattedText()),
 			"potion:rare" => new SelectGroupHeader(new LocString("potion_lab", "RARE").GetFormattedText()),
 			"potion:special" => new SelectGroupHeader(new LocString("potion_lab", "SPECIAL").GetFormattedText()),
-			_ => SelectGroupHeader.Category(LocMan.SScreenLoc("OTHER", "Other"))
+			_ => SelectGroupHeader.Category(LocMan.Loc("OTHER", "Other"))
 		};
 	}
 
@@ -836,7 +836,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		return groupingData.HeadersByKey.TryGetValue(key, out SelectGroupHeader? header)
 			? header
-			: SelectGroupHeader.Category(LocMan.SScreenLoc("OTHER", "Other"));
+			: SelectGroupHeader.Category(LocMan.Loc("OTHER", "Other"));
 	}
 
 	private sealed class RelicGroupingData

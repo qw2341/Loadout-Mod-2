@@ -220,17 +220,19 @@ public class CommonHelpers
             return character.Title.GetFormattedText();
 
         if (pool is CardPoolModel cardPool && !string.IsNullOrWhiteSpace(cardPool.Title))
+        {
             return cardPool.Title;
+        }
 
         string typeName = pool.GetType().Name;
         if (typeName.StartsWith("Shared", StringComparison.Ordinal))
-            return LocMan.SScreenLoc("POOL_SHARED", "Shared");
+            return LocMan.Loc("POOL_SHARED", "Shared");
 
         if (typeName.StartsWith("Colorless", StringComparison.Ordinal))
-            return LocMan.SScreenLoc("POOL_COLORLESS", "Colorless");
+            return LocMan.Loc("POOL_COLORLESS", "Colorless");
 
         if (typeName.StartsWith("Event", StringComparison.Ordinal))
-            return LocMan.SScreenLoc("POOL_EVENT", "Event");
+            return LocMan.Loc("POOL_EVENT", "Event");
 
         return PrettifyPoolTypeName(typeName);
     }
@@ -651,10 +653,10 @@ public class CommonHelpers
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             CustomMinimumSize = new Vector2(256f, 52f)
         };
-        favoritesDropdown.SetItems(LocMan.SScreenLoc("FILTER_GROUP_FAVORITES", "Favorites"),
+        favoritesDropdown.SetItems(LocMan.Loc("FILTER_GROUP_FAVORITES", "Favorites"),
             [
-                new LoadoutDropdownOption(FavoriteModeAllKey, LocMan.SScreenLoc("ALL", "All")),
-                new LoadoutDropdownOption(FavoriteModeFavoritesKey, LocMan.SScreenLoc("FAVORITES_ONLY", "Favorites"))
+                new LoadoutDropdownOption(FavoriteModeAllKey, LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY_ALL",LocMan.Loc("ALL","All"))),
+                new LoadoutDropdownOption(FavoriteModeFavoritesKey, LocMan.Loc("FAVORITES_ONLY", "Favorites"))
             ],
             getFavoritesOnly() ? FavoriteModeFavoritesKey : FavoriteModeAllKey);
         favoritesDropdown.SelectedItemChanged += selectedId =>

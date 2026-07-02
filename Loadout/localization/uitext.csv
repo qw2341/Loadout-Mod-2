@@ -19,7 +19,7 @@ SORT_ID,ID,ID
 SORT_COST,Cost,费用
 SORT_LIBRARY,Library,图鉴
 VIEW_UPGRADES,View Upgrades,查看升级
-UPGRADE_ALL,Upgrade All,Upgrade All
+UPGRADE_ALL,Upgrade All,升级全部
 SORT_RARITY,Rarity,稀有度
 SORT_TYPE,Type,类型
 CARD_TYPE_ATTACK,Attack,攻击

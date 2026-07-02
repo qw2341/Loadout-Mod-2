@@ -39,15 +39,15 @@ public class EventfulCompass
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(4, EventTileSize, 24, 24);
-				builder.FilterGroup("layout", LocMan.SScreenLoc("FILTER_GROUP_LAYOUT", "Layout"));
-				builder.Filter("default", LocMan.SScreenLoc("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
-				builder.Filter("combat", LocMan.SScreenLoc("LAYOUT_COMBAT", "Combat"), eventModel => eventModel.LayoutType == EventLayoutType.Combat, "layout");
-				builder.Filter("ancient", LocMan.SScreenLoc("LAYOUT_ANCIENT", "Ancient"), eventModel => eventModel.LayoutType == EventLayoutType.Ancient, "layout");
-				builder.FilterGroup("sharing", LocMan.SScreenLoc("FILTER_GROUP_SCOPE", "Scope"));
-				builder.Filter("shared", LocMan.SScreenLoc("SCOPE_SHARED", "Shared"), eventModel => eventModel.IsShared, "sharing");
-				builder.Filter("solo", LocMan.SScreenLoc("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
-				builder.Sorter("name", LocMan.SScreenLoc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatEventTitle(a), CommonHelpers.FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", LocMan.SScreenLoc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.FilterGroup("layout", LocMan.Loc("FILTER_GROUP_LAYOUT", "Layout"));
+				builder.Filter("default", LocMan.Loc("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
+				builder.Filter("combat", LocMan.Loc("LAYOUT_COMBAT", "Combat"), eventModel => eventModel.LayoutType == EventLayoutType.Combat, "layout");
+				builder.Filter("ancient", LocMan.Loc("LAYOUT_ANCIENT", "Ancient"), eventModel => eventModel.LayoutType == EventLayoutType.Ancient, "layout");
+				builder.FilterGroup("sharing", LocMan.Loc("FILTER_GROUP_SCOPE", "Scope"));
+				builder.Filter("shared", LocMan.Loc("SCOPE_SHARED", "Shared"), eventModel => eventModel.IsShared, "sharing");
+				builder.Filter("solo", LocMan.Loc("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
+				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatEventTitle(a), CommonHelpers.FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 			},null,
 			"EventfulCompass.png",
 			"Eventful Compass",

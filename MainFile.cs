@@ -1,6 +1,7 @@
 using System.Reflection;
 using Godot;
 using HarmonyLib;
+using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Modding;
 
 namespace Loadout;
@@ -21,6 +22,7 @@ public partial class MainFile : Node
 
         Harmony harmony = new(ModId);
         harmony.PatchAll();
-
+        
+        LocMan.Load();
     }
 }
