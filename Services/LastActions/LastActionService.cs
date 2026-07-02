@@ -5,6 +5,7 @@ namespace Loadout.Services.LastActions;
 using Godot;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Saving;
+using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Saves;
 using System;
 using System.Collections.Generic;
@@ -149,7 +150,9 @@ public static class LastActionService
             Kind = entry.Kind,
             ContentId = entry.ContentId,
             Amount = entry.Amount,
-            Target = entry.Target
+            Target = entry.Target,
+            TargetScope = entry.TargetScope,
+            TargetPlayerNetId = entry.TargetPlayerNetId
         };
     }
 
@@ -186,4 +189,30 @@ public sealed class LastActionEntry
 
     [JsonPropertyName("target")]
     public PowerGiverTarget? Target { get; set; }
+
+    [JsonPropertyName("targetScope")]
+    public LoadoutTargetScope? TargetScope { get; set; }
+
+    [JsonPropertyName("targetPlayerNetId")]
+    public ulong? TargetPlayerNetId { get; set; }
+
+    public void SetTargetSelection(LoadoutTargetSelection selection)
+    {
+        Target = null;
+        TargetScope = selection.Scope;
+        TargetPlayerNetId = selection.PlayerNetId;
+    }
+
+    public LoadoutTargetSelection GetTargetSelection(LoadoutTargetSelection fallback)
+    {
+        if (TargetScope.HasValue)
+            return new LoadoutTargetSelection(TargetScope.Value, TargetPlayerNetId);
+
+        return Target switch
+        {
+            PowerGiverTarget.Monsters => new LoadoutTargetSelection(LoadoutTargetScope.AllMonsters),
+            PowerGiverTarget.Player => fallback,
+            _ => fallback
+        };
+    }
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
@@ -29,8 +31,15 @@ namespace Loadout.PanelItems;
 
 public class CommonHelpers
 {
+    private const string BaseGameModId = "slaythespire2";
+    private const string BaseGameModName = "Slay the Spire 2";
+
     public const string FavoriteModeAllKey = "all";
     public const string FavoriteModeFavoritesKey = "favorites";
+
+    private static Dictionary<Assembly, string> _modIdsByAssembly;
+    private static Dictionary<string, string> _modNamesById;
+
     public static void CreateAndAddLoadoutItem<TModel>(
         IEnumerable<TModel> models,
         SelectItemAdapter<TModel> adapter,
@@ -330,6 +339,95 @@ public class CommonHelpers
 
             string label = GetEnumLabel(value);
             builder.Filter(EnumFilterId(typeof(TEnum).Name, value), label, model => EqualityComparer<TEnum>.Default.Equals(getValue(model), value), groupId);
+        }
+    }
+
+    public static string GetModelModId(AbstractModel model)
+    {
+        EnsureModLookup();
+
+        Assembly assembly = model.GetType().Assembly;
+        if (_modIdsByAssembly.TryGetValue(assembly, out string modId))
+            return modId;
+
+        EnsureModLookup(forceRefresh: true);
+        return _modIdsByAssembly.TryGetValue(assembly, out modId)
+            ? modId
+            : BaseGameModId;
+    }
+
+    public static string GetModName(string modId)
+    {
+        if (string.Equals(modId, BaseGameModId, StringComparison.Ordinal))
+            return BaseGameModName;
+
+        EnsureModLookup();
+        if (_modNamesById.TryGetValue(modId, out string modName))
+            return modName;
+
+        EnsureModLookup(forceRefresh: true);
+        return _modNamesById.TryGetValue(modId, out modName)
+            ? modName
+            : modId;
+    }
+
+    public static void AddModFilters<TModel>(SelectScreenBuilder<TModel> builder, IEnumerable<TModel> models)
+        where TModel : AbstractModel
+    {
+        IReadOnlyList<string> modIds = models
+            .Select(GetModelModId)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(modId => string.Equals(modId, BaseGameModId, StringComparison.Ordinal) ? 0 : 1)
+            .ThenBy(GetModName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(modId => modId, StringComparer.Ordinal)
+            .ToList();
+
+        if (modIds.Count == 0)
+            return;
+
+        builder.FilterGroup("mods", LocMan.Loc("FILTER_GROUP_MODS", "Mods"));
+        foreach (string modId in modIds)
+        {
+            string localModId = modId;
+            builder.Filter(ModFilterId(localModId), GetModName(localModId), model => string.Equals(GetModelModId(model), localModId, StringComparison.Ordinal), "mods");
+        }
+    }
+
+    private static string ModFilterId(string modId)
+    {
+        return $"mod_{Regex.Replace(modId.ToLowerInvariant(), "[^a-z0-9_]+", "_")}";
+    }
+
+    private static void EnsureModLookup(bool forceRefresh = false)
+    {
+        if (!forceRefresh && _modIdsByAssembly is not null && _modNamesById is not null)
+            return;
+
+        _modIdsByAssembly = new Dictionary<Assembly, string>();
+        _modNamesById = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [BaseGameModId] = BaseGameModName
+        };
+
+        try
+        {
+            foreach (Mod mod in ModManager.GetLoadedMods())
+            {
+                string modId = mod.manifest?.id;
+                if (string.IsNullOrWhiteSpace(modId))
+                    continue;
+
+                _modNamesById[modId] = string.IsNullOrWhiteSpace(mod.manifest?.name)
+                    ? modId
+                    : mod.manifest.name;
+
+                if (mod.assembly is not null)
+                    _modIdsByAssembly[mod.assembly] = modId;
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutPanel: could not resolve loaded mod manifests for filters. {exception.Message}");
         }
     }
 

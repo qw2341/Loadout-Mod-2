@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Services.Actions;
 using Loadout.Services.LastActions;
+using Loadout.Services.Targets;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
@@ -24,7 +26,8 @@ public class CardPrinter
 {
 	private const string ViewUpgradesToggleId = "view_upgrades";
 	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
-	private static string? _currentCardFilterId;
+	private const string TargetDropdownName = "CardPrinterTargetDropdown";
+	private static string _currentCardFilterId;
 	
     public static void Initialize()
     {
@@ -54,6 +57,7 @@ public class CardPrinter
 				AddCardRarityFilters(builder, allCards);
 				AddCardKeywordFilterGroup(builder, allCards);
 				AddCardTagFilterGroup(builder, allCards);
+				CommonHelpers.AddModFilters(builder, allCards);
 				builder.Toggle(ViewUpgradesToggleId, LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
 				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
 				builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
@@ -61,7 +65,15 @@ public class CardPrinter
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.Loc("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
 			},
-			ApplyCurrentCardClassFilter, 
+			screen =>
+			{
+				LoadoutTargetService.UpsertTargetDropdown(
+					screen,
+					TargetDropdownName,
+					LastActionService.CardPrinterKey,
+					LoadoutTargetMode.AllPlayersAndPlayers);
+				ApplyCurrentCardClassFilter(screen);
+			}, 
 			"CardPrinter.png",
 			"Card Printer",
 			"It prints any cards you want.",
@@ -70,25 +82,24 @@ public class CardPrinter
 			ReplayCardPrinterLastActionAsync);
     }
 
-    private static async Task<IReadOnlyList<LastActionEntry>> HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+    private static Task<IReadOnlyList<LastActionEntry>> HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
     {
 	    if (selectItem.UntypedModel is not CardModel canonicalCard)
-		    return [];
+		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 	    int multiplier = screen.GetCurrentActivationMultiplier();
-	    int added = await AddCardCopiesAsync(canonicalCard, multiplier, selectItem.Id);
+	    LoadoutTargetSelection target = LoadoutTargetService.GetSelected(LastActionService.CardPrinterKey, LoadoutTargetMode.AllPlayersAndPlayers);
+	    if (!LoadoutActionService.Request(LoadoutActionKind.AddCard, canonicalCard.Id, multiplier, target))
+		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-	    return added > 0
-		    ?
-		    [
-			    new LastActionEntry
-			    {
-				    Kind = LastActionService.AddCardKind,
-				    ContentId = canonicalCard.Id.ToString(),
-				    Amount = added
-			    }
-		    ]
-		    : [];
+	    LastActionEntry entry = new()
+	    {
+		    Kind = LastActionService.AddCardKind,
+		    ContentId = canonicalCard.Id.ToString(),
+		    Amount = multiplier
+	    };
+	    entry.SetTargetSelection(target);
+	    return Task.FromResult<IReadOnlyList<LastActionEntry>>(new[] { entry });
     }
 
     private static async Task<int> AddCardCopiesAsync(CardModel canonicalCard, int amount, string logId)
@@ -124,8 +135,9 @@ public class CardPrinter
 	    return results.Count;
     }
 
-    private static async Task ReplayCardPrinterLastActionAsync()
+    private static Task ReplayCardPrinterLastActionAsync()
     {
+	    LoadoutTargetSelection fallbackTarget = LoadoutTargetService.GetSelected(LastActionService.CardPrinterKey, LoadoutTargetMode.AllPlayersAndPlayers);
 	    foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.CardPrinterKey))
 	    {
 		    if (entry.Kind != LastActionService.AddCardKind || entry.Amount <= 0)
@@ -138,8 +150,17 @@ public class CardPrinter
 			    continue;
 		    }
 
-		    await AddCardCopiesAsync(card, entry.Amount, entry.ContentId);
+		    if (!LoadoutActionService.Request(
+			        LoadoutActionKind.AddCard,
+			        card.Id,
+			        entry.Amount,
+			        entry.GetTargetSelection(fallbackTarget)))
+		    {
+			    GD.PushWarning($"LoadoutPanel: could not replay card action for '{entry.ContentId}'.");
+		    }
 	    }
+
+	    return Task.CompletedTask;
     }
 
     public static Control CreateCardGridItem(CardModel model, SelectItemState state)
@@ -358,7 +379,7 @@ public class CardPrinter
     
     private static void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)
     {
-	    CardPoolModel? currentCardPool = GetCurrentCharacterCardPool();
+	    CardPoolModel currentCardPool = GetCurrentCharacterCardPool();
 	    if (currentCardPool is null)
 		    return;
 

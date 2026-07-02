@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Favorites;
 using Loadout.Services.Saving;
+using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
@@ -30,7 +31,7 @@ public enum PowerGiverTarget
 
 public static class PowerGiverStateService
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const string FavoritesPath = "loadout/services/favorites/powers.json";
     private const string LegacyFavoritesPath = "loadout/power_giver_favorites.json";
     private const string RunDirectory = "loadout/relics/powergiver";
@@ -38,21 +39,21 @@ public static class PowerGiverStateService
     private const string RunFilePrefix = "power_giver_run";
     private const ulong FallbackSingleplayerNetId = 1;
 
+    public const string TargetKey = "power_giver";
+
     private static readonly object SyncRoot = new();
     private static readonly FavoritesUtility Favorites = new(FavoritesPath, [LegacyFavoritesPath]);
     private static PowerGiverRunState _run = new();
-    private static PowerGiverTarget _selectedTarget = PowerGiverTarget.Player;
     private static bool _registered;
     private static bool _runLoaded;
     private static long? _loadedRunStartTime;
 
-    public static PowerGiverTarget SelectedTarget
+    public static LoadoutTargetSelection SelectedTarget
     {
         get
         {
             EnsureLoaded();
-            lock (SyncRoot)
-                return _selectedTarget;
+            return LoadoutTargetService.GetSelected(TargetKey, LoadoutTargetMode.PowerGiver);
         }
     }
 
@@ -85,41 +86,26 @@ public static class PowerGiverStateService
         ReloadRunStateIfNeeded();
     }
 
-    public static void SetSelectedTarget(PowerGiverTarget target)
+    public static int GetCounter(string powerId)
     {
-        EnsureLoaded();
-        lock (SyncRoot)
-            _selectedTarget = target;
+        return GetCounter(powerId, SelectedTarget);
     }
 
-    public static int GetCounter(string powerId)
+    public static int GetCounter(string powerId, LoadoutTargetSelection target)
     {
         EnsureLoaded();
         lock (SyncRoot)
         {
-            Dictionary<string, int>? counters = GetCounters(_selectedTarget, createPlayerBucket: false);
+            Dictionary<string, int>? counters = GetCounters(target, createPlayerBucket: false);
             return counters?.GetValueOrDefault(powerId, 0) ?? 0;
         }
     }
 
-    public static bool AdjustCounter(string powerId, int delta)
-    {
-        PowerGiverTarget target;
-        bool adjusted;
-        EnsureLoaded();
-        lock (SyncRoot)
-        {
-            target = _selectedTarget;
-            adjusted = AdjustCounterLocked(powerId, delta, target);
-        }
-
-        if (adjusted)
-            TaskHelper.RunSafely(ApplyCurrentCombatDeltaAsync(powerId, delta, target));
-
-        return adjusted;
-    }
-
-    public static bool AdjustCounter(string powerId, int delta, PowerGiverTarget target)
+    public static bool AdjustCounterFromAction(
+        string powerId,
+        int delta,
+        LoadoutTargetSelection target,
+        Player actionPlayer)
     {
         if (string.IsNullOrWhiteSpace(powerId) || delta == 0)
             return false;
@@ -132,28 +118,9 @@ public static class PowerGiverStateService
         }
 
         if (adjusted)
-            TaskHelper.RunSafely(ApplyCurrentCombatDeltaAsync(powerId, delta, target));
+            TaskHelper.RunSafely(ApplyCurrentCombatDeltaAsync(powerId, delta, target, actionPlayer));
 
         return adjusted;
-    }
-
-    private static bool AdjustCounterLocked(string powerId, int delta, PowerGiverTarget target)
-    {
-        if (string.IsNullOrWhiteSpace(powerId) || delta == 0)
-            return false;
-
-        Dictionary<string, int>? counters = GetCounters(target, createPlayerBucket: true);
-        if (counters is null)
-            return false;
-
-        int next = counters.GetValueOrDefault(powerId, 0) + delta;
-        if (next == 0)
-            counters.Remove(powerId);
-        else
-            counters[powerId] = next;
-
-        SaveRunState();
-        return true;
     }
 
     public static bool IsFavorite(string powerId)
@@ -171,7 +138,7 @@ public static class PowerGiverStateService
         Favorites.Toggle(FavoriteCategory.Power, powerId);
     }
 
-    public static IReadOnlyDictionary<string, int> GetCountersSnapshot(PowerGiverTarget target)
+    public static IReadOnlyDictionary<string, int> GetCountersSnapshot(LoadoutTargetSelection target)
     {
         EnsureLoaded();
         lock (SyncRoot)
@@ -183,43 +150,62 @@ public static class PowerGiverStateService
         }
     }
 
+    private static bool AdjustCounterLocked(string powerId, int delta, LoadoutTargetSelection target)
+    {
+        Dictionary<string, int>? counters = GetCounters(target, createPlayerBucket: true);
+        if (counters is null)
+            return false;
+
+        int next = counters.GetValueOrDefault(powerId, 0) + delta;
+        if (next == 0)
+            counters.Remove(powerId);
+        else
+            counters[powerId] = next;
+
+        SaveRunState();
+        return true;
+    }
+
     private static void OnCombatSetUp(CombatState combatState)
     {
         EnsureLoaded();
-        Player? localPlayer = GetLocalPlayer(combatState);
-        if (localPlayer is null)
-            return;
 
-        IReadOnlyDictionary<string, int> playerCounters;
+        IReadOnlyDictionary<string, int> allPlayerCounters;
+        IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> playerCountersByNetId;
         IReadOnlyDictionary<string, int> monsterCounters;
         lock (SyncRoot)
         {
-            playerCounters = GetPlayerCountersSnapshot(localPlayer.NetId);
+            allPlayerCounters = new Dictionary<string, int>(_run.AllPlayerCounters, StringComparer.Ordinal);
+            playerCountersByNetId = _run.PlayerCountersByNetId.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyDictionary<string, int>)new Dictionary<string, int>(pair.Value, StringComparer.Ordinal));
             monsterCounters = new Dictionary<string, int>(_run.MonsterCounters, StringComparer.Ordinal);
         }
 
-        TaskHelper.RunSafely(ApplyConfiguredPowersAsync(combatState, localPlayer, playerCounters, monsterCounters));
+        TaskHelper.RunSafely(ApplyConfiguredPowersAsync(
+            combatState,
+            allPlayerCounters,
+            playerCountersByNetId,
+            monsterCounters));
     }
 
     private static void OnRunStarted(RunState _)
     {
-        ReloadRunState(resetTarget: true);
+        ReloadRunState();
     }
 
     private static void OnProfileIdChanged(int _)
     {
         Favorites.Reset();
-        ReloadRunState(resetTarget: true);
+        ReloadRunState();
     }
 
-    private static void ReloadRunState(bool resetTarget)
+    private static void ReloadRunState()
     {
         lock (SyncRoot)
         {
             _runLoaded = false;
             _loadedRunStartTime = null;
-            if (resetTarget)
-                _selectedTarget = PowerGiverTarget.Player;
         }
 
         ReloadRunStateIfNeeded();
@@ -249,7 +235,7 @@ public static class PowerGiverStateService
                 [legacyPath]);
 
             _run = NormalizeRunState(loaded.Value, currentRunStartTime.Value);
-            if (loaded.Loaded && !loaded.LoadedFrom(primaryPath))
+            if (loaded.Loaded && (!loaded.LoadedFrom(primaryPath) || loaded.Value.SchemaVersion != CurrentSchemaVersion))
                 SaveRunState();
         }
     }
@@ -266,12 +252,15 @@ public static class PowerGiverStateService
         SaveUtility.SaveProfileJson(GetRunPath(RunDirectory, _loadedRunStartTime.Value), _run);
     }
 
-    private static Dictionary<string, int>? GetCounters(PowerGiverTarget target, bool createPlayerBucket)
+    private static Dictionary<string, int>? GetCounters(LoadoutTargetSelection target, bool createPlayerBucket)
     {
-        if (target == PowerGiverTarget.Monsters)
+        if (target.Scope == LoadoutTargetScope.AllMonsters)
             return _run.MonsterCounters;
 
-        ulong? netId = GetCurrentPlayerNetId();
+        if (target.Scope == LoadoutTargetScope.AllPlayers)
+            return _run.AllPlayerCounters;
+
+        ulong? netId = target.PlayerNetId ?? GetCurrentPlayerNetId();
         if (netId is null)
             return null;
 
@@ -284,13 +273,6 @@ public static class PowerGiverStateService
         counters = new Dictionary<string, int>(StringComparer.Ordinal);
         _run.PlayerCountersByNetId[netId.Value] = counters;
         return counters;
-    }
-
-    private static IReadOnlyDictionary<string, int> GetPlayerCountersSnapshot(ulong netId)
-    {
-        return _run.PlayerCountersByNetId.TryGetValue(netId, out Dictionary<string, int>? counters)
-            ? new Dictionary<string, int>(counters, StringComparer.Ordinal)
-            : new Dictionary<string, int>(StringComparer.Ordinal);
     }
 
     private static ulong? GetCurrentPlayerNetId()
@@ -316,6 +298,7 @@ public static class PowerGiverStateService
     {
         run.SchemaVersion = CurrentSchemaVersion;
         run.RunStartTime = runStartTime;
+        run.AllPlayerCounters = NormalizeCounters(run.AllPlayerCounters);
         run.PlayerCountersByNetId ??= new Dictionary<ulong, Dictionary<string, int>>();
         run.MonsterCounters = NormalizeCounters(run.MonsterCounters);
 
@@ -372,18 +355,33 @@ public static class PowerGiverStateService
 
     private static async Task ApplyConfiguredPowersAsync(
         CombatState combatState,
-        Player localPlayer,
-        IReadOnlyDictionary<string, int> playerCounters,
+        IReadOnlyDictionary<string, int> allPlayerCounters,
+        IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> playerCountersByNetId,
         IReadOnlyDictionary<string, int> monsterCounters)
     {
-        foreach ((string powerId, int amount) in playerCounters)
-            await ApplyPowerToTargets(powerId, amount, [localPlayer.Creature], localPlayer.Creature);
+        foreach (Player player in combatState.Players)
+        {
+            Dictionary<string, int> mergedCounters = new(allPlayerCounters, StringComparer.Ordinal);
+            if (playerCountersByNetId.TryGetValue(player.NetId, out IReadOnlyDictionary<string, int>? playerCounters))
+            {
+                foreach ((string powerId, int amount) in playerCounters)
+                    mergedCounters[powerId] = mergedCounters.GetValueOrDefault(powerId, 0) + amount;
+            }
 
+            foreach ((string powerId, int amount) in mergedCounters.Where(pair => pair.Value != 0))
+                await ApplyPowerToTargets(powerId, amount, [player.Creature], player.Creature);
+        }
+
+        Creature? applier = combatState.Players.FirstOrDefault()?.Creature;
         foreach ((string powerId, int amount) in monsterCounters)
-            await ApplyPowerToTargets(powerId, amount, combatState.Enemies.ToList(), localPlayer.Creature);
+            await ApplyPowerToTargets(powerId, amount, combatState.Enemies.ToList(), applier);
     }
 
-    private static async Task ApplyCurrentCombatDeltaAsync(string powerId, int amount, PowerGiverTarget target)
+    private static async Task ApplyCurrentCombatDeltaAsync(
+        string powerId,
+        int amount,
+        LoadoutTargetSelection target,
+        Player actionPlayer)
     {
         if (amount == 0 || !CombatManager.Instance.IsInProgress)
             return;
@@ -392,31 +390,23 @@ public static class PowerGiverStateService
         if (combatState is null)
             return;
 
-        Player? localPlayer = GetLocalPlayer(combatState);
-        if (localPlayer is null)
+        IReadOnlyList<Creature> targets = target.Scope switch
+        {
+            LoadoutTargetScope.AllMonsters => combatState.Enemies.ToList(),
+            LoadoutTargetScope.AllPlayers => combatState.Players.Select(player => player.Creature).ToList(),
+            LoadoutTargetScope.Player when target.PlayerNetId.HasValue && combatState.GetPlayer(target.PlayerNetId.Value) is { } player => [player.Creature],
+            _ => []
+        };
+
+        if (targets.Count == 0)
             return;
 
-        IReadOnlyList<Creature> targets = target == PowerGiverTarget.Monsters
-            ? combatState.Enemies.ToList()
-            : [localPlayer.Creature];
-
-        await ApplyPowerToTargets(powerId, amount, targets, localPlayer.Creature);
+        Creature? applier = combatState.GetPlayer(actionPlayer.NetId)?.Creature
+                            ?? combatState.Players.FirstOrDefault()?.Creature;
+        await ApplyPowerToTargets(powerId, amount, targets, applier);
     }
 
-    private static Player? GetLocalPlayer(CombatState combatState)
-    {
-        try
-        {
-            return LocalContext.GetMe(combatState.RunState);
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning($"PowerGiver: could not resolve local player. {exception.Message}");
-            return null;
-        }
-    }
-
-    private static async Task ApplyPowerToTargets(string powerId, int amount, IEnumerable<Creature> targets, Creature applier)
+    private static async Task ApplyPowerToTargets(string powerId, int amount, IEnumerable<Creature> targets, Creature? applier)
     {
         if (amount == 0)
             return;
@@ -468,6 +458,9 @@ public static class PowerGiverStateService
         [JsonPropertyName("runStartTime")]
         public long RunStartTime { get; set; }
 
+        [JsonPropertyName("allPlayerCounters")]
+        public Dictionary<string, int> AllPlayerCounters { get; set; } = new(StringComparer.Ordinal);
+
         [JsonPropertyName("playerCountersByNetId")]
         public Dictionary<ulong, Dictionary<string, int>> PlayerCountersByNetId { get; set; } = new();
 
@@ -481,6 +474,7 @@ public static class PowerGiverStateService
         {
             info.AddValue(nameof(SchemaVersion), SchemaVersion);
             info.AddValue(nameof(RunStartTime), RunStartTime);
+            info.AddValue(nameof(AllPlayerCounters), AllPlayerCounters);
             info.AddValue(nameof(PlayerCountersByNetId), PlayerCountersByNetId);
             info.AddValue(nameof(MonsterCounters), MonsterCounters);
         }

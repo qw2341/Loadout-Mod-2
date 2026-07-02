@@ -26,8 +26,10 @@ public class EventfulCompass
 {
     public static void Initialize()
     {
+	    IReadOnlyList<EventModel> allEvents = ModelDb.AllEvents.Concat(ModelDb.AllAncients).Distinct().ToList();
+
         CommonHelpers.CreateAndAddLoadoutItem(
-			ModelDb.AllEvents.Concat(ModelDb.AllAncients).Distinct(),
+			allEvents,
 			new SelectItemAdapter<EventModel>
 			{
 				GetId = eventModel => eventModel.Id.ToString(),
@@ -46,6 +48,7 @@ public class EventfulCompass
 				builder.FilterGroup("sharing", LocMan.Loc("FILTER_GROUP_SCOPE", "Scope"));
 				builder.Filter("shared", LocMan.Loc("SCOPE_SHARED", "Shared"), eventModel => eventModel.IsShared, "sharing");
 				builder.Filter("solo", LocMan.Loc("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
+				CommonHelpers.AddModFilters(builder, allEvents);
 				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatEventTitle(a), CommonHelpers.FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 			},null,

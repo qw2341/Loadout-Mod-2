@@ -46,8 +46,10 @@ using MegaCrit.Sts2.Core.Runs;
 using System.Text.RegularExpressions;
 using HarmonyLib;
 using Loadout.PanelItems;
+using Loadout.Services.Actions;
 using Loadout.Services.LastActions;
 using Loadout.Services.PowerGiver;
+using Loadout.Services.Targets;
 using Loadout.UI.Managers;
 
 namespace  Loadout.UI;
@@ -57,6 +59,15 @@ public partial class NLoadoutPanel : Panel
 	public delegate Task<IReadOnlyList<LastActionEntry>> SelectActivationHandler(NGenericSelectScreen screen, IGenericSelectItem selectItem);
 
 	private const int MaxLoadoutItemInitAttempts = 120;
+	private const string LoadoutBagTargetDropdownName = "LoadoutBagTargetDropdown";
+	private const string LoadoutCauldronTargetKey = "loadout_cauldron";
+	private const string LoadoutCauldronTargetDropdownName = "LoadoutCauldronTargetDropdown";
+	private const string RemoveRelicTargetKey = "remove_relic";
+	private const string RemoveRelicTargetDropdownName = "RemoveRelicTargetDropdown";
+	private const string RemoveCardTargetKey = "remove_card";
+	private const string RemoveCardTargetDropdownName = "RemoveCardTargetDropdown";
+	private const string CardModifierTargetKey = "card_modifier";
+	private const string CardModifierTargetDropdownName = "CardModifierTargetDropdown";
 
 
 	[Export]
@@ -134,6 +145,7 @@ public partial class NLoadoutPanel : Panel
 				AddRelicPoolFilters(builder);
 				builder.FilterGroup("rarity", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity"));
 				CommonHelpers.AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
+				CommonHelpers.AddModFilters(builder, ModelDb.AllRelics);
 				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatRelicTitle(a), CommonHelpers.FormatRelicTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.Loc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
@@ -144,7 +156,11 @@ public partial class NLoadoutPanel : Panel
 					key => GetRelicGroupHeader(key, relicGroupingData),
 					relicGroupingData.GroupOrder,
 					relicGroupingData.DescendingGroupOrder);
-			},null,
+			}, screen => LoadoutTargetService.UpsertTargetDropdown(
+				screen,
+				LoadoutBagTargetDropdownName,
+				LastActionService.LoadoutBagKey,
+				LoadoutTargetMode.AllPlayersAndPlayers),
 			"LoadoutBag.png",
 			"Loadout Bag",
 			"A bag that contains everthing.",
@@ -152,13 +168,13 @@ public partial class NLoadoutPanel : Panel
 			LastActionService.LoadoutBagKey,
 			ReplayLoadoutBagLastActionAsync);
 		//02 - TRASH BIN
-		CreateAndAddDynamicLoadoutItem(CommonHelpers.GetLocalRelics,
-			new SelectItemAdapter<RelicModel>
+		CreateAndAddDynamicLoadoutItem(GetSelectedTargetRelics,
+			new SelectItemAdapter<LoadoutOwnedItem<RelicModel>>
 			{
-				GetId = CommonHelpers.RuntimeItemId,
-				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
-				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription}",
-				CreateView = (relic, _) => CreateOwnedRelicGridItem(relic),
+				GetId = item => OwnedItemId(item),
+				GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
+				GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)} {item.Model.DynamicDescription}",
+				CreateView = (item, _) => CreateOwnedRelicGridItem(item.Model),
 				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
 			},
 			builder =>
@@ -170,7 +186,13 @@ public partial class NLoadoutPanel : Panel
 			HandleRemoveRelicActivatedAsync,
 			"TrashBin.png",
 			"Remove Relic",
-			"Remove one of your current relics.");
+			"Remove one of your current relics.",
+			(screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
+				screen,
+				RemoveRelicTargetDropdownName,
+				RemoveRelicTargetKey,
+				LoadoutTargetMode.PlayersOnly,
+				refresh));
 		//03 - LOADOUT CAULDRON
 		CommonHelpers.CreateAndAddLoadoutItem(
 			ModelDb.AllPotions,
@@ -190,6 +212,7 @@ public partial class NLoadoutPanel : Panel
 				AddPotionPoolFilters(builder);
 				builder.FilterGroup("rarity", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity"));
 				CommonHelpers.AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
+				CommonHelpers.AddModFilters(builder, ModelDb.AllPotions);
 				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPotionTitle(a), CommonHelpers.FormatPotionTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.Loc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
@@ -199,7 +222,11 @@ public partial class NLoadoutPanel : Panel
 					GetPotionGroupHeader,
 					PotionGroupOrder,
 					PotionGroupOrder.Reverse());
-			}, null,
+			}, screen => LoadoutTargetService.UpsertTargetDropdown(
+				screen,
+				LoadoutCauldronTargetDropdownName,
+				LoadoutCauldronTargetKey,
+				LoadoutTargetMode.AllPlayersAndPlayers),
 			"LoadoutCauldron.png",
 			"Loadout Cauldron",
 			"A cauldron that creates any potion.",
@@ -208,13 +235,13 @@ public partial class NLoadoutPanel : Panel
 		//04 - CARD PRINTER
 		CardPrinter.Initialize();
 		//05 - CARD SHREDDER
-		CreateAndAddDynamicLoadoutItem(CommonHelpers.GetLocalDeckCards,
-			new SelectItemAdapter<CardModel>
+		CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForRemoval,
+			new SelectItemAdapter<LoadoutOwnedItem<CardModel>>
 			{
-				GetId = CommonHelpers.RuntimeItemId,
-				GetName = card => CardPrinter.FormatCardTitle(card),
-				GetSearchText = card => $"{card.Id} {CardPrinter.FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
-				CreateView = CardPrinter.CreateCardGridItem,
+				GetId = item => OwnedItemId(item),
+				GetName = item => CardPrinter.FormatCardTitle(item.Model),
+				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
+				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
 				ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
 				UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
 				BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
@@ -228,20 +255,26 @@ public partial class NLoadoutPanel : Panel
 			HandleRemoveCardActivatedAsync,
 			"CardShredder.png",
 			"Remove Card",
-			"Remove a card from your current deck.");
+			"Remove a card from your current deck.",
+			(screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
+				screen,
+				RemoveCardTargetDropdownName,
+				RemoveCardTargetKey,
+				LoadoutTargetMode.PlayersOnly,
+				refresh));
 		//06 - CARD MODIFIER
-		SelectItemAdapter<CardModel> cardModifierAdapter = new()
+		SelectItemAdapter<LoadoutOwnedItem<CardModel>> cardModifierAdapter = new()
 		{
-			GetId = CommonHelpers.RuntimeItemId,
-			GetName = card => CardPrinter.FormatCardTitle(card),
-			GetSearchText = card => $"{card.Id} {CardPrinter.FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
-			CreateView = CardPrinter.CreateCardGridItem,
+			GetId = item => OwnedItemId(item),
+			GetName = item => CardPrinter.FormatCardTitle(item.Model),
+			GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
+			CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
 			ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
 			UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
 			BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
 		};
 
-		void BuildCardModifierScreen(SelectScreenBuilder<CardModel> builder)
+		void BuildCardModifierScreen(SelectScreenBuilder<LoadoutOwnedItem<CardModel>> builder)
 		{
 			builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 			builder.Materialization(SelectMaterializationMode.Lazy);
@@ -251,17 +284,23 @@ public partial class NLoadoutPanel : Panel
 				screen =>
 				{
 					HandleUpgradeAllDeckCards(screen);
-					screen.RefreshItemsPreservingViews(CommonHelpers.GetLocalDeckCards(), cardModifierAdapter, animateRelayout: true);
+					screen.RefreshItemsPreservingViews(GetSelectedTargetDeckCardsForModifier(), cardModifierAdapter, animateRelayout: true);
 				}, CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
 		}
 
-		CreateAndAddDynamicLoadoutItem(CommonHelpers.GetLocalDeckCards,
+		CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForModifier,
 			cardModifierAdapter,
 			BuildCardModifierScreen,
 			HandleUpgradeCardActivatedAsync,
 			"CardModifier.png",
 			"Card Modifier",
-			"Modifies cards in your current deck.");
+			"Modifies cards in your current deck.",
+			(screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
+				screen,
+				CardModifierTargetDropdownName,
+				CardModifierTargetKey,
+				LoadoutTargetMode.PlayersOnly,
+				refresh));
 				
 		//07 - EVENTFUL COMPASS
 		EventfulCompass.Initialize();
@@ -310,7 +349,29 @@ public partial class NLoadoutPanel : Panel
 			TryAddLoadoutItems();
 	}
 
-	
+	private static IReadOnlyList<LoadoutOwnedItem<RelicModel>> GetSelectedTargetRelics()
+	{
+		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(RemoveRelicTargetKey, LoadoutTargetMode.PlayersOnly);
+		return LoadoutTargetService.BuildOwnedItems(target, player => player.Relics.ToList());
+	}
+
+	private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetDeckCardsForRemoval()
+	{
+		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(RemoveCardTargetKey, LoadoutTargetMode.PlayersOnly);
+		return LoadoutTargetService.BuildOwnedItems(target, player => player.Deck.Cards.ToList());
+	}
+
+	private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetDeckCardsForModifier()
+	{
+		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
+		return LoadoutTargetService.BuildOwnedItems(target, player => player.Deck.Cards.ToList());
+	}
+
+	private static string OwnedItemId<TModel>(LoadoutOwnedItem<TModel> item)
+		where TModel : AbstractModel
+	{
+		return $"{item.OwnerNetId}:{item.Index}:{item.Model.Id}:{RuntimeHelpers.GetHashCode(item.Model)}";
+	}
 
 	private void CreateAndAddDynamicLoadoutItem<TModel>(
 		Func<IReadOnlyList<TModel>> getModels,
@@ -319,7 +380,8 @@ public partial class NLoadoutPanel : Panel
 		SelectActivationHandler onActivated,
 		string textureFileName,
 		string title,
-		string description)
+		string description,
+		Action<NGenericSelectScreen, Action>? afterConfigure = null)
 	{
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
@@ -338,6 +400,8 @@ public partial class NLoadoutPanel : Panel
 				target.ConfigurePreservingViews(models, adapter, builder, animateRelayout: true);
 			else
 				target.Configure(models, adapter, builder);
+
+			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
 
 			if (!preserveViews)
 				target.RequestDeferredVisibleRefresh();
@@ -361,6 +425,7 @@ public partial class NLoadoutPanel : Panel
 				return;
 			}
 
+			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
 			RefreshCurrentModels(target, resetScroll: true);
 		}
 
@@ -415,24 +480,24 @@ public partial class NLoadoutPanel : Panel
 		}
 	}
 
-	private static async Task<IReadOnlyList<LastActionEntry>> HandleAddRelicActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	private static Task<IReadOnlyList<LastActionEntry>> HandleAddRelicActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not RelicModel canonicalRelic)
-			return [];
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		int obtained = await ObtainRelicCopiesAsync(canonicalRelic, screen.GetCurrentActivationMultiplier(), selectItem.Id);
+		int amount = screen.GetCurrentActivationMultiplier();
+		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(LastActionService.LoadoutBagKey, LoadoutTargetMode.AllPlayersAndPlayers);
+		if (!LoadoutActionService.Request(LoadoutActionKind.AddRelic, canonicalRelic.Id, amount, target))
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		return obtained > 0
-			?
-			[
-				new LastActionEntry
-				{
-					Kind = LastActionService.AddRelicKind,
-					ContentId = canonicalRelic.Id.ToString(),
-					Amount = obtained
-				}
-			]
-			: [];
+		LastActionEntry entry = new()
+		{
+			Kind = LastActionService.AddRelicKind,
+			ContentId = canonicalRelic.Id.ToString(),
+			Amount = amount
+		};
+		entry.SetTargetSelection(target);
+		return Task.FromResult<IReadOnlyList<LastActionEntry>>(new[] { entry });
 	}
 
 	private static async Task<int> ObtainRelicCopiesAsync(RelicModel canonicalRelic, int amount, string logId)
@@ -459,67 +524,47 @@ public partial class NLoadoutPanel : Panel
 		return obtained;
 	}
 
-	private static async Task<IReadOnlyList<LastActionEntry>> HandleAddPotionActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	private static Task<IReadOnlyList<LastActionEntry>> HandleAddPotionActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not PotionModel canonicalPotion)
-			return [];
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
-		if (localPlayer is null)
-			return [];
+		LoadoutActionService.Request(
+			LoadoutActionKind.AddPotion,
+			canonicalPotion.Id,
+			screen.GetCurrentActivationMultiplier(),
+			LoadoutTargetService.GetSelected(LoadoutCauldronTargetKey, LoadoutTargetMode.AllPlayersAndPlayers));
 
-		int multiplier = screen.GetCurrentActivationMultiplier();
-		for (int i = 0; i < multiplier; i++)
-		{
-			try
-			{
-				PotionProcureResult result = await PotionCmd.TryToProcure(canonicalPotion.ToMutable(), localPlayer);
-				if (!result.success)
-					break;
-			}
-			catch (Exception exception)
-			{
-				GD.PushWarning($"LoadoutPanel: stopped adding potion '{selectItem.Id}' after {i}/{multiplier} copies. {exception.Message}");
-				break;
-			}
-		}
-
-		return [];
+		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
-	private static async Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	private static Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
 	{
-		if (selectItem.UntypedModel is not CardModel card)
-			return [];
+		if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
-		if (localPlayer is null
-		    || !LocalContext.IsMine(card)
-		    || card.Pile?.Type != PileType.Deck
-		    || !localPlayer.Deck.Cards.Contains(card))
-		{
-			return [];
-		}
-
-		await CardPileCmd.RemoveFromDeck(card);
-		return [];
+		LoadoutActionService.Request(
+			LoadoutActionKind.RemoveCard,
+			item.Model.Id,
+			1,
+			LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+			item.Index,
+			item.Model.Id);
+		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
 	private static Task<IReadOnlyList<LastActionEntry>> HandleUpgradeCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
-		if (selectItem.UntypedModel is not CardModel card)
+		if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
 
-		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
-		if (localPlayer is null)
-			return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
-
-		
-		int multiplier = screen.GetCurrentActivationMultiplier();
-		for (int i = 0; i < multiplier; i++)
-		{
-			CardCmd.Upgrade(card, CardPreviewStyle.None);
-		}
+		LoadoutActionService.Request(
+			LoadoutActionKind.UpgradeCard,
+			item.Model.Id,
+			screen.GetCurrentActivationMultiplier(),
+			LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+			item.Index,
+			item.Model.Id);
 
 		if (selectItem.View is Control view)
 		{
@@ -532,39 +577,28 @@ public partial class NLoadoutPanel : Panel
 
 	private static void HandleUpgradeAllDeckCards(NGenericSelectScreen _)
 	{
-		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
-		if (localPlayer is null)
-			return;
-		int i = 0;
-		foreach (CardModel card in localPlayer.Deck.Cards)
-		{
-			CardCmd.Upgrade(card, CardPreviewStyle.None);
-			if (_.Items[i++].View is not Control view) continue;
-			CommonHelpers.PlayCardSmithFeedback(view);
-			CardPrinter.RefreshCardVisuals(view);
-		}
-		
+		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
+		LoadoutActionService.Request(LoadoutActionKind.UpgradeAllDeckCards, ModelId.none, 1, target);
 	}
 
-	private static async Task<IReadOnlyList<LastActionEntry>> HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	private static Task<IReadOnlyList<LastActionEntry>> HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
 	{
-		if (selectItem.UntypedModel is not RelicModel relic)
-			return [];
+		if (selectItem.UntypedModel is not LoadoutOwnedItem<RelicModel> item)
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		Player? localPlayer = CommonHelpers.GetLocalRunPlayer();
-		if (localPlayer is null
-		    || !LocalContext.IsMine(relic)
-		    || !localPlayer.Relics.Contains(relic))
-		{
-			return [];
-		}
-
-		await RelicCmd.Remove(relic);
-		return [];
+		LoadoutActionService.Request(
+			LoadoutActionKind.RemoveRelic,
+			item.Model.Id,
+			1,
+			LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+			item.Index,
+			item.Model.Id);
+		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
-	private static async Task ReplayLoadoutBagLastActionAsync()
+	private static Task ReplayLoadoutBagLastActionAsync()
 	{
+		LoadoutTargetSelection fallbackTarget = LoadoutTargetService.GetSelected(LastActionService.LoadoutBagKey, LoadoutTargetMode.AllPlayersAndPlayers);
 		foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.LoadoutBagKey))
 		{
 			if (entry.Kind != LastActionService.AddRelicKind || entry.Amount <= 0)
@@ -577,8 +611,17 @@ public partial class NLoadoutPanel : Panel
 				continue;
 			}
 
-			await ObtainRelicCopiesAsync(relic, entry.Amount, entry.ContentId);
+			if (!LoadoutActionService.Request(
+				    LoadoutActionKind.AddRelic,
+				    relic.Id,
+				    entry.Amount,
+				    entry.GetTargetSelection(fallbackTarget)))
+			{
+			    GD.PushWarning($"LoadoutPanel: could not replay relic action for '{entry.ContentId}'.");
+		    }
 		}
+
+		return Task.CompletedTask;
 	}
 
 	private static RelicModel? ResolveCanonicalRelic(string relicId)

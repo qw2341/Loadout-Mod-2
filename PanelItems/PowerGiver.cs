@@ -1,8 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.LastActions;
+using Loadout.Services.Actions;
 using Loadout.Services.PowerGiver;
+using Loadout.Services.Targets;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
@@ -33,7 +37,7 @@ public class PowerGiver
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
-		CommonHelpers.LastActionCaptureSession? captureSession = null;
+		CommonHelpers.LastActionCaptureSession captureSession = null;
 
 		SelectItemAdapter<PowerModel> adapter = new()
 		{
@@ -58,7 +62,8 @@ public class PowerGiver
 			if (resetFavoriteMode)
 				showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
 
-			target.Configure(ModelDb.AllPowers, adapter, builder =>
+			IReadOnlyList<PowerModel> allPowers = ModelDb.AllPowers.ToList();
+			target.Configure(allPowers, adapter, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
@@ -72,6 +77,7 @@ public class PowerGiver
 				builder.Filter("stack_none", LocMan.Loc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
 				builder.Filter("counter", LocMan.Loc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
 				builder.Filter("single", LocMan.Loc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
+				CommonHelpers.AddModFilters(builder, allPowers);
 				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPowerTitle(a), CommonHelpers.FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
@@ -96,6 +102,7 @@ public class PowerGiver
 				&& (!showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power))));
 			target.GetNodeOrNull<NLoadoutDropdown>("Sidebar/MarginContainer/TopVBox/CustomControls/PowerGiverFavoritesDropdown")
 				?.SetSelectedItem(showPowerGiverFavoritesOnly ? CommonHelpers.FavoriteModeFavoritesKey : CommonHelpers.FavoriteModeAllKey);
+			AddPowerGiverTargetDropdown(target);
 			target.RefreshNow(resetScroll: true);
 			target.RefreshCurrentItemStates();
 		}
@@ -126,14 +133,27 @@ public class PowerGiver
 
 	private static Task ReplayPowerGiverLastActionAsync()
 	{
+		LoadoutTargetSelection fallbackTarget = LoadoutTargetService.GetSelected(PowerGiverStateService.TargetKey, LoadoutTargetMode.PowerGiver);
 		foreach (LastActionEntry entry in LastActionService.GetAction(LastActionService.PowerGiverKey))
 		{
 			if (entry.Kind != LastActionService.AdjustPowerKind || entry.Amount == 0)
 				continue;
 
-			PowerGiverTarget target = entry.Target ?? PowerGiverTarget.Player;
-			if (!PowerGiverStateService.AdjustCounter(entry.ContentId, entry.Amount, target))
+			PowerModel power = ResolveCanonicalPower(entry.ContentId);
+			if (power is null)
+			{
+				GD.PushWarning($"LoadoutPanel: could not replay power action for unknown power '{entry.ContentId}'.");
+				continue;
+			}
+
+			if (!LoadoutActionService.Request(
+				    LoadoutActionKind.AdjustPower,
+				    power.Id,
+				    entry.Amount,
+				    entry.GetTargetSelection(fallbackTarget)))
+			{
 				GD.PushWarning($"LoadoutPanel: could not replay power action for '{entry.ContentId}'.");
+			}
 		}
 
 		return Task.CompletedTask;
@@ -243,16 +263,17 @@ public class PowerGiver
 
 			int multiplier = screen.GetCurrentActivationMultiplier();
 			int delta = mouseButton.ButtonIndex == MouseButton.Right ? -multiplier : multiplier;
-			PowerGiverTarget target = PowerGiverStateService.SelectedTarget;
-			if (PowerGiverStateService.AdjustCounter(powerId, delta, target))
+			LoadoutTargetSelection target = LoadoutTargetService.GetSelected(PowerGiverStateService.TargetKey, LoadoutTargetMode.PowerGiver);
+			if (LoadoutActionService.Request(LoadoutActionKind.AdjustPower, power.Id, delta, target))
 			{
-				recordLastAction?.Invoke(new LastActionEntry
+				LastActionEntry entry = new()
 				{
 					Kind = LastActionService.AdjustPowerKind,
 					ContentId = powerId,
-					Amount = delta,
-					Target = target
-				});
+					Amount = delta
+				};
+				entry.SetTargetSelection(target);
+				recordLastAction?.Invoke(entry);
 			}
 
 			screen.RefreshCurrentItemStates();
@@ -273,33 +294,24 @@ public class PowerGiver
 
 	public static void AddPowerGiverTargetDropdown(NGenericSelectScreen screen)
 	{
-		NLoadoutDropdown dropdown = new()
-		{
-			Name = "PowerGiverTargetDropdown",
-			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-			CustomMinimumSize = new Vector2(256f, 52f)
-		};
-		dropdown.SetItems(LocMan.Loc("POWER_GIVER_TARGET", "Target"),
-			[
-				new LoadoutDropdownOption(PowerGiverTarget.Player.ToString(), LocMan.Loc("POWER_GIVER_TARGET_PLAYER", "Player")),
-				new LoadoutDropdownOption(PowerGiverTarget.Monsters.ToString(), LocMan.Loc("POWER_GIVER_TARGET_MONSTERS", "Monsters"))
-			],
-			PowerGiverStateService.SelectedTarget.ToString());
-		dropdown.SelectedItemChanged += selectedId =>
-		{
-			if (Enum.TryParse(selectedId, ignoreCase: true, out PowerGiverTarget target))
-			{
-				PowerGiverStateService.SetSelectedTarget(target);
-				screen.RefreshCurrentItemStates();
-			}
-		};
-
-		screen.AddCustomSidebarControl(dropdown);
+		LoadoutTargetService.UpsertTargetDropdown(
+			screen,
+			"PowerGiverTargetDropdown",
+			PowerGiverStateService.TargetKey,
+			LoadoutTargetMode.PowerGiver,
+			screen.RefreshCurrentItemStates);
 	}
 
 	private static string PowerId(PowerModel power)
 	{
 		return power.Id.ToString();
+	}
+
+	private static PowerModel ResolveCanonicalPower(string powerId)
+	{
+		return ModelDb.AllPowers.FirstOrDefault(power =>
+			string.Equals(power.Id.ToString(), powerId, StringComparison.Ordinal)
+			|| string.Equals(power.Id.Entry, powerId, StringComparison.OrdinalIgnoreCase));
 	}
 
 	public static string FormatPowerCategory(PowerType type)

@@ -281,7 +281,7 @@ public partial class NGenericSelectScreen : Control
     private void ReleaseFocusInsideScreen()
     {
         Viewport viewport = GetViewport();
-        Control focusOwner = viewport?.GuiGetFocusOwner();
+        Control? focusOwner = viewport?.GuiGetFocusOwner();
 
         if (GodotObject.IsInstanceValid(focusOwner)
             && (focusOwner == this || IsAncestorOf(focusOwner)))
