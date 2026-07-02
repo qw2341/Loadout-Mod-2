@@ -56,8 +56,6 @@ namespace  Loadout.UI;
 
 public partial class NLoadoutPanel : Panel
 {
-	public delegate Task<IReadOnlyList<LastActionEntry>> SelectActivationHandler(NGenericSelectScreen screen, IGenericSelectItem selectItem);
-
 	private const int MaxLoadoutItemInitAttempts = 120;
 	private const string LoadoutBagTargetDropdownName = "LoadoutBagTargetDropdown";
 	private const string LoadoutCauldronTargetKey = "loadout_cauldron";
@@ -66,8 +64,6 @@ public partial class NLoadoutPanel : Panel
 	private const string RemoveRelicTargetDropdownName = "RemoveRelicTargetDropdown";
 	private const string RemoveCardTargetKey = "remove_card";
 	private const string RemoveCardTargetDropdownName = "RemoveCardTargetDropdown";
-	private const string CardModifierTargetKey = "card_modifier";
-	private const string CardModifierTargetDropdownName = "CardModifierTargetDropdown";
 
 
 	[Export]
@@ -168,10 +164,10 @@ public partial class NLoadoutPanel : Panel
 			LastActionService.LoadoutBagKey,
 			ReplayLoadoutBagLastActionAsync);
 		//02 - TRASH BIN
-		CreateAndAddDynamicLoadoutItem(GetSelectedTargetRelics,
+		CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetRelics,
 			new SelectItemAdapter<LoadoutOwnedItem<RelicModel>>
 			{
-				GetId = item => OwnedItemId(item),
+				GetId = item => CommonHelpers.OwnedItemId(item),
 				GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
 				GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)} {item.Model.DynamicDescription}",
 				CreateView = (item, _) => CreateOwnedRelicGridItem(item.Model),
@@ -235,10 +231,10 @@ public partial class NLoadoutPanel : Panel
 		//04 - CARD PRINTER
 		CardPrinter.Initialize();
 		//05 - CARD SHREDDER
-		CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForRemoval,
+		CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForRemoval,
 			new SelectItemAdapter<LoadoutOwnedItem<CardModel>>
 			{
-				GetId = item => OwnedItemId(item),
+				GetId = item => CommonHelpers.OwnedItemId(item),
 				GetName = item => CardPrinter.FormatCardTitle(item.Model),
 				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
 				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
@@ -263,44 +259,7 @@ public partial class NLoadoutPanel : Panel
 				LoadoutTargetMode.PlayersOnly,
 				refresh));
 		//06 - CARD MODIFIER
-		SelectItemAdapter<LoadoutOwnedItem<CardModel>> cardModifierAdapter = new()
-		{
-			GetId = item => OwnedItemId(item),
-			GetName = item => CardPrinter.FormatCardTitle(item.Model),
-			GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
-			CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
-			ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
-			UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
-			BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
-		};
-
-		void BuildCardModifierScreen(SelectScreenBuilder<LoadoutOwnedItem<CardModel>> builder)
-		{
-			builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-			builder.Materialization(SelectMaterializationMode.Lazy);
-			builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
-			builder.ActionButton(
-				"upgrade_all", LocMan.Loc("UPGRADE_ALL", "Upgrade All"),
-				screen =>
-				{
-					HandleUpgradeAllDeckCards(screen);
-					screen.RefreshItemsPreservingViews(GetSelectedTargetDeckCardsForModifier(), cardModifierAdapter, animateRelayout: true);
-				}, CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
-		}
-
-		CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForModifier,
-			cardModifierAdapter,
-			BuildCardModifierScreen,
-			HandleUpgradeCardActivatedAsync,
-			"CardModifier.png",
-			"Card Modifier",
-			"Modifies cards in your current deck.",
-			(screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
-				screen,
-				CardModifierTargetDropdownName,
-				CardModifierTargetKey,
-				LoadoutTargetMode.PlayersOnly,
-				refresh));
+		CardModifier.Initialize();
 				
 		//07 - EVENTFUL COMPASS
 		EventfulCompass.Initialize();
@@ -361,124 +320,6 @@ public partial class NLoadoutPanel : Panel
 		return LoadoutTargetService.BuildOwnedItems(target, player => player.Deck.Cards.ToList());
 	}
 
-	private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetDeckCardsForModifier()
-	{
-		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
-		return LoadoutTargetService.BuildOwnedItems(target, player => player.Deck.Cards.ToList());
-	}
-
-	private static string OwnedItemId<TModel>(LoadoutOwnedItem<TModel> item)
-		where TModel : AbstractModel
-	{
-		return $"{item.OwnerNetId}:{item.Index}:{item.Model.Id}:{RuntimeHelpers.GetHashCode(item.Model)}";
-	}
-
-	private void CreateAndAddDynamicLoadoutItem<TModel>(
-		Func<IReadOnlyList<TModel>> getModels,
-		SelectItemAdapter<TModel> adapter,
-		Action<SelectScreenBuilder<TModel>> builder,
-		SelectActivationHandler onActivated,
-		string textureFileName,
-		string title,
-		string description,
-		Action<NGenericSelectScreen, Action>? afterConfigure = null)
-	{
-		var item = new NLoadoutPanelItem(textureFileName, title, description);
-		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
-		var screen = scene.Instantiate<NGenericSelectScreen>();
-		bool activationInFlight = false;
-		object? configuredRunState = null;
-
-		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
-		{
-			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
-			IReadOnlyList<TModel> models = getModels();
-			// if (models.Count == 0)
-			// 	LogEmptyDynamicScreen(title);
-
-			if (preserveViews)
-				target.ConfigurePreservingViews(models, adapter, builder, animateRelayout: true);
-			else
-				target.Configure(models, adapter, builder);
-
-			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
-
-			if (!preserveViews)
-				target.RequestDeferredVisibleRefresh();
-
-			configuredRunState = currentRunState;
-		}
-
-		void RefreshCurrentModels(NGenericSelectScreen target, bool animateRelayout = false, bool resetScroll = false)
-		{
-			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
-			target.RefreshItemsPreservingViews(getModels(), adapter, animateRelayout, resetScroll);
-			configuredRunState = currentRunState;
-		}
-
-		void RefreshDynamicScreenForOpen(NGenericSelectScreen target)
-		{
-			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
-			if (!target.IsConfiguredForCurrentLocale || !ReferenceEquals(configuredRunState, currentRunState))
-			{
-				ConfigureCurrentModels(target);
-				return;
-			}
-
-			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
-			RefreshCurrentModels(target, resetScroll: true);
-		}
-
-		ConfigureCurrentModels(screen);
-		screen.LocaleChanged += () =>
-		{
-			SelectScreenUiState state = screen.CaptureUiState();
-			ConfigureCurrentModels(screen, preserveViews: false);
-			screen.RestoreUiState(state);
-		};
-		screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
-		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
-		screen.ItemActivated += (selectItem, state) =>
-		{
-			if (activationInFlight)
-				return;
-
-			activationInFlight = true;
-			_ = HandleDynamicItemActivatedAsync(
-				screen,
-				selectItem,
-				onActivated,
-				target => RefreshCurrentModels(target, animateRelayout: true),
-				() => activationInFlight = false);
-		};
-
-		item.BoundScreen = screen;
-		item.BeforeOpen = RefreshDynamicScreenForOpen;
-
-		_itemsContainer.AddChild(item);
-	}
-
-	private static async Task HandleDynamicItemActivatedAsync(
-		NGenericSelectScreen screen,
-		IGenericSelectItem selectItem,
-		SelectActivationHandler onActivated,
-		Action<NGenericSelectScreen> refresh,
-		Action clearActivation)
-	{
-		try
-		{
-			await onActivated(screen, selectItem);
-		}
-		catch (Exception exception)
-		{
-			GD.PushError($"LoadoutPanel: dynamic item activation failed for '{selectItem.Id}' ({selectItem.Name}): {exception}");
-		}
-		finally
-		{
-			refresh(screen);
-			clearActivation();
-		}
-	}
 
 	private static Task<IReadOnlyList<LastActionEntry>> HandleAddRelicActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
@@ -538,7 +379,7 @@ public partial class NLoadoutPanel : Panel
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
-	private static Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	public static Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
@@ -553,35 +394,7 @@ public partial class NLoadoutPanel : Panel
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
-	private static Task<IReadOnlyList<LastActionEntry>> HandleUpgradeCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
-	{
-		if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
-			return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
-
-		LoadoutActionService.Request(
-			LoadoutActionKind.UpgradeCard,
-			item.Model.Id,
-			screen.GetCurrentActivationMultiplier(),
-			LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
-			item.Index,
-			item.Model.Id);
-
-		if (selectItem.View is Control view)
-		{
-			CommonHelpers.PlayCardSmithFeedback(view);
-			CardPrinter.RefreshCardVisuals(view);
-		}
-
-		return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
-	}
-
-	private static void HandleUpgradeAllDeckCards(NGenericSelectScreen _)
-	{
-		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
-		LoadoutActionService.Request(LoadoutActionKind.UpgradeAllDeckCards, ModelId.none, 1, target);
-	}
-
-	private static Task<IReadOnlyList<LastActionEntry>> HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	public static Task<IReadOnlyList<LastActionEntry>> HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not LoadoutOwnedItem<RelicModel> item)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());

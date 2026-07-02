@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.LastActions;
+using Loadout.Services.Targets;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
@@ -48,7 +49,7 @@ public class CommonHelpers
         string textureFileName,
         string title,
         string description,
-        NLoadoutPanel.SelectActivationHandler onActivated = null,
+        CommonHelpers.SelectActivationHandler onActivated = null,
         string lastActionItemKey = null,
         Func<Task> replayQuickAction = null)
     {
@@ -113,6 +114,91 @@ public class CommonHelpers
 
         NLoadoutPanel.ItemsContainer.AddChild(item);
     }
+    
+    public static void CreateAndAddDynamicLoadoutItem<TModel>(
+		Func<IReadOnlyList<TModel>> getModels,
+		SelectItemAdapter<TModel> adapter,
+		Action<SelectScreenBuilder<TModel>> builder,
+		SelectActivationHandler onActivated,
+		string textureFileName,
+		string title,
+		string description,
+		Action<NGenericSelectScreen, Action>? afterConfigure = null)
+	{
+		var item = new NLoadoutPanelItem(textureFileName, title, description);
+		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+		var screen = scene.Instantiate<NGenericSelectScreen>();
+		bool activationInFlight = false;
+		object? configuredRunState = null;
+
+		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
+		{
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
+			IReadOnlyList<TModel> models = getModels();
+			// if (models.Count == 0)
+			// 	LogEmptyDynamicScreen(title);
+
+			if (preserveViews)
+				target.ConfigurePreservingViews(models, adapter, builder, animateRelayout: true);
+			else
+				target.Configure(models, adapter, builder);
+
+			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
+
+			if (!preserveViews)
+				target.RequestDeferredVisibleRefresh();
+
+			configuredRunState = currentRunState;
+		}
+
+		void RefreshCurrentModels(NGenericSelectScreen target, bool animateRelayout = false, bool resetScroll = false)
+		{
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
+			target.RefreshItemsPreservingViews(getModels(), adapter, animateRelayout, resetScroll);
+			configuredRunState = currentRunState;
+		}
+
+		void RefreshDynamicScreenForOpen(NGenericSelectScreen target)
+		{
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
+			if (!target.IsConfiguredForCurrentLocale || !ReferenceEquals(configuredRunState, currentRunState))
+			{
+				ConfigureCurrentModels(target);
+				return;
+			}
+
+			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
+			RefreshCurrentModels(target, resetScroll: true);
+		}
+
+		ConfigureCurrentModels(screen);
+		screen.LocaleChanged += () =>
+		{
+			SelectScreenUiState state = screen.CaptureUiState();
+			ConfigureCurrentModels(screen, preserveViews: false);
+			screen.RestoreUiState(state);
+		};
+		screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
+		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
+		screen.ItemActivated += (selectItem, state) =>
+		{
+			if (activationInFlight)
+				return;
+
+			activationInFlight = true;
+			_ = HandleDynamicItemActivatedAsync(
+				screen,
+				selectItem,
+				onActivated,
+				target => RefreshCurrentModels(target, animateRelayout: true),
+				() => activationInFlight = false);
+		};
+
+		item.BoundScreen = screen;
+		item.BeforeOpen = RefreshDynamicScreenForOpen;
+
+		NLoadoutPanel.ItemsContainer.AddChild(item);
+	}
 
     public static void LogEmptyDynamicScreen(string title)
     {
@@ -516,7 +602,7 @@ public class CommonHelpers
     private static async Task HandleStaticItemActivatedAsync(
         NGenericSelectScreen screen,
         IGenericSelectItem selectItem,
-        NLoadoutPanel.SelectActivationHandler onActivated,
+        CommonHelpers.SelectActivationHandler onActivated,
         Action<IReadOnlyList<LastActionEntry>> recordLastActions,
         Action clearActivation)
     {
@@ -765,4 +851,34 @@ public class CommonHelpers
 
         screen.AddCustomSidebarControl(favoritesDropdown);
     }
+
+    public static string OwnedItemId<TModel>(LoadoutOwnedItem<TModel> item)
+        where TModel : AbstractModel
+    {
+        return $"{item.OwnerNetId}:{item.Index}:{item.Model.Id}:{RuntimeHelpers.GetHashCode(item.Model)}";
+    }
+
+    private static async Task HandleDynamicItemActivatedAsync(
+        NGenericSelectScreen screen,
+        IGenericSelectItem selectItem,
+        CommonHelpers.SelectActivationHandler onActivated,
+        Action<NGenericSelectScreen> refresh,
+        Action clearActivation)
+    {
+        try
+        {
+            await onActivated(screen, selectItem);
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"LoadoutPanel: dynamic item activation failed for '{selectItem.Id}' ({selectItem.Name}): {exception}");
+        }
+        finally
+        {
+            refresh(screen);
+            clearActivation();
+        }
+    }
+
+    public delegate Task<IReadOnlyList<LastActionEntry>> SelectActivationHandler(NGenericSelectScreen screen, IGenericSelectItem selectItem);
 }
