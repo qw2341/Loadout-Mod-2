@@ -37,6 +37,11 @@ public partial class NCardModificationScreen : Control
     private const float ActionButtonWidth = 318f;
     private const float CardEditButtonWidth = 246f;
     private const float ActionButtonHeight = 42f;
+    private const float HoverTipCardGap = 22f;
+    private const float HoverTipViewportMargin = 24f;
+    private const float HoverTipWidth = 360f;
+    private const float HoverTipMinHeight = 220f;
+    private const float HoverTipMaxHeight = 460f;
 
     private LoadoutOwnedItem<CardModel>? _item;
     private List<LoadoutOwnedItem<CardModel>> _items = [];
@@ -50,6 +55,7 @@ public partial class NCardModificationScreen : Control
     private VBoxContainer? _actionControls;
     private HBoxContainer? _cardEditActions;
     private Control? _nativeHoverTipAnchor;
+    private ScrollContainer? _nativeHoverTipScroll;
     private Control? _backButtonMount;
     private Control? _previewHost;
     private Control? _leftArrowMount;
@@ -1036,7 +1042,9 @@ public partial class NCardModificationScreen : Control
 
         try
         {
-            NHoverTipSet.CreateAndShow(_nativeHoverTipAnchor, tips, HoverTipAlignment.Left);
+            NHoverTipSet? tipSet = NHoverTipSet.CreateAndShow(_nativeHoverTipAnchor, tips, HoverTipAlignment.Right);
+            if (tipSet is not null)
+                KeepHoverTipsBelowScreenUi(tipSet);
         }
         catch (Exception exception)
         {
@@ -1048,6 +1056,14 @@ public partial class NCardModificationScreen : Control
     {
         if (_nativeHoverTipAnchor is not null && GodotObject.IsInstanceValid(_nativeHoverTipAnchor))
             NHoverTipSet.Remove(_nativeHoverTipAnchor);
+
+        if (_nativeHoverTipScroll is not null && GodotObject.IsInstanceValid(_nativeHoverTipScroll))
+        {
+            _nativeHoverTipScroll.GetParent()?.RemoveChild(_nativeHoverTipScroll);
+            _nativeHoverTipScroll.QueueFree();
+        }
+
+        _nativeHoverTipScroll = null;
     }
 
     private void LayoutNativeHoverTipAnchor()
@@ -1059,17 +1075,93 @@ public partial class NCardModificationScreen : Control
         if (viewport == Vector2.Zero)
             return;
 
-        float y = 620f;
-        if (_rightControls is not null && GodotObject.IsInstanceValid(_rightControls))
+        float x = viewport.X - HoverTipWidth - HoverTipViewportMargin;
+        float y = MathF.Max(112f, viewport.Y * 0.40f);
+        if (_previewCard is not null && GodotObject.IsInstanceValid(_previewCard))
         {
-            float controlsBottom = _rightControls.GlobalPosition.Y + _rightControls.GetCombinedMinimumSize().Y + 14f;
-            y = Mathf.Clamp(controlsBottom, 112f, MathF.Max(112f, viewport.Y - 360f));
+            Vector2 cardSize = NCard.defaultSize * _previewCard.Scale;
+            x = _previewCard.GlobalPosition.X + (cardSize.X * 0.5f) + HoverTipCardGap;
+            y = _previewCard.GlobalPosition.Y - 34f;
         }
 
         _nativeHoverTipAnchor.SetAnchorsPreset(LayoutPreset.TopLeft);
-        _nativeHoverTipAnchor.Position = new Vector2(viewport.X - 36f, y);
-        _nativeHoverTipAnchor.Size = new Vector2(1f, 1f);
+        x = Mathf.Clamp(x, HoverTipViewportMargin, MathF.Max(HoverTipViewportMargin, viewport.X - HoverTipWidth - HoverTipViewportMargin));
+        y = _rightArrow.GlobalPosition.Y + _rightArrow.Size.Y * 1.5f;
+        _nativeHoverTipAnchor.Position = new Vector2(x, y);
+        _nativeHoverTipAnchor.Size = new Vector2(HoverTipWidth, GetHoverTipAvailableHeight(viewport, y));
         _nativeHoverTipAnchor.MouseFilter = MouseFilterEnum.Ignore;
+    }
+
+    private void KeepHoverTipsBelowScreenUi(NHoverTipSet tipSet)
+    {
+        if (_nativeHoverTipAnchor is null || !GodotObject.IsInstanceValid(_nativeHoverTipAnchor))
+            return;
+
+        ScrollContainer scroll = EnsureNativeHoverTipScroll();
+        tipSet.GetParent()?.RemoveChild(tipSet);
+        scroll.AddChild(tipSet);
+        NormalizeHoverTipSetForScroll(tipSet, scroll);
+        tipSet.ZIndex = 0;
+        tipSet.ZAsRelative = true;
+        tipSet.MouseFilter = MouseFilterEnum.Ignore;
+    }
+
+    private ScrollContainer EnsureNativeHoverTipScroll()
+    {
+        if (_nativeHoverTipAnchor is null)
+            throw new InvalidOperationException("Native hover tip anchor is not available.");
+
+        if (_nativeHoverTipScroll is not null && GodotObject.IsInstanceValid(_nativeHoverTipScroll))
+            return _nativeHoverTipScroll;
+
+        ScrollContainer scroll = new()
+        {
+            Name = "NativeHoverTipScroll",
+            ClipContents = true,
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        scroll.SetAnchorsPreset(LayoutPreset.FullRect);
+        _nativeHoverTipAnchor.AddChild(scroll);
+        scroll.Size = _nativeHoverTipAnchor.Size;
+        scroll.CustomMinimumSize = _nativeHoverTipAnchor.Size;
+        _nativeHoverTipScroll = scroll;
+        return scroll;
+    }
+
+    private static void NormalizeHoverTipSetForScroll(NHoverTipSet tipSet, ScrollContainer scroll)
+    {
+        Control? textTips = tipSet.GetNodeOrNull<Control>("textHoverTipContainer");
+        Control? cardTips = tipSet.GetNodeOrNull<Control>("cardHoverTipContainer");
+        float y = 0f;
+        float width = HoverTipWidth;
+
+        tipSet.Position = Vector2.Zero;
+        if (textTips is not null)
+        {
+            textTips.Position = Vector2.Zero;
+            width = MathF.Max(width, textTips.Size.X);
+            y = MathF.Max(y, textTips.Size.Y);
+        }
+
+        if (cardTips is not null)
+        {
+            cardTips.Position = new Vector2(0f, y > 0f ? y + 5f : 0f);
+            width = MathF.Max(width, cardTips.Size.X);
+            y = MathF.Max(y, cardTips.Position.Y + cardTips.Size.Y);
+        }
+
+        Vector2 contentSize = new(MathF.Max(HoverTipWidth, width), MathF.Max(1f, y));
+        tipSet.Size = contentSize;
+        tipSet.CustomMinimumSize = contentSize;
+        float viewportHeight = MathF.Min(scroll.Size.Y, contentSize.Y);
+        scroll.Size = new Vector2(HoverTipWidth, MathF.Max(1f, viewportHeight));
+        scroll.CustomMinimumSize = scroll.Size;
+    }
+
+    private static float GetHoverTipAvailableHeight(Vector2 viewport, float y)
+    {
+        float available = viewport.Y - y - HoverTipViewportMargin;
+        return Mathf.Clamp(available, HoverTipMinHeight, HoverTipMaxHeight);
     }
 
     private static void ReassignPreviewCardModel(NCard card, CardModel model, bool forceReload)
