@@ -17,7 +17,7 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
@@ -51,6 +51,9 @@ public static class CardModificationStateService
     private static bool _runLoaded;
     private static long? _loadedRunStartTime;
     private static int _displayRevision;
+
+    [ThreadStatic]
+    private static Stack<CardModel>? _locStringContext;
 
     public static void Register()
     {
@@ -124,6 +127,77 @@ public static class CardModificationStateService
 
         title = string.Empty;
         return false;
+    }
+
+    public static void PushLocStringContext(CardModel card)
+    {
+        _locStringContext ??= new Stack<CardModel>();
+        _locStringContext.Push(card);
+    }
+
+    public static void PopLocStringContext()
+    {
+        if (_locStringContext is null || _locStringContext.Count == 0)
+            return;
+
+        _locStringContext.Pop();
+    }
+
+    public static bool TryGetCustomRawLocString(LocString locString, out string rawText)
+    {
+        rawText = string.Empty;
+        if (!string.Equals(locString.LocTable, "cards", StringComparison.Ordinal)
+            || _locStringContext is null
+            || _locStringContext.Count == 0)
+        {
+            return false;
+        }
+
+        CardModel card = _locStringContext.Peek();
+        string titleKey = $"{card.Id.Entry}.title";
+        string descriptionKey = $"{card.Id.Entry}.description";
+        CardModificationState state = GetEffectiveStateForCard(card);
+
+        if (string.Equals(locString.LocEntryKey, titleKey, StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(state.CustomTitle))
+        {
+            rawText = state.CustomTitle!;
+            return true;
+        }
+
+        if (string.Equals(locString.LocEntryKey, descriptionKey, StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(state.CustomDescription))
+        {
+            rawText = state.CustomDescription!;
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool TryGetPortraitPath(CardModel card, bool beta, string currentPath, out string path)
+    {
+        path = string.Empty;
+        CardModificationState state = GetEffectiveStateForCard(card);
+        string? overridePath = beta ? state.BetaPortraitPath : state.PortraitPath;
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            path = overridePath!;
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(state.PoolId))
+            return false;
+
+        CardModel? canonical = ModelDb.AllCards.FirstOrDefault(candidate => candidate.Id.Equals(card.Id));
+        if (canonical is null || ReferenceEquals(canonical, card))
+        {
+            path = currentPath;
+            return true;
+        }
+
+        path = beta ? canonical.BetaPortraitPath : canonical.PortraitPath;
+        return true;
     }
 
     public static bool TryGetCustomDescription(CardModel card, out string description)
@@ -254,13 +328,21 @@ public static class CardModificationStateService
         lock (SyncRoot)
             state = GetEffectivePermanentStateLocked(card.Id);
 
+        if (!HasCardMutations(state))
+            return;
+
+        PrepareCardForState(card, state, includeAffliction: true);
         ApplyStateToCard(card, state);
     }
 
-    public static void ApplyEffectiveStateToOwnedCard(LoadoutOwnedItem<CardModel> item)
+    public static void ApplyEffectiveStateToOwnedCard(LoadoutOwnedItem<CardModel> item, CardModificationState? previousState = null)
     {
-        ResetCardToCanonicalBaseline(item.Model);
-        ApplyStateToCard(item.Model, GetEffectiveState(item));
+        CardModificationState state = GetEffectiveState(item);
+        if (HasCardMutations(state) || HasCardMutations(previousState))
+        {
+            PrepareCardForState(item.Model, state, includeAffliction: true, previousState);
+            ApplyStateToCard(item.Model, state);
+        }
     }
 
     public static void ApplyStateToCard(CardModel? card, CardModificationState? state, bool includeAffliction = true)
@@ -334,13 +416,14 @@ public static class CardModificationStateService
                 return cached.Card;
         }
 
-        if (state.IsEmpty)
+        if (!HasCardMutations(state))
             return card;
 
         try
         {
             CardModel preview = card.ToMutable();
-            ApplyStateToCard(preview, state, includeAffliction: false);
+            PrepareCardForState(preview, state, includeAffliction: true);
+            ApplyStateToCard(preview, state);
             lock (SyncRoot)
                 DisplayCardCache[ToCardKey(card.Id)] = new CachedDisplayCard(revision, preview);
 
@@ -371,8 +454,11 @@ public static class CardModificationStateService
                     state.MergeFrom(temporary);
             }
 
-            ResetCardToCanonicalBaseline(card);
-            ApplyStateToCard(card, state);
+            if (HasCardMutations(state))
+            {
+                PrepareCardForState(card, state, includeAffliction: true);
+                ApplyStateToCard(card, state);
+            }
         }
     }
 
@@ -485,8 +571,11 @@ public static class CardModificationStateService
                     effective.MergeFrom(temporary);
             }
 
-            ResetCardToCanonicalBaseline(card);
-            ApplyStateToCard(card, effective);
+            if (HasCardMutations(effective))
+            {
+                PrepareCardForState(card, effective, includeAffliction: true);
+                ApplyStateToCard(card, effective);
+            }
         }
         catch (Exception exception)
         {
@@ -509,7 +598,50 @@ public static class CardModificationStateService
         EnergyCostCanonicalField?.SetValue(card.EnergyCost, value);
     }
 
-    private static void ResetCardToCanonicalBaseline(CardModel card)
+    private static void PrepareCardForState(
+        CardModel card,
+        CardModificationState state,
+        bool includeAffliction,
+        CardModificationState? previousState = null)
+    {
+        bool clearEnchantment = ShouldClearAttachment(card.Enchantment, state.Enchantment, previousState?.Enchantment);
+        bool clearAffliction = includeAffliction && ShouldClearAttachment(card.Affliction, state.Affliction, previousState?.Affliction);
+
+        if (clearEnchantment && card.Enchantment is not null)
+            CardCmd.ClearEnchantment(card);
+
+        if (clearAffliction && card.Affliction is not null)
+            CardCmd.ClearAffliction(card);
+
+        ResetCardToCanonicalBaseline(card, resetAttachments: false);
+    }
+
+    private static bool ShouldClearAttachment(AbstractModel? current, CardAttachmentSpec? next, CardAttachmentSpec? previous)
+    {
+        if (next is not null)
+            return true;
+
+        return previous?.ModelId is not null
+               && current is not null
+               && MatchesModelId(current, previous.ModelId);
+    }
+
+    private static bool HasCardMutations(CardModificationState? state)
+    {
+        return state is not null
+               && (state.EnergyCost.HasValue
+                   || state.BaseReplayCount.HasValue
+                   || state.BaseStarCost.HasValue
+                   || state.DynamicVars.Count > 0
+                   || !string.IsNullOrWhiteSpace(state.PoolId)
+                   || !string.IsNullOrWhiteSpace(state.Type)
+                   || !string.IsNullOrWhiteSpace(state.Rarity)
+                   || state.KeywordOverrides.Count > 0
+                   || state.Enchantment is not null
+                   || state.Affliction is not null);
+    }
+
+    private static void ResetCardToCanonicalBaseline(CardModel card, bool resetAttachments)
     {
         if (card.IsCanonical)
             return;
@@ -549,8 +681,23 @@ public static class CardModificationStateService
                     card.AddKeyword(keyword);
             }
 
-            ResetEnchantmentToCanonical(card, canonical);
-            ResetAfflictionToCanonical(card, canonical);
+            if (resetAttachments)
+            {
+                ResetEnchantmentToCanonical(card, canonical);
+                ResetAfflictionToCanonical(card, canonical);
+            }
+            else
+            {
+                try
+                {
+                    card.Enchantment?.ModifyCard();
+                    card.FinalizeUpgradeInternal();
+                }
+                catch (Exception exception)
+                {
+                    GD.PushWarning($"CardModification: failed to reapply preserved enchantment for '{card.Id}'. {exception.Message}");
+                }
+            }
         }
         catch (Exception exception)
         {
@@ -572,7 +719,7 @@ public static class CardModificationStateService
             CardCmd.ClearEnchantment(card);
 
         if (card.Enchantment is null)
-            CardCmd.Enchant(canonical.Enchantment.ToMutable(), card, Math.Max(1, canonical.Enchantment.Amount));
+            ForceApplyEnchantment(card, canonical.Enchantment, Math.Max(1, canonical.Enchantment.Amount));
         else
             card.Enchantment.Amount = Math.Max(1, canonical.Enchantment.Amount);
     }
@@ -591,7 +738,7 @@ public static class CardModificationStateService
             CardCmd.ClearAffliction(card);
 
         if (card.Affliction is null)
-            TaskHelper.RunSafely(ApplyAfflictionAsync(card, canonical.Affliction, Math.Max(1, canonical.Affliction.Amount)));
+            ForceApplyAffliction(card, canonical.Affliction, Math.Max(1, canonical.Affliction.Amount));
         else
             card.Affliction.Amount = Math.Max(1, canonical.Affliction.Amount);
     }
@@ -665,19 +812,10 @@ public static class CardModificationStateService
             if (SameModelId(card.Enchantment, canonical))
                 card.Enchantment.Amount = amount;
             else
-                GD.PushWarning($"CardModification: '{card.Id}' already has enchantment '{card.Enchantment.Id}'; skipped '{canonical.Id}'.");
-
-            return;
+                CardCmd.ClearEnchantment(card);
         }
 
-        try
-        {
-            CardCmd.Enchant(canonical.ToMutable(), card, amount);
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning($"CardModification: could not enchant '{card.Id}' with '{canonical.Id}'. {exception.Message}");
-        }
+        ForceApplyEnchantment(card, canonical, amount);
     }
 
     private static void ApplyAfflictionSpec(CardModel card, CardAttachmentSpec? spec)
@@ -703,23 +841,57 @@ public static class CardModificationStateService
             if (SameModelId(card.Affliction, canonical))
                 card.Affliction.Amount = amount;
             else
-                GD.PushWarning($"CardModification: '{card.Id}' already has affliction '{card.Affliction.Id}'; skipped '{canonical.Id}'.");
-
-            return;
+                CardCmd.ClearAffliction(card);
         }
 
-        TaskHelper.RunSafely(ApplyAfflictionAsync(card, canonical, amount));
+        ForceApplyAffliction(card, canonical, amount);
     }
 
-    private static async System.Threading.Tasks.Task ApplyAfflictionAsync(CardModel card, AfflictionModel canonical, int amount)
+    private static void ForceApplyEnchantment(CardModel card, EnchantmentModel canonical, int amount)
     {
         try
         {
-            await CardCmd.Afflict(canonical.ToMutable(), card, amount);
+            if (card.Enchantment is null)
+                card.EnchantInternal(canonical.ToMutable(), amount);
+            else
+                card.Enchantment.Amount = amount;
+
+            card.Enchantment?.ModifyCard();
+            card.FinalizeUpgradeInternal();
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"CardModification: could not afflict '{card.Id}' with '{canonical.Id}'. {exception.Message}");
+            GD.PushWarning($"CardModification: could not force enchant '{card.Id}' with '{canonical.Id}'. {exception.Message}");
+        }
+    }
+
+    private static void ForceApplyAffliction(CardModel card, AfflictionModel canonical, int amount)
+    {
+        try
+        {
+            if (card.Affliction is null)
+            {
+                AfflictionModel mutable = canonical.ToMutable();
+                mutable.Amount = amount;
+                card.AfflictInternal(mutable, amount);
+            }
+            else
+            {
+                card.Affliction.Amount = amount;
+            }
+
+            try
+            {
+                card.Affliction?.AfterApplied();
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"CardModification: force affliction '{canonical.Id}' applied to '{card.Id}', but AfterApplied failed. {exception.Message}");
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: could not force afflict '{card.Id}' with '{canonical.Id}'. {exception.Message}");
         }
     }
 
@@ -1070,6 +1242,12 @@ public sealed class CardModificationState
     [JsonPropertyName("customDescription")]
     public string? CustomDescription { get; set; }
 
+    [JsonPropertyName("portraitPath")]
+    public string? PortraitPath { get; set; }
+
+    [JsonPropertyName("betaPortraitPath")]
+    public string? BetaPortraitPath { get; set; }
+
     [JsonPropertyName("keywordOverrides")]
     public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
 
@@ -1090,6 +1268,8 @@ public sealed class CardModificationState
         && string.IsNullOrWhiteSpace(Rarity)
         && string.IsNullOrWhiteSpace(CustomTitle)
         && string.IsNullOrWhiteSpace(CustomDescription)
+        && string.IsNullOrWhiteSpace(PortraitPath)
+        && string.IsNullOrWhiteSpace(BetaPortraitPath)
         && KeywordOverrides.Count == 0
         && (Enchantment is null || Enchantment.IsEmpty)
         && (Affliction is null || Affliction.IsEmpty);
@@ -1107,6 +1287,8 @@ public sealed class CardModificationState
             Rarity = Rarity,
             CustomTitle = CustomTitle,
             CustomDescription = CustomDescription,
+            PortraitPath = PortraitPath,
+            BetaPortraitPath = BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             Enchantment = Enchantment?.Clone(),
             Affliction = Affliction?.Clone()
@@ -1145,6 +1327,12 @@ public sealed class CardModificationState
         if (other.CustomDescription is not null)
             CustomDescription = other.CustomDescription;
 
+        if (!string.IsNullOrWhiteSpace(other.PortraitPath))
+            PortraitPath = other.PortraitPath;
+
+        if (!string.IsNullOrWhiteSpace(other.BetaPortraitPath))
+            BetaPortraitPath = other.BetaPortraitPath;
+
         foreach ((string key, bool value) in other.KeywordOverrides)
             KeywordOverrides[key] = value;
 
@@ -1173,6 +1361,8 @@ public sealed class CardModificationState
 
         CustomTitle = NormalizeText(CustomTitle);
         CustomDescription = NormalizeText(CustomDescription);
+        PortraitPath = NormalizeText(PortraitPath);
+        BetaPortraitPath = NormalizeText(BetaPortraitPath);
     }
 
     private static string? NormalizeText(string? value)

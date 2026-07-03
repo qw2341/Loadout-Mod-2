@@ -43,6 +43,7 @@ public partial class NCardModificationScreen : Control
     private Action? _parentRefresh;
     private CardModificationState _workingState = new();
     private CardModificationState _temporaryState = new();
+    private CardModificationState _lastAppliedState = new();
     private VBoxContainer? _leftControls;
     private VBoxContainer? _rightControls;
     private VBoxContainer? _actionControls;
@@ -259,9 +260,10 @@ public partial class NCardModificationScreen : Control
     private void LoadItem(LoadoutOwnedItem<CardModel> item)
     {
         _item = item;
-        CardModificationStateService.ApplyEffectiveStateToOwnedCard(item);
         _workingState = CardModificationStateService.GetEffectiveState(item);
         _temporaryState = CardModificationStateService.GetTemporaryState(item);
+        CardModificationStateService.ApplyEffectiveStateToOwnedCard(item);
+        _lastAppliedState = _workingState.Clone();
     }
 
     private void SwitchCard(int direction)
@@ -439,11 +441,12 @@ public partial class NCardModificationScreen : Control
             _workingState.PoolId ?? card.Pool.Id.ToString(),
             selected =>
             {
-                _workingState.PoolId = selected;
-                _temporaryState.PoolId = selected;
-                ApplyWorkingState();
-                Callable.From(RebuildControls).CallDeferred();
-            });
+            _workingState.PoolId = selected;
+            _temporaryState.PoolId = selected;
+            CapturePortraitOverride();
+            ApplyWorkingState();
+            Callable.From(RebuildControls).CallDeferred();
+        });
 
         AddDropdownRow(_leftControls,
             LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")),
@@ -486,7 +489,6 @@ public partial class NCardModificationScreen : Control
             LocMan.Loc("CARD_MOD_ENCHANTMENT", "Enchantment"),
             ModelDb.DebugEnchantments
                 .Where(model => !IsInternalAttachment(model))
-                .Where(model => CanApplyAttachment(model, _item.Model))
                 .OrderBy(GetAttachmentTitle, StringComparer.OrdinalIgnoreCase)
                 .ToList(),
             _workingState.Enchantment,
@@ -501,7 +503,6 @@ public partial class NCardModificationScreen : Control
             LocMan.Loc("CARD_MOD_AFFLICTION", "Affliction"),
             ModelDb.DebugAfflictions
                 .Where(model => !IsInternalAttachment(model))
-                .Where(model => CanApplyAttachment(model, _item.Model))
                 .OrderBy(GetAttachmentTitle, StringComparer.OrdinalIgnoreCase)
                 .ToList(),
             _workingState.Affliction,
@@ -702,11 +703,13 @@ public partial class NCardModificationScreen : Control
         if (_item is null)
             return;
 
+        CardModificationState previousState = _lastAppliedState.Clone();
         CardModificationStateService.SavePermanent(_item.Model.Id, _workingState);
         CardModificationStateService.ResetTemporary(_item);
         _temporaryState = new CardModificationState();
         _workingState = CardModificationStateService.GetEffectiveState(_item);
-        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item);
+        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
+        _lastAppliedState = _workingState.Clone();
         _parentRefresh?.Invoke();
         RebuildControls();
         RefreshPreview(forceReload: true);
@@ -717,10 +720,12 @@ public partial class NCardModificationScreen : Control
         if (_item is null)
             return;
 
+        CardModificationState previousState = _lastAppliedState.Clone();
         CardModificationStateService.ResetTemporary(_item);
         _temporaryState = new CardModificationState();
         _workingState = CardModificationStateService.GetEffectiveState(_item);
-        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item);
+        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
+        _lastAppliedState = _workingState.Clone();
         _parentRefresh?.Invoke();
         RebuildControls();
         RefreshPreview(forceReload: true);
@@ -731,10 +736,12 @@ public partial class NCardModificationScreen : Control
         if (_item is null)
             return;
 
+        CardModificationState previousState = _lastAppliedState.Clone();
         CardModificationStateService.ResetPermanent(_item.Model.Id);
         _workingState = CardModificationStateService.GetEffectiveState(_item);
         _temporaryState = CardModificationStateService.GetTemporaryState(_item);
-        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item);
+        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
+        _lastAppliedState = _workingState.Clone();
         _parentRefresh?.Invoke();
         RebuildControls();
         RefreshPreview(forceReload: true);
@@ -745,8 +752,10 @@ public partial class NCardModificationScreen : Control
         if (_item is null)
             return;
 
+        CardModificationState previousState = _lastAppliedState.Clone();
         CardModificationStateService.SaveTemporary(_item, _temporaryState);
-        CardModificationStateService.ApplyStateToCard(_item.Model, _workingState);
+        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
+        _lastAppliedState = _workingState.Clone();
         _parentRefresh?.Invoke();
         RefreshPreview(forceReload: true);
     }
@@ -855,9 +864,7 @@ public partial class NCardModificationScreen : Control
 
     private Control CreateTextInput(TextEditTarget target)
     {
-        string currentText = target == TextEditTarget.Name
-            ? _workingState.CustomTitle ?? _item?.Model.Title ?? string.Empty
-            : _workingState.CustomDescription ?? _item?.Model.GetDescriptionForPile(PileType.None) ?? string.Empty;
+        string currentText = GetRawCardTextForEditor(target);
 
         if (target == TextEditTarget.Name)
         {
@@ -904,6 +911,39 @@ public partial class NCardModificationScreen : Control
 
         _workingState.CustomDescription = normalized;
         _temporaryState.CustomDescription = normalized;
+    }
+
+    private string GetRawCardTextForEditor(TextEditTarget target)
+    {
+        if (_item is null)
+            return string.Empty;
+
+        try
+        {
+            if (target == TextEditTarget.Name)
+                return _workingState.CustomTitle ?? _item.Model.TitleLocString.GetRawText();
+
+            return _workingState.CustomDescription ?? _item.Model.Description.GetRawText();
+        }
+        catch
+        {
+            return target == TextEditTarget.Name
+                ? _item.Model.Title
+                : _item.Model.GetDescriptionForPile(PileType.None);
+        }
+    }
+
+    private void CapturePortraitOverride()
+    {
+        if (_item is null)
+            return;
+
+        string portraitPath = _workingState.PortraitPath ?? _item.Model.PortraitPath;
+        string betaPortraitPath = _workingState.BetaPortraitPath ?? _item.Model.BetaPortraitPath;
+        _workingState.PortraitPath ??= portraitPath;
+        _workingState.BetaPortraitPath ??= betaPortraitPath;
+        _temporaryState.PortraitPath ??= portraitPath;
+        _temporaryState.BetaPortraitPath ??= betaPortraitPath;
     }
 
     private void CloseTextEditor()
@@ -966,9 +1006,10 @@ public partial class NCardModificationScreen : Control
         LayoutHoverTipHost();
 
         IReadOnlyList<IHoverTip> tips;
+        CardModel hoverTipModel = _previewCard?.Model ?? _item.Model;
         try
         {
-            tips = IHoverTip.RemoveDupes(_item.Model.HoverTips)
+            tips = IHoverTip.RemoveDupes(hoverTipModel.HoverTips)
                 .Where(tip => tip is not null)
                 .ToList();
         }
@@ -987,10 +1028,21 @@ public partial class NCardModificationScreen : Control
         }
 
         _hoverTipHost.Visible = true;
+        _hoverTipHost.ZIndex = 220;
         _hoverTipHost.MouseFilter = MouseFilterEnum.Stop;
         _hoverTipControls.AddChild(CreateSectionLabel(LocMan.Loc("CARD_MOD_HOVER_TIPS", "Hover Tips")));
         foreach (IHoverTip tip in tips)
-            _hoverTipControls.AddChild(CreateHoverTipView(tip));
+        {
+            try
+            {
+                _hoverTipControls.AddChild(CreateHoverTipView(tip));
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"CardModification: failed to render hover tip '{tip.Id}' for '{hoverTipModel.Id}'. {exception.Message}");
+                _hoverTipControls.AddChild(CreateFallbackHoverTipView(tip));
+            }
+        }
     }
 
     private void ClearHoverTips()
@@ -1295,24 +1347,6 @@ public partial class NCardModificationScreen : Control
         string typeName = model.GetType().Name;
         return typeName.StartsWith("Mock", StringComparison.Ordinal)
                || typeName.StartsWith("Deprecated", StringComparison.Ordinal);
-    }
-
-    private static bool CanApplyAttachment(AbstractModel model, CardModel card)
-    {
-        try
-        {
-            return model switch
-            {
-                EnchantmentModel enchantment => enchantment.CanEnchant(card),
-                AfflictionModel affliction => affliction.CanAfflict(card),
-                _ => true
-            };
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning($"CardModification: skipped attachment '{model.Id}' for '{card.Id}'. {exception.Message}");
-            return false;
-        }
     }
 
     private static bool MatchesModelId(AbstractModel model, string id)

@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.UI;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -73,22 +74,81 @@ public static class PlayerPopulateDeckCardModificationPatch
 [HarmonyPatch(typeof(CardModel), nameof(CardModel.Title), MethodType.Getter)]
 public static class CardModelTitleCardModificationPatch
 {
-    [HarmonyPostfix]
-    public static void Postfix(CardModel __instance, ref string __result)
+    [HarmonyPrefix]
+    public static void Prefix(CardModel __instance)
     {
-        if (CardModificationStateService.TryGetCustomTitle(__instance, out string customTitle))
-            __result = customTitle;
+        CardModificationStateService.PushLocStringContext(__instance);
+    }
+
+    [HarmonyFinalizer]
+    public static void Finalizer()
+    {
+        CardModificationStateService.PopLocStringContext();
     }
 }
 
 [HarmonyPatch(typeof(CardModel), nameof(CardModel.GetDescriptionForPile), typeof(PileType), typeof(Creature))]
 public static class CardModelDescriptionCardModificationPatch
 {
+    [HarmonyPrefix]
+    public static void Prefix(CardModel __instance)
+    {
+        CardModificationStateService.PushLocStringContext(__instance);
+    }
+
+    [HarmonyFinalizer]
+    public static void Finalizer()
+    {
+        CardModificationStateService.PopLocStringContext();
+    }
+}
+
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.GetDescriptionForUpgradePreview))]
+public static class CardModelUpgradeDescriptionCardModificationPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(CardModel __instance)
+    {
+        CardModificationStateService.PushLocStringContext(__instance);
+    }
+
+    [HarmonyFinalizer]
+    public static void Finalizer()
+    {
+        CardModificationStateService.PopLocStringContext();
+    }
+}
+
+[HarmonyPatch(typeof(LocString), nameof(LocString.GetRawText))]
+public static class LocStringRawTextCardModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(LocString __instance, ref string __result)
+    {
+        if (CardModificationStateService.TryGetCustomRawLocString(__instance, out string customRawText))
+            __result = customRawText;
+    }
+}
+
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.PortraitPath), MethodType.Getter)]
+public static class CardModelPortraitPathCardModificationPatch
+{
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref string __result)
     {
-        if (CardModificationStateService.TryGetCustomDescription(__instance, out string customDescription))
-            __result = customDescription;
+        if (CardModificationStateService.TryGetPortraitPath(__instance, beta: false, currentPath: __result, out string portraitPath))
+            __result = portraitPath;
+    }
+}
+
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.BetaPortraitPath), MethodType.Getter)]
+public static class CardModelBetaPortraitPathCardModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(CardModel __instance, ref string __result)
+    {
+        if (CardModificationStateService.TryGetPortraitPath(__instance, beta: true, currentPath: __result, out string portraitPath))
+            __result = portraitPath;
     }
 }
 
