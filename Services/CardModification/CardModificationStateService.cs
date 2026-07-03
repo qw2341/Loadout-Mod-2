@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -19,8 +20,18 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
+
+public enum CardModificationOperation
+{
+    None,
+    SaveTemporary,
+    ResetTemporary,
+    ApplyPermanent
+}
 
 public static class CardModificationStateService
 {
@@ -35,6 +46,8 @@ public static class CardModificationStateService
     private static readonly FieldInfo? CardPoolField = AccessTools.Field(typeof(CardModel), "_pool");
     private static readonly FieldInfo? EnergyCostCanonicalField = AccessTools.Field(typeof(CardEnergyCost), "<Canonical>k__BackingField");
     private static readonly MethodInfo? BaseStarCostSetter = AccessTools.PropertySetter(typeof(CardModel), nameof(CardModel.BaseStarCost));
+    private static readonly MethodInfo? NCardFindOnTableByCard = AccessTools.Method(typeof(NCard), nameof(NCard.FindOnTable), [typeof(CardModel)]);
+    private static readonly MethodInfo? NCardFindOnTableByCardAndPile = AccessTools.Method(typeof(NCard), nameof(NCard.FindOnTable), [typeof(CardModel), typeof(PileType)]);
     private static readonly JsonSerializerOptions SnapshotJsonOptions = new()
     {
         AllowTrailingCommas = true,
@@ -45,7 +58,9 @@ public static class CardModificationStateService
     private static PermanentSaveData _permanent = new();
     private static RunSaveData _run = new();
     private static Dictionary<string, CardModificationState> _hostPermanentOverlay = new(StringComparer.Ordinal);
+    private static bool _hasHostPermanentOverlay;
     private static readonly Dictionary<string, CachedDisplayCard> DisplayCardCache = new(StringComparer.Ordinal);
+    private static readonly ConditionalWeakTable<CardModel, LocalCatalogDisplayCardMarker> LocalCatalogDisplayCards = new();
     private static bool _registered;
     private static bool _permanentLoaded;
     private static bool _runLoaded;
@@ -54,6 +69,8 @@ public static class CardModificationStateService
 
     [ThreadStatic]
     private static Stack<CardModel>? _locStringContext;
+
+    public static event Action? StateChanged;
 
     public static void Register()
     {
@@ -86,6 +103,11 @@ public static class CardModificationStateService
         ReloadRunIfNeeded();
     }
 
+    public static void NotifyStateChanged()
+    {
+        RaiseStateChanged();
+    }
+
     public static CardModificationState GetEffectiveState(LoadoutOwnedItem<CardModel> item)
     {
         EnsureLoaded();
@@ -104,8 +126,12 @@ public static class CardModificationStateService
         EnsureLoaded();
         lock (SyncRoot)
         {
-            CardModificationState effective = GetEffectivePermanentStateLocked(card.Id);
-            if (TryGetCopyKey(card, out string? copyKey)
+            CardModificationState effective = IsLocalCatalogDisplayCard(card)
+                ? GetLocalPermanentStateLocked(card.Id)
+                : GetEffectivePermanentStateLocked(card.Id);
+
+            if (!IsLocalCatalogDisplayCard(card)
+                && TryGetCopyKey(card, out string? copyKey)
                 && copyKey is not null
                 && _run.Cards.TryGetValue(copyKey, out CardModificationState? temporary))
             {
@@ -243,29 +269,13 @@ public static class CardModificationStateService
         EnsureLoaded();
         CardModificationState normalized = state.Clone();
         normalized.Normalize();
-        bool changed = false;
-        lock (SyncRoot)
-        {
-            if (_loadedRunStartTime is null)
-            {
-                GD.PushWarning("CardModification: no active run; skipped saving temporary card modifications.");
-                return;
-            }
-
-            string key = GetCopyKey(item);
-            if (normalized.IsEmpty)
-                changed = _run.Cards.Remove(key);
-            else
-            {
-                _run.Cards[key] = normalized;
-                changed = true;
-            }
-
-            SaveRunState();
-        }
+        bool changed = SaveTemporaryLocal(item, normalized);
 
         if (changed)
+        {
             CardModificationMultiplayerSyncService.BroadcastTemporary(item, normalized);
+            RaiseStateChanged();
+        }
     }
 
     public static void SavePermanent(ModelId cardId, CardModificationState state)
@@ -291,16 +301,13 @@ public static class CardModificationStateService
     public static void ResetTemporary(LoadoutOwnedItem<CardModel> item)
     {
         EnsureLoaded();
-        bool changed;
-        lock (SyncRoot)
-        {
-            changed = _run.Cards.Remove(GetCopyKey(item));
-            if (changed)
-                SaveRunState();
-        }
+        bool changed = ResetTemporaryLocal(item);
 
         if (changed)
+        {
             CardModificationMultiplayerSyncService.BroadcastTemporary(item, new CardModificationState());
+            RaiseStateChanged();
+        }
     }
 
     public static void ResetPermanent(ModelId cardId)
@@ -338,10 +345,58 @@ public static class CardModificationStateService
     public static void ApplyEffectiveStateToOwnedCard(LoadoutOwnedItem<CardModel> item, CardModificationState? previousState = null)
     {
         CardModificationState state = GetEffectiveState(item);
-        if (HasCardMutations(state) || HasCardMutations(previousState))
+        bool hasCardMutation = HasCardMutations(state) || HasCardMutations(previousState);
+        if (hasCardMutation)
         {
             PrepareCardForState(item.Model, state, includeAffliction: true, previousState);
             ApplyStateToCard(item.Model, state);
+        }
+
+        if (hasCardMutation || HasVisualOverrides(state) || HasVisualOverrides(previousState))
+            RefreshLiveCardVisuals(item.Model);
+    }
+
+    public static void ApplySynchronizedOperation(
+        CardModificationOperation operation,
+        ModelId modelId,
+        LoadoutTargetSelection target,
+        int ownedItemIndex,
+        ModelId expectedModelId,
+        CardModificationState? state,
+        Player actionPlayer)
+    {
+        EnsureLoaded();
+
+        switch (operation)
+        {
+            case CardModificationOperation.SaveTemporary:
+                if (TryResolveOwnedDeckCard(target, ownedItemIndex, expectedModelId, actionPlayer) is not { } saveItem)
+                    return;
+
+                CardModificationState savePreviousState = GetEffectiveState(saveItem);
+                CardModificationState normalized = state?.Clone() ?? new CardModificationState();
+                normalized.Normalize();
+                SaveTemporaryLocal(saveItem, normalized);
+                ApplyEffectiveStateToOwnedCard(saveItem, savePreviousState);
+                RaiseStateChanged();
+                break;
+
+            case CardModificationOperation.ResetTemporary:
+                if (TryResolveOwnedDeckCard(target, ownedItemIndex, expectedModelId, actionPlayer) is not { } resetItem)
+                    return;
+
+                CardModificationState resetPreviousState = GetEffectiveState(resetItem);
+                ResetTemporaryLocal(resetItem);
+                ApplyEffectiveStateToOwnedCard(resetItem, resetPreviousState);
+                RaiseStateChanged();
+                break;
+
+            case CardModificationOperation.ApplyPermanent:
+                CardModificationState permanentState = state?.Clone() ?? new CardModificationState();
+                permanentState.Normalize();
+                ApplyPermanentStateToLiveCardsFromAction(modelId, permanentState);
+                RaiseStateChanged();
+                break;
         }
     }
 
@@ -409,7 +464,7 @@ public static class CardModificationStateService
         int revision;
         lock (SyncRoot)
         {
-            state = GetEffectivePermanentStateLocked(card.Id);
+            state = GetLocalPermanentStateLocked(card.Id);
             revision = _displayRevision;
             string key = ToCardKey(card.Id);
             if (DisplayCardCache.TryGetValue(key, out CachedDisplayCard cached) && cached.Revision == revision)
@@ -424,6 +479,7 @@ public static class CardModificationStateService
             CardModel preview = card.ToMutable();
             PrepareCardForState(preview, state, includeAffliction: true);
             ApplyStateToCard(preview, state);
+            MarkLocalCatalogDisplayCard(preview);
             lock (SyncRoot)
                 DisplayCardCache[ToCardKey(card.Id)] = new CachedDisplayCard(revision, preview);
 
@@ -438,6 +494,13 @@ public static class CardModificationStateService
 
     public static void ApplySavedRunStateToPlayerDeck(Player? player)
     {
+        ApplySavedRunStateToPlayerDeck(player, null);
+    }
+
+    private static void ApplySavedRunStateToPlayerDeck(
+        Player? player,
+        IReadOnlyDictionary<string, CardModificationState>? previousPermanentStates)
+    {
         if (player is null)
             return;
 
@@ -447,24 +510,140 @@ public static class CardModificationStateService
         {
             CardModel card = cards[index];
             CardModificationState state;
+            CardModificationState? previousState = null;
             lock (SyncRoot)
             {
                 state = GetEffectivePermanentStateLocked(card.Id);
                 if (_run.Cards.TryGetValue(GetCopyKey(player.NetId, index, card.Id), out CardModificationState? temporary))
                     state.MergeFrom(temporary);
+
+                if (previousPermanentStates is not null
+                    && previousPermanentStates.TryGetValue(ToCardKey(card.Id), out CardModificationState? previousPermanent))
+                {
+                    previousState = previousPermanent.Clone();
+                    if (_run.Cards.TryGetValue(GetCopyKey(player.NetId, index, card.Id), out CardModificationState? temporaryForPrevious))
+                        previousState.MergeFrom(temporaryForPrevious);
+                }
             }
 
-            if (HasCardMutations(state))
+            bool hasCardMutation = HasCardMutations(state) || HasCardMutations(previousState);
+            if (hasCardMutation)
             {
-                PrepareCardForState(card, state, includeAffliction: true);
+                PrepareCardForState(card, state, includeAffliction: true, previousState);
                 ApplyStateToCard(card, state);
             }
+
+            if (hasCardMutation || HasVisualOverrides(state) || HasVisualOverrides(previousState))
+                RefreshLiveCardVisuals(card);
         }
     }
 
     public static string GetCopyKey(LoadoutOwnedItem<CardModel> item)
     {
         return GetCopyKey(item.OwnerNetId, item.Index, item.Model.Id);
+    }
+
+    private static bool SaveTemporaryLocal(LoadoutOwnedItem<CardModel> item, CardModificationState normalized)
+    {
+        normalized.Normalize();
+        lock (SyncRoot)
+        {
+            if (_loadedRunStartTime is null)
+            {
+                GD.PushWarning("CardModification: no active run; skipped saving temporary card modifications.");
+                return false;
+            }
+
+            string key = GetCopyKey(item);
+            bool changed;
+            if (normalized.IsEmpty)
+                changed = _run.Cards.Remove(key);
+            else
+            {
+                _run.Cards[key] = normalized.Clone();
+                changed = true;
+            }
+
+            SaveRunState();
+            return changed;
+        }
+    }
+
+    private static bool ResetTemporaryLocal(LoadoutOwnedItem<CardModel> item)
+    {
+        lock (SyncRoot)
+        {
+            bool changed = _run.Cards.Remove(GetCopyKey(item));
+            if (changed)
+                SaveRunState();
+
+            return changed;
+        }
+    }
+
+    private static LoadoutOwnedItem<CardModel>? TryResolveOwnedDeckCard(
+        LoadoutTargetSelection target,
+        int ownedItemIndex,
+        ModelId expectedModelId,
+        Player actionPlayer)
+    {
+        Player? targetPlayer = target.Scope == LoadoutTargetScope.Player && target.PlayerNetId.HasValue
+            ? actionPlayer.RunState.GetPlayer(target.PlayerNetId.Value)
+            : actionPlayer;
+
+        if (targetPlayer is null || ownedItemIndex < 0 || ownedItemIndex >= targetPlayer.Deck.Cards.Count)
+            return null;
+
+        CardModel card = targetPlayer.Deck.Cards[ownedItemIndex];
+        return ModelIdMatches(card, expectedModelId) && card.Pile?.Type == PileType.Deck
+            ? new LoadoutOwnedItem<CardModel>(targetPlayer, ownedItemIndex, card)
+            : null;
+    }
+
+    private static void ApplyPermanentStateToLiveCardsFromAction(ModelId cardId, CardModificationState permanentState)
+    {
+        try
+        {
+            if (!RunManager.Instance.IsInProgress)
+                return;
+
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            if (runState is null)
+                return;
+
+            foreach (Player player in runState.Players)
+            {
+                IReadOnlyList<CardModel> cards = player.Deck.Cards;
+                for (int index = 0; index < cards.Count; index++)
+                {
+                    CardModel card = cards[index];
+                    if (!ModelIdMatches(card, cardId))
+                        continue;
+
+                    CardModificationState previousState = GetEffectiveStateForCopy(player.NetId, index, card.Id.ToString());
+                    CardModificationState effective = permanentState.Clone();
+                    lock (SyncRoot)
+                    {
+                        if (_run.Cards.TryGetValue(GetCopyKey(player.NetId, index, card.Id), out CardModificationState? temporary))
+                            effective.MergeFrom(temporary);
+                    }
+
+                    bool hasCardMutation = HasCardMutations(effective) || HasCardMutations(previousState);
+                    if (hasCardMutation)
+                    {
+                        PrepareCardForState(card, effective, includeAffliction: true, previousState);
+                        ApplyStateToCard(card, effective);
+                    }
+
+                    if (hasCardMutation || HasVisualOverrides(effective) || HasVisualOverrides(previousState))
+                        RefreshLiveCardVisuals(card);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to apply synchronized permanent refresh for '{cardId}'. {exception.Message}");
+        }
     }
 
     public static string ExportPermanentSnapshotJson()
@@ -500,13 +679,18 @@ public static class CardModificationStateService
             }
         }
 
+        Dictionary<string, CardModificationState> previousPermanentStates;
         lock (SyncRoot)
         {
+            previousPermanentStates = _hasHostPermanentOverlay
+                ? CloneStateDictionary(_hostPermanentOverlay)
+                : CloneStateDictionary(_permanent.Cards);
             _hostPermanentOverlay = overlay;
-            InvalidateDisplayCacheLocked();
+            _hasHostPermanentOverlay = true;
         }
 
-        ApplySavedRunStateToLiveDecks();
+        ApplySavedRunStateToLiveDecks(previousPermanentStates);
+        RaiseStateChanged();
     }
 
     public static void ClearHostPermanentOverlay()
@@ -517,8 +701,10 @@ public static class CardModificationStateService
                 return;
 
             _hostPermanentOverlay.Clear();
-            InvalidateDisplayCacheLocked();
+            _hasHostPermanentOverlay = false;
         }
+
+        RaiseStateChanged();
     }
 
     public static void ApplyRemoteTemporaryState(ulong ownerNetId, int index, string cardId, CardModificationState? state)
@@ -527,6 +713,7 @@ public static class CardModificationStateService
         CardModificationState normalized = state?.Clone() ?? new CardModificationState();
         normalized.Normalize();
         string key = $"{ownerNetId}:{index}:{cardId}";
+        CardModificationState previousState = GetEffectiveStateForCopy(ownerNetId, index, cardId);
 
         lock (SyncRoot)
         {
@@ -541,10 +728,15 @@ public static class CardModificationStateService
             }
         }
 
-        TryApplyRemoteTemporaryToLiveCard(ownerNetId, index, cardId);
+        TryApplyRemoteTemporaryToLiveCard(ownerNetId, index, cardId, previousState);
+        RaiseStateChanged();
     }
 
-    private static void TryApplyRemoteTemporaryToLiveCard(ulong ownerNetId, int index, string cardId)
+    private static void TryApplyRemoteTemporaryToLiveCard(
+        ulong ownerNetId,
+        int index,
+        string cardId,
+        CardModificationState? previousState = null)
     {
         try
         {
@@ -571,11 +763,15 @@ public static class CardModificationStateService
                     effective.MergeFrom(temporary);
             }
 
-            if (HasCardMutations(effective))
+            bool hasCardMutation = HasCardMutations(effective) || HasCardMutations(previousState);
+            if (hasCardMutation)
             {
-                PrepareCardForState(card, effective, includeAffliction: true);
+                PrepareCardForState(card, effective, includeAffliction: true, previousState);
                 ApplyStateToCard(card, effective);
             }
+
+            if (hasCardMutation || HasVisualOverrides(effective) || HasVisualOverrides(previousState))
+                RefreshLiveCardVisuals(card);
         }
         catch (Exception exception)
         {
@@ -585,11 +781,36 @@ public static class CardModificationStateService
 
     private static CardModificationState GetEffectivePermanentStateLocked(ModelId cardId)
     {
-        CardModificationState state = GetPermanentStateLocked(cardId).Clone();
-        if (_hostPermanentOverlay.TryGetValue(ToCardKey(cardId), out CardModificationState? hostState))
-            state.MergeFrom(hostState);
+        if (_hasHostPermanentOverlay)
+        {
+            return _hostPermanentOverlay.TryGetValue(ToCardKey(cardId), out CardModificationState? hostState)
+                ? hostState.Clone()
+                : new CardModificationState();
+        }
 
-        return state;
+        return GetLocalPermanentStateLocked(cardId);
+    }
+
+    private static CardModificationState GetLocalPermanentStateLocked(ModelId cardId)
+    {
+        return GetPermanentStateLocked(cardId).Clone();
+    }
+
+    private static CardModificationState GetEffectiveStateForCopy(ulong ownerNetId, int index, string cardId)
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            CardModel? canonical = ModelDb.AllCards.FirstOrDefault(candidate => MatchesModelId(candidate, cardId));
+            CardModificationState effective = canonical is null
+                ? new CardModificationState()
+                : GetEffectivePermanentStateLocked(canonical.Id);
+            string key = $"{ownerNetId}:{index}:{cardId}";
+            if (_run.Cards.TryGetValue(key, out CardModificationState? temporary))
+                effective.MergeFrom(temporary);
+
+            return effective;
+        }
     }
 
     private static void SetEnergyCost(CardModel card, int value)
@@ -639,6 +860,15 @@ public static class CardModificationStateService
                    || state.KeywordOverrides.Count > 0
                    || state.Enchantment is not null
                    || state.Affliction is not null);
+    }
+
+    private static bool HasVisualOverrides(CardModificationState? state)
+    {
+        return state is not null
+               && (!string.IsNullOrWhiteSpace(state.CustomTitle)
+                   || !string.IsNullOrWhiteSpace(state.CustomDescription)
+                   || !string.IsNullOrWhiteSpace(state.PortraitPath)
+                   || !string.IsNullOrWhiteSpace(state.BetaPortraitPath));
     }
 
     private static void ResetCardToCanonicalBaseline(CardModel card, bool resetAttachments)
@@ -745,6 +975,11 @@ public static class CardModificationStateService
 
     public static void ApplySavedRunStateToLiveDecks()
     {
+        ApplySavedRunStateToLiveDecks(null);
+    }
+
+    private static void ApplySavedRunStateToLiveDecks(IReadOnlyDictionary<string, CardModificationState>? previousPermanentStates)
+    {
         try
         {
             if (!RunManager.Instance.IsInProgress)
@@ -755,11 +990,78 @@ public static class CardModificationStateService
                 return;
 
             foreach (Player player in runState.Players)
-                ApplySavedRunStateToPlayerDeck(player);
+                ApplySavedRunStateToPlayerDeck(player, previousPermanentStates);
+
+            RaiseStateChanged();
         }
         catch (Exception exception)
         {
             GD.PushWarning($"CardModification: failed to refresh live decks after permanent overlay update. {exception.Message}");
+        }
+    }
+
+    private static void RefreshLiveCardVisuals(CardModel card)
+    {
+        try
+        {
+            object? cardNodeObject = NCardFindOnTableByCard?.Invoke(null, [card]);
+            cardNodeObject ??= NCardFindOnTableByCardAndPile?.Invoke(null, [card, card.Pile?.Type ?? PileType.None]);
+            if (cardNodeObject is not NCard cardNode)
+                return;
+
+            PileType pileType = card.Pile?.Type ?? PileType.None;
+            cardNode.Model = null;
+            cardNode.Model = card;
+            cardNode.UpdateVisuals(pileType, CardPreviewMode.Normal);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: updated card '{card.Id}', but could not refresh its live visual. {exception.Message}");
+        }
+    }
+
+    private static bool IsLocalCatalogDisplayCard(CardModel card)
+    {
+        return card.IsCanonical || LocalCatalogDisplayCards.TryGetValue(card, out _);
+    }
+
+    private static void MarkLocalCatalogDisplayCard(CardModel card)
+    {
+        try
+        {
+            LocalCatalogDisplayCards.GetValue(card, _ => new LocalCatalogDisplayCardMarker());
+        }
+        catch
+        {
+            // Weak-table marking is best effort; canonical cards remain local-catalog by default.
+        }
+    }
+
+    private static Dictionary<string, CardModificationState> CloneStateDictionary(
+        Dictionary<string, CardModificationState> states)
+    {
+        return states.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.Clone(),
+            StringComparer.Ordinal);
+    }
+
+    private static void RaiseStateChanged()
+    {
+        Action? handlers = StateChanged;
+        if (handlers is null)
+            return;
+
+        foreach (Action handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler();
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"CardModification: state-changed handler failed. {exception.Message}");
+            }
         }
     }
 
@@ -925,6 +1227,14 @@ public static class CardModificationStateService
                || string.Equals(model.Id.Entry, id, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool ModelIdMatches(AbstractModel model, ModelId id)
+    {
+        return id == ModelId.none
+               || model.Id == id
+               || string.Equals(model.Id.ToString(), id.ToString(), StringComparison.Ordinal)
+               || string.Equals(model.Id.Entry, id.Entry, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool SameModelId(AbstractModel left, AbstractModel right)
     {
         return string.Equals(left.Id.ToString(), right.Id.ToString(), StringComparison.Ordinal);
@@ -976,6 +1286,7 @@ public static class CardModificationStateService
             _permanent = new PermanentSaveData();
             _run = new RunSaveData();
             _hostPermanentOverlay.Clear();
+            _hasHostPermanentOverlay = false;
             InvalidateDisplayCacheLocked();
         }
 
@@ -1141,6 +1452,10 @@ public static class CardModificationStateService
     private static string GetRunPath(long runStartTime)
     {
         return SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, runStartTime);
+    }
+
+    private sealed class LocalCatalogDisplayCardMarker
+    {
     }
 
     private readonly record struct CachedDisplayCard(int Revision, CardModel Card);

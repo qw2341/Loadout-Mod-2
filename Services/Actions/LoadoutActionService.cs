@@ -5,8 +5,10 @@ namespace Loadout.Services.Actions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Services.CardModification;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Combat;
@@ -18,11 +20,8 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
-using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
-using MegaCrit.Sts2.Core.Nodes.Cards;
-using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -35,7 +34,8 @@ public enum LoadoutActionKind
     UpgradeCard,
     UpgradeAllDeckCards,
     RemoveRelic,
-    AdjustPower
+    AdjustPower,
+    CardModification
 }
 
 public static class LoadoutActionService
@@ -46,7 +46,9 @@ public static class LoadoutActionService
         int amount,
         LoadoutTargetSelection target,
         int ownedItemIndex = -1,
-        ModelId? expectedModelId = null)
+        ModelId? expectedModelId = null,
+        CardModificationOperation cardModificationOperation = CardModificationOperation.None,
+        string? cardModificationStateJson = null)
     {
         Player? localPlayer = GetLocalRunPlayer();
         if (localPlayer is null)
@@ -60,9 +62,31 @@ public static class LoadoutActionService
             target,
             ownedItemIndex,
             expectedModelId ?? ModelId.none,
-            CombatManager.Instance.IsInProgress);
+            CombatManager.Instance.IsInProgress,
+            cardModificationOperation,
+            cardModificationStateJson ?? string.Empty);
         RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(action);
         return true;
+    }
+
+    public static bool RequestCardModification(
+        CardModificationOperation operation,
+        LoadoutOwnedItem<CardModel> item,
+        CardModificationState? state = null)
+    {
+        string stateJson = state is null
+            ? string.Empty
+            : JsonSerializer.Serialize(state);
+
+        return Request(
+            LoadoutActionKind.CardModification,
+            item.Model.Id,
+            1,
+            LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+            item.Index,
+            item.Model.Id,
+            operation,
+            stateJson);
     }
 
     private static Player? GetLocalRunPlayer()
@@ -91,7 +115,9 @@ public sealed class LoadoutGameAction : GameAction
         LoadoutTargetSelection target,
         int ownedItemIndex,
         ModelId expectedModelId,
-        bool enqueuedInCombat)
+        bool enqueuedInCombat,
+        CardModificationOperation cardModificationOperation = CardModificationOperation.None,
+        string cardModificationStateJson = "")
     {
         Player = player;
         Kind = kind;
@@ -101,6 +127,8 @@ public sealed class LoadoutGameAction : GameAction
         OwnedItemIndex = ownedItemIndex;
         ExpectedModelId = expectedModelId;
         WasEnqueuedInCombat = enqueuedInCombat;
+        CardModificationOperation = cardModificationOperation;
+        CardModificationStateJson = cardModificationStateJson ?? string.Empty;
     }
 
     public override ulong OwnerId => Player.NetId;
@@ -117,6 +145,8 @@ public sealed class LoadoutGameAction : GameAction
     public int OwnedItemIndex { get; }
     public ModelId ExpectedModelId { get; }
     public bool WasEnqueuedInCombat { get; }
+    public CardModificationOperation CardModificationOperation { get; }
+    public string CardModificationStateJson { get; }
 
     protected override async Task ExecuteAction()
     {
@@ -133,18 +163,24 @@ public sealed class LoadoutGameAction : GameAction
                 break;
             case LoadoutActionKind.RemoveCard:
                 await RemoveDeckCardAsync();
+                CardModificationStateService.NotifyStateChanged();
                 break;
             case LoadoutActionKind.UpgradeCard:
                 UpgradeDeckCard();
+                CardModificationStateService.NotifyStateChanged();
                 break;
             case LoadoutActionKind.UpgradeAllDeckCards:
                 UpgradeAllDeckCards();
+                CardModificationStateService.NotifyStateChanged();
                 break;
             case LoadoutActionKind.RemoveRelic:
                 await RemoveRelicAsync();
                 break;
             case LoadoutActionKind.AdjustPower:
                 PowerGiverStateService.AdjustCounterFromAction(ModelId.ToString(), Amount, Target, Player);
+                break;
+            case LoadoutActionKind.CardModification:
+                ApplyCardModification();
                 break;
         }
     }
@@ -159,7 +195,9 @@ public sealed class LoadoutGameAction : GameAction
             target = Target,
             ownedItemIndex = OwnedItemIndex,
             expectedModelId = ExpectedModelId,
-            enqueuedInCombat = WasEnqueuedInCombat
+            enqueuedInCombat = WasEnqueuedInCombat,
+            cardModificationOperation = CardModificationOperation,
+            cardModificationStateJson = CardModificationStateJson
         };
     }
 
@@ -203,18 +241,19 @@ public sealed class LoadoutGameAction : GameAction
             }
 
             if (CombatManager.Instance.IsInProgress)
-                await AddCardCopiesToCombatHandIgnoringLimitAsync(targetPlayer, canonicalCard);
+                await AddGeneratedCardCopiesToCombatHandAsync(targetPlayer, canonicalCard);
         }
+
+        CardModificationStateService.NotifyStateChanged();
     }
 
-    private async Task AddCardCopiesToCombatHandIgnoringLimitAsync(Player targetPlayer, CardModel canonicalCard)
+    private async Task AddGeneratedCardCopiesToCombatHandAsync(Player targetPlayer, CardModel canonicalCard)
     {
         if (Amount <= 0)
             return;
 
         ICombatState? combatState = targetPlayer.Creature.CombatState;
-        CardPile? hand = CardPile.Get(PileType.Hand, targetPlayer);
-        if (combatState is null || hand is null)
+        if (combatState is null)
             return;
 
         for (int i = 0; i < Amount; i++)
@@ -222,43 +261,13 @@ public sealed class LoadoutGameAction : GameAction
             try
             {
                 CardModel card = combatState.CreateCard(canonicalCard, targetPlayer);
-                CombatManager.Instance.History.CardGenerated(combatState, card, targetPlayer);
-                hand.AddInternal(card);
-                hand.InvokeCardAddFinished();
-                AddCardToLocalHandNode(card);
-                await Hook.AfterCardEnteredCombat(combatState, card);
-                await Hook.AfterCardChangedPiles(targetPlayer.RunState, combatState, card, PileType.None, null);
-                await Hook.AfterCardGeneratedForCombat(combatState, card, targetPlayer);
+                await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Hand, targetPlayer);
             }
             catch (Exception exception)
             {
                 GD.PushWarning($"LoadoutPanel: stopped adding combat hand card '{ModelId}' to player {targetPlayer.NetId} after {i}/{Amount}. {exception.Message}");
                 break;
             }
-        }
-    }
-
-    private static void AddCardToLocalHandNode(CardModel card)
-    {
-        try
-        {
-            if (!LocalContext.IsMe(card.Owner))
-                return;
-
-            NPlayerHand? handNode = NPlayerHand.Instance;
-            if (handNode is null)
-                return;
-
-            NCard? cardNode = NCard.Create(card);
-            if (cardNode is null)
-                return;
-
-            cardNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
-            handNode.Add(cardNode);
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning($"LoadoutPanel: added card '{card.Id}' to hand, but could not create its hand visual. {exception.Message}");
         }
     }
 
@@ -347,6 +356,31 @@ public sealed class LoadoutGameAction : GameAction
         await RelicCmd.Remove(relic);
     }
 
+    private void ApplyCardModification()
+    {
+        CardModificationState? state = null;
+        if (!string.IsNullOrWhiteSpace(CardModificationStateJson))
+        {
+            try
+            {
+                state = JsonSerializer.Deserialize<CardModificationState>(CardModificationStateJson);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"CardModification: failed to deserialize synchronized state. {exception.Message}");
+            }
+        }
+
+        CardModificationStateService.ApplySynchronizedOperation(
+            CardModificationOperation,
+            ModelId,
+            Target,
+            OwnedItemIndex,
+            ExpectedModelId,
+            state,
+            Player);
+    }
+
     private CardModel? TryGetOwnedDeckCard()
     {
         Player? targetPlayer = ResolveSingleTargetPlayer();
@@ -415,10 +449,22 @@ public struct NetLoadoutGameAction : INetAction, IPacketSerializable
     public int ownedItemIndex;
     public ModelId expectedModelId;
     public bool enqueuedInCombat;
+    public CardModificationOperation cardModificationOperation;
+    public string cardModificationStateJson;
 
     public GameAction ToGameAction(Player player)
     {
-        return new LoadoutGameAction(player, kind, modelId, amount, target, ownedItemIndex, expectedModelId, enqueuedInCombat);
+        return new LoadoutGameAction(
+            player,
+            kind,
+            modelId,
+            amount,
+            target,
+            ownedItemIndex,
+            expectedModelId,
+            enqueuedInCombat,
+            cardModificationOperation,
+            cardModificationStateJson ?? string.Empty);
     }
 
     public void Serialize(PacketWriter writer)
@@ -433,6 +479,8 @@ public struct NetLoadoutGameAction : INetAction, IPacketSerializable
         writer.WriteInt(ownedItemIndex);
         writer.WriteFullModelId(expectedModelId);
         writer.WriteBool(enqueuedInCombat);
+        writer.WriteInt((int)cardModificationOperation, 8);
+        writer.WriteString(cardModificationStateJson ?? string.Empty);
     }
 
     public void Deserialize(PacketReader reader)
@@ -446,6 +494,8 @@ public struct NetLoadoutGameAction : INetAction, IPacketSerializable
         ownedItemIndex = reader.ReadInt();
         expectedModelId = reader.ReadFullModelId();
         enqueuedInCombat = reader.ReadBool();
+        cardModificationOperation = (CardModificationOperation)reader.ReadInt(8);
+        cardModificationStateJson = reader.ReadString();
     }
 
     public override string ToString()

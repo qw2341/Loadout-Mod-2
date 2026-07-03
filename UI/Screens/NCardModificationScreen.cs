@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using Loadout.PanelItems;
+using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.Targets;
 using Loadout.UI.Managers;
@@ -67,6 +68,7 @@ public partial class NCardModificationScreen : Control
     private MegaLabel? _titleLabel;
     private Control? _textEditorOverlay;
     private bool _signalsBound;
+    private bool _stateEventsBound;
 
     public static NCardModificationScreen Create()
     {
@@ -101,6 +103,7 @@ public partial class NCardModificationScreen : Control
         MouseFilter = MouseFilterEnum.Stop;
         ZIndex = 120;
         BindSceneNodes();
+        BindStateEvents();
         RebuildScreen();
     }
 
@@ -125,8 +128,46 @@ public partial class NCardModificationScreen : Control
 
     public override void _ExitTree()
     {
+        UnbindStateEvents();
         CloseTextEditor();
         ClearHoverTips();
+    }
+
+    private void BindStateEvents()
+    {
+        if (_stateEventsBound)
+            return;
+
+        CardModificationStateService.StateChanged += OnCardModificationStateChanged;
+        _stateEventsBound = true;
+    }
+
+    private void UnbindStateEvents()
+    {
+        if (!_stateEventsBound)
+            return;
+
+        CardModificationStateService.StateChanged -= OnCardModificationStateChanged;
+        _stateEventsBound = false;
+    }
+
+    private void OnCardModificationStateChanged()
+    {
+        if (!IsInsideTree() || _item is null)
+            return;
+
+        Callable.From(RefreshFromAppliedState).CallDeferred();
+    }
+
+    private void RefreshFromAppliedState()
+    {
+        if (_item is null || !IsInsideTree())
+            return;
+
+        LoadItem(_item);
+        _parentRefresh?.Invoke();
+        RebuildControls();
+        RefreshPreview(forceReload: true);
     }
 
     private void RebuildScreen()
@@ -718,7 +759,22 @@ public partial class NCardModificationScreen : Control
             return;
 
         CardModificationState previousState = _lastAppliedState.Clone();
-        CardModificationStateService.SavePermanent(_item.Model.Id, _workingState);
+        CardModificationState permanentState = _workingState.Clone();
+        CardModificationStateService.SavePermanent(_item.Model.Id, permanentState);
+        bool queuedPermanent = LoadoutActionService.RequestCardModification(
+            CardModificationOperation.ApplyPermanent,
+            _item,
+            permanentState);
+        bool queuedTemporaryReset = LoadoutActionService.RequestCardModification(
+            CardModificationOperation.ResetTemporary,
+            _item);
+
+        if (queuedPermanent || queuedTemporaryReset)
+        {
+            _temporaryState = new CardModificationState();
+            return;
+        }
+
         CardModificationStateService.ResetTemporary(_item);
         _temporaryState = new CardModificationState();
         _workingState = CardModificationStateService.GetEffectiveState(_item);
@@ -735,6 +791,12 @@ public partial class NCardModificationScreen : Control
             return;
 
         CardModificationState previousState = _lastAppliedState.Clone();
+        if (LoadoutActionService.RequestCardModification(CardModificationOperation.ResetTemporary, _item))
+        {
+            _temporaryState = new CardModificationState();
+            return;
+        }
+
         CardModificationStateService.ResetTemporary(_item);
         _temporaryState = new CardModificationState();
         _workingState = CardModificationStateService.GetEffectiveState(_item);
@@ -752,6 +814,14 @@ public partial class NCardModificationScreen : Control
 
         CardModificationState previousState = _lastAppliedState.Clone();
         CardModificationStateService.ResetPermanent(_item.Model.Id);
+        if (LoadoutActionService.RequestCardModification(
+                CardModificationOperation.ApplyPermanent,
+                _item,
+                new CardModificationState()))
+        {
+            return;
+        }
+
         _workingState = CardModificationStateService.GetEffectiveState(_item);
         _temporaryState = CardModificationStateService.GetTemporaryState(_item);
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
@@ -767,6 +837,14 @@ public partial class NCardModificationScreen : Control
             return;
 
         CardModificationState previousState = _lastAppliedState.Clone();
+        if (LoadoutActionService.RequestCardModification(
+                CardModificationOperation.SaveTemporary,
+                _item,
+                _temporaryState))
+        {
+            return;
+        }
+
         CardModificationStateService.SaveTemporary(_item, _temporaryState);
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
         _lastAppliedState = _workingState.Clone();

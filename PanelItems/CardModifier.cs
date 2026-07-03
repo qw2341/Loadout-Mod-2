@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
+using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
 using Loadout.UI;
@@ -20,6 +21,7 @@ public class CardModifier
     private const string CardModifierTargetDropdownName = "CardModifierTargetDropdown";
     public static void Initialize()
     {
+        NGenericSelectScreen activeScreen = null;
         SelectItemAdapter<LoadoutOwnedItem<CardModel>> cardModifierAdapter = new()
         {
             GetId = item => CommonHelpers.OwnedItemId(item),
@@ -41,12 +43,28 @@ public class CardModifier
             builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
             builder.ActionButton(
                 "upgrade_all", LocMan.Loc("UPGRADE_ALL", "Upgrade All"),
-                screen =>
-                {
-                    HandleUpgradeAllDeckCards(screen);
-                    screen.RefreshItemsPreservingViews(GetSelectedTargetDeckCardsForModifier(), cardModifierAdapter, animateRelayout: true);
-                }, CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
+                HandleUpgradeAllDeckCards,
+                CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
         }
+
+        void RefreshActiveModifierScreen()
+        {
+            if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen) || !activeScreen.IsInsideTree())
+                return;
+
+            Callable.From(() =>
+            {
+                if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen) || !activeScreen.IsInsideTree())
+                    return;
+
+                activeScreen.RefreshItemsPreservingViews(
+                    GetSelectedTargetDeckCardsForModifier(),
+                    cardModifierAdapter,
+                    animateRelayout: true);
+            }).CallDeferred();
+        }
+
+        CardModificationStateService.StateChanged += RefreshActiveModifierScreen;
 
         CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForModifier,
             cardModifierAdapter,
@@ -55,12 +73,16 @@ public class CardModifier
             "CardModifier.png",
             "Card Modifier",
             "Modifies cards in your current deck.",
-            (screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
-                screen,
-                CardModifierTargetDropdownName,
-                CardModifierTargetKey,
-                LoadoutTargetMode.PlayersOnly,
-                refresh));
+            (screen, refresh) =>
+            {
+                activeScreen = screen;
+                LoadoutTargetService.UpsertTargetDropdown(
+                    screen,
+                    CardModifierTargetDropdownName,
+                    CardModifierTargetKey,
+                    LoadoutTargetMode.PlayersOnly,
+                    refresh);
+            });
 
     }
 
@@ -69,7 +91,7 @@ public class CardModifier
         if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
             return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
 
-        LoadoutActionService.Request(
+        bool requested = LoadoutActionService.Request(
             LoadoutActionKind.UpgradeCard,
             item.Model.Id,
             screen.GetCurrentActivationMultiplier(),
@@ -77,11 +99,8 @@ public class CardModifier
             item.Index,
             item.Model.Id);
 
-        if (selectItem.View is Control view)
-        {
+        if (requested && selectItem.View is Control view)
             CommonHelpers.PlayCardSmithFeedback(view);
-            CardPrinter.RefreshCardVisuals(view);
-        }
 
         return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
     }
