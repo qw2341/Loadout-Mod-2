@@ -5,6 +5,10 @@ SEARCH,Search,搜索
 SORT,Sort,排序
 FILTERS,Filters,筛选
 ALL,All,全部
+ADD,Add,添加
+REMOVE,Remove,移除
+SAVE,Save,保存
+CANCEL,Cancel,取消
 LOADOUT_PANEL_ITEM_TITLE,{Title},{Title}
 SELECTED_COUNT,Selected: {0},已选择: {0}
 FILTER_GROUP_CLASS,Class,职业
@@ -22,6 +26,21 @@ LOADOUT_TARGET_ALL_MONSTERS,All Monsters,所有怪物
 LOADOUT_TARGET_PLAYER_FALLBACK,Player {0},玩家 {0}
 SORT_NAME,Name,名称
 SORT_ID,ID,ID
+SAVE_PERMANENT,Save Permanent,永久保存
+RESET_TEMPORARY,Reset Temporary,重置临时修改
+RESET_PERMANENT,Reset Permanent,重置永久修改
+CARD_MOD_NUMERIC_STATS,Numeric Stats,数值属性
+CARD_MOD_ENERGY_COST,Energy Cost,能量消耗
+CARD_MOD_REPLAY_COUNT,Replay Count,重复次数
+CARD_MOD_STAR_COST,Star Cost,星星消耗
+CARD_MOD_CARD_FIELDS,Card Fields,卡牌字段
+CARD_MOD_ATTACHMENTS,Attachments,附加效果
+CARD_MOD_ENCHANTMENT,Enchantment,附魔
+CARD_MOD_AFFLICTION,Affliction,负面附加
+CARD_MOD_MODIFY_NAME,Modify Name,修改名称
+CARD_MOD_MODIFY_DESCRIPTION,Modify Description,修改描述
+CARD_MOD_NO_VALID_ATTACHMENTS,No valid attachments available,没有可用的附加效果
+CARD_MOD_HOVER_TIPS,Hover Tips,提示
 SORT_COST,Cost,费用
 SORT_LIBRARY,Library,图鉴
 VIEW_UPGRADES,View Upgrades,查看升级

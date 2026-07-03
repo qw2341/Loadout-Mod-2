@@ -290,7 +290,7 @@ public class CardPrinter
 	    }
     }
 
-    private static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()
+    public static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()
     {
 	    return CommonHelpers.BuildOrderedPools(
 		    ModelDb.AllCards

@@ -14,6 +14,7 @@ using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -46,6 +47,8 @@ public partial class NCardModificationScreen : Control
     private VBoxContainer? _rightControls;
     private VBoxContainer? _actionControls;
     private HBoxContainer? _cardEditActions;
+    private ScrollContainer? _hoverTipHost;
+    private VBoxContainer? _hoverTipControls;
     private Control? _backButtonMount;
     private Control? _previewHost;
     private Control? _leftArrowMount;
@@ -100,14 +103,24 @@ public partial class NCardModificationScreen : Control
         {
             ApplyFullRectLayout(this);
             RefreshPreview(forceReload: false);
+            LayoutHoverTipHost();
         }
 
         if (what == NotificationVisibilityChanged)
         {
             RefreshNativeButtonState();
             if (!Visible)
+            {
                 CloseTextEditor();
+                ClearHoverTips();
+            }
         }
+    }
+
+    public override void _ExitTree()
+    {
+        CloseTextEditor();
+        ClearHoverTips();
     }
 
     private void RebuildScreen()
@@ -127,6 +140,8 @@ public partial class NCardModificationScreen : Control
         _rightControls = GetNodeOrNull<VBoxContainer>("%RightControls");
         _actionControls = GetNodeOrNull<VBoxContainer>("%ActionRow");
         _cardEditActions = GetNodeOrNull<HBoxContainer>("%CardEditActions");
+        _hoverTipHost = GetNodeOrNull<ScrollContainer>("%HoverTipHost");
+        _hoverTipControls = GetNodeOrNull<VBoxContainer>("%HoverTipControls");
         _previewHost = GetNodeOrNull<Control>("%PreviewCardHost");
         _leftArrowMount = GetNodeOrNull<Control>("%LeftArrow");
         _rightArrowMount = GetNodeOrNull<Control>("%RightArrow");
@@ -409,12 +424,17 @@ public partial class NCardModificationScreen : Control
         CardModel card = _item.Model;
         _leftControls.AddChild(CreateSectionLabel(LocMan.Loc("CARD_MOD_CARD_FIELDS", "Card Fields")));
 
-        IReadOnlyList<CardPoolModel> pools = ModelDb.AllCardPools
+        List<CardPoolModel> pools = CardPrinter.BuildOrderedCardPools()
             .Where(pool => !CommonHelpers.IsInternalPool(pool) || CommonHelpers.SamePool(pool, card.Pool))
-            .OrderBy(CommonHelpers.GetPoolLabel, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        if (!pools.Any(pool => CommonHelpers.SamePool(pool, card.Pool))
+            && !CommonHelpers.IsInternalPool(card.Pool))
+        {
+            pools.Add(card.Pool);
+        }
+
         AddDropdownRow(_leftControls,
-            LocMan.Loc("CARD_MOD_CLASS", "Class"),
+            LocMan.Loc("FILTER_GROUP_CLASS", "Class"),
             pools.Select(pool => new LoadoutDropdownOption(pool.Id.ToString(), CommonHelpers.GetPoolLabel(pool))),
             _workingState.PoolId ?? card.Pool.Id.ToString(),
             selected =>
@@ -422,10 +442,11 @@ public partial class NCardModificationScreen : Control
                 _workingState.PoolId = selected;
                 _temporaryState.PoolId = selected;
                 ApplyWorkingState();
+                Callable.From(RebuildControls).CallDeferred();
             });
 
         AddDropdownRow(_leftControls,
-            LocMan.Loc("CARD_MOD_TYPE", "Type"),
+            LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")),
             Enum.GetValues<CardType>()
                 .Where(type => type != CardType.None)
                 .Select(type => new LoadoutDropdownOption(type.ToString(), CardPrinter.GetCardTypeLabel(type))),
@@ -435,10 +456,11 @@ public partial class NCardModificationScreen : Control
                 _workingState.Type = selected;
                 _temporaryState.Type = selected;
                 ApplyWorkingState();
+                Callable.From(RebuildControls).CallDeferred();
             });
 
         AddDropdownRow(_leftControls,
-            LocMan.Loc("CARD_MOD_RARITY", "Rarity"),
+            LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity")),
             Enum.GetValues<CardRarity>()
                 .Where(rarity => rarity != CardRarity.None)
                 .OrderBy(CardPrinter.GetCardRaritySortValue)
@@ -449,6 +471,7 @@ public partial class NCardModificationScreen : Control
                 _workingState.Rarity = selected;
                 _temporaryState.Rarity = selected;
                 ApplyWorkingState();
+                Callable.From(RebuildControls).CallDeferred();
             });
     }
 
@@ -463,6 +486,7 @@ public partial class NCardModificationScreen : Control
             LocMan.Loc("CARD_MOD_ENCHANTMENT", "Enchantment"),
             ModelDb.DebugEnchantments
                 .Where(model => !IsInternalAttachment(model))
+                .Where(model => CanApplyAttachment(model, _item.Model))
                 .OrderBy(GetAttachmentTitle, StringComparer.OrdinalIgnoreCase)
                 .ToList(),
             _workingState.Enchantment,
@@ -477,6 +501,7 @@ public partial class NCardModificationScreen : Control
             LocMan.Loc("CARD_MOD_AFFLICTION", "Affliction"),
             ModelDb.DebugAfflictions
                 .Where(model => !IsInternalAttachment(model))
+                .Where(model => CanApplyAttachment(model, _item.Model))
                 .OrderBy(GetAttachmentTitle, StringComparer.OrdinalIgnoreCase)
                 .ToList(),
             _workingState.Affliction,
@@ -493,7 +518,7 @@ public partial class NCardModificationScreen : Control
         if (_item is null || _rightControls is null)
             return;
 
-        _rightControls.AddChild(CreateSectionLabel(LocMan.Loc("CARD_MOD_KEYWORDS", "Keywords")));
+        _rightControls.AddChild(CreateSectionLabel(LocMan.Loc("FILTER_GROUP_KEYWORD", "Keyword")));
 
         GridContainer grid = new()
         {
@@ -553,6 +578,11 @@ public partial class NCardModificationScreen : Control
         if (hasCurrent)
         {
             TModel? current = models.FirstOrDefault(model => MatchesModelId(model, selectedId));
+            string currentTitle = current is not null
+                ? GetAttachmentTitle(current)
+                : currentModel is not null && MatchesModelId(currentModel, selectedId)
+                    ? GetAttachmentTitle(currentModel)
+                    : selectedId;
             HBoxContainer currentRow = new()
             {
                 CustomMinimumSize = new Vector2(0f, 44f),
@@ -560,7 +590,7 @@ public partial class NCardModificationScreen : Control
             };
             currentRow.AddThemeConstantOverride("separation", 8);
             MegaLabel currentLabel = CreateLabel(
-                current is null ? selectedId : GetAttachmentTitle(current),
+                currentTitle,
                 20,
                 StsColors.cream);
             currentLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
@@ -583,6 +613,16 @@ public partial class NCardModificationScreen : Control
         IReadOnlyList<LoadoutDropdownOption> options = models
             .Select(model => new LoadoutDropdownOption(model.Id.ToString(), GetAttachmentTitle(model)))
             .ToList();
+
+        if (options.Count == 0)
+        {
+            MegaLabel emptyLabel = CreateLabel(LocMan.Loc("CARD_MOD_NO_VALID_ATTACHMENTS", "No valid attachments available"), 18, StsColors.cream);
+            emptyLabel.CustomMinimumSize = new Vector2(0f, 38f);
+            _rightControls.AddChild(emptyLabel);
+            _rightControls.AddChild(CreateSpacer(8f));
+            return;
+        }
+
         string addId = options.FirstOrDefault().Id ?? NoneOptionId;
 
         NLoadoutDropdown dropdown = new()
@@ -914,6 +954,219 @@ public partial class NCardModificationScreen : Control
             if (GodotObject.IsInstanceValid(card))
                 card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
         }).CallDeferred();
+        RefreshHoverTips();
+    }
+
+    private void RefreshHoverTips()
+    {
+        if (_hoverTipHost is null || _hoverTipControls is null || _item is null)
+            return;
+
+        ClearChildren(_hoverTipControls);
+        LayoutHoverTipHost();
+
+        IReadOnlyList<IHoverTip> tips;
+        try
+        {
+            tips = IHoverTip.RemoveDupes(_item.Model.HoverTips)
+                .Where(tip => tip is not null)
+                .ToList();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: could not render hover tips for '{_item.Model.Id}'. {exception.Message}");
+            _hoverTipHost.Visible = false;
+            return;
+        }
+
+        if (tips.Count == 0)
+        {
+            _hoverTipHost.Visible = false;
+            _hoverTipHost.MouseFilter = MouseFilterEnum.Ignore;
+            return;
+        }
+
+        _hoverTipHost.Visible = true;
+        _hoverTipHost.MouseFilter = MouseFilterEnum.Stop;
+        _hoverTipControls.AddChild(CreateSectionLabel(LocMan.Loc("CARD_MOD_HOVER_TIPS", "Hover Tips")));
+        foreach (IHoverTip tip in tips)
+            _hoverTipControls.AddChild(CreateHoverTipView(tip));
+    }
+
+    private void ClearHoverTips()
+    {
+        if (_hoverTipControls is not null && GodotObject.IsInstanceValid(_hoverTipControls))
+            ClearChildren(_hoverTipControls);
+
+        if (_hoverTipHost is not null && GodotObject.IsInstanceValid(_hoverTipHost))
+        {
+            _hoverTipHost.Visible = false;
+            _hoverTipHost.MouseFilter = MouseFilterEnum.Ignore;
+        }
+    }
+
+    private void LayoutHoverTipHost()
+    {
+        if (_hoverTipHost is null)
+            return;
+
+        Vector2 viewport = GetViewportRect().Size;
+        if (viewport == Vector2.Zero)
+            return;
+
+        float rightPanelLeft = viewport.X - 474f;
+        float cardGapRight = (viewport.X * 0.5f) + 270f;
+        float width = Mathf.Clamp(rightPanelLeft - cardGapRight - 30f, 280f, 340f);
+        float left = rightPanelLeft - width - 26f;
+        _hoverTipHost.SetAnchorsPreset(LayoutPreset.TopLeft);
+        _hoverTipHost.Position = new Vector2(Mathf.Max(cardGapRight + 18f, left), 112f);
+        _hoverTipHost.Size = new Vector2(width, MathF.Max(260f, viewport.Y - 332f));
+        _hoverTipHost.CustomMinimumSize = _hoverTipHost.Size;
+    }
+
+    private Control CreateHoverTipView(IHoverTip tip)
+    {
+        return tip switch
+        {
+            HoverTip hoverTip => CreateTextHoverTipView(hoverTip),
+            CardHoverTip cardHoverTip => CreateCardHoverTipView(cardHoverTip.Card),
+            _ => CreateFallbackHoverTipView(tip)
+        };
+    }
+
+    private static Control CreateTextHoverTipView(HoverTip hoverTip)
+    {
+        PanelContainer panel = CreateHoverTipPanel(hoverTip.IsDebuff);
+        VBoxContainer content = CreateHoverTipContent(panel);
+
+        if (!string.IsNullOrWhiteSpace(hoverTip.Title))
+            content.AddChild(CreateLabel(hoverTip.Title, 21, StsColors.gold));
+
+        HBoxContainer body = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        body.AddThemeConstantOverride("separation", 8);
+
+        if (hoverTip.Icon is not null)
+        {
+            TextureRect icon = new()
+            {
+                Texture = hoverTip.Icon,
+                CustomMinimumSize = new Vector2(42f, 42f),
+                ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            body.AddChild(icon);
+        }
+
+        MegaRichTextLabel description = new()
+        {
+            Text = hoverTip.Description ?? string.Empty,
+            FitContent = true,
+            CustomMinimumSize = new Vector2(0f, 34f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        description.AddThemeFontOverride("normal_font", CommonHelpers.LoadGameFont());
+        description.AddThemeFontSizeOverride("normal_font_size", 18);
+        description.AddThemeColorOverride("default_color", StsColors.cream);
+        body.AddChild(description);
+        content.AddChild(body);
+
+        return panel;
+    }
+
+    private static Control CreateCardHoverTipView(CardModel cardModel)
+    {
+        PanelContainer panel = CreateHoverTipPanel(isDebuff: false);
+        VBoxContainer content = CreateHoverTipContent(panel);
+
+        NCard? card = NCard.Create(cardModel);
+        if (card is null)
+        {
+            content.AddChild(CreateLabel(cardModel.Id.ToString(), 18, StsColors.cream));
+            return panel;
+        }
+
+        const float scale = 0.52f;
+        Control slot = new()
+        {
+            CustomMinimumSize = NCard.defaultSize * scale,
+            MouseFilter = MouseFilterEnum.Ignore,
+            ClipContents = false
+        };
+        card.Scale = Vector2.One * scale;
+        card.MouseFilter = MouseFilterEnum.Ignore;
+        slot.AddChild(card);
+        content.AddChild(slot);
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(card))
+                card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+        }).CallDeferred();
+        return panel;
+    }
+
+    private static Control CreateFallbackHoverTipView(IHoverTip tip)
+    {
+        PanelContainer panel = CreateHoverTipPanel(tip.IsDebuff);
+        VBoxContainer content = CreateHoverTipContent(panel);
+        string text = tip.CanonicalModel?.Id.ToString() ?? tip.Id;
+        content.AddChild(CreateLabel(text, 18, StsColors.cream));
+        return panel;
+    }
+
+    private static PanelContainer CreateHoverTipPanel(bool isDebuff)
+    {
+        PanelContainer panel = new()
+        {
+            CustomMinimumSize = new Vector2(300f, 0f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        StyleBoxFlat style = new()
+        {
+            BgColor = isDebuff
+                ? new Color(0.21f, 0.09f, 0.11f, 0.93f)
+                : new Color(0.06f, 0.12f, 0.15f, 0.93f),
+            BorderColor = StsColors.quarterTransparentWhite,
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 6,
+            CornerRadiusTopRight = 6,
+            CornerRadiusBottomLeft = 6,
+            CornerRadiusBottomRight = 6
+        };
+        panel.AddThemeStyleboxOverride("panel", style);
+        return panel;
+    }
+
+    private static VBoxContainer CreateHoverTipContent(PanelContainer panel)
+    {
+        MarginContainer margin = new()
+        {
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        margin.AddThemeConstantOverride("margin_left", 10);
+        margin.AddThemeConstantOverride("margin_top", 8);
+        margin.AddThemeConstantOverride("margin_right", 10);
+        margin.AddThemeConstantOverride("margin_bottom", 8);
+        panel.AddChild(margin);
+
+        VBoxContainer content = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        content.AddThemeConstantOverride("separation", 5);
+        margin.AddChild(content);
+        return content;
     }
 
     private static void ReassignPreviewCardModel(NCard card, CardModel model, bool forceReload)
@@ -1042,6 +1295,24 @@ public partial class NCardModificationScreen : Control
         string typeName = model.GetType().Name;
         return typeName.StartsWith("Mock", StringComparison.Ordinal)
                || typeName.StartsWith("Deprecated", StringComparison.Ordinal);
+    }
+
+    private static bool CanApplyAttachment(AbstractModel model, CardModel card)
+    {
+        try
+        {
+            return model switch
+            {
+                EnchantmentModel enchantment => enchantment.CanEnchant(card),
+                AfflictionModel affliction => affliction.CanAfflict(card),
+                _ => true
+            };
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: skipped attachment '{model.Id}' for '{card.Id}'. {exception.Message}");
+            return false;
+        }
     }
 
     private static bool MatchesModelId(AbstractModel model, string id)
