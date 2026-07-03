@@ -1355,14 +1355,28 @@ public sealed class CardModificationState
 
         if (Enchantment?.IsEmpty == true)
             Enchantment = null;
+        else
+            NormalizeAttachment(Enchantment);
 
         if (Affliction?.IsEmpty == true)
             Affliction = null;
+        else
+            NormalizeAttachment(Affliction);
 
         CustomTitle = NormalizeText(CustomTitle);
         CustomDescription = NormalizeText(CustomDescription);
         PortraitPath = NormalizeText(PortraitPath);
         BetaPortraitPath = NormalizeText(BetaPortraitPath);
+    }
+
+    private static void NormalizeAttachment(CardAttachmentSpec? spec)
+    {
+        if (spec is null)
+            return;
+
+        spec.Amount = Math.Max(1, spec.Amount);
+        if (spec.Clear)
+            spec.ModelId = null;
     }
 
     private static string? NormalizeText(string? value)

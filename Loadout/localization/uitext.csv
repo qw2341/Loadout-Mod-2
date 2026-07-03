@@ -37,6 +37,7 @@ CARD_MOD_CARD_FIELDS,Card Fields,卡牌字段
 CARD_MOD_ATTACHMENTS,Attachments,附加效果
 CARD_MOD_ENCHANTMENT,Enchantment,附魔
 CARD_MOD_AFFLICTION,Affliction,负面附加
+CARD_MOD_AMOUNT,Amount,数量
 CARD_MOD_MODIFY_NAME,Modify Name,修改名称
 CARD_MOD_MODIFY_DESCRIPTION,Modify Description,修改描述
 CARD_MOD_NO_VALID_ATTACHMENTS,No valid attachments available,没有可用的附加效果

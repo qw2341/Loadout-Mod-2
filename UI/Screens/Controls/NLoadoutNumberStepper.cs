@@ -69,12 +69,17 @@ public partial class NLoadoutNumberStepper : HBoxContainer
 
     private void Increment()
     {
-        SetValue(_value + Step);
+        SetValue(_value + GetCurrentStepAmount());
     }
 
     private void Decrement()
     {
-        SetValue(_value - Step);
+        SetValue(_value - GetCurrentStepAmount());
+    }
+
+    private int GetCurrentStepAmount()
+    {
+        return Step * Math.Max(1, Loadout.UI.Screens.NGenericSelectScreen.GetCurrentInputMultiplier());
     }
 
     private void OnTextSubmitted(string _)

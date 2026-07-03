@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Runs;
 
 public partial class NCardModificationScreen : Control
@@ -48,8 +49,7 @@ public partial class NCardModificationScreen : Control
     private VBoxContainer? _rightControls;
     private VBoxContainer? _actionControls;
     private HBoxContainer? _cardEditActions;
-    private ScrollContainer? _hoverTipHost;
-    private VBoxContainer? _hoverTipControls;
+    private Control? _nativeHoverTipAnchor;
     private Control? _backButtonMount;
     private Control? _previewHost;
     private Control? _leftArrowMount;
@@ -104,7 +104,6 @@ public partial class NCardModificationScreen : Control
         {
             ApplyFullRectLayout(this);
             RefreshPreview(forceReload: false);
-            LayoutHoverTipHost();
         }
 
         if (what == NotificationVisibilityChanged)
@@ -141,8 +140,7 @@ public partial class NCardModificationScreen : Control
         _rightControls = GetNodeOrNull<VBoxContainer>("%RightControls");
         _actionControls = GetNodeOrNull<VBoxContainer>("%ActionRow");
         _cardEditActions = GetNodeOrNull<HBoxContainer>("%CardEditActions");
-        _hoverTipHost = GetNodeOrNull<ScrollContainer>("%HoverTipHost");
-        _hoverTipControls = GetNodeOrNull<VBoxContainer>("%HoverTipControls");
+        _nativeHoverTipAnchor = GetNodeOrNull<Control>("%NativeHoverTipAnchor");
         _previewHost = GetNodeOrNull<Control>("%PreviewCardHost");
         _leftArrowMount = GetNodeOrNull<Control>("%LeftArrow");
         _rightArrowMount = GetNodeOrNull<Control>("%RightArrow");
@@ -324,8 +322,8 @@ public partial class NCardModificationScreen : Control
         _leftControls.AddChild(CreateLabel(_item.Model.Id.ToString(), 18, StsColors.cream));
         _leftControls.AddChild(CreateSpacer(6f));
 
-        AddNumericControls();
         AddDropdownControls();
+        AddNumericControls();
         AddCardEditActions();
         AddKeywordControls();
         AddAttachmentControls();
@@ -374,7 +372,6 @@ public partial class NCardModificationScreen : Control
             return;
 
         CardModel card = _item.Model;
-        _leftControls.AddChild(CreateSectionLabel(LocMan.Loc("CARD_MOD_NUMERIC_STATS", "Numeric Stats")));
 
         AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_ENERGY_COST", "Energy Cost"),
             _workingState.EnergyCost ?? (card.EnergyCost.CostsX ? 0 : card.EnergyCost.GetWithModifiers(CostModifiers.Local)),
@@ -424,7 +421,6 @@ public partial class NCardModificationScreen : Control
             return;
 
         CardModel card = _item.Model;
-        _leftControls.AddChild(CreateSectionLabel(LocMan.Loc("CARD_MOD_CARD_FIELDS", "Card Fields")));
 
         List<CardPoolModel> pools = CardPrinter.BuildOrderedCardPools()
             .Where(pool => !CommonHelpers.IsInternalPool(pool) || CommonHelpers.SamePool(pool, card.Pool))
@@ -483,8 +479,6 @@ public partial class NCardModificationScreen : Control
         if (_item is null || _rightControls is null)
             return;
 
-        _rightControls.AddChild(CreateSectionLabel(LocMan.Loc("CARD_MOD_ATTACHMENTS", "Attachments")));
-
         AddAttachmentEditor(
             LocMan.Loc("CARD_MOD_ENCHANTMENT", "Enchantment"),
             ModelDb.DebugEnchantments
@@ -493,6 +487,7 @@ public partial class NCardModificationScreen : Control
                 .ToList(),
             _workingState.Enchantment,
             _item.Model.Enchantment,
+            true,
             spec =>
             {
                 _workingState.Enchantment = spec;
@@ -507,6 +502,7 @@ public partial class NCardModificationScreen : Control
                 .ToList(),
             _workingState.Affliction,
             _item.Model.Affliction,
+            false,
             spec =>
             {
                 _workingState.Affliction = spec;
@@ -563,6 +559,7 @@ public partial class NCardModificationScreen : Control
         IReadOnlyList<TModel> models,
         CardAttachmentSpec? savedSpec,
         TModel? currentModel,
+        bool showAmountEditor,
         Action<CardAttachmentSpec?> setSpec)
         where TModel : AbstractModel
     {
@@ -607,6 +604,17 @@ public partial class NCardModificationScreen : Control
             });
             currentRow.AddChild(removeButton);
             _rightControls.AddChild(currentRow);
+
+            if (showAmountEditor)
+            {
+                int currentAmount = Math.Max(1, savedSpec?.Amount ?? GetAttachmentAmount(currentModel));
+                AddStepperRow(_rightControls, LocMan.Loc("CARD_MOD_AMOUNT", "Amount"), currentAmount, 1, 999, value =>
+                {
+                    setSpec(new CardAttachmentSpec { ModelId = selectedId, Amount = value });
+                    ApplyWorkingState();
+                });
+            }
+
             _rightControls.AddChild(CreateSpacer(8f));
             return;
         }
@@ -966,6 +974,12 @@ public partial class NCardModificationScreen : Control
 
         LayoutPreviewNavigation();
 
+        if (forceReload)
+        {
+            ClearChildren(_previewHost);
+            _previewCard = null;
+        }
+
         if (_previewCard is null || !GodotObject.IsInstanceValid(_previewCard))
         {
             ClearChildren(_previewHost);
@@ -974,10 +988,7 @@ public partial class NCardModificationScreen : Control
                 return;
 
             _previewHost.AddChild(_previewCard);
-        }
-        else
-        {
-            ReassignPreviewCardModel(_previewCard, _item.Model, forceReload);
+            forceReload = false;
         }
 
         NCard card = _previewCard;
@@ -999,11 +1010,10 @@ public partial class NCardModificationScreen : Control
 
     private void RefreshHoverTips()
     {
-        if (_hoverTipHost is null || _hoverTipControls is null || _item is null)
-            return;
+        ClearHoverTips();
 
-        ClearChildren(_hoverTipControls);
-        LayoutHoverTipHost();
+        if (_nativeHoverTipAnchor is null || !GodotObject.IsInstanceValid(_nativeHoverTipAnchor) || _item is null || !Visible || !IsInsideTree())
+            return;
 
         IReadOnlyList<IHoverTip> tips;
         CardModel hoverTipModel = _previewCard?.Model ?? _item.Model;
@@ -1015,210 +1025,51 @@ public partial class NCardModificationScreen : Control
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"CardModification: could not render hover tips for '{_item.Model.Id}'. {exception.Message}");
-            _hoverTipHost.Visible = false;
+            GD.PushWarning($"CardModification: could not create hover tips for '{_item.Model.Id}'. {exception.Message}");
             return;
         }
 
         if (tips.Count == 0)
-        {
-            _hoverTipHost.Visible = false;
-            _hoverTipHost.MouseFilter = MouseFilterEnum.Ignore;
             return;
-        }
 
-        _hoverTipHost.Visible = true;
-        _hoverTipHost.ZIndex = 220;
-        _hoverTipHost.MouseFilter = MouseFilterEnum.Stop;
-        _hoverTipControls.AddChild(CreateSectionLabel(LocMan.Loc("CARD_MOD_HOVER_TIPS", "Hover Tips")));
-        foreach (IHoverTip tip in tips)
+        LayoutNativeHoverTipAnchor();
+
+        try
         {
-            try
-            {
-                _hoverTipControls.AddChild(CreateHoverTipView(tip));
-            }
-            catch (Exception exception)
-            {
-                GD.PushWarning($"CardModification: failed to render hover tip '{tip.Id}' for '{hoverTipModel.Id}'. {exception.Message}");
-                _hoverTipControls.AddChild(CreateFallbackHoverTipView(tip));
-            }
+            NHoverTipSet.CreateAndShow(_nativeHoverTipAnchor, tips, HoverTipAlignment.Left);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to show native hover tips for '{hoverTipModel.Id}'. {exception.Message}");
         }
     }
 
     private void ClearHoverTips()
     {
-        if (_hoverTipControls is not null && GodotObject.IsInstanceValid(_hoverTipControls))
-            ClearChildren(_hoverTipControls);
-
-        if (_hoverTipHost is not null && GodotObject.IsInstanceValid(_hoverTipHost))
-        {
-            _hoverTipHost.Visible = false;
-            _hoverTipHost.MouseFilter = MouseFilterEnum.Ignore;
-        }
+        if (_nativeHoverTipAnchor is not null && GodotObject.IsInstanceValid(_nativeHoverTipAnchor))
+            NHoverTipSet.Remove(_nativeHoverTipAnchor);
     }
 
-    private void LayoutHoverTipHost()
+    private void LayoutNativeHoverTipAnchor()
     {
-        if (_hoverTipHost is null)
+        if (_nativeHoverTipAnchor is null)
             return;
 
         Vector2 viewport = GetViewportRect().Size;
         if (viewport == Vector2.Zero)
             return;
 
-        float rightPanelLeft = viewport.X - 474f;
-        float cardGapRight = (viewport.X * 0.5f) + 270f;
-        float width = Mathf.Clamp(rightPanelLeft - cardGapRight - 30f, 280f, 340f);
-        float left = rightPanelLeft - width - 26f;
-        _hoverTipHost.SetAnchorsPreset(LayoutPreset.TopLeft);
-        _hoverTipHost.Position = new Vector2(Mathf.Max(cardGapRight + 18f, left), 112f);
-        _hoverTipHost.Size = new Vector2(width, MathF.Max(260f, viewport.Y - 332f));
-        _hoverTipHost.CustomMinimumSize = _hoverTipHost.Size;
-    }
-
-    private Control CreateHoverTipView(IHoverTip tip)
-    {
-        return tip switch
+        float y = 620f;
+        if (_rightControls is not null && GodotObject.IsInstanceValid(_rightControls))
         {
-            HoverTip hoverTip => CreateTextHoverTipView(hoverTip),
-            CardHoverTip cardHoverTip => CreateCardHoverTipView(cardHoverTip.Card),
-            _ => CreateFallbackHoverTipView(tip)
-        };
-    }
-
-    private static Control CreateTextHoverTipView(HoverTip hoverTip)
-    {
-        PanelContainer panel = CreateHoverTipPanel(hoverTip.IsDebuff);
-        VBoxContainer content = CreateHoverTipContent(panel);
-
-        if (!string.IsNullOrWhiteSpace(hoverTip.Title))
-            content.AddChild(CreateLabel(hoverTip.Title, 21, StsColors.gold));
-
-        HBoxContainer body = new()
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        body.AddThemeConstantOverride("separation", 8);
-
-        if (hoverTip.Icon is not null)
-        {
-            TextureRect icon = new()
-            {
-                Texture = hoverTip.Icon,
-                CustomMinimumSize = new Vector2(42f, 42f),
-                ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
-                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                MouseFilter = MouseFilterEnum.Ignore
-            };
-            body.AddChild(icon);
+            float controlsBottom = _rightControls.GlobalPosition.Y + _rightControls.GetCombinedMinimumSize().Y + 14f;
+            y = Mathf.Clamp(controlsBottom, 112f, MathF.Max(112f, viewport.Y - 360f));
         }
 
-        MegaRichTextLabel description = new()
-        {
-            Text = hoverTip.Description ?? string.Empty,
-            FitContent = true,
-            CustomMinimumSize = new Vector2(0f, 34f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Ignore,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart
-        };
-        description.AddThemeFontOverride("normal_font", CommonHelpers.LoadGameFont());
-        description.AddThemeFontSizeOverride("normal_font_size", 18);
-        description.AddThemeColorOverride("default_color", StsColors.cream);
-        body.AddChild(description);
-        content.AddChild(body);
-
-        return panel;
-    }
-
-    private static Control CreateCardHoverTipView(CardModel cardModel)
-    {
-        PanelContainer panel = CreateHoverTipPanel(isDebuff: false);
-        VBoxContainer content = CreateHoverTipContent(panel);
-
-        NCard? card = NCard.Create(cardModel);
-        if (card is null)
-        {
-            content.AddChild(CreateLabel(cardModel.Id.ToString(), 18, StsColors.cream));
-            return panel;
-        }
-
-        const float scale = 0.52f;
-        Control slot = new()
-        {
-            CustomMinimumSize = NCard.defaultSize * scale,
-            MouseFilter = MouseFilterEnum.Ignore,
-            ClipContents = false
-        };
-        card.Scale = Vector2.One * scale;
-        card.MouseFilter = MouseFilterEnum.Ignore;
-        slot.AddChild(card);
-        content.AddChild(slot);
-        Callable.From(() =>
-        {
-            if (GodotObject.IsInstanceValid(card))
-                card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
-        }).CallDeferred();
-        return panel;
-    }
-
-    private static Control CreateFallbackHoverTipView(IHoverTip tip)
-    {
-        PanelContainer panel = CreateHoverTipPanel(tip.IsDebuff);
-        VBoxContainer content = CreateHoverTipContent(panel);
-        string text = tip.CanonicalModel?.Id.ToString() ?? tip.Id;
-        content.AddChild(CreateLabel(text, 18, StsColors.cream));
-        return panel;
-    }
-
-    private static PanelContainer CreateHoverTipPanel(bool isDebuff)
-    {
-        PanelContainer panel = new()
-        {
-            CustomMinimumSize = new Vector2(300f, 0f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        StyleBoxFlat style = new()
-        {
-            BgColor = isDebuff
-                ? new Color(0.21f, 0.09f, 0.11f, 0.93f)
-                : new Color(0.06f, 0.12f, 0.15f, 0.93f),
-            BorderColor = StsColors.quarterTransparentWhite,
-            BorderWidthLeft = 1,
-            BorderWidthTop = 1,
-            BorderWidthRight = 1,
-            BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 6,
-            CornerRadiusTopRight = 6,
-            CornerRadiusBottomLeft = 6,
-            CornerRadiusBottomRight = 6
-        };
-        panel.AddThemeStyleboxOverride("panel", style);
-        return panel;
-    }
-
-    private static VBoxContainer CreateHoverTipContent(PanelContainer panel)
-    {
-        MarginContainer margin = new()
-        {
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        margin.AddThemeConstantOverride("margin_left", 10);
-        margin.AddThemeConstantOverride("margin_top", 8);
-        margin.AddThemeConstantOverride("margin_right", 10);
-        margin.AddThemeConstantOverride("margin_bottom", 8);
-        panel.AddChild(margin);
-
-        VBoxContainer content = new()
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        content.AddThemeConstantOverride("separation", 5);
-        margin.AddChild(content);
-        return content;
+        _nativeHoverTipAnchor.SetAnchorsPreset(LayoutPreset.TopLeft);
+        _nativeHoverTipAnchor.Position = new Vector2(viewport.X - 36f, y);
+        _nativeHoverTipAnchor.Size = new Vector2(1f, 1f);
+        _nativeHoverTipAnchor.MouseFilter = MouseFilterEnum.Ignore;
     }
 
     private static void ReassignPreviewCardModel(NCard card, CardModel model, bool forceReload)
@@ -1370,5 +1221,15 @@ public partial class NCardModificationScreen : Control
         {
             return CommonHelpers.PrettifyPoolTypeName(model.GetType().Name);
         }
+    }
+
+    private static int GetAttachmentAmount(AbstractModel? model)
+    {
+        return model switch
+        {
+            EnchantmentModel enchantment => Math.Max(1, enchantment.Amount),
+            AfflictionModel affliction => Math.Max(1, affliction.Amount),
+            _ => 1
+        };
     }
 }
