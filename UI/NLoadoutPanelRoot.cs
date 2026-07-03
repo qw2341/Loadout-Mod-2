@@ -15,6 +15,8 @@ public partial class NLoadoutPanelRoot : Control
 	private const string OverlayLayerName = "LoadoutOverlayLayer";
 	private const string RootName = "LoadoutPanelRoot";
 	private const int OverlayLayer = 1000;
+	private const int DropdownLayerZIndex = 1000;
+	private const int HoverTipLayerZIndex = 1010;
 
 	private static CanvasLayer _overlayLayer;
 	private static NLoadoutPanelRoot _instance;
@@ -111,7 +113,7 @@ public partial class NLoadoutPanelRoot : Control
 		if (IsInstanceValid(_hoverTipLayer))
 		{
 			_hoverTipLayer.MouseFilter = MouseFilterEnum.Ignore;
-			_hoverTipLayer.ZIndex = 60;
+			_hoverTipLayer.ZIndex = HoverTipLayerZIndex;
 			_hoverTipLayer.MoveToFront();
 			return;
 		}
@@ -120,7 +122,7 @@ public partial class NLoadoutPanelRoot : Control
 		{
 			Name = "HoverTipLayer",
 			MouseFilter = MouseFilterEnum.Ignore,
-			ZIndex = 60
+			ZIndex = HoverTipLayerZIndex
 		};
 		_hoverTipLayer.SetAnchorsPreset(LayoutPreset.FullRect);
 		AddChild(_hoverTipLayer);
@@ -132,7 +134,7 @@ public partial class NLoadoutPanelRoot : Control
 		if (IsInstanceValid(_dropdownLayer))
 		{
 			_dropdownLayer.MouseFilter = MouseFilterEnum.Ignore;
-			_dropdownLayer.ZIndex = 50;
+			_dropdownLayer.ZIndex = DropdownLayerZIndex;
 			_dropdownLayer.MoveToFront();
 			return;
 		}
@@ -141,7 +143,7 @@ public partial class NLoadoutPanelRoot : Control
 		{
 			Name = "DropdownLayer",
 			MouseFilter = MouseFilterEnum.Ignore,
-			ZIndex = 50
+			ZIndex = DropdownLayerZIndex
 		};
 		_dropdownLayer.SetAnchorsPreset(LayoutPreset.FullRect);
 		AddChild(_dropdownLayer);

@@ -103,7 +103,7 @@ public class CardModifier
         screen.Init(
             item,
             GetSelectedTargetDeckCardsForModifier(),
-            () => CardPrinter.RefreshCardVisuals(sourceView));
+            () => CardPrinter.ForceRefreshCardVisuals(sourceView));
         root.OpenScreen(screen);
     }
 

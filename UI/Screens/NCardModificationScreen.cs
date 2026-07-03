@@ -23,10 +23,17 @@ using MegaCrit.Sts2.Core.Runs;
 
 public partial class NCardModificationScreen : Control
 {
+    private enum TextEditTarget
+    {
+        Name,
+        Description
+    }
+
     private const string ScenePath = "res://UI/Screens/CardModificationScreen.tscn";
     private const string NoneOptionId = "__none__";
     private const float SidePanelWidth = 438f;
-    private const float ActionButtonWidth = 174f;
+    private const float ActionButtonWidth = 318f;
+    private const float CardEditButtonWidth = 246f;
     private const float ActionButtonHeight = 42f;
 
     private LoadoutOwnedItem<CardModel>? _item;
@@ -37,13 +44,18 @@ public partial class NCardModificationScreen : Control
     private CardModificationState _temporaryState = new();
     private VBoxContainer? _leftControls;
     private VBoxContainer? _rightControls;
-    private HBoxContainer? _actionControls;
+    private VBoxContainer? _actionControls;
+    private HBoxContainer? _cardEditActions;
     private Control? _backButtonMount;
     private Control? _previewHost;
+    private Control? _leftArrowMount;
+    private Control? _rightArrowMount;
     private NButton? _leftArrow;
     private NButton? _rightArrow;
+    private NBackButton? _backButton;
     private NCard? _previewCard;
     private MegaLabel? _titleLabel;
+    private Control? _textEditorOverlay;
     private bool _signalsBound;
 
     public static NCardModificationScreen Create()
@@ -87,7 +99,14 @@ public partial class NCardModificationScreen : Control
         if (what == NotificationResized)
         {
             ApplyFullRectLayout(this);
-            RefreshPreview();
+            RefreshPreview(forceReload: false);
+        }
+
+        if (what == NotificationVisibilityChanged)
+        {
+            RefreshNativeButtonState();
+            if (!Visible)
+                CloseTextEditor();
         }
     }
 
@@ -106,13 +125,74 @@ public partial class NCardModificationScreen : Control
         _backButtonMount = GetNodeOrNull<Control>("%BackButtonMount");
         _leftControls = GetNodeOrNull<VBoxContainer>("%LeftControls");
         _rightControls = GetNodeOrNull<VBoxContainer>("%RightControls");
-        _actionControls = GetNodeOrNull<HBoxContainer>("%ActionRow");
+        _actionControls = GetNodeOrNull<VBoxContainer>("%ActionRow");
+        _cardEditActions = GetNodeOrNull<HBoxContainer>("%CardEditActions");
         _previewHost = GetNodeOrNull<Control>("%PreviewCardHost");
-        _leftArrow = GetNodeOrNull<NButton>("%LeftArrow");
-        _rightArrow = GetNodeOrNull<NButton>("%RightArrow");
+        _leftArrowMount = GetNodeOrNull<Control>("%LeftArrow");
+        _rightArrowMount = GetNodeOrNull<Control>("%RightArrow");
+        _leftArrow = EnsureInspectArrowButton(_leftArrowMount, isLeft: true);
+        _rightArrow = EnsureInspectArrowButton(_rightArrowMount, isLeft: false);
 
         EnsureBackButton();
         BindSceneSignals();
+    }
+
+    private static NButton? EnsureInspectArrowButton(Control? mount, bool isLeft)
+    {
+        if (mount is null)
+            return null;
+
+        if (mount.GetNodeOrNull<NButton>("ArrowButton") is { } existing)
+            return existing;
+
+        ShaderMaterial? material = CreateArrowMaterial();
+        NButton button = material is null ? new NButton() : new NGoldArrowButton();
+        button.Name = "ArrowButton";
+        button.FocusMode = FocusModeEnum.All;
+        button.MouseFilter = MouseFilterEnum.Stop;
+        button.PivotOffset = new Vector2(64f, 64f);
+        button.SetAnchorsPreset(LayoutPreset.FullRect);
+
+        TextureRect image = new()
+        {
+            Name = "TextureRect",
+            Texture = LoadArrowTexture(isLeft),
+            Material = material,
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore,
+            PivotOffset = new Vector2(64f, 64f)
+        };
+        image.SetAnchorsPreset(LayoutPreset.FullRect);
+        button.AddChild(image);
+        mount.AddChild(button);
+        return button;
+    }
+
+    private static ShaderMaterial? CreateArrowMaterial()
+    {
+        const string shaderPath = "res://shaders/hsv.gdshader";
+        if (!ResourceLoader.Exists(shaderPath))
+            return null;
+
+        ShaderMaterial material = new()
+        {
+            ResourceLocalToScene = true,
+            Shader = GD.Load<Shader>(shaderPath)
+        };
+        material.SetShaderParameter("h", 1f);
+        material.SetShaderParameter("s", 1f);
+        material.SetShaderParameter("v", 0.9f);
+        return material;
+    }
+
+    private static Texture2D? LoadArrowTexture(bool isLeft)
+    {
+        string path = isLeft
+            ? "res://images/packed/common_ui/settings_tiny_left_arrow.png"
+            : "res://images/packed/common_ui/settings_tiny_right_arrow.png";
+
+        return ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
     }
 
     private void BindSceneSignals()
@@ -131,33 +211,40 @@ public partial class NCardModificationScreen : Control
 
     private void EnsureBackButton()
     {
-        if (_backButtonMount is null || _backButtonMount.GetNodeOrNull<NBackButton>("BackButton") is not null)
+        if (_backButtonMount is null)
             return;
+
+        if (_backButtonMount.GetNodeOrNull<NBackButton>("BackButton") is { } existingBackButton)
+        {
+            _backButton = existingBackButton;
+            RefreshNativeButtonState();
+            return;
+        }
 
         NBackButton backButton = NLoadoutBackButtonFactory.Create();
         backButton.Name = "BackButton";
-        PositionBackButton(backButton);
         backButton.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ =>
         {
             NLoadoutBackButtonFactory.ResetVisualState(backButton);
             NLoadoutPanelRoot.CloseTopLoadoutScreen();
         }));
         _backButtonMount.AddChild(backButton);
+        _backButton = backButton;
+        Callable.From(RefreshNativeButtonState).CallDeferred();
     }
 
-    private static void PositionBackButton(Control backButton)
+    private void RefreshNativeButtonState()
     {
-        backButton.SetAnchorsPreset(LayoutPreset.TopLeft);
-        backButton.OffsetLeft = 0f;
-        backButton.OffsetTop = 0f;
-        backButton.OffsetRight = 200f;
-        backButton.OffsetBottom = 110f;
-        backButton.PivotOffset = new Vector2(20f, 40f);
+        if (_backButton is not null && GodotObject.IsInstanceValid(_backButton))
+            _backButton.SetEnabled(Visible && IsInsideTree());
+
+        LayoutPreviewNavigation();
     }
 
     private void LoadItem(LoadoutOwnedItem<CardModel> item)
     {
         _item = item;
+        CardModificationStateService.ApplyEffectiveStateToOwnedCard(item);
         _workingState = CardModificationStateService.GetEffectiveState(item);
         _temporaryState = CardModificationStateService.GetTemporaryState(item);
     }
@@ -184,10 +271,24 @@ public partial class NCardModificationScreen : Control
 
         bool hasPrevious = _itemIndex > 0;
         bool hasNext = _itemIndex < _items.Count - 1;
+        if (_leftArrowMount is not null)
+        {
+            _leftArrowMount.Visible = hasPrevious;
+            _leftArrowMount.MouseFilter = hasPrevious ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        }
+
+        if (_rightArrowMount is not null)
+        {
+            _rightArrowMount.Visible = hasNext;
+            _rightArrowMount.MouseFilter = hasNext ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        }
+
         _leftArrow.Visible = hasPrevious;
         _rightArrow.Visible = hasNext;
         _leftArrow.MouseFilter = hasPrevious ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
         _rightArrow.MouseFilter = hasNext ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        _leftArrow.SetEnabled(hasPrevious && Visible);
+        _rightArrow.SetEnabled(hasNext && Visible);
     }
 
     private void RebuildControls()
@@ -198,6 +299,8 @@ public partial class NCardModificationScreen : Control
         ClearChildren(_leftControls);
         ClearChildren(_rightControls);
         ClearChildren(_actionControls);
+        if (_cardEditActions is not null)
+            ClearChildren(_cardEditActions);
 
         _titleLabel = CreateLabel(CardPrinter.FormatCardTitle(_item.Model), 32, StsColors.gold);
         _leftControls.AddChild(_titleLabel);
@@ -206,8 +309,9 @@ public partial class NCardModificationScreen : Control
 
         AddNumericControls();
         AddDropdownControls();
-        AddAttachmentControls();
+        AddCardEditActions();
         AddKeywordControls();
+        AddAttachmentControls();
 
         if (CanSavePermanent())
         {
@@ -229,6 +333,22 @@ public partial class NCardModificationScreen : Control
             _actionControls.AddChild(resetPermanentButton);
             ConfigureActionButtonSize(resetPermanentButton);
         }
+    }
+
+    private void AddCardEditActions()
+    {
+        if (_cardEditActions is null)
+            return;
+
+        NLoadoutActionButton nameButton = CreateActionButton("modify_name", LocMan.Loc("CARD_MOD_MODIFY_NAME", "Modify Name"));
+        nameButton.CustomMinimumSize = new Vector2(CardEditButtonWidth, ActionButtonHeight);
+        ConnectActionButton(nameButton, () => OpenTextEditor(TextEditTarget.Name));
+        _cardEditActions.AddChild(nameButton);
+
+        NLoadoutActionButton descriptionButton = CreateActionButton("modify_description", LocMan.Loc("CARD_MOD_MODIFY_DESCRIPTION", "Modify Description"));
+        descriptionButton.CustomMinimumSize = new Vector2(CardEditButtonWidth, ActionButtonHeight);
+        ConnectActionButton(descriptionButton, () => OpenTextEditor(TextEditTarget.Description));
+        _cardEditActions.AddChild(descriptionButton);
     }
 
     private void AddNumericControls()
@@ -378,12 +498,12 @@ public partial class NCardModificationScreen : Control
         GridContainer grid = new()
         {
             Columns = 2,
-            CustomMinimumSize = new Vector2(420f, 0f),
+            CustomMinimumSize = new Vector2(426f, 0f),
             SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
             MouseFilter = MouseFilterEnum.Ignore
         };
         grid.AddThemeConstantOverride("h_separation", 8);
-        grid.AddThemeConstantOverride("v_separation", 0);
+        grid.AddThemeConstantOverride("v_separation", 2);
         _rightControls.AddChild(grid);
 
         IReadOnlySet<CardKeyword> localKeywords = _item.Model.GetKeywordsWithSources(KeywordSources.Local);
@@ -398,7 +518,7 @@ public partial class NCardModificationScreen : Control
 
             NLoadoutToggle toggle = new()
             {
-                CustomMinimumSize = new Vector2(202f, 46f),
+                CustomMinimumSize = new Vector2(206f, 44f),
                 SizeFlagsHorizontal = SizeFlags.ShrinkBegin
             };
             toggle.Init($"keyword_{key}", CardPrinter.GetCardKeywordLabel(keyword), isChecked);
@@ -468,13 +588,16 @@ public partial class NCardModificationScreen : Control
         NLoadoutDropdown dropdown = new()
         {
             CustomMinimumSize = new Vector2(0f, 52f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            DropdownWidth = 420f
         };
         dropdown.SetItems(LocMan.Loc("ADD", "Add"), options, addId);
         dropdown.SelectedItemChanged += id => addId = id;
         _rightControls.AddChild(dropdown);
 
         NLoadoutActionButton addButton = CreateActionButton($"add_{label}", LocMan.Loc("ADD", "Add"));
+        addButton.CustomMinimumSize = new Vector2(180f, 42f);
+        addButton.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
         ConnectActionButton(addButton, () =>
         {
             if (addId == NoneOptionId)
@@ -506,7 +629,8 @@ public partial class NCardModificationScreen : Control
         NLoadoutDropdown dropdown = new()
         {
             CustomMinimumSize = new Vector2(0f, 52f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            DropdownWidth = 420f
         };
         dropdown.SetItems(label, options, selectedId);
         dropdown.SelectedItemChanged += onChanged;
@@ -545,7 +669,7 @@ public partial class NCardModificationScreen : Control
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item);
         _parentRefresh?.Invoke();
         RebuildControls();
-        RefreshPreview();
+        RefreshPreview(forceReload: true);
     }
 
     private void ResetTemporary()
@@ -559,7 +683,7 @@ public partial class NCardModificationScreen : Control
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item);
         _parentRefresh?.Invoke();
         RebuildControls();
-        RefreshPreview();
+        RefreshPreview(forceReload: true);
     }
 
     private void ResetPermanent()
@@ -573,7 +697,7 @@ public partial class NCardModificationScreen : Control
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item);
         _parentRefresh?.Invoke();
         RebuildControls();
-        RefreshPreview();
+        RefreshPreview(forceReload: true);
     }
 
     private void ApplyWorkingState()
@@ -584,10 +708,178 @@ public partial class NCardModificationScreen : Control
         CardModificationStateService.SaveTemporary(_item, _temporaryState);
         CardModificationStateService.ApplyStateToCard(_item.Model, _workingState);
         _parentRefresh?.Invoke();
-        RefreshPreview();
+        RefreshPreview(forceReload: true);
     }
 
-    private void RefreshPreview()
+    private void OpenTextEditor(TextEditTarget target)
+    {
+        if (_item is null)
+            return;
+
+        CloseTextEditor();
+
+        Control overlay = new()
+        {
+            Name = "TextEditorOverlay",
+            MouseFilter = MouseFilterEnum.Stop,
+            ZIndex = 420
+        };
+        ApplyFullRectLayout(overlay);
+
+        ColorRect dimmer = new()
+        {
+            Color = new Color(0f, 0f, 0f, 0.62f),
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        ApplyFullRectLayout(dimmer);
+        overlay.AddChild(dimmer);
+
+        Control panel = new()
+        {
+            CustomMinimumSize = target == TextEditTarget.Name
+                ? new Vector2(720f, 228f)
+                : new Vector2(820f, 468f),
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        panel.SetAnchorsPreset(LayoutPreset.Center);
+        Vector2 panelSize = panel.CustomMinimumSize;
+        panel.OffsetLeft = -panelSize.X * 0.5f;
+        panel.OffsetTop = -panelSize.Y * 0.5f;
+        panel.OffsetRight = panelSize.X * 0.5f;
+        panel.OffsetBottom = panelSize.Y * 0.5f;
+        overlay.AddChild(panel);
+
+        ColorRect panelBackground = new()
+        {
+            Color = new Color(0.063f, 0.125f, 0.151f, 0.98f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        ApplyFullRectLayout(panelBackground);
+        panel.AddChild(panelBackground);
+
+        MarginContainer margin = new();
+        margin.SetAnchorsPreset(LayoutPreset.FullRect);
+        margin.AddThemeConstantOverride("margin_left", 24);
+        margin.AddThemeConstantOverride("margin_top", 20);
+        margin.AddThemeConstantOverride("margin_right", 24);
+        margin.AddThemeConstantOverride("margin_bottom", 20);
+        panel.AddChild(margin);
+
+        VBoxContainer content = new()
+        {
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        content.AddThemeConstantOverride("separation", 12);
+        margin.AddChild(content);
+
+        content.AddChild(CreateSectionLabel(target == TextEditTarget.Name
+            ? LocMan.Loc("CARD_MOD_MODIFY_NAME", "Modify Name")
+            : LocMan.Loc("CARD_MOD_MODIFY_DESCRIPTION", "Modify Description")));
+
+        Control input = CreateTextInput(target);
+        content.AddChild(input);
+
+        HBoxContainer buttons = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 48f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        buttons.AddThemeConstantOverride("separation", 10);
+
+        NLoadoutActionButton cancelButton = CreateActionButton("text_cancel", LocMan.Loc("CANCEL", "Cancel"));
+        cancelButton.CustomMinimumSize = new Vector2(160f, ActionButtonHeight);
+        ConnectActionButton(cancelButton, CloseTextEditor);
+        buttons.AddChild(cancelButton);
+
+        NLoadoutActionButton saveButton = CreateActionButton("text_save", LocMan.Loc("SAVE", "Save"));
+        saveButton.CustomMinimumSize = new Vector2(160f, ActionButtonHeight);
+        ConnectActionButton(saveButton, () =>
+        {
+            SetCustomText(target, ReadTextInput(input));
+            CloseTextEditor();
+            ApplyWorkingState();
+            RebuildControls();
+        });
+        buttons.AddChild(saveButton);
+        content.AddChild(buttons);
+
+        AddChild(overlay);
+        _textEditorOverlay = overlay;
+
+        if (input is LineEdit lineEdit)
+            lineEdit.GrabFocus();
+        else if (input is TextEdit textEdit)
+            textEdit.GrabFocus();
+    }
+
+    private Control CreateTextInput(TextEditTarget target)
+    {
+        string currentText = target == TextEditTarget.Name
+            ? _workingState.CustomTitle ?? _item?.Model.Title ?? string.Empty
+            : _workingState.CustomDescription ?? _item?.Model.GetDescriptionForPile(PileType.None) ?? string.Empty;
+
+        if (target == TextEditTarget.Name)
+        {
+            LineEdit lineEdit = new()
+            {
+                Text = currentText,
+                CustomMinimumSize = new Vector2(0f, 52f),
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                MouseFilter = MouseFilterEnum.Stop
+            };
+            return lineEdit;
+        }
+
+        TextEdit textEdit = new()
+        {
+            Text = currentText,
+            CustomMinimumSize = new Vector2(0f, 280f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        return textEdit;
+    }
+
+    private static string ReadTextInput(Control input)
+    {
+        return input switch
+        {
+            LineEdit lineEdit => lineEdit.Text ?? string.Empty,
+            TextEdit textEdit => textEdit.Text ?? string.Empty,
+            _ => string.Empty
+        };
+    }
+
+    private void SetCustomText(TextEditTarget target, string value)
+    {
+        string? normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        if (target == TextEditTarget.Name)
+        {
+            _workingState.CustomTitle = normalized;
+            _temporaryState.CustomTitle = normalized;
+            return;
+        }
+
+        _workingState.CustomDescription = normalized;
+        _temporaryState.CustomDescription = normalized;
+    }
+
+    private void CloseTextEditor()
+    {
+        if (_textEditorOverlay is null || !GodotObject.IsInstanceValid(_textEditorOverlay))
+        {
+            _textEditorOverlay = null;
+            return;
+        }
+
+        _textEditorOverlay.GetParent()?.RemoveChild(_textEditorOverlay);
+        _textEditorOverlay.QueueFree();
+        _textEditorOverlay = null;
+    }
+
+    private void RefreshPreview(bool forceReload = false)
     {
         if (_previewHost is null || _item is null)
             return;
@@ -605,13 +897,14 @@ public partial class NCardModificationScreen : Control
         }
         else
         {
-            _previewCard.Model = _item.Model;
+            ReassignPreviewCardModel(_previewCard, _item.Model, forceReload);
         }
 
         NCard card = _previewCard;
         if (card.GetParent() != _previewHost)
             _previewHost.AddChild(card);
 
+        ReassignPreviewCardModel(card, _item.Model, forceReload);
         card.SetAnchorsPreset(LayoutPreset.Center);
         card.Position = Vector2.Zero;
         card.Scale = Vector2.One * GetPreviewScale();
@@ -621,6 +914,14 @@ public partial class NCardModificationScreen : Control
             if (GodotObject.IsInstanceValid(card))
                 card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
         }).CallDeferred();
+    }
+
+    private static void ReassignPreviewCardModel(NCard card, CardModel model, bool forceReload)
+    {
+        if (forceReload)
+            card.Model = null;
+
+        card.Model = model;
     }
 
     private float GetPreviewScale()

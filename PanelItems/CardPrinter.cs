@@ -364,6 +364,27 @@ public class CardPrinter
 	    }
     }
 
+    public static void ForceRefreshCardVisuals(Control view)
+    {
+	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder) || holder!.CardNode is null)
+		    return;
+
+	    CardModel model = holder.CardModel;
+	    if (model is null)
+		    return;
+
+	    bool shouldPreviewUpgrade = model.IsUpgradable && holder.GetMeta(PreviewUpgradeMetaKey, false).AsBool();
+	    if (model.IsUpgradable)
+		    holder.SetIsPreviewingUpgrade(false);
+
+	    holder.CardNode.Model = null;
+	    holder.CardNode.Model = model;
+	    holder.CardNode.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+
+	    if (shouldPreviewUpgrade)
+		    holder.SetIsPreviewingUpgrade(true);
+    }
+
     public static void UpdateCardGridItem(Control view, SelectItemState state)
     {
 	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))

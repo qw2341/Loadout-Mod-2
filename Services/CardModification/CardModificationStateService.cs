@@ -96,6 +96,49 @@ public static class CardModificationStateService
         }
     }
 
+    public static CardModificationState GetEffectiveStateForCard(CardModel card)
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            CardModificationState effective = GetEffectivePermanentStateLocked(card.Id);
+            if (TryGetCopyKey(card, out string? copyKey)
+                && copyKey is not null
+                && _run.Cards.TryGetValue(copyKey, out CardModificationState? temporary))
+            {
+                effective.MergeFrom(temporary);
+            }
+
+            return effective;
+        }
+    }
+
+    public static bool TryGetCustomTitle(CardModel card, out string title)
+    {
+        CardModificationState state = GetEffectiveStateForCard(card);
+        if (!string.IsNullOrWhiteSpace(state.CustomTitle))
+        {
+            title = state.CustomTitle!;
+            return true;
+        }
+
+        title = string.Empty;
+        return false;
+    }
+
+    public static bool TryGetCustomDescription(CardModel card, out string description)
+    {
+        CardModificationState state = GetEffectiveStateForCard(card);
+        if (!string.IsNullOrWhiteSpace(state.CustomDescription))
+        {
+            description = state.CustomDescription!;
+            return true;
+        }
+
+        description = string.Empty;
+        return false;
+    }
+
     public static CardModificationState GetPermanentState(ModelId cardId)
     {
         EnsureLoaded();
@@ -553,7 +596,7 @@ public static class CardModificationStateService
             card.Affliction.Amount = Math.Max(1, canonical.Affliction.Amount);
     }
 
-    private static void ApplySavedRunStateToLiveDecks()
+    public static void ApplySavedRunStateToLiveDecks()
     {
         try
         {
@@ -748,6 +791,7 @@ public static class CardModificationStateService
     private static void OnRunStarted(RunState _)
     {
         ReloadRun();
+        ApplySavedRunStateToLiveDecks();
     }
 
     private static void OnProfileIdChanged(int _)
@@ -892,6 +936,36 @@ public static class CardModificationStateService
         return $"{ownerNetId}:{index}:{cardId}";
     }
 
+    private static bool TryGetCopyKey(CardModel card, out string? copyKey)
+    {
+        copyKey = null;
+        if (card.IsCanonical)
+            return false;
+
+        try
+        {
+            Player? owner = card.Owner;
+            if (owner is null)
+                return false;
+
+            IReadOnlyList<CardModel> deckCards = owner.Deck.Cards;
+            for (int index = 0; index < deckCards.Count; index++)
+            {
+                if (!ReferenceEquals(deckCards[index], card))
+                    continue;
+
+                copyKey = GetCopyKey(owner.NetId, index, card.Id);
+                return true;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
+    }
+
     private static string GetRunPath(long runStartTime)
     {
         return SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, runStartTime);
@@ -990,6 +1064,12 @@ public sealed class CardModificationState
     [JsonPropertyName("rarity")]
     public string? Rarity { get; set; }
 
+    [JsonPropertyName("customTitle")]
+    public string? CustomTitle { get; set; }
+
+    [JsonPropertyName("customDescription")]
+    public string? CustomDescription { get; set; }
+
     [JsonPropertyName("keywordOverrides")]
     public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
 
@@ -1008,6 +1088,8 @@ public sealed class CardModificationState
         && string.IsNullOrWhiteSpace(PoolId)
         && string.IsNullOrWhiteSpace(Type)
         && string.IsNullOrWhiteSpace(Rarity)
+        && string.IsNullOrWhiteSpace(CustomTitle)
+        && string.IsNullOrWhiteSpace(CustomDescription)
         && KeywordOverrides.Count == 0
         && (Enchantment is null || Enchantment.IsEmpty)
         && (Affliction is null || Affliction.IsEmpty);
@@ -1023,6 +1105,8 @@ public sealed class CardModificationState
             PoolId = PoolId,
             Type = Type,
             Rarity = Rarity,
+            CustomTitle = CustomTitle,
+            CustomDescription = CustomDescription,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             Enchantment = Enchantment?.Clone(),
             Affliction = Affliction?.Clone()
@@ -1055,6 +1139,12 @@ public sealed class CardModificationState
         if (!string.IsNullOrWhiteSpace(other.Rarity))
             Rarity = other.Rarity;
 
+        if (other.CustomTitle is not null)
+            CustomTitle = other.CustomTitle;
+
+        if (other.CustomDescription is not null)
+            CustomDescription = other.CustomDescription;
+
         foreach ((string key, bool value) in other.KeywordOverrides)
             KeywordOverrides[key] = value;
 
@@ -1080,5 +1170,16 @@ public sealed class CardModificationState
 
         if (Affliction?.IsEmpty == true)
             Affliction = null;
+
+        CustomTitle = NormalizeText(CustomTitle);
+        CustomDescription = NormalizeText(CustomDescription);
+    }
+
+    private static string? NormalizeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return value.Trim();
     }
 }

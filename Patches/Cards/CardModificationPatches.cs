@@ -11,6 +11,7 @@ using HarmonyLib;
 using Loadout.Services.CardModification;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Models;
@@ -51,13 +52,43 @@ public static class RunStateLoadCardPatch
     }
 }
 
-[HarmonyPatch(typeof(Player), "PopulateDeck")]
+[HarmonyPatch]
 public static class PlayerPopulateDeckCardModificationPatch
 {
+    public static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(
+            typeof(Player),
+            "PopulateDeck",
+            [typeof(IEnumerable<CardModel>), typeof(bool)]);
+    }
+
     [HarmonyPostfix]
     public static void Postfix(Player __instance)
     {
         CardModificationStateService.ApplySavedRunStateToPlayerDeck(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.Title), MethodType.Getter)]
+public static class CardModelTitleCardModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(CardModel __instance, ref string __result)
+    {
+        if (CardModificationStateService.TryGetCustomTitle(__instance, out string customTitle))
+            __result = customTitle;
+    }
+}
+
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.GetDescriptionForPile), typeof(PileType), typeof(Creature))]
+public static class CardModelDescriptionCardModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(CardModel __instance, ref string __result)
+    {
+        if (CardModificationStateService.TryGetCustomDescription(__instance, out string customDescription))
+            __result = customDescription;
     }
 }
 
@@ -165,6 +196,7 @@ public static class RunManagerLaunchCardModificationPatch
     public static void Postfix()
     {
         CardModificationMultiplayerSyncService.OnRunLaunched();
+        CardModificationStateService.ApplySavedRunStateToLiveDecks();
     }
 }
 

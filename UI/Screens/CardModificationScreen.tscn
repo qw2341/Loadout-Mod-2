@@ -1,9 +1,6 @@
-[gd_scene load_steps=5 format=3 uid="uid://bgwaabxgljhfs"]
+[gd_scene load_steps=2 format=3 uid="uid://bgwaabxgljhfs"]
 
 [ext_resource type="Script" path="res://UI/Screens/NCardModificationScreen.cs" id="1_screen"]
-[ext_resource type="Script" path="res://src/Core/Nodes/GodotExtensions/NButton.cs" id="2_button"]
-[ext_resource type="Texture2D" path="res://images/packed/common_ui/settings_tiny_left_arrow.png" id="3_left_arrow"]
-[ext_resource type="Texture2D" path="res://images/packed/common_ui/settings_tiny_right_arrow.png" id="4_right_arrow"]
 
 [node name="CardModificationScreen" type="Control"]
 layout_mode = 3
@@ -23,7 +20,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
-color = Color(0, 0, 0, 0.965)
+color = Color(0, 0, 0, 0.925)
 
 [node name="CardAnchor" type="Control" parent="."]
 layout_mode = 1
@@ -69,20 +66,6 @@ grow_vertical = 2
 pivot_offset = Vector2(64, 64)
 focus_mode = 2
 mouse_filter = 0
-script = ExtResource("2_button")
-
-[node name="TextureRect" type="TextureRect" parent="CardAnchor/LeftArrow"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(64, 64)
-mouse_filter = 2
-texture = ExtResource("3_left_arrow")
-expand_mode = 1
-stretch_mode = 5
 
 [node name="RightArrow" type="Control" parent="CardAnchor"]
 unique_name_in_owner = true
@@ -101,20 +84,24 @@ grow_vertical = 2
 pivot_offset = Vector2(64, 64)
 focus_mode = 2
 mouse_filter = 0
-script = ExtResource("2_button")
 
-[node name="TextureRect" type="TextureRect" parent="CardAnchor/RightArrow"]
+[node name="CardEditActions" type="HBoxContainer" parent="CardAnchor"]
+unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -270.0
+offset_top = 456.0
+offset_right = 270.0
+offset_bottom = 508.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(64, 64)
 mouse_filter = 2
-texture = ExtResource("4_right_arrow")
-expand_mode = 1
-stretch_mode = 5
+theme_override_constants/separation = 12
+alignment = 1
 
 [node name="LeftEditor" type="ScrollContainer" parent="."]
 layout_mode = 1
@@ -124,7 +111,7 @@ anchor_bottom = 1.0
 offset_left = 36.0
 offset_top = 132.0
 offset_right = 474.0
-offset_bottom = -150.0
+offset_bottom = -224.0
 grow_vertical = 2
 mouse_filter = 0
 
@@ -143,7 +130,7 @@ size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="RightEditor" type="ScrollContainer" parent="."]
+[node name="RightEditor" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 11
 anchor_left = 1.0
@@ -152,52 +139,44 @@ anchor_bottom = 1.0
 offset_left = -474.0
 offset_top = 92.0
 offset_right = -36.0
-offset_bottom = -150.0
+offset_bottom = -60.0
 grow_horizontal = 0
 grow_vertical = 2
-mouse_filter = 0
-
-[node name="Margin" type="MarginContainer" parent="RightEditor"]
-layout_mode = 2
-size_flags_horizontal = 3
+mouse_filter = 2
 theme_override_constants/margin_left = 6
 theme_override_constants/margin_top = 6
 theme_override_constants/margin_right = 6
 theme_override_constants/margin_bottom = 6
 
-[node name="RightControls" type="VBoxContainer" parent="RightEditor/Margin"]
+[node name="RightControls" type="VBoxContainer" parent="RightEditor"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(426, 0)
 size_flags_horizontal = 0
 mouse_filter = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 4
 
-[node name="ActionRow" type="HBoxContainer" parent="."]
+[node name="ActionRow" type="VBoxContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
+anchors_preset = 2
 anchor_top = 1.0
-anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -590.0
-offset_top = -134.0
-offset_right = -36.0
-offset_bottom = -82.0
-grow_horizontal = 0
+offset_left = 42.0
+offset_top = -202.0
+offset_right = 396.0
+offset_bottom = -48.0
 grow_vertical = 0
 mouse_filter = 2
 theme_override_constants/separation = 8
-alignment = 2
 
 [node name="BackButtonMount" type="Control" parent="."]
 unique_name_in_owner = true
-z_index = 20
+z_index = 30
 layout_mode = 1
-anchors_preset = 0
-offset_left = 36.0
-offset_top = 20.0
-offset_right = 236.0
-offset_bottom = 130.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
