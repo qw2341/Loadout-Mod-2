@@ -18,8 +18,11 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
+using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -198,6 +201,64 @@ public sealed class LoadoutGameAction : GameAction
                     : CardPreviewStyle.HorizontalLayout;
                 CardCmd.PreviewCardPileAdd(results, 2f, previewStyle);
             }
+
+            if (CombatManager.Instance.IsInProgress)
+                await AddCardCopiesToCombatHandIgnoringLimitAsync(targetPlayer, canonicalCard);
+        }
+    }
+
+    private async Task AddCardCopiesToCombatHandIgnoringLimitAsync(Player targetPlayer, CardModel canonicalCard)
+    {
+        if (Amount <= 0)
+            return;
+
+        ICombatState? combatState = targetPlayer.Creature.CombatState;
+        CardPile? hand = CardPile.Get(PileType.Hand, targetPlayer);
+        if (combatState is null || hand is null)
+            return;
+
+        for (int i = 0; i < Amount; i++)
+        {
+            try
+            {
+                CardModel card = combatState.CreateCard(canonicalCard, targetPlayer);
+                CombatManager.Instance.History.CardGenerated(combatState, card, targetPlayer);
+                hand.AddInternal(card);
+                hand.InvokeCardAddFinished();
+                AddCardToLocalHandNode(card);
+                await Hook.AfterCardEnteredCombat(combatState, card);
+                await Hook.AfterCardChangedPiles(targetPlayer.RunState, combatState, card, PileType.None, null);
+                await Hook.AfterCardGeneratedForCombat(combatState, card, targetPlayer);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"LoadoutPanel: stopped adding combat hand card '{ModelId}' to player {targetPlayer.NetId} after {i}/{Amount}. {exception.Message}");
+                break;
+            }
+        }
+    }
+
+    private static void AddCardToLocalHandNode(CardModel card)
+    {
+        try
+        {
+            if (!LocalContext.IsMe(card.Owner))
+                return;
+
+            NPlayerHand? handNode = NPlayerHand.Instance;
+            if (handNode is null)
+                return;
+
+            NCard? cardNode = NCard.Create(card);
+            if (cardNode is null)
+                return;
+
+            cardNode.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+            handNode.Add(cardNode);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutPanel: added card '{card.Id}' to hand, but could not create its hand visual. {exception.Message}");
         }
     }
 

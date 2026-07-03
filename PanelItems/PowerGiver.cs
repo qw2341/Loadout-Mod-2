@@ -14,12 +14,16 @@ using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 
 namespace Loadout.PanelItems;
 
 public class PowerGiver
 {
+	private static readonly Vector2 PowerButtonSize = new(220f, 104f);
+	private static readonly Vector2 PowerIconSize = new(62f, 62f);
+
     public static void Initialize()
     {
         CreateAndAddPowerGiverItem(
@@ -67,7 +71,7 @@ public class PowerGiver
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
-				builder.Layout(5, new Vector2(220f, 104f), 24, 24, fixedSlots: false);
+				builder.Layout(5, PowerButtonSize, 24, 24, fixedSlots: false);
 				builder.CustomVisibilityPredicate(power => !showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
 				builder.FilterGroup("type", LocMan.Loc("FILTER_GROUP_TYPE", "Type"));
 				builder.Filter("buff", LocMan.Loc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
@@ -165,7 +169,7 @@ public class PowerGiver
 		if (ResourceLoader.Exists(model.IconPath))
 			icon = model.Icon;
 
-		Button button = CommonHelpers.CreateModelButton(new Vector2(220f, 104f));
+		Button button = CommonHelpers.CreateModelButton(PowerButtonSize);
 		button.ClipContents = false;
 		Panel favoriteGlow = CommonHelpers.CreateFavoriteGlow(button.CustomMinimumSize, isFavorite);
 		button.AddChild(favoriteGlow);
@@ -175,10 +179,12 @@ public class PowerGiver
 			TextureRect iconRect = new()
 			{
 				Texture = icon,
+				CustomMinimumSize = PowerIconSize,
+				ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
 				StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
 				MouseFilter = Control.MouseFilterEnum.Ignore,
 				Position = new Vector2(18f, 22f),
-				Size = new Vector2(62f, 62f)
+				Size = PowerIconSize
 			};
 			button.AddChild(iconRect);
 		}
@@ -196,7 +202,7 @@ public class PowerGiver
 		MegaLabel amountLabel = CreatePowerAmountLabel(model, selectedAmount);
 		button.AddChild(amountLabel);
 
-		CommonHelpers.AttachHoverTips(button, model.HoverTips);
+		CommonHelpers.AttachHoverTips(button, CreateSafePowerHoverTips(model));
 		return button;
 	}
 
@@ -209,9 +215,34 @@ public class PowerGiver
 			new Vector2(50f, 26f),
 			22,
 			HorizontalAlignment.Right,
-			model.AmountLabelColor);
+			GetSafePowerAmountLabelColor(model));
 		amountLabel.Visible = selectedAmount != 0;
 		return amountLabel;
+	}
+
+	private static Color GetSafePowerAmountLabelColor(PowerModel model)
+	{
+		try
+		{
+			return model.AmountLabelColor;
+		}
+		catch
+		{
+			return model.Type == PowerType.Debuff ? StsColors.red : StsColors.cream;
+		}
+	}
+
+	private static IEnumerable<IHoverTip> CreateSafePowerHoverTips(PowerModel model)
+	{
+		try
+		{
+			return [model.DumbHoverTip];
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not create power hover tip for '{PowerId(model)}'. {exception.Message}");
+			return [];
+		}
 	}
 
 	private static void UpdatePowerGridItem(Control view, PowerModel model, bool favoritesOnly)

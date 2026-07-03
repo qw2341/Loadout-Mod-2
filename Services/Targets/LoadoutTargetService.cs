@@ -103,7 +103,7 @@ public static class LoadoutTargetService
             return selected;
         }
 
-        LoadoutTargetSelection fallback = GetDefaultSelection(runState);
+        LoadoutTargetSelection fallback = GetDefaultSelection(runState, mode);
         SelectedTargets[key] = fallback;
         return fallback;
     }
@@ -113,7 +113,7 @@ public static class LoadoutTargetService
         RunState? runState = GetRunState();
         SelectedTargets[key] = IsSelectionAllowed(selection, mode, runState)
             ? selection
-            : GetDefaultSelection(runState);
+            : GetDefaultSelection(runState, mode);
     }
 
     public static NLoadoutDropdown? UpsertTargetDropdown(
@@ -131,7 +131,7 @@ public static class LoadoutTargetService
             if (dropdown is not null)
                 dropdown.Visible = false;
 
-            SetSelected(key, GetDefaultSelection(GetRunState()), mode);
+            SetSelected(key, GetDefaultSelection(GetRunState(), mode), mode);
             return dropdown;
         }
 
@@ -167,8 +167,13 @@ public static class LoadoutTargetService
     public static bool ShouldShowDropdown(LoadoutTargetMode mode)
     {
         RunState? runState = GetRunState();
-        return runState is not null
-               && !RunManager.Instance.IsSingleplayerOrFakeMultiplayer
+        if (runState is null)
+            return false;
+
+        if (mode == LoadoutTargetMode.PowerGiver && IsSingleplayerOrFakeMultiplayer())
+            return GetDropdownOptions(mode).Count > 1;
+
+        return !IsSingleplayerOrFakeMultiplayer()
                && runState.Players.Count > 1
                && GetDropdownOptions(mode).Count > 1;
     }
@@ -235,6 +240,17 @@ public static class LoadoutTargetService
             return [];
 
         List<LoadoutDropdownOption> options = new();
+        if (mode == LoadoutTargetMode.PowerGiver && IsSingleplayerOrFakeMultiplayer())
+        {
+            options.Add(new LoadoutDropdownOption(
+                new LoadoutTargetSelection(LoadoutTargetScope.AllPlayers).ToOptionId(),
+                LocMan.Loc("POWER_GIVER_TARGET_PLAYERS", "Players")));
+            options.Add(new LoadoutDropdownOption(
+                new LoadoutTargetSelection(LoadoutTargetScope.AllMonsters).ToOptionId(),
+                LocMan.Loc("POWER_GIVER_TARGET_MONSTERS", "Monsters")));
+            return options;
+        }
+
         if (mode is LoadoutTargetMode.AllPlayersAndPlayers or LoadoutTargetMode.PowerGiver)
         {
             options.Add(new LoadoutDropdownOption(
@@ -270,6 +286,9 @@ public static class LoadoutTargetService
         if (selection.Scope == LoadoutTargetScope.AllPlayers)
             return mode != LoadoutTargetMode.PlayersOnly && ShouldShowDropdown(mode);
 
+        if (mode == LoadoutTargetMode.PowerGiver && IsSingleplayerOrFakeMultiplayer())
+            return false;
+
         return selection.Scope == LoadoutTargetScope.Player
                && selection.PlayerNetId.HasValue
                && runState.GetPlayer(selection.PlayerNetId.Value) is not null;
@@ -277,6 +296,14 @@ public static class LoadoutTargetService
 
     private static LoadoutTargetSelection GetDefaultSelection(RunState? runState)
     {
+        return GetDefaultSelection(runState, LoadoutTargetMode.PlayersOnly);
+    }
+
+    private static LoadoutTargetSelection GetDefaultSelection(RunState? runState, LoadoutTargetMode mode)
+    {
+        if (runState is not null && mode == LoadoutTargetMode.PowerGiver && IsSingleplayerOrFakeMultiplayer())
+            return new LoadoutTargetSelection(LoadoutTargetScope.AllPlayers);
+
         Player? localPlayer = null;
         try
         {
@@ -289,6 +316,18 @@ public static class LoadoutTargetService
 
         localPlayer ??= runState?.Players.FirstOrDefault();
         return localPlayer is null ? default : LoadoutTargetSelection.ForPlayer(localPlayer.NetId);
+    }
+
+    private static bool IsSingleplayerOrFakeMultiplayer()
+    {
+        try
+        {
+            return RunManager.Instance.IsSingleplayerOrFakeMultiplayer;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private static RunState? GetRunState()

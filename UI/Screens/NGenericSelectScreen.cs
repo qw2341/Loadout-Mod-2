@@ -2499,10 +2499,7 @@ public partial class NGenericSelectScreen : Control
             return;
 
         if (_materializationMode == SelectMaterializationMode.Eager)
-        {
-            FinalizeEagerMaterialization(warnOnMismatch: false);
             return;
-        }
 
         Rect2 viewportRect = _scrollMask?.GetGlobalRect() ?? new Rect2(Vector2.Zero, GetViewportRect().Size);
         float rowHeight = Math.Max(1f, ResolveConfiguredItemSize().Y + ItemVerticalGap);
@@ -2628,11 +2625,7 @@ public partial class NGenericSelectScreen : Control
         if (_scrollbar is not null && !_scrollbarPressed)
             _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
 
-        if (_materializationMode == SelectMaterializationMode.Eager)
-        {
-            FinalizeEagerMaterialization(warnOnMismatch: false);
-        }
-        else
+        if (_materializationMode != SelectMaterializationMode.Eager)
         {
             MaterializeViewportItemViews(ScrollMaterializeBudget);
             UpdateViewportCulling();
