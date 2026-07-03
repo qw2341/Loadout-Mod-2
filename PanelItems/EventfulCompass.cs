@@ -8,6 +8,7 @@ using Loadout.Services.LastActions;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.DevConsole;
@@ -17,6 +18,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -51,7 +53,7 @@ public class EventfulCompass
 				CommonHelpers.AddModFilters(builder, allEvents);
 				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatEventTitle(a), CommonHelpers.FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-			},null,
+			}, UpsertRoomJumpControls,
 			"EventfulCompass.png",
 			"Eventful Compass",
 			"A compass that leads to your heart's desire.",
@@ -65,9 +67,121 @@ public class EventfulCompass
     private const float EventTilePortraitRestAlpha = 0.45f;
     private const float EventTilePortraitHoverAlpha = 0.78f;
     private const float EventTileShadeHoverAlpha = 0.16f;
+    private const string RoomJumpControlName = "EventfulCompassRoomJumpControls";
+    private const string RoomJumpDropdownName = "EventfulCompassRoomDropdown";
+    private const string RoomJumpButtonName = "EventfulCompassGoToButton";
+    private static RoomType SelectedRoomType = RoomType.Treasure;
     private static readonly Dictionary<Control, Tween> EventTileHoverTweens = new();
     private static readonly Dictionary<string, SubViewport> AncientPreviewViewports = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, Texture2D> AncientPreviewTextures = new(StringComparer.Ordinal);
+
+    private static void UpsertRoomJumpControls(NGenericSelectScreen screen)
+    {
+	    RemoveExistingRoomJumpControls(screen);
+
+	    VBoxContainer controls = new()
+	    {
+		    Name = RoomJumpControlName,
+		    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		    CustomMinimumSize = new Vector2(0f, 102f),
+		    MouseFilter = Control.MouseFilterEnum.Ignore
+	    };
+	    controls.AddThemeConstantOverride("separation", 8);
+
+	    NLoadoutDropdown roomDropdown = new()
+	    {
+		    Name = RoomJumpDropdownName,
+		    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		    CustomMinimumSize = new Vector2(256f, 52f),
+		    DropdownWidth = 286f,
+		    MaxVisibleItems = 8
+	    };
+	    roomDropdown.SelectedItemChanged += OnRoomJumpDropdownChanged;
+	    controls.AddChild(roomDropdown);
+
+	    NLoadoutActionButton goToButton = new()
+	    {
+		    Name = RoomJumpButtonName,
+		    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		    CustomMinimumSize = new Vector2(0f, 42f)
+	    };
+	    goToButton.Init("go_to_room", LocMan.Loc("GO_TO_ROOM", "Go To"));
+	    goToButton.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => HandleGoToRoomPressed()));
+	    controls.AddChild(goToButton);
+
+	    roomDropdown.SetItems(
+		    LocMan.Loc("ROOM", "Room"),
+		    GetRoomJumpOptions(),
+		    SelectedRoomType.ToString());
+
+	    screen.AddCustomSidebarControl(controls);
+    }
+
+    private static void RemoveExistingRoomJumpControls(NGenericSelectScreen screen)
+    {
+	    Control customControls = screen.GetNodeOrNull<Control>("Sidebar/MarginContainer/TopVBox/CustomControls");
+	    if (customControls is null)
+		    return;
+
+	    foreach (Node child in customControls.GetChildren()
+		             .Where(child => child.Name.ToString().StartsWith(RoomJumpControlName, StringComparison.Ordinal))
+		             .ToList())
+	    {
+		    customControls.RemoveChild(child);
+		    child.QueueFree();
+	    }
+    }
+
+    private static IReadOnlyList<LoadoutDropdownOption> GetRoomJumpOptions()
+    {
+	    return Enum.GetValues<RoomType>()
+		    .Where(roomType => roomType != RoomType.Unassigned)
+		    .Select(roomType => new LoadoutDropdownOption(roomType.ToString(), FormatRoomTypeLabel(roomType)))
+		    .ToList();
+    }
+
+    private static string FormatRoomTypeLabel(RoomType roomType)
+    {
+	    return roomType switch
+	    {
+		    RoomType.Monster => LocMan.Loc("ROOM_TYPE_MONSTER", "Monster"),
+		    RoomType.Elite => LocMan.Loc("ROOM_TYPE_ELITE", "Elite"),
+		    RoomType.Boss => LocMan.Loc("ROOM_TYPE_BOSS", "Boss"),
+		    RoomType.Treasure => LocMan.Loc("ROOM_TYPE_TREASURE", "Treasure"),
+		    RoomType.Shop => LocMan.Loc("ROOM_TYPE_SHOP", "Merchant"),
+		    RoomType.Event => LocMan.Loc("ROOM_TYPE_EVENT", "Event"),
+		    RoomType.RestSite => LocMan.Loc("ROOM_TYPE_REST_SITE", "Rest Site"),
+		    RoomType.Map => LocMan.Loc("ROOM_TYPE_MAP", "Map"),
+		    _ => roomType.ToString()
+	    };
+    }
+
+    private static void OnRoomJumpDropdownChanged(string selectedId)
+    {
+	    if (Enum.TryParse(selectedId, ignoreCase: true, out RoomType roomType) && roomType != RoomType.Unassigned)
+		    SelectedRoomType = roomType;
+    }
+
+    private static void HandleGoToRoomPressed()
+    {
+	    Player localPlayer = CommonHelpers.GetLocalRunPlayer();
+	    if (localPlayer is null || !RunManager.Instance.IsInProgress)
+	    {
+		    GD.PushWarning($"LoadoutPanel: cannot go to room '{SelectedRoomType}' because no local run player was resolved.");
+		    return;
+	    }
+
+	    try
+	    {
+		    NLoadoutPanelRoot.CloseBlockingRunScreens();
+		    RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+			    new ConsoleCmdGameAction(localPlayer, $"room {SelectedRoomType}", CombatManager.Instance.IsInProgress));
+	    }
+	    catch (Exception exception)
+	    {
+		    GD.PushError($"LoadoutPanel: failed to request room jump to '{SelectedRoomType}': {exception}");
+	    }
+    }
 
     private static async Task<IReadOnlyList<LastActionEntry>> HandleEnterEventActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
     {

@@ -411,7 +411,8 @@ public partial class NLoadoutDropdown : NDropdown
         if (GetNodeOrNull<Control>("Container") is not null)
             return;
 
-        CustomMinimumSize = new Vector2(256f, ButtonHeight);
+        float requestedWidth = CustomMinimumSize.X > 0f ? CustomMinimumSize.X : 256f;
+        CustomMinimumSize = new Vector2(requestedWidth, ButtonHeight);
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         FocusMode = FocusModeEnum.All;
         MouseFilter = MouseFilterEnum.Stop;

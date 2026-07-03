@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System.Collections.Generic;
 using Loadout.PanelItems;
 using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
+using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 
 namespace Loadout.UI;
@@ -526,5 +527,6 @@ public partial class NLoadoutPanelRoot : Control
 	{
 		NOverlayStack.Instance?.Clear();
 		NCapstoneContainer.Instance?.Close();
+		NMapScreen.Instance?.Close(animateOut: false);
 	}
 }
