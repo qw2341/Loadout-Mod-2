@@ -2,13 +2,22 @@
 
 namespace Loadout.Patches.Cards;
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
 using HarmonyLib;
 using Loadout.Services.CardModification;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardLibrary;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
@@ -59,5 +68,112 @@ public static class NCardCreateCardModificationPatch
     public static void Prefix(ref CardModel card)
     {
         card = CardModificationStateService.CreatePermanentPreviewCard(card);
+    }
+}
+
+[HarmonyPatch(typeof(NCardHolder), nameof(NCardHolder.ReassignToCard))]
+public static class NCardHolderReassignCardModificationPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(ref CardModel cardModel)
+    {
+        cardModel = CardModificationStateService.GetEffectivePermanentCardForDisplay(cardModel);
+    }
+}
+
+[HarmonyPatch(typeof(NCardLibraryGrid), nameof(NCardLibraryGrid.FilterCards), typeof(Func<CardModel, bool>), typeof(List<SortingOrders>))]
+public static class NCardLibraryGridFilterCardModificationPatch
+{
+    private static readonly FieldInfo? AllCardsField = AccessTools.Field(typeof(NCardLibraryGrid), "_allCards");
+
+    [HarmonyPrefix]
+    public static bool Prefix(NCardLibraryGrid __instance, Func<CardModel, bool> filter, List<SortingOrders> sortingPriority)
+    {
+        if (AllCardsField?.GetValue(__instance) is not List<CardModel> allCards)
+            return true;
+
+        List<CardModel> cards = allCards
+            .Select(CardModificationStateService.GetEffectivePermanentCardForDisplay)
+            .Where(filter)
+            .ToList();
+        __instance.SetCards(cards, PileType.None, sortingPriority, Task.CompletedTask);
+        return false;
+    }
+}
+
+[HarmonyPatch(typeof(NCardLibraryGrid), "GetCardVisibility")]
+public static class NCardLibraryGridVisibilityCardModificationPatch
+{
+    private static readonly FieldInfo? SeenCardsField = AccessTools.Field(typeof(NCardLibraryGrid), "_seenCards");
+    private static readonly FieldInfo? UnlockedCardsField = AccessTools.Field(typeof(NCardLibraryGrid), "_unlockedCards");
+
+    [HarmonyPrefix]
+    public static bool Prefix(NCardLibraryGrid __instance, CardModel card, ref ModelVisibility __result)
+    {
+        if (SeenCardsField?.GetValue(__instance) is not HashSet<ModelId> seenCards
+            || UnlockedCardsField?.GetValue(__instance) is not HashSet<CardModel> unlockedCards)
+        {
+            return true;
+        }
+
+        if (!unlockedCards.Any(unlocked => unlocked.Id.Equals(card.Id)))
+        {
+            __result = ModelVisibility.Locked;
+            return false;
+        }
+
+        if (!seenCards.Contains(card.Id))
+        {
+            __result = ModelVisibility.NotSeen;
+            return false;
+        }
+
+        __result = ModelVisibility.Visible;
+        return false;
+    }
+}
+
+[HarmonyPatch(typeof(StartRunLobby))]
+public static class StartRunLobbyCardModificationConstructorPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        return AccessTools.GetDeclaredConstructors(typeof(StartRunLobby));
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(StartRunLobby __instance)
+    {
+        CardModificationMultiplayerSyncService.RegisterLobby(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(StartRunLobby), nameof(StartRunLobby.CleanUp))]
+public static class StartRunLobbyCardModificationCleanUpPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(StartRunLobby __instance, bool disconnectSession)
+    {
+        CardModificationMultiplayerSyncService.UnregisterLobby(__instance, disconnectSession);
+    }
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
+public static class RunManagerLaunchCardModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix()
+    {
+        CardModificationMultiplayerSyncService.OnRunLaunched();
+    }
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.CleanUp))]
+public static class RunManagerCleanUpCardModificationPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+        CardModificationMultiplayerSyncService.OnRunCleaningUp();
     }
 }

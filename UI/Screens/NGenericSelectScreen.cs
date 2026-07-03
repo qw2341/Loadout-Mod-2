@@ -1123,7 +1123,7 @@ public partial class NGenericSelectScreen : Control
     {
         if (_cancelClickable is null)
         {
-            NBackButton backButton = CreateBackButton();
+            NBackButton backButton = NLoadoutBackButtonFactory.Create();
             backButton.Name = "BackButton";
             AddChild(backButton);
             _cancelClickable = backButton;
@@ -1173,7 +1173,7 @@ public partial class NGenericSelectScreen : Control
         if (_cancelClickable is not null)
             _cancelClickable.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ =>
             {
-                ResetActionButtonVisualState(_cancelClickable);
+                NLoadoutBackButtonFactory.ResetVisualState(_cancelClickable);
                 CancelSelection();
             }));
     }
@@ -2735,102 +2735,6 @@ public partial class NGenericSelectScreen : Control
 
         AssignOwnerRecursive(scrollbar, scrollbar);
         return scrollbar;
-    }
-
-    private static NBackButton CreateBackButton()
-    {
-        NBackButton backButton = new()
-        {
-            FocusMode = FocusModeEnum.All,
-            MouseFilter = MouseFilterEnum.Stop,
-            PivotOffset = new Vector2(20f, 40f)
-        };
-        backButton.SetAnchorsPreset(LayoutPreset.BottomLeft);
-        backButton.OffsetLeft = -40f;
-        backButton.OffsetTop = -354f;
-        backButton.OffsetRight = 160f;
-        backButton.OffsetBottom = -244f;
-
-        TextureRect shadow = new()
-        {
-            Name = "Shadow",
-            Modulate = new Color(0f, 0f, 0f, 0.25098f),
-            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/back_button.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        shadow.SetAnchorsPreset(LayoutPreset.FullRect);
-        shadow.OffsetLeft = -9f;
-        shadow.OffsetTop = -1f;
-        shadow.OffsetRight = 58f;
-        shadow.OffsetBottom = 39f;
-        backButton.AddChild(shadow);
-
-        TextureRect outline = new()
-        {
-            Name = "Outline",
-            Modulate = Colors.Transparent,
-            Texture = LoadGameTexture("res://images/atlases/compressed.sprites/back_button_outline.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        outline.Material = LoadGameMaterial("res://themes/canvas_item_material_additive_shared.tres");
-        outline.SetAnchorsPreset(LayoutPreset.FullRect);
-        outline.OffsetLeft = -24f;
-        outline.OffsetTop = -16f;
-        outline.OffsetRight = 49f;
-        outline.OffsetBottom = 30f;
-        backButton.AddChild(outline);
-
-        TextureRect image = new()
-        {
-            Name = "Image",
-            Texture = LoadGameTexture("res://images/atlases/ui_atlas.sprites/back_button.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        image.SetAnchorsPreset(LayoutPreset.FullRect);
-        image.OffsetLeft = -21f;
-        image.OffsetTop = -13f;
-        image.OffsetRight = 46f;
-        image.OffsetBottom = 27f;
-        backButton.AddChild(image);
-
-        TextureRect icon = new()
-        {
-            Name = "Icon",
-            Modulate = StsColors.cream,
-            Texture = LoadGameTexture("res://images/atlases/compressed.sprites/back_button_arrow.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            MouseFilter = MouseFilterEnum.Ignore,
-            Position = new Vector2(88f, 28f),
-            Size = new Vector2(80f, 80f)
-        };
-        image.AddChild(icon);
-
-        TextureRect controllerIcon = new()
-        {
-            Name = "ControllerIcon",
-            UniqueNameInOwner = true,
-            Visible = false,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        controllerIcon.SetAnchorsPreset(LayoutPreset.Center);
-        controllerIcon.OffsetLeft = -219f;
-        controllerIcon.OffsetTop = -48f;
-        controllerIcon.OffsetRight = 21f;
-        controllerIcon.OffsetBottom = 72f;
-        controllerIcon.Scale = new Vector2(0.5f, 0.5f);
-        controllerIcon.PivotOffset = new Vector2(256f, 128f);
-        backButton.AddChild(controllerIcon);
-
-        AssignOwnerRecursive(backButton, backButton);
-        ResetActionButtonVisualState(backButton);
-        return backButton;
     }
 
     private static NConfirmButton CreateConfirmButton()

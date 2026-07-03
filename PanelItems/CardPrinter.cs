@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
+using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
 using Loadout.UI;
@@ -32,6 +33,9 @@ public class CardPrinter
     public static void Initialize()
     {
 	    IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
+	    IReadOnlyList<CardModel> effectiveCards = allCards
+		    .Select(CardModificationStateService.GetEffectivePermanentCardForDisplay)
+		    .ToList();
         
 		CommonHelpers.CreateAndAddLoadoutItem(
 			allCards,
@@ -52,18 +56,18 @@ public class CardPrinter
 				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 				AddCardPoolFilters(builder);
 				builder.FilterGroup("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")));
-				AddCardTypeFilters(builder, allCards);
+				AddCardTypeFilters(builder, effectiveCards);
 				builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity")));
-				AddCardRarityFilters(builder, allCards);
-				AddCardKeywordFilterGroup(builder, allCards);
-				AddCardTagFilterGroup(builder, allCards);
+				AddCardRarityFilters(builder, effectiveCards);
+				AddCardKeywordFilterGroup(builder, effectiveCards);
+				AddCardTagFilterGroup(builder, effectiveCards);
 				CommonHelpers.AddModFilters(builder, allCards);
 				builder.Toggle(ViewUpgradesToggleId, LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
 				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
 				builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
 				builder.Sorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.Loc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.Loc("SORT_COST", "Cost")), (a, b) => a.EnergyCost.Canonical.CompareTo(b.EnergyCost.Canonical));
+				builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.Loc("SORT_COST", "Cost")), CompareEffectiveCardCost);
 			},
 			screen =>
 			{
@@ -195,10 +199,10 @@ public class CardPrinter
 	    foreach (CardPoolModel pool in pools)
 	    {
 		    CardPoolModel localPool = pool;
-		    builder.Filter(
+			    builder.Filter(
 			    CommonHelpers.PoolFilterId("card", localPool),
 			    CommonHelpers.GetPoolLabel(localPool),
-			    card => CommonHelpers.SamePool(card.Pool, localPool),
+			    card => CommonHelpers.SamePool(CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Pool, localPool),
 			    "class");
 	    }
     }
@@ -213,7 +217,7 @@ public class CardPrinter
 		    CardType localType = type;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_type", localType), GetCardTypeLabel(localType),
-			    card => card.Type == localType,
+			    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Type == localType,
 			    "type");
 	    }
     }
@@ -230,7 +234,7 @@ public class CardPrinter
 		    CardRarity localRarity = rarity;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_rarity", localRarity), GetCardRarityLabel(localRarity),
-			    card => card.Rarity == localRarity,
+			    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Rarity == localRarity,
 			    "rarity");
 	    }
     }
@@ -253,7 +257,7 @@ public class CardPrinter
 		    CardKeyword localKeyword = keyword;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_keyword", localKeyword), GetCardKeywordLabel(localKeyword),
-			    card => Enumerable.Contains(GetLocalCardKeywords(card), localKeyword),
+			    card => Enumerable.Contains(GetLocalCardKeywords(CardModificationStateService.GetEffectivePermanentCardForDisplay(card)), localKeyword),
 			    "keyword");
 	    }
     }
@@ -281,7 +285,7 @@ public class CardPrinter
 		    CardTag localTag = tag;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_tag", localTag), GetCardTagLabel(localTag),
-			    card => card.Tags.Contains(localTag),
+			    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Tags.Contains(localTag),
 			    "tag");
 	    }
     }
@@ -289,7 +293,9 @@ public class CardPrinter
     private static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()
     {
 	    return CommonHelpers.BuildOrderedPools(
-		    ModelDb.AllCards.Select(card => card.Pool),
+		    ModelDb.AllCards
+			    .Select(CardModificationStateService.GetEffectivePermanentCardForDisplay)
+			    .Select(card => card.Pool),
 		    ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
 		    pool => !CommonHelpers.IsInternalPool(pool));
     }
@@ -403,6 +409,9 @@ public class CardPrinter
     
     private static int CompareCardLibraryOrder(CardModel left, CardModel right, IReadOnlyList<CardPoolModel> orderedPools)
     {
+	    left = CardModificationStateService.GetEffectivePermanentCardForDisplay(left);
+	    right = CardModificationStateService.GetEffectivePermanentCardForDisplay(right);
+
 	    int pool = GetCardPoolSortIndex(left.Pool, orderedPools).CompareTo(GetCardPoolSortIndex(right.Pool, orderedPools));
 	    if (pool != 0)
 		    return pool;
@@ -420,6 +429,14 @@ public class CardPrinter
 		    return cost;
 
 	    return string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
+    }
+
+    private static int CompareEffectiveCardCost(CardModel left, CardModel right)
+    {
+	    left = CardModificationStateService.GetEffectivePermanentCardForDisplay(left);
+	    right = CardModificationStateService.GetEffectivePermanentCardForDisplay(right);
+	    int cost = left.EnergyCost.GetResolved().CompareTo(right.EnergyCost.GetResolved());
+	    return cost != 0 ? cost : string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
     }
 
     private static CardPoolModel GetCurrentCharacterCardPool()
