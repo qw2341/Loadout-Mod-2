@@ -26,6 +26,7 @@ namespace Loadout.PanelItems;
 
 public class EventfulCompass
 {
+	private static bool InsertedRoomJumpControl = false;
     public static void Initialize()
     {
 	    IReadOnlyList<EventModel> allEvents = ModelDb.AllEvents.Concat(ModelDb.AllAncients).Distinct().ToList();
@@ -77,8 +78,7 @@ public class EventfulCompass
 
     private static void UpsertRoomJumpControls(NGenericSelectScreen screen)
     {
-	    RemoveExistingRoomJumpControls(screen);
-
+	    if (InsertedRoomJumpControl) return;
 	    VBoxContainer controls = new()
 	    {
 		    Name = RoomJumpControlName,
@@ -115,21 +115,7 @@ public class EventfulCompass
 		    SelectedRoomType.ToString());
 
 	    screen.AddCustomSidebarControl(controls);
-    }
-
-    private static void RemoveExistingRoomJumpControls(NGenericSelectScreen screen)
-    {
-	    Control customControls = screen.GetNodeOrNull<Control>("Sidebar/MarginContainer/TopVBox/CustomControls");
-	    if (customControls is null)
-		    return;
-
-	    foreach (Node child in customControls.GetChildren()
-		             .Where(child => child.Name.ToString().StartsWith(RoomJumpControlName, StringComparison.Ordinal))
-		             .ToList())
-	    {
-		    customControls.RemoveChild(child);
-		    child.QueueFree();
-	    }
+	    InsertedRoomJumpControl = true;
     }
 
     private static IReadOnlyList<LoadoutDropdownOption> GetRoomJumpOptions()
