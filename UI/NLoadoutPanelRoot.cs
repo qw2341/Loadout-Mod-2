@@ -249,10 +249,24 @@ public partial class NLoadoutPanelRoot : Control
 		if (screen.GetParent() != _screenContainer)
 			_screenContainer.AddChild(screen);
 
-		screen.SetAnchorsPreset(LayoutPreset.FullRect);
+		ApplyFullRectLayout(screen);
 		TrackScreen(screen);
 		SetScreenActive(screen, false);
 		UpdateModalInputState();
+	}
+
+	private void ApplyFullRectLayout(Control screen)
+	{
+		screen.SetAnchorsPreset(LayoutPreset.FullRect);
+		screen.AnchorLeft = 0f;
+		screen.AnchorTop = 0f;
+		screen.AnchorRight = 1f;
+		screen.AnchorBottom = 1f;
+		screen.OffsetLeft = 0f;
+		screen.OffsetTop = 0f;
+		screen.OffsetRight = 0f;
+		screen.OffsetBottom = 0f;
+		screen.Size = _screenContainer.Size;
 	}
 
 	public StringName GetActiveScreenName()

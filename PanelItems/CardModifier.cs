@@ -98,11 +98,12 @@ public class CardModifier
         if (root is null)
             return;
 
-        NCardModificationScreen screen = new()
-        {
-            Name = $"CardModification_{CommonHelpers.MakeSafeNodeName(CommonHelpers.OwnedItemId(item))}"
-        };
-        screen.Init(item, () => CardPrinter.RefreshCardVisuals(sourceView));
+        NCardModificationScreen screen = NCardModificationScreen.Create();
+        screen.Name = $"CardModification_{CommonHelpers.MakeSafeNodeName(CommonHelpers.OwnedItemId(item))}";
+        screen.Init(
+            item,
+            GetSelectedTargetDeckCardsForModifier(),
+            () => CardPrinter.RefreshCardVisuals(sourceView));
         root.OpenScreen(screen);
     }
 

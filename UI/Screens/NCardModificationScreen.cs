@@ -16,38 +16,58 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
-using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards;
-using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Runs;
 
 public partial class NCardModificationScreen : Control
 {
+    private const string ScenePath = "res://UI/Screens/CardModificationScreen.tscn";
     private const string NoneOptionId = "__none__";
     private const float SidePanelWidth = 438f;
-    private const float SidePanelTop = 92f;
-    private const float SidePanelBottom = 150f;
-    private const float SideMargin = 36f;
-    private const float PreviewHorizontalMargin = 510f;
+    private const float ActionButtonWidth = 174f;
+    private const float ActionButtonHeight = 42f;
 
     private LoadoutOwnedItem<CardModel>? _item;
+    private List<LoadoutOwnedItem<CardModel>> _items = [];
+    private int _itemIndex;
     private Action? _parentRefresh;
     private CardModificationState _workingState = new();
     private CardModificationState _temporaryState = new();
     private VBoxContainer? _leftControls;
     private VBoxContainer? _rightControls;
     private HBoxContainer? _actionControls;
-    private CenterContainer? _previewHost;
+    private Control? _backButtonMount;
+    private Control? _previewHost;
+    private NButton? _leftArrow;
+    private NButton? _rightArrow;
+    private NCard? _previewCard;
     private MegaLabel? _titleLabel;
+    private bool _signalsBound;
 
-    public void Init(LoadoutOwnedItem<CardModel> item, Action? parentRefresh = null)
+    public static NCardModificationScreen Create()
     {
-        _item = item;
+        if (ResourceLoader.Exists(ScenePath)
+            && GD.Load<PackedScene>(ScenePath) is { } scene
+            && scene.Instantiate<NCardModificationScreen>() is { } screen)
+        {
+            return screen;
+        }
+
+        GD.PushWarning($"CardModification: could not load scene '{ScenePath}'. Falling back to script-only screen.");
+        return new NCardModificationScreen();
+    }
+
+    public void Init(
+        LoadoutOwnedItem<CardModel> item,
+        IReadOnlyList<LoadoutOwnedItem<CardModel>>? items = null,
+        Action? parentRefresh = null)
+    {
+        _items = items?.Count > 0 ? items.ToList() : [item];
+        _itemIndex = Math.Max(0, _items.FindIndex(candidate => SameOwnedItem(candidate, item)));
         _parentRefresh = parentRefresh;
-        _workingState = CardModificationStateService.GetEffectiveState(item);
-        _temporaryState = CardModificationStateService.GetTemporaryState(item);
+        LoadItem(_items[_itemIndex]);
 
         if (IsNodeReady())
             RebuildScreen();
@@ -55,125 +75,119 @@ public partial class NCardModificationScreen : Control
 
     public override void _Ready()
     {
+        ApplyFullRectLayout(this);
         MouseFilter = MouseFilterEnum.Stop;
         ZIndex = 120;
+        BindSceneNodes();
         RebuildScreen();
     }
 
     public override void _Notification(int what)
     {
         if (what == NotificationResized)
+        {
+            ApplyFullRectLayout(this);
             RefreshPreview();
+        }
     }
 
     private void RebuildScreen()
     {
-        foreach (Node child in GetChildren())
-        {
-            RemoveChild(child);
-            child.QueueFree();
-        }
-
         if (_item is null)
             return;
 
-        BuildLayout();
+        BindSceneNodes();
         RebuildControls();
         RefreshPreview();
     }
 
-    private void BuildLayout()
+    private void BindSceneNodes()
     {
-        ColorRect background = new()
-        {
-            Color = new Color(0f, 0f, 0f, 0.965f),
-            MouseFilter = MouseFilterEnum.Stop
-        };
-        background.SetAnchorsPreset(LayoutPreset.FullRect);
-        AddChild(background);
+        _backButtonMount = GetNodeOrNull<Control>("%BackButtonMount");
+        _leftControls = GetNodeOrNull<VBoxContainer>("%LeftControls");
+        _rightControls = GetNodeOrNull<VBoxContainer>("%RightControls");
+        _actionControls = GetNodeOrNull<HBoxContainer>("%ActionRow");
+        _previewHost = GetNodeOrNull<Control>("%PreviewCardHost");
+        _leftArrow = GetNodeOrNull<NButton>("%LeftArrow");
+        _rightArrow = GetNodeOrNull<NButton>("%RightArrow");
+
+        EnsureBackButton();
+        BindSceneSignals();
+    }
+
+    private void BindSceneSignals()
+    {
+        if (_signalsBound)
+            return;
+
+        if (_leftArrow is not null)
+            _leftArrow.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => SwitchCard(-1)));
+
+        if (_rightArrow is not null)
+            _rightArrow.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => SwitchCard(1)));
+
+        _signalsBound = true;
+    }
+
+    private void EnsureBackButton()
+    {
+        if (_backButtonMount is null || _backButtonMount.GetNodeOrNull<NBackButton>("BackButton") is not null)
+            return;
 
         NBackButton backButton = NLoadoutBackButtonFactory.Create();
         backButton.Name = "BackButton";
+        PositionBackButton(backButton);
         backButton.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ =>
         {
             NLoadoutBackButtonFactory.ResetVisualState(backButton);
             NLoadoutPanelRoot.CloseTopLoadoutScreen();
         }));
-        AddChild(backButton);
-
-        _previewHost = new CenterContainer
-        {
-            Name = "PreviewHost",
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        _previewHost.SetAnchorsPreset(LayoutPreset.FullRect);
-        _previewHost.OffsetLeft = PreviewHorizontalMargin;
-        _previewHost.OffsetRight = -PreviewHorizontalMargin;
-        _previewHost.OffsetTop = 42f;
-        _previewHost.OffsetBottom = -76f;
-        AddChild(_previewHost);
-
-        _leftControls = CreateSideControls("LeftEditor", leftSide: true);
-        _rightControls = CreateSideControls("RightEditor", leftSide: false);
-        _actionControls = CreateActionRow();
+        _backButtonMount.AddChild(backButton);
     }
 
-    private VBoxContainer CreateSideControls(string name, bool leftSide)
+    private static void PositionBackButton(Control backButton)
     {
-        ScrollContainer scroller = new()
-        {
-            Name = name,
-            ClipContents = true,
-            MouseFilter = MouseFilterEnum.Stop
-        };
-        scroller.SetAnchorsPreset(LayoutPreset.FullRect);
-        scroller.AnchorLeft = leftSide ? 0f : 1f;
-        scroller.AnchorRight = leftSide ? 0f : 1f;
-        scroller.OffsetLeft = leftSide ? SideMargin : -SidePanelWidth - SideMargin;
-        scroller.OffsetRight = leftSide ? SidePanelWidth + SideMargin : -SideMargin;
-        scroller.OffsetTop = SidePanelTop;
-        scroller.OffsetBottom = -SidePanelBottom;
-        AddChild(scroller);
-
-        MarginContainer margin = new()
-        {
-            Name = "Margin",
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        margin.AddThemeConstantOverride("margin_left", 6);
-        margin.AddThemeConstantOverride("margin_right", 6);
-        margin.AddThemeConstantOverride("margin_top", 6);
-        margin.AddThemeConstantOverride("margin_bottom", 6);
-        scroller.AddChild(margin);
-
-        VBoxContainer controls = new()
-        {
-            Name = "Controls",
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        controls.AddThemeConstantOverride("separation", 8);
-        margin.AddChild(controls);
-        return controls;
+        backButton.SetAnchorsPreset(LayoutPreset.TopLeft);
+        backButton.OffsetLeft = 0f;
+        backButton.OffsetTop = 0f;
+        backButton.OffsetRight = 200f;
+        backButton.OffsetBottom = 110f;
+        backButton.PivotOffset = new Vector2(20f, 40f);
     }
 
-    private HBoxContainer CreateActionRow()
+    private void LoadItem(LoadoutOwnedItem<CardModel> item)
     {
-        HBoxContainer row = new()
-        {
-            Name = "ActionRow",
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        row.SetAnchorsPreset(LayoutPreset.FullRect);
-        row.AnchorLeft = 1f;
-        row.AnchorRight = 1f;
-        row.OffsetLeft = -SidePanelWidth - SideMargin;
-        row.OffsetRight = -SideMargin;
-        row.OffsetTop = -130f;
-        row.OffsetBottom = -78f;
-        row.AddThemeConstantOverride("separation", 10);
-        AddChild(row);
-        return row;
+        _item = item;
+        _workingState = CardModificationStateService.GetEffectiveState(item);
+        _temporaryState = CardModificationStateService.GetTemporaryState(item);
+    }
+
+    private void SwitchCard(int direction)
+    {
+        if (_items.Count == 0)
+            return;
+
+        int nextIndex = Mathf.Clamp(_itemIndex + direction, 0, _items.Count - 1);
+        if (nextIndex == _itemIndex)
+            return;
+
+        _itemIndex = nextIndex;
+        LoadItem(_items[_itemIndex]);
+        RebuildControls();
+        RefreshPreview();
+    }
+
+    private void LayoutPreviewNavigation()
+    {
+        if (_leftArrow is null || _rightArrow is null)
+            return;
+
+        bool hasPrevious = _itemIndex > 0;
+        bool hasNext = _itemIndex < _items.Count - 1;
+        _leftArrow.Visible = hasPrevious;
+        _rightArrow.Visible = hasNext;
+        _leftArrow.MouseFilter = hasPrevious ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        _rightArrow.MouseFilter = hasNext ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
     }
 
     private void RebuildControls()
@@ -200,17 +214,20 @@ public partial class NCardModificationScreen : Control
             NLoadoutActionButton permanentButton = CreateActionButton("save_permanent", LocMan.Loc("SAVE_PERMANENT", "Save Permanent"), CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
             ConnectActionButton(permanentButton, SavePermanent);
             _actionControls.AddChild(permanentButton);
+            ConfigureActionButtonSize(permanentButton);
         }
 
         NLoadoutActionButton resetTemporaryButton = CreateActionButton("reset_temporary", LocMan.Loc("RESET_TEMPORARY", "Reset Temporary"));
         ConnectActionButton(resetTemporaryButton, ResetTemporary);
         _actionControls.AddChild(resetTemporaryButton);
+        ConfigureActionButtonSize(resetTemporaryButton);
 
         if (CanSavePermanent())
         {
             NLoadoutActionButton resetPermanentButton = CreateActionButton("reset_permanent", LocMan.Loc("RESET_PERMANENT", "Reset Permanent"));
             ConnectActionButton(resetPermanentButton, ResetPermanent);
             _actionControls.AddChild(resetPermanentButton);
+            ConfigureActionButtonSize(resetPermanentButton);
         }
     }
 
@@ -361,7 +378,8 @@ public partial class NCardModificationScreen : Control
         GridContainer grid = new()
         {
             Columns = 2,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(420f, 0f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
             MouseFilter = MouseFilterEnum.Ignore
         };
         grid.AddThemeConstantOverride("h_separation", 8);
@@ -381,7 +399,7 @@ public partial class NCardModificationScreen : Control
             NLoadoutToggle toggle = new()
             {
                 CustomMinimumSize = new Vector2(202f, 46f),
-                SizeFlagsHorizontal = SizeFlags.ExpandFill
+                SizeFlagsHorizontal = SizeFlags.ShrinkBegin
             };
             toggle.Init($"keyword_{key}", CardPrinter.GetCardKeywordLabel(keyword), isChecked);
             toggle.Toggled += changed =>
@@ -574,35 +592,48 @@ public partial class NCardModificationScreen : Control
         if (_previewHost is null || _item is null)
             return;
 
-        ClearChildren(_previewHost);
+        LayoutPreviewNavigation();
 
-        NCard? card = NCard.Create(_item.Model);
-        if (card is null)
-            return;
-
-        NGridCardHolder? holder = NGridCardHolder.Create(card);
-        if (holder is null)
+        if (_previewCard is null || !GodotObject.IsInstanceValid(_previewCard))
         {
-            _previewHost.AddChild(card);
-            return;
+            ClearChildren(_previewHost);
+            _previewCard = NCard.Create(_item.Model);
+            if (_previewCard is null)
+                return;
+
+            _previewHost.AddChild(_previewCard);
+        }
+        else
+        {
+            _previewCard.Model = _item.Model;
         }
 
-        float previewScale = GetPreviewScale();
-        holder.Scale = Vector2.One * previewScale;
-        holder.CustomMinimumSize = NCard.defaultSize * previewScale;
-        holder.MouseFilter = MouseFilterEnum.Pass;
-        _previewHost.AddChild(holder);
-        Callable.From(() => holder.CardNode?.UpdateVisuals(PileType.None, CardPreviewMode.Normal)).CallDeferred();
+        NCard card = _previewCard;
+        if (card.GetParent() != _previewHost)
+            _previewHost.AddChild(card);
+
+        card.SetAnchorsPreset(LayoutPreset.Center);
+        card.Position = Vector2.Zero;
+        card.Scale = Vector2.One * GetPreviewScale();
+        card.MouseFilter = MouseFilterEnum.Ignore;
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(card))
+                card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+        }).CallDeferred();
     }
 
     private float GetPreviewScale()
     {
         Vector2 viewport = GetViewportRect().Size;
-        float laneWidth = MathF.Max(280f, viewport.X - PreviewHorizontalMargin * 2f);
-        float laneHeight = MathF.Max(420f, viewport.Y - 128f);
-        float byHeight = laneHeight * 0.82f / NCard.defaultSize.Y;
-        float byWidth = laneWidth * 0.9f / NCard.defaultSize.X;
-        return Mathf.Clamp(MathF.Min(byHeight, byWidth), 1.35f, 2.05f);
+        if (viewport == Vector2.Zero)
+            return 2f;
+
+        float laneWidth = MathF.Max(320f, viewport.X - (SidePanelWidth * 2f) - 220f);
+        float laneHeight = MathF.Max(420f, viewport.Y - 184f);
+        float byHeight = laneHeight / NCard.defaultSize.Y;
+        float byWidth = laneWidth / NCard.defaultSize.X;
+        return Mathf.Clamp(MathF.Min(byHeight, byWidth), 1.35f, 2.0f);
     }
 
     private static bool CanSavePermanent()
@@ -615,6 +646,32 @@ public partial class NCardModificationScreen : Control
         {
             return true;
         }
+    }
+
+    private static void ConfigureActionButtonSize(Control button)
+    {
+        button.CustomMinimumSize = new Vector2(ActionButtonWidth, ActionButtonHeight);
+        button.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+    }
+
+    private static void ApplyFullRectLayout(Control control)
+    {
+        control.SetAnchorsPreset(LayoutPreset.FullRect);
+        control.AnchorLeft = 0f;
+        control.AnchorTop = 0f;
+        control.AnchorRight = 1f;
+        control.AnchorBottom = 1f;
+        control.OffsetLeft = 0f;
+        control.OffsetTop = 0f;
+        control.OffsetRight = 0f;
+        control.OffsetBottom = 0f;
+    }
+
+    private static bool SameOwnedItem(LoadoutOwnedItem<CardModel> left, LoadoutOwnedItem<CardModel> right)
+    {
+        return left.OwnerNetId == right.OwnerNetId
+               && left.Index == right.Index
+               && left.Model.Id.Equals(right.Model.Id);
     }
 
     private static NLoadoutActionButton CreateActionButton(string id, string label, Texture2D? icon = null)

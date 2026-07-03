@@ -81,8 +81,9 @@ public partial class NLoadoutActionButton : NButton
 
     private void BuildControlTree()
     {
-        CustomMinimumSize = new Vector2(0f, ButtonHeight);
-        SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        float requestedWidth = CustomMinimumSize.X;
+        CustomMinimumSize = new Vector2(requestedWidth, Mathf.Max(CustomMinimumSize.Y, ButtonHeight));
+        SizeFlagsHorizontal = requestedWidth > 0f ? SizeFlags.ShrinkBegin : SizeFlags.ExpandFill;
 
         if (GetNodeOrNull<Control>("ButtonImage") is not { } buttonImage)
         {
