@@ -17,12 +17,36 @@ public partial class MainFile : Node
 
     public static void Initialize()
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        Godot.Bridge.ScriptManagerBridge.LookupScriptsInAssembly(assembly);
+        Logger.Info("[Loadout] Build marker DLL: 2026-07-04-preload-hook-v3");
 
+        var assembly = Assembly.GetExecutingAssembly();
+        Logger.Info($"[Loadout] Assembly location: {assembly.Location}");
+        Logger.Info($"[Loadout] Assembly version: {assembly.GetName().Version}");
+
+        Godot.Bridge.ScriptManagerBridge.LookupScriptsInAssembly(assembly);
+        LogPckBuildMarker();
+            
         Harmony harmony = new(ModId);
         harmony.PatchAll();
-        
+
+        Logger.Info("[Loadout] Harmony PatchAll complete.");
+
         LocMan.Load();
+
+        Logger.Info("[Loadout] Initialize complete.");
+    }
+    
+    private static void LogPckBuildMarker()
+    {
+        const string path = "res://Loadout/build_marker.txt";
+
+        if (!FileAccess.FileExists(path))
+        {
+            Logger.Warn("[Loadout] PCK build marker missing.");
+            return;
+        }
+
+        using FileAccess file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
+        Logger.Info("[Loadout] " + file.GetAsText().Trim());
     }
 }
