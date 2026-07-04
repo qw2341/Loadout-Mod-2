@@ -452,8 +452,8 @@ public partial class NCardModificationScreen : Control
             int current = _workingState.DynamicVars.TryGetValue(name, out decimal saved)
                 ? Decimal.ToInt32(saved)
                 : Decimal.ToInt32(dynamicVar.BaseValue);
-
-            AddStepperRow(_leftControls, name, current, -999, 999, value =>
+            
+            AddStepperRow(_leftControls, dynamicVar.Name, current, -999, 999, value =>
             {
                 _workingState.DynamicVars[name] = value;
                 _temporaryState.DynamicVars[name] = value;

@@ -59,8 +59,8 @@ public class CardModifier
             BuildCardModifierScreen,
             HandleUpgradeCardActivatedAsync,
             "CardModifier.png",
-            "Card Modifier",
-            "Modifies cards in your current deck.",
+            LocMan.Loc("CARDMODIFIER_TITLE", "Card Modifier"),
+            LocMan.Loc("CARDMODIFIER_DESC", "Right-click this relic to modify any card you want; right-click cards to modify them."),
             (screen, refresh) =>
             {
                 LoadoutTargetService.UpsertTargetDropdown(

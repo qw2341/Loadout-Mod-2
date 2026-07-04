@@ -153,8 +153,8 @@ public class CardPrinter
 			BuildCardPrinterScreen,
 			screen => ConfigureCardPrinterSidebar(screen),
 			"CardPrinter.png",
-			"Card Printer",
-			"It prints any cards you want.",
+			LocMan.Loc("CARDPRINTER_TITLE", "Card Printer"),
+			LocMan.Loc("CARDPRINTER_DESC", "Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action."),
 			HandleAddCardActivatedAsync,
 			LastActionService.CardPrinterKey,
 			ReplayCardPrinterLastActionAsync);

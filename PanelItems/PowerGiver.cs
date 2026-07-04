@@ -28,8 +28,8 @@ public class PowerGiver
     {
         CreateAndAddPowerGiverItem(
             "PowerGiver.png",
-            "Power Giver",
-            "Potion that gives power.");
+            LocMan.Loc("POWERGIVER_TITLE", "Potion of Powers"),
+            LocMan.Loc("POWERGIVER_DESC", "Right-click this relic to select the power for you/monsters at the start/middle of combat. Left-click to increase, right-click to decrease. Ctrl x5, Shift x10. Alt + left-click to favorite. Ctrl + right click to repeat the last action."));
     }
     
     private static void CreateAndAddPowerGiverItem(

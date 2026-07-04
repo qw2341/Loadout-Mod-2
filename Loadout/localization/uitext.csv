@@ -30,9 +30,9 @@ SAVE_PERMANENT,Save Permanent,永久保存
 RESET_TEMPORARY,Reset Temporary,重置临时修改
 RESET_PERMANENT,Reset Permanent,重置永久修改
 CARD_MOD_NUMERIC_STATS,Numeric Stats,数值属性
-CARD_MOD_ENERGY_COST,Energy Cost,能量消耗
-CARD_MOD_REPLAY_COUNT,Replay Count,重复次数
-CARD_MOD_STAR_COST,Star Cost,星星消耗
+CARD_MOD_ENERGY_COST,Energy Cost,费用
+CARD_MOD_REPLAY_COUNT,Replay Count,重放
+CARD_MOD_STAR_COST,Star Cost,辉星
 CARD_MOD_CARD_FIELDS,Card Fields,卡牌字段
 CARD_MOD_ATTACHMENTS,Attachments,附加效果
 CARD_MOD_ENCHANTMENT,Enchantment,附魔
@@ -91,3 +91,60 @@ ENUM_RELICRARITY_RARE,Rare,稀有
 ENUM_RELICRARITY_SHOP,Shop,商店
 ENUM_RELICRARITY_ANCIENT,Ancient,远古
 ENUM_RELICRARITY_EVENT,Event,事件
+HOST_PERMAMODS_TITLE,Host Modifications,主机的永久修改
+ROOM,Room,房间
+GO_TO_ROOM,Go to, 前往
+LOADOUTBAG_TITLE,Loadout Bag,装备箱
+LOADOUTBAG_DESC,"Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action.",右键此遗物来获取任何你想要的遗物。左键获取。Ctrl x5，Shift x10。Ctrl + 右键来重复上一次操作。
+LOADOUTBAGALT_TITLE,Death Certificate,死亡证明
+LOADOUTBAGALT_DESC,"Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action.",右键此遗物来获取任何你想要的遗物。左键获取。Ctrl x5，Shift x10。Ctrl + 右键来重复上一次操作。
+THEBIN_TITLE,The Bin,回收桶
+THEBIN_DESC,Right-click this relic to obliterate any relic you want.,右键此遗物来移除任何你不想要的遗物。
+THEBINALT_TITLE,The Void,虚空
+THEBINALT_DESC,Right-click this relic to void any relic you want.,右键此遗物来吸入任何你不想要的遗物。
+LOADOUTCAULDRON_TITLE,The Cauldron,炼药大锅
+LOADOUTCAULDRON_DESC,Right-click this relic to obtain any potion you want. Ctrl + right click to repeat the last action.,右键此遗物来获取任何你想要的药水。Ctrl + 右键来重复上一次操作。
+LOADOUTCAULDRONALT_TITLE,Mom's Bottle of Pills,妈妈的药瓶
+LOADOUTCAULDRONALT_DESC,Right-click this relic to obtain any potion you want. Ctrl + right click to repeat the last action.,右键此遗物来获取任何你想要的药水。Ctrl + 右键来重复上一次操作。
+CARDPRINTER_TITLE,Card Printer,印卡机
+CARDPRINTER_DESC,Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action.,右键此遗物来添加卡牌进入牌组；战斗中使用也会同时添加进手牌。Ctrl + 右键来重复上一次操作。
+CARDSHREDDER_TITLE,Card Shredder,删卡机
+CARDSHREDDER_DESC,Right-click this relic to obliterate any card you want; use during combat will also remove it from combat.,右键此遗物来从牌组删除卡牌; 战斗中使用也会同时将其从战斗中删除。
+CARDMODIFIER_TITLE,Card Modifier,改卡机
+CARDMODIFIER_DESC,Right-click this relic to modify any card you want; right-click cards to modify them.,右键此遗物来升级卡牌从牌组；右键卡牌来修改它。
+CARDPRINTERALT_TITLE,Deck of Cards,卡牌盒
+CARDPRINTERALT_DESC,Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action.,右键此遗物来添加卡牌进入牌组；战斗中使用也会同时添加进手牌。按住Shift为x10张，Ctrl为x5张。Ctrl + 右键来重复上一次操作。
+CARDSHREDDERALT_TITLE,Torn Card,扑克牌残片
+CARDSHREDDERALT_DESC,Right-click this relic to obliterate any card you want; use during combat will also remove it from combat.,右键此遗物来从牌组删除卡牌; 战斗中使用也会同时将其从战斗中删除。
+CARDMODIFIERALT_TITLE,Blank Card,空白卡牌
+CARDMODIFIERALT_DESC,Right-click this relic to modify any card you want; right-click cards to modify them.,右键此遗物来升级卡牌从牌组；右键卡牌来修改它。
+EVENTFULCOMPASS_TITLE,Eventful Compass,事件指南针
+EVENTFULCOMPASS_DESC,Right-click this relic to select the event you want. Ctrl + right click to repeat the last action.,右键此遗物来选择你想去的事件。Ctrl + 右键来重复上一次操作。
+EVENTFULCOMPASSALT_TITLE,The Compass,指南针
+EVENTFULCOMPASSALT_DESC,Right-click this relic to select the event you want. Ctrl + right click to repeat the last action.,右键此遗物来选择你想去的事件。Ctrl + 右键来重复上一次操作。
+POWERGIVER_TITLE,Potion of Powers,能力药水
+POWERGIVER_DESC,"Right-click this relic to select the power for you/monsters at the start/middle of combat. Left-click to increase, right-click to decrease. Ctrl x5, Shift x10. Alt + left-click to favorite. Ctrl + right click to repeat the last action.","右键此遗物来选择你或怪物在战斗开始时/中获得的能力。 左键增加，右键减少。Ctrl x5, Shift x10。 Alt+左键收藏。Ctrl + 右键来重复上一次操作。"
+POWERGIVERALT_TITLE,Lemegeton,所罗门魔典
+POWERGIVERALT_DESC,"Right-click this relic to select the power for you/monsters at the start/middle of combat. Left-click to increase, right-click to decrease. Ctrl x5, Shift x10. Alt + left-click to favorite. Ctrl + right click to repeat the last action.","右键此遗物来选择你或怪物在战斗开始时/中获得的能力。 左键增加，右键减少。Ctrl x5, Shift x10。 Alt+左键收藏。Ctrl + 右键来重复上一次操作。"
+TILDEKEY_TITLE,Reality Manipulator,现实操纵仪
+TILDEKEY_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。
+TILDEKEYALT_TITLE,Tilde Key,波浪键
+TILDEKEYALT_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。
+BOTTLEDMONSTER_TITLE,Bottled Monster,瓶装怪物
+BOTTLEDMONSTER_DESC,"Right-click this relic to spawn any monster you want. Ctrl + right click to resummon the last summon. If none, dupe monsters instead.",右键此遗物来生成任意怪物。Ctrl + 右键来重复生成上一个。如没有则复制房间怪物。
+BOTTLEDMONSTERALT_TITLE,Friendly Ball,友好球
+BOTTLEDMONSTERALT_DESC,"Right-click this relic to spawn any monster you want. Ctrl + right click to resummon the last summon. If none, dupe monsters instead.",右键此遗物来生成任意怪物。Ctrl + 右键来重复生成上一个。如没有则复制房间怪物。
+ORBBOX_TITLE,Box of Orbs,球盒
+ORBBOX_DESC,Right-click this relic to spawn any orb you want.,右键获得任何你想要的球。
+ORBBOXALT_TITLE,Book of Virtues,美德之书
+ORBBOXALT_DESC,Right-click this relic to spawn any wisp you want.,右键获得任何你想要的魂火跟班。
+ALLINONEBAG_TITLE,Everything Bag,装备箱2.0
+ALLINONEBAG_DESC,Right-click this relic to toggle other loadout relics.,右键此遗物来显示/隐藏其他 loadout 遗物。
+ALLINONEBAGALT_TITLE,Death Certificate 2.0,死亡证明2.0
+ALLINONEBAGALT_DESC,Right-click this relic to toggle other loadout relics.,右键此遗物来显示/隐藏其他 loadout 遗物。
+BLIGHTCHEST_TITLE,Tiny Blight Chest,小荒疫箱
+BLIGHTCHEST_DESC,"Right-click this relic to obtain any blights. Left-click to obtain, right-click to remove. Ctrl x5, Shift x10.",右键获得任何你想要的荒疫。左键获取，右键移除。Ctrl x5，Shift x10。
+BLIGHTCHESTALT_TITLE,Tiny Blight Chest,小荒疫箱
+BLIGHTCHESTALT_DESC,"Right-click this relic to obtain any blights. Left-click to obtain, right-click to remove. Ctrl x5, Shift x10.",右键获得任何你想要的荒疫。左键获取，右键移除。Ctrl x5，Shift x10。
+ALLINONEBAGUP_TITLE,Ultimate Bag,终极装备箱
+ALLINONEBAGUP_DESC,Right-click this relic to win the game.,右键此遗物来获取胜利。

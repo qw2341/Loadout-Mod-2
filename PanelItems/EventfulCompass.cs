@@ -56,8 +56,8 @@ public class EventfulCompass
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
 			}, UpsertRoomJumpControls,
 			"EventfulCompass.png",
-			"Eventful Compass",
-			"A compass that leads to your heart's desire.",
+			LocMan.Loc("EVENTFULCOMPASS_TITLE", "Eventful Compass"),
+			LocMan.Loc("EVENTFULCOMPASS_DESC", "Right-click this relic to select the event you want. Ctrl + right click to repeat the last action."),
 			HandleEnterEventActivatedAsync,
 			LastActionService.EventfulCompassKey,
 			ReplayEventfulCompassLastActionAsync);
@@ -128,18 +128,7 @@ public class EventfulCompass
 
     private static string FormatRoomTypeLabel(RoomType roomType)
     {
-	    return roomType switch
-	    {
-		    RoomType.Monster => LocMan.Loc("ROOM_TYPE_MONSTER", "Monster"),
-		    RoomType.Elite => LocMan.Loc("ROOM_TYPE_ELITE", "Elite"),
-		    RoomType.Boss => LocMan.Loc("ROOM_TYPE_BOSS", "Boss"),
-		    RoomType.Treasure => LocMan.Loc("ROOM_TYPE_TREASURE", "Treasure"),
-		    RoomType.Shop => LocMan.Loc("ROOM_TYPE_SHOP", "Merchant"),
-		    RoomType.Event => LocMan.Loc("ROOM_TYPE_EVENT", "Event"),
-		    RoomType.RestSite => LocMan.Loc("ROOM_TYPE_REST_SITE", "Rest Site"),
-		    RoomType.Map => LocMan.Loc("ROOM_TYPE_MAP", "Map"),
-		    _ => roomType.ToString()
-	    };
+	    return LocMan.GameLoc("map",$"LEGEND_{roomType.ToString().ToUpper()}.TITLE",roomType.ToString());
     }
 
     private static void OnRoomJumpDropdownChanged(string selectedId)

@@ -286,8 +286,8 @@ public partial class NLoadoutPanel : Panel
 				LastActionService.LoadoutBagKey,
 				LoadoutTargetMode.AllPlayersAndPlayers),
 			"LoadoutBag.png",
-			"Loadout Bag",
-			"A bag that contains everthing.",
+			LocMan.Loc("LOADOUTBAG_TITLE", "Loadout Bag"),
+			LocMan.Loc("LOADOUTBAG_DESC", "Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action."),
 			HandleAddRelicActivatedAsync,
 			LastActionService.LoadoutBagKey,
 			ReplayLoadoutBagLastActionAsync);
@@ -309,8 +309,8 @@ public partial class NLoadoutPanel : Panel
 			},
 			HandleRemoveRelicActivatedAsync,
 			"TrashBin.png",
-			"Remove Relic",
-			"Remove one of your current relics.",
+			LocMan.Loc("THEBIN_TITLE", "The Bin"),
+			LocMan.Loc("THEBIN_DESC", "Right-click this relic to obliterate any relic you want."),
 			(screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
 				screen,
 				RemoveRelicTargetDropdownName,
@@ -352,8 +352,8 @@ public partial class NLoadoutPanel : Panel
 				LoadoutCauldronTargetKey,
 				LoadoutTargetMode.AllPlayersAndPlayers),
 			"LoadoutCauldron.png",
-			"Loadout Cauldron",
-			"A cauldron that creates any potion.",
+			LocMan.Loc("LOADOUTCAULDRON_TITLE", "The Cauldron"),
+			LocMan.Loc("LOADOUTCAULDRON_DESC", "Right-click this relic to obtain any potion you want. Ctrl + right click to repeat the last action."),
 			HandleAddPotionActivatedAsync);
 
 		//04 - CARD PRINTER
@@ -378,8 +378,8 @@ public partial class NLoadoutPanel : Panel
 			},
 			HandleRemoveCardActivatedAsync,
 			"CardShredder.png",
-			"Remove Card",
-			"Remove a card from your current deck.",
+			LocMan.Loc("CARDSHREDDER_TITLE", "Card Shredder"),
+			LocMan.Loc("CARDSHREDDER_DESC", "Right-click this relic to obliterate any card you want; use during combat will also remove it from combat."),
 			(screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
 				screen,
 				RemoveCardTargetDropdownName,
@@ -618,7 +618,7 @@ public partial class NLoadoutPanel : Panel
 			return true;
 		}
 
-		return false;
+		return CommonHelpers.BindGuiReleaseActivation(view, activate);
 	}
 
 	private static void AddPotionPoolFilters(SelectScreenBuilder<PotionModel> builder)
