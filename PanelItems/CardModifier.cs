@@ -48,6 +48,10 @@ public class CardModifier
                 "upgrade_all", LocMan.Loc("UPGRADE_ALL", "Upgrade All"),
                 HandleUpgradeAllDeckCards,
                 CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
+            builder.ActionButton(
+                "host_permamods", LocMan.Loc("HOST_PERMAMODS_TITLE", "Host Permamods"),
+                _ => OpenHostPermamodConflictScreen(),
+                CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
         }
 
         CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForModifier,
@@ -117,6 +121,25 @@ public class CardModifier
                 if (GodotObject.IsInstanceValid(sourceView) && sourceView.IsInsideTree())
                     CardPrinter.ForceRefreshCardVisuals(sourceView);
             });
+        root.OpenScreen(screen);
+    }
+
+    private static void OpenHostPermamodConflictScreen()
+    {
+        if (!CardModificationMultiplayerSyncService.HasPendingHostPermanentSnapshot)
+        {
+            GD.PushWarning("CardModifier: no host permamod snapshot is available.");
+            return;
+        }
+
+        NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance;
+        if (root is null)
+            return;
+
+        NHostPermamodConflictScreen screen = new()
+        {
+            Name = "HostPermamodConflict"
+        };
         root.OpenScreen(screen);
     }
 

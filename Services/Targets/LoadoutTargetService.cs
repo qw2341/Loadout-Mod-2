@@ -233,7 +233,7 @@ public static class LoadoutTargetService
         return LocMan.Loc("LOADOUT_TARGET_PLAYER_FALLBACK", "Player {0}", player.NetId);
     }
 
-    private static IReadOnlyList<LoadoutDropdownOption> GetDropdownOptions(LoadoutTargetMode mode)
+    public static IReadOnlyList<LoadoutDropdownOption> GetDropdownOptions(LoadoutTargetMode mode)
     {
         RunState? runState = GetRunState();
         if (runState is null)

@@ -3,6 +3,7 @@ using Godot;
 using HarmonyLib;
 using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
+using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Logging;
@@ -84,6 +85,8 @@ public static class UIAttach
         PowerGiverStateService.Register();
         LastActionService.Register();
         CardModificationStateService.Register();
+        LoadoutStorageService.Register();
+        LoadoutHostSharingService.Register();
 
         Log.Info("[Loadout] Services registered.");
     }

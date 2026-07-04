@@ -33,6 +33,13 @@ public enum CardModificationOperation
     ApplyPermanent
 }
 
+public enum CardModificationPermanentImportMode
+{
+    KeepMine,
+    UseHost,
+    MergeNonConflicting
+}
+
 public static class CardModificationStateService
 {
     private const int CurrentSchemaVersion = 1;
@@ -783,6 +790,55 @@ public static class CardModificationStateService
         RaiseStateChanged();
     }
 
+    public static IReadOnlyList<ModelId> ApplyPermanentSnapshotToProfile(
+        string? snapshotJson,
+        CardModificationPermanentImportMode mode)
+    {
+        EnsureLoaded();
+        if (mode == CardModificationPermanentImportMode.KeepMine)
+            return [];
+
+        Dictionary<string, CardModificationState> incoming = ReadPermanentSnapshot(snapshotJson);
+        Dictionary<string, CardModificationState> previousPermanentStates;
+        List<string> changedPermanentKeys;
+        lock (SyncRoot)
+        {
+            previousPermanentStates = CloneStateDictionary(_permanent.Cards);
+            if (mode == CardModificationPermanentImportMode.UseHost)
+            {
+                _permanent.Cards = CloneStateDictionary(incoming);
+            }
+            else
+            {
+                foreach ((string key, CardModificationState hostState) in incoming)
+                {
+                    if (!_permanent.Cards.TryGetValue(key, out CardModificationState? localState)
+                        || PermanentStatesEquivalent(localState, hostState))
+                    {
+                        _permanent.Cards[key] = hostState.Clone();
+                    }
+                }
+            }
+
+            _permanent = NormalizePermanent(_permanent);
+            changedPermanentKeys = GetChangedPermanentKeys(previousPermanentStates, _permanent.Cards);
+            if (changedPermanentKeys.Count > 0)
+            {
+                InvalidateDisplayCacheLocked();
+                SavePermanentState();
+            }
+        }
+
+        if (changedPermanentKeys.Count == 0)
+            return [];
+
+        ApplySavedRunStateToLiveDecks(previousPermanentStates, raiseStateChanged: false);
+        IReadOnlyList<ModelId> changedCardIds = ResolvePermanentCardIds(changedPermanentKeys);
+        RaisePermanentCardDisplayChanged(changedCardIds);
+        RaiseStateChanged();
+        return changedCardIds;
+    }
+
     public static void ApplyRemoteTemporaryState(ulong ownerNetId, int index, string cardId, CardModificationState? state)
     {
         EnsureLoaded();
@@ -806,6 +862,24 @@ public static class CardModificationStateService
 
         TryApplyRemoteTemporaryToLiveCard(ownerNetId, index, cardId, previousState);
         RaiseStateChanged();
+    }
+
+    public static void ClearTemporaryStatesForPlayer(ulong ownerNetId)
+    {
+        EnsureLoaded();
+        bool changed = false;
+        lock (SyncRoot)
+        {
+            string prefix = $"{ownerNetId}:";
+            foreach (string key in _run.Cards.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+                changed |= _run.Cards.Remove(key);
+
+            if (changed)
+                SaveRunState();
+        }
+
+        if (changed)
+            RaiseStateChanged();
     }
 
     private static void TryApplyRemoteTemporaryToLiveCard(
@@ -1157,6 +1231,23 @@ public static class CardModificationStateService
         }
 
         return changed;
+    }
+
+    private static Dictionary<string, CardModificationState> ReadPermanentSnapshot(string? snapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(snapshotJson))
+            return new Dictionary<string, CardModificationState>(StringComparer.Ordinal);
+
+        try
+        {
+            PermanentSaveData snapshot = JsonSerializer.Deserialize<PermanentSaveData>(snapshotJson, SnapshotJsonOptions);
+            return NormalizePermanent(snapshot).Cards;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to read permanent card modification snapshot. {exception.Message}");
+            return new Dictionary<string, CardModificationState>(StringComparer.Ordinal);
+        }
     }
 
     private static IReadOnlyList<ModelId> ResolvePermanentCardIds(IEnumerable<string> cardKeys)

@@ -22,6 +22,11 @@ public static class CardModificationMultiplayerSyncService
     private static readonly Dictionary<StartRunLobby, Action<LobbyPlayer>> LobbyConnectedHandlers = new();
     private static INetGameService? _runNetService;
     private static bool _registered;
+    private static string? _pendingHostPermanentSnapshotJson;
+
+    public static event Action? HostPermanentSnapshotAvailable;
+
+    public static bool HasPendingHostPermanentSnapshot => !string.IsNullOrWhiteSpace(_pendingHostPermanentSnapshotJson);
 
     public static void Register()
     {
@@ -36,6 +41,7 @@ public static class CardModificationMultiplayerSyncService
         RegisteredLobbies.Clear();
         LobbyConnectedHandlers.Clear();
         UnregisterRunNetService(clearClientOverlay: true);
+        ClearPendingHostPermanentSnapshot();
         _registered = false;
     }
 
@@ -73,7 +79,10 @@ public static class CardModificationMultiplayerSyncService
             lobby.PlayerConnected -= connected;
 
         if (clearClientOverlay && lobby.NetService.Type == NetGameType.Client)
+        {
             CardModificationStateService.ClearHostPermanentOverlay();
+            ClearPendingHostPermanentSnapshot();
+        }
     }
 
     public static void OnRunLaunched()
@@ -171,7 +180,10 @@ public static class CardModificationMultiplayerSyncService
         _runNetService = null;
 
         if (clearClientOverlay && type == NetGameType.Client)
+        {
             CardModificationStateService.ClearHostPermanentOverlay();
+            ClearPendingHostPermanentSnapshot();
+        }
     }
 
     private static void SendPermanentSnapshotToLobbyPlayer(StartRunLobby lobby, ulong playerId)
@@ -190,7 +202,7 @@ public static class CardModificationMultiplayerSyncService
         if (IsHostSession())
             return;
 
-        CardModificationStateService.ApplyHostPermanentSnapshotJson(message.payload);
+        StorePendingHostPermanentSnapshot(message.payload);
     }
 
     private static void HandleTemporarySync(LoadoutCardModificationTemporarySyncMessage message, ulong senderId)
@@ -237,6 +249,24 @@ public static class CardModificationMultiplayerSyncService
         {
             return false;
         }
+    }
+
+    public static IReadOnlyList<ModelId> ApplyPendingHostPermanentSnapshot(CardModificationPermanentImportMode mode)
+    {
+        string? snapshot = _pendingHostPermanentSnapshotJson;
+        ClearPendingHostPermanentSnapshot();
+        return CardModificationStateService.ApplyPermanentSnapshotToProfile(snapshot, mode);
+    }
+
+    public static void ClearPendingHostPermanentSnapshot()
+    {
+        _pendingHostPermanentSnapshotJson = null;
+    }
+
+    private static void StorePendingHostPermanentSnapshot(string? payload)
+    {
+        _pendingHostPermanentSnapshotJson = payload;
+        HostPermanentSnapshotAvailable?.Invoke();
     }
 }
 
