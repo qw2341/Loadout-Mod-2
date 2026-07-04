@@ -1,6 +1,7 @@
 using System.Reflection;
 using Godot;
 using HarmonyLib;
+using Loadout.Services.Input;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Modding;
 
@@ -25,6 +26,7 @@ public partial class MainFile : Node
 
         Godot.Bridge.ScriptManagerBridge.LookupScriptsInAssembly(assembly);
         LogPckBuildMarker();
+        InputCompatibilityService.Register();
             
         Harmony harmony = new(ModId);
         harmony.PatchAll();
