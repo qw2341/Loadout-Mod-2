@@ -128,7 +128,15 @@ public class EventfulCompass
 
     private static string FormatRoomTypeLabel(RoomType roomType)
     {
-	    return LocMan.GameLoc("map",$"LEGEND_{roomType.ToString().ToUpper()}.TITLE",roomType.ToString());
+	    return roomType switch
+	    {
+		    RoomType.Shop => LocMan.GameLoc("map", "LEGEND_MERCHANT.title", roomType.ToString()),
+		    RoomType.Monster => LocMan.GameLoc("map", "LEGEND_ENEMY.title", roomType.ToString()),
+		    RoomType.Event => LocMan.GameLoc("map", "LEGEND_EVENT.hoverTip.title", roomType.ToString()),
+		    RoomType.RestSite => LocMan.GameLoc("map", "LEGEND_REST.title", roomType.ToString()),
+		    RoomType.Map => LocMan.GameLoc("map", "LEGEND_MAP.hoverTip.title", roomType.ToString()),
+		    _ => LocMan.GameLoc("map", $"LEGEND_{roomType.ToString().ToUpper()}.title", roomType.ToString())
+	    };
     }
 
     private static void OnRoomJumpDropdownChanged(string selectedId)
