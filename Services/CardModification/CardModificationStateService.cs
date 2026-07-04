@@ -127,7 +127,7 @@ public static class CardModificationStateService
         lock (SyncRoot)
         {
             CardModificationState effective = IsLocalCatalogDisplayCard(card)
-                ? GetLocalPermanentStateLocked(card.Id)
+                ? GetCatalogPermanentStateLocked(card.Id)
                 : GetEffectivePermanentStateLocked(card.Id);
 
             if (!IsLocalCatalogDisplayCard(card)
@@ -253,6 +253,13 @@ public static class CardModificationStateService
             return GetEffectivePermanentStateLocked(cardId);
     }
 
+    public static CardModificationState GetCatalogPermanentState(ModelId cardId)
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+            return GetCatalogPermanentStateLocked(cardId);
+    }
+
     public static CardModificationState GetTemporaryState(LoadoutOwnedItem<CardModel> item)
     {
         EnsureLoaded();
@@ -296,6 +303,7 @@ public static class CardModificationStateService
         }
 
         CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
+        RaiseStateChanged();
     }
 
     public static void ResetTemporary(LoadoutOwnedItem<CardModel> item)
@@ -323,6 +331,7 @@ public static class CardModificationStateService
         }
 
         CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
+        RaiseStateChanged();
     }
 
     public static void ApplyPermanentToCard(CardModel? card)
@@ -354,6 +363,48 @@ public static class CardModificationStateService
 
         if (hasCardMutation || HasVisualOverrides(state) || HasVisualOverrides(previousState))
             RefreshLiveCardVisuals(item.Model);
+    }
+
+    public static void ReapplyEffectiveStateAfterUpgrade(IEnumerable<CardModel>? cards)
+    {
+        if (cards is null)
+            return;
+
+        EnsureLoaded();
+        List<CardModel> uniqueCards = new();
+        foreach (CardModel? card in cards)
+        {
+            if (card is null
+                || card.IsCanonical
+                || uniqueCards.Any(existing => ReferenceEquals(existing, card)))
+            {
+                continue;
+            }
+
+            uniqueCards.Add(card);
+        }
+
+        bool changed = false;
+        foreach (CardModel card in uniqueCards)
+        {
+            CardModificationState state = GetEffectiveStateForCard(card);
+            bool hasCardMutation = HasCardMutations(state);
+            bool hasVisualOverride = HasVisualOverrides(state);
+            if (!hasCardMutation && !hasVisualOverride)
+                continue;
+
+            if (hasCardMutation)
+            {
+                PrepareCardForState(card, state, includeAffliction: true);
+                ApplyStateToCard(card, state);
+            }
+
+            RefreshLiveCardVisuals(card);
+            changed = true;
+        }
+
+        if (changed)
+            RaiseStateChanged();
     }
 
     public static void ApplySynchronizedOperation(
@@ -464,7 +515,7 @@ public static class CardModificationStateService
         int revision;
         lock (SyncRoot)
         {
-            state = GetLocalPermanentStateLocked(card.Id);
+            state = GetCatalogPermanentStateLocked(card.Id);
             revision = _displayRevision;
             string key = ToCardKey(card.Id);
             if (DisplayCardCache.TryGetValue(key, out CachedDisplayCard cached) && cached.Revision == revision)
@@ -687,6 +738,7 @@ public static class CardModificationStateService
                 : CloneStateDictionary(_permanent.Cards);
             _hostPermanentOverlay = overlay;
             _hasHostPermanentOverlay = true;
+            InvalidateDisplayCacheLocked();
         }
 
         ApplySavedRunStateToLiveDecks(previousPermanentStates);
@@ -697,11 +749,12 @@ public static class CardModificationStateService
     {
         lock (SyncRoot)
         {
-            if (_hostPermanentOverlay.Count == 0)
+            if (!_hasHostPermanentOverlay && _hostPermanentOverlay.Count == 0)
                 return;
 
             _hostPermanentOverlay.Clear();
             _hasHostPermanentOverlay = false;
+            InvalidateDisplayCacheLocked();
         }
 
         RaiseStateChanged();
@@ -789,6 +842,13 @@ public static class CardModificationStateService
         }
 
         return GetLocalPermanentStateLocked(cardId);
+    }
+
+    private static CardModificationState GetCatalogPermanentStateLocked(ModelId cardId)
+    {
+        return _hasHostPermanentOverlay
+            ? GetEffectivePermanentStateLocked(cardId)
+            : GetLocalPermanentStateLocked(cardId);
     }
 
     private static CardModificationState GetLocalPermanentStateLocked(ModelId cardId)
@@ -880,25 +940,26 @@ public static class CardModificationStateService
         if (canonical is null)
             return;
 
+        CardModel baseline = CreateCanonicalBaselineForCurrentUpgrade(card, canonical);
         try
         {
             if (!card.EnergyCost.CostsX)
-                SetEnergyCost(card, canonical.EnergyCost.Canonical);
+                SetEnergyCost(card, baseline.EnergyCost.Canonical);
 
-            card.BaseReplayCount = canonical.BaseReplayCount;
-            SetBaseStarCost(card, canonical.BaseStarCost);
+            card.BaseReplayCount = baseline.BaseReplayCount;
+            SetBaseStarCost(card, baseline.BaseStarCost);
 
-            foreach ((string name, var dynamicVar) in canonical.DynamicVars)
+            foreach ((string name, var dynamicVar) in baseline.DynamicVars)
             {
                 if (card.DynamicVars.TryGetValue(name, out var mutableDynamicVar))
                     mutableDynamicVar.BaseValue = dynamicVar.BaseValue;
             }
 
-            CardPoolField?.SetValue(card, canonical.Pool);
-            CardTypeField?.SetValue(card, canonical.Type);
-            CardRarityField?.SetValue(card, canonical.Rarity);
+            CardPoolField?.SetValue(card, baseline.Pool);
+            CardTypeField?.SetValue(card, baseline.Type);
+            CardRarityField?.SetValue(card, baseline.Rarity);
 
-            IReadOnlySet<CardKeyword> canonicalKeywords = canonical.GetKeywordsWithSources(KeywordSources.Local);
+            IReadOnlySet<CardKeyword> canonicalKeywords = baseline.GetKeywordsWithSources(KeywordSources.Local);
             foreach (CardKeyword keyword in card.GetKeywordsWithSources(KeywordSources.Local).ToList())
             {
                 if (!canonicalKeywords.Contains(keyword))
@@ -913,8 +974,8 @@ public static class CardModificationStateService
 
             if (resetAttachments)
             {
-                ResetEnchantmentToCanonical(card, canonical);
-                ResetAfflictionToCanonical(card, canonical);
+                ResetEnchantmentToCanonical(card, baseline);
+                ResetAfflictionToCanonical(card, baseline);
             }
             else
             {
@@ -933,6 +994,22 @@ public static class CardModificationStateService
         {
             GD.PushWarning($"CardModification: failed to reset '{card.Id}' to canonical baseline. {exception.Message}");
         }
+    }
+
+    private static CardModel CreateCanonicalBaselineForCurrentUpgrade(CardModel card, CardModel canonical)
+    {
+        CardModel baseline = canonical.ToMutable();
+        int upgradeLevel = Math.Max(0, Math.Min(card.CurrentUpgradeLevel, baseline.MaxUpgradeLevel));
+        for (int i = 0; i < upgradeLevel; i++)
+        {
+            if (!baseline.IsUpgradable)
+                break;
+
+            baseline.UpgradeInternal();
+            baseline.FinalizeUpgradeInternal();
+        }
+
+        return baseline;
     }
 
     private static void ResetEnchantmentToCanonical(CardModel card, CardModel canonical)

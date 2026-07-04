@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
 using Loadout.Services.CardModification;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -19,6 +20,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardLibrary;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
@@ -40,6 +42,24 @@ public static class CombatStateCreateCardPatch
     public static void Postfix(CardModel __result)
     {
         CardModificationStateService.ApplyPermanentToCard(__result);
+    }
+}
+
+[HarmonyPatch(typeof(CardCmd), nameof(CardCmd.Upgrade), typeof(IEnumerable<CardModel>), typeof(CardPreviewStyle))]
+public static class CardCmdUpgradeCardModificationPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(ref IEnumerable<CardModel> cards, out List<CardModel> __state)
+    {
+        List<CardModel> materializedCards = cards?.Where(card => card is not null).ToList() ?? [];
+        __state = materializedCards.Where(card => card.IsUpgradable).ToList();
+        cards = materializedCards;
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(List<CardModel> __state)
+    {
+        CardModificationStateService.ReapplyEffectiveStateAfterUpgrade(__state);
     }
 }
 

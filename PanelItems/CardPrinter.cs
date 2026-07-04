@@ -33,51 +33,111 @@ public class CardPrinter
     public static void Initialize()
     {
 	    IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
-	    IReadOnlyList<CardModel> effectiveCards = allCards
-		    .Select(CardModificationStateService.GetEffectivePermanentCardForDisplay)
-		    .ToList();
-        
+	    NGenericSelectScreen activeScreen = null;
+	    bool cardPrinterRefreshPending = false;
+	    SelectItemAdapter<CardModel> cardPrinterAdapter = new()
+	    {
+		    GetId = card => card.Id.ToString(),
+		    GetName = card => FormatCardTitle(card),
+		    GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
+		    CreateView = CreateCardGridItem,
+		    ViewReady = (_, view) => RefreshCardVisuals(view),
+		    UpdateView = (_, view, state) =>
+		    {
+			    ForceRefreshCardVisuals(view);
+			    UpdateCardGridItem(view, state);
+		    },
+		    BindActivation = (_, view, activate) => BindCardActivation(view, activate)
+	    };
+
+	    void BuildCardPrinterScreen(SelectScreenBuilder<CardModel> builder)
+	    {
+		    IReadOnlyList<CardModel> effectiveCards = allCards
+			    .Select(CardModificationStateService.GetEffectivePermanentCardForDisplay)
+			    .ToList();
+
+		    builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+		    builder.Materialization(SelectMaterializationMode.Lazy);
+		    builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
+		    builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
+		    AddCardPoolFilters(builder);
+		    builder.FilterGroup("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")));
+		    AddCardTypeFilters(builder, effectiveCards);
+		    builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity")));
+		    AddCardRarityFilters(builder, effectiveCards);
+		    AddCardKeywordFilterGroup(builder, effectiveCards);
+		    AddCardTagFilterGroup(builder, effectiveCards);
+		    CommonHelpers.AddModFilters(builder, allCards);
+		    builder.Toggle(ViewUpgradesToggleId, LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
+		    IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
+		    builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
+		    builder.Sorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.Loc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
+		    builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+		    builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.Loc("SORT_COST", "Cost")), CompareEffectiveCardCost);
+	    }
+
+	    void BindCardPrinterSidebar(NGenericSelectScreen screen, bool applyDefaultClassFilter = true)
+	    {
+		    LoadoutTargetService.UpsertTargetDropdown(
+			    screen,
+			    TargetDropdownName,
+			    LastActionService.CardPrinterKey,
+			    LoadoutTargetMode.AllPlayersAndPlayers);
+
+		    if (applyDefaultClassFilter)
+			    ApplyCurrentCardClassFilter(screen);
+	    }
+
+	    void ReconfigureCardPrinterScreen(NGenericSelectScreen screen)
+	    {
+		    SelectScreenUiState state = screen.CaptureUiState();
+		    screen.Configure(allCards, cardPrinterAdapter, BuildCardPrinterScreen);
+		    BindCardPrinterSidebar(screen, applyDefaultClassFilter: false);
+		    screen.RestoreUiState(state);
+		    screen.ForEachVisibleItemView((_, view) => ForceRefreshCardVisuals(view));
+		    screen.RequestDeferredVisibleRefresh();
+	    }
+
+	    void ConfigureCardPrinterSidebar(NGenericSelectScreen screen, bool applyDefaultClassFilter = true)
+	    {
+		    activeScreen = screen;
+		    if (cardPrinterRefreshPending)
+		    {
+			    cardPrinterRefreshPending = false;
+			    ReconfigureCardPrinterScreen(screen);
+			    return;
+		    }
+
+		    BindCardPrinterSidebar(screen, applyDefaultClassFilter);
+	    }
+
+	    void RefreshActiveCardPrinterScreen()
+	    {
+		    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen))
+			    return;
+
+		    if (!activeScreen.IsInsideTree())
+		    {
+			    cardPrinterRefreshPending = true;
+			    return;
+		    }
+
+		    Callable.From(() =>
+		    {
+			    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen) || !activeScreen.IsInsideTree())
+				    return;
+
+			    ReconfigureCardPrinterScreen(activeScreen);
+		    }).CallDeferred();
+	    }
+
+	    CardModificationStateService.StateChanged += RefreshActiveCardPrinterScreen;
+
 		CommonHelpers.CreateAndAddLoadoutItem(
 			allCards,
-			new SelectItemAdapter<CardModel>
-			{
-				GetId = card => card.Id.ToString(),
-				GetName = card => FormatCardTitle(card),
-				GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
-				CreateView = CreateCardGridItem,
-				ViewReady = (_, view) => RefreshCardVisuals(view),
-				UpdateView = (_, view, state) => UpdateCardGridItem(view, state),
-				BindActivation = (_, view, activate) => BindCardActivation(view, activate)
-			}, builder =>
-			{
-				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Lazy);
-				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
-				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
-				AddCardPoolFilters(builder);
-				builder.FilterGroup("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")));
-				AddCardTypeFilters(builder, effectiveCards);
-				builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity")));
-				AddCardRarityFilters(builder, effectiveCards);
-				AddCardKeywordFilterGroup(builder, effectiveCards);
-				AddCardTagFilterGroup(builder, effectiveCards);
-				CommonHelpers.AddModFilters(builder, allCards);
-				builder.Toggle(ViewUpgradesToggleId, LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
-				IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
-				builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
-				builder.Sorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.Loc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
-				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.Loc("SORT_COST", "Cost")), CompareEffectiveCardCost);
-			},
-			screen =>
-			{
-				LoadoutTargetService.UpsertTargetDropdown(
-					screen,
-					TargetDropdownName,
-					LastActionService.CardPrinterKey,
-					LoadoutTargetMode.AllPlayersAndPlayers);
-				ApplyCurrentCardClassFilter(screen);
-			}, 
+			cardPrinterAdapter,
+			BuildCardPrinterScreen,
+			screen => ConfigureCardPrinterSidebar(screen),
 			"CardPrinter.png",
 			"Card Printer",
 			"It prints any cards you want.",
