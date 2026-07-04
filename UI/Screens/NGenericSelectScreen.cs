@@ -433,6 +433,29 @@ public partial class NGenericSelectScreen : Control
         RefreshVisibleItemStates();
     }
 
+    public void ForEachVisibleItemView(Action<IGenericSelectItem, Control> action, bool materializeMissing = false)
+    {
+        if (materializeMissing)
+        {
+            foreach (IGenericSelectItem item in _itemLayoutOrder.ToList())
+            {
+                if (_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                    MaterializeItemView(item, layout);
+            }
+        }
+
+        foreach (IGenericSelectItem item in _visibleItems.ToList())
+        {
+            if (item.View is null || !GodotObject.IsInstanceValid(item.View))
+                continue;
+
+            action(item, item.View);
+        }
+
+        if (materializeMissing)
+            UpdateViewportCulling();
+    }
+
     public void SetCustomVisibilityPredicate(Func<IGenericSelectItem, bool>? predicate)
     {
         _customVisibilityPredicate = predicate;

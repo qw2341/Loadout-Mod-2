@@ -29,7 +29,11 @@ public class CardModifier
             GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
             CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
             ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
-            UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
+            UpdateView = (_, view, state) =>
+            {
+                CardPrinter.ForceRefreshCardVisuals(view);
+                CardPrinter.UpdateCardGridItem(view, state);
+            },
             BindActivation = (item, view, activate) => CardPrinter.BindCardActivation(
                 view,
                 activate,
@@ -105,10 +109,17 @@ public class CardModifier
         return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
     }
 
-    public static void HandleUpgradeAllDeckCards(NGenericSelectScreen _)
+    public static void HandleUpgradeAllDeckCards(NGenericSelectScreen screen)
     {
         LoadoutTargetSelection target = LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
-        LoadoutActionService.Request(LoadoutActionKind.UpgradeAllDeckCards, ModelId.none, 1, target);
+        if (!LoadoutActionService.Request(LoadoutActionKind.UpgradeAllDeckCards, ModelId.none, 1, target))
+            return;
+
+        screen.ForEachVisibleItemView((item, view) =>
+        {
+            if (item.UntypedModel is LoadoutOwnedItem<CardModel>)
+                CommonHelpers.PlayCardSmithFeedback(view);
+        }, materializeMissing: true);
     }
 
     private static void OpenCardModificationScreen(LoadoutOwnedItem<CardModel> item, Control sourceView)
