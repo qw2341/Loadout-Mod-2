@@ -26,9 +26,11 @@ public partial class NDeckLoadoutPanel : Control
     private const string NoSelectionId = "__none__";
     private const string TargetKey = "deck_loadout_apply";
     private const float PanelWidth = 245f;
-    private const float PanelHeight = 420f;
+    private const float PanelHeight = 340f;
     private const float DropdownHeight = 38f;
     private const float ButtonHeight = 26f;
+    private const float ButtonRowGap = 8f;
+    private const float HalfButtonWidth = (PanelWidth - ButtonRowGap) / 2f;
 
     private readonly Dictionary<string, LoadoutCatalogEntry> _entriesByOptionId = new(StringComparer.Ordinal);
 
@@ -39,6 +41,7 @@ public partial class NDeckLoadoutPanel : Control
     private LineEdit? _nameInput;
     private MegaLabel? _emptyLoadoutLabel;
     private MegaLabel? _statusLabel;
+    private Tween? _statusTween;
     private string _selectedOptionId = NoSelectionId;
     private bool _built;
     private bool _eventsBound;
@@ -71,7 +74,7 @@ public partial class NDeckLoadoutPanel : Control
 
     public override void _Ready()
     {
-        MouseFilter = MouseFilterEnum.Ignore;
+        MouseFilter = MouseFilterEnum.Pass;
         ZIndex = 240;
         BuildControlTree();
         BindEvents();
@@ -80,6 +83,8 @@ public partial class NDeckLoadoutPanel : Control
 
     public override void _ExitTree()
     {
+        _statusTween?.Kill();
+        _statusTween = null;
         UnbindEvents();
     }
 
@@ -123,7 +128,7 @@ public partial class NDeckLoadoutPanel : Control
         MarginContainer margin = new()
         {
             Name = "MarginContainer",
-            MouseFilter = MouseFilterEnum.Ignore
+            MouseFilter = MouseFilterEnum.Pass
         };
         margin.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(margin);
@@ -131,7 +136,7 @@ public partial class NDeckLoadoutPanel : Control
         _content = new VBoxContainer
         {
             Name = "Content",
-            MouseFilter = MouseFilterEnum.Ignore
+            MouseFilter = MouseFilterEnum.Pass
         };
         _content.AddThemeConstantOverride("separation", 4);
         margin.AddChild(_content);
@@ -153,14 +158,17 @@ public partial class NDeckLoadoutPanel : Control
         _nameInput = CreateNameInput();
         _content.AddChild(_nameInput);
 
-        _content.AddChild(CreateButton("save_cards", LocMan.Loc("SAVE_CARDS_LOADOUT", "Save Cards"), () => SaveCurrent(LoadoutKind.Cards)));
-        _content.AddChild(CreateButton("save_relics", LocMan.Loc("SAVE_RELICS_LOADOUT", "Save Relics"), () => SaveCurrent(LoadoutKind.Relics)));
+        _content.AddChild(CreateButtonRow(
+            CreateButton("save_cards", LocMan.Loc("SAVE_CARDS_LOADOUT", "Save Cards"), () => SaveCurrent(LoadoutKind.Cards), HalfButtonWidth),
+            CreateButton("save_relics", LocMan.Loc("SAVE_RELICS_LOADOUT", "Save Relics"), () => SaveCurrent(LoadoutKind.Relics), HalfButtonWidth)));
         _content.AddChild(CreateButton("save_both", LocMan.Loc("SAVE_CARDS_RELICS_LOADOUT", "Save Cards + Relics"), () => SaveCurrent(LoadoutKind.CardsAndRelics)));
         _content.AddChild(CreateButton("apply", LocMan.Loc("APPLY_LOADOUT", "Apply"), ApplySelected));
-        _content.AddChild(CreateButton("rename", LocMan.Loc("RENAME_LOADOUT", "Rename"), RenameSelected));
-        _content.AddChild(CreateButton("delete", LocMan.Loc("DELETE_LOADOUT", "Delete"), DeleteSelected));
-        _content.AddChild(CreateButton("export", LocMan.Loc("EXPORT_LOADOUT", "Export"), CopySelected));
-        _content.AddChild(CreateButton("import", LocMan.Loc("IMPORT_LOADOUT", "Import"), ImportFromClipboard));
+        _content.AddChild(CreateButtonRow(
+            CreateButton("rename", LocMan.Loc("RENAME_LOADOUT", "Rename"), RenameSelected, HalfButtonWidth),
+            CreateButton("delete", LocMan.Loc("DELETE_LOADOUT", "Delete"), DeleteSelected, HalfButtonWidth)));
+        _content.AddChild(CreateButtonRow(
+            CreateButton("import", LocMan.Loc("IMPORT_LOADOUT", "Import"), ImportFromClipboard, HalfButtonWidth),
+            CreateButton("export", LocMan.Loc("EXPORT_LOADOUT", "Export"), CopySelected, HalfButtonWidth)));
 
         _statusLabel = CreateLabel(string.Empty, 15, StsColors.cream);
         _statusLabel.CustomMinimumSize = new Vector2(PanelWidth, 44f);
@@ -174,9 +182,9 @@ public partial class NDeckLoadoutPanel : Control
         AnchorRight = 0f;
         AnchorBottom = 0f;
         OffsetLeft = 18f;
-        OffsetTop = 44f;
+        OffsetTop = 160f;
         OffsetRight = 18f + PanelWidth;
-        OffsetBottom = 44f + PanelHeight;
+        OffsetBottom = 160f + PanelHeight;
         CustomMinimumSize = new Vector2(PanelWidth, PanelHeight);
         Size = CustomMinimumSize;
     }
@@ -215,12 +223,28 @@ public partial class NDeckLoadoutPanel : Control
         return lineEdit;
     }
 
-    private NDeckLoadoutTextAction CreateButton(string id, string label, Action action)
+    private HBoxContainer CreateButtonRow(params NDeckLoadoutTextAction[] buttons)
+    {
+        HBoxContainer row = new()
+        {
+            Name = "ActionRow",
+            CustomMinimumSize = new Vector2(PanelWidth, ButtonHeight),
+            MouseFilter = MouseFilterEnum.Pass
+        };
+        row.AddThemeConstantOverride("separation", (int)ButtonRowGap);
+
+        foreach (NDeckLoadoutTextAction button in buttons)
+            row.AddChild(button);
+
+        return row;
+    }
+
+    private NDeckLoadoutTextAction CreateButton(string id, string label, Action action, float width = PanelWidth)
     {
         NDeckLoadoutTextAction button = new()
         {
             Name = CommonHelpers.MakeSafeNodeName($"{id}_button"),
-            CustomMinimumSize = new Vector2(PanelWidth, ButtonHeight),
+            CustomMinimumSize = new Vector2(width, ButtonHeight),
             SizeFlagsHorizontal = SizeFlags.ShrinkBegin
         };
         button.Init(id, label);
@@ -512,8 +536,33 @@ public partial class NDeckLoadoutPanel : Control
 
     private void SetStatus(string status)
     {
-        if (_statusLabel is not null)
-            _statusLabel.SetTextAutoSize(status);
+        if (_statusLabel is null)
+            return;
+
+        _statusTween?.Kill();
+        _statusTween = null;
+
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            _statusLabel.SetTextAutoSize(string.Empty);
+            _statusLabel.Modulate = Colors.Transparent;
+            return;
+        }
+
+        _statusLabel.Modulate = Colors.White;
+        _statusLabel.SetTextAutoSize(status);
+        Tween tween = CreateTween();
+        _statusTween = tween;
+        tween.TweenInterval(2.0);
+        tween.TweenProperty(_statusLabel, "modulate:a", 0.0f, 0.45f);
+        tween.TweenCallback(Callable.From(() =>
+        {
+            if (_statusTween != tween || _statusLabel is null)
+                return;
+
+            _statusLabel.SetTextAutoSize(string.Empty);
+            _statusTween = null;
+        }));
     }
 
     private void RefreshAllDeferred()
@@ -616,7 +665,7 @@ public partial class NDeckLoadoutTextAction : NButton
 
         _label.AddThemeColorOverride("font_color", isPressed ? StsColors.cream : StsColors.gold);
         _label.AddThemeColorOverride("font_outline_color", isHot
-            ? new Color(1f, 0.94f, 0.62f, 0.82f)
+            ? new Color(1f, 1f, 1f, 0.82f)
             : new Color(0f, 0f, 0f, 0.58f));
         _label.AddThemeConstantOverride("outline_size", isHot ? HoverOutlineSize : NormalOutlineSize);
     }
