@@ -21,7 +21,6 @@ public class CardModifier
     private const string CardModifierTargetDropdownName = "CardModifierTargetDropdown";
     public static void Initialize()
     {
-        NGenericSelectScreen activeScreen = null;
         SelectItemAdapter<LoadoutOwnedItem<CardModel>> cardModifierAdapter = new()
         {
             GetId = item => CommonHelpers.OwnedItemId(item),
@@ -51,25 +50,6 @@ public class CardModifier
                 CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
         }
 
-        void RefreshActiveModifierScreen()
-        {
-            if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen) || !activeScreen.IsInsideTree())
-                return;
-
-            Callable.From(() =>
-            {
-                if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen) || !activeScreen.IsInsideTree())
-                    return;
-
-                activeScreen.RefreshItemsPreservingViews(
-                    GetSelectedTargetDeckCardsForModifier(),
-                    cardModifierAdapter,
-                    animateRelayout: true);
-            }).CallDeferred();
-        }
-
-        CardModificationStateService.StateChanged += RefreshActiveModifierScreen;
-
         CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForModifier,
             cardModifierAdapter,
             BuildCardModifierScreen,
@@ -79,7 +59,6 @@ public class CardModifier
             "Modifies cards in your current deck.",
             (screen, refresh) =>
             {
-                activeScreen = screen;
                 LoadoutTargetService.UpsertTargetDropdown(
                     screen,
                     CardModifierTargetDropdownName,
@@ -133,7 +112,11 @@ public class CardModifier
         screen.Init(
             item,
             GetSelectedTargetDeckCardsForModifier(),
-            () => CardPrinter.ForceRefreshCardVisuals(sourceView));
+            () =>
+            {
+                if (GodotObject.IsInstanceValid(sourceView) && sourceView.IsInsideTree())
+                    CardPrinter.ForceRefreshCardVisuals(sourceView);
+            });
         root.OpenScreen(screen);
     }
 

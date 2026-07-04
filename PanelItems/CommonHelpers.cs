@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
 using Loadout.UI;
@@ -115,7 +116,7 @@ public class CommonHelpers
         NLoadoutPanel.ItemsContainer.AddChild(item);
     }
     
-    public static void CreateAndAddDynamicLoadoutItem<TModel>(
+	public static void CreateAndAddDynamicLoadoutItem<TModel>(
 		Func<IReadOnlyList<TModel>> getModels,
 		SelectItemAdapter<TModel> adapter,
 		Action<SelectScreenBuilder<TModel>> builder,
@@ -129,6 +130,7 @@ public class CommonHelpers
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool activationInFlight = false;
+		bool dynamicRefreshPending = false;
 		object? configuredRunState = null;
 
 		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
@@ -177,6 +179,24 @@ public class CommonHelpers
 			SelectScreenUiState state = screen.CaptureUiState();
 			ConfigureCurrentModels(screen, preserveViews: false);
 			screen.RestoreUiState(state);
+		};
+		screen.VisibilityChanged += () =>
+		{
+			if (!screen.Visible || !dynamicRefreshPending)
+				return;
+
+			dynamicRefreshPending = false;
+			RefreshCurrentModels(screen, animateRelayout: true);
+		};
+		CardModificationStateService.StateChanged += () =>
+		{
+			if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsVisibleInTree())
+			{
+				dynamicRefreshPending = true;
+				return;
+			}
+
+			RefreshCurrentModels(screen, animateRelayout: true);
 		};
 		screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
 		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
@@ -257,19 +277,33 @@ public class CommonHelpers
     public static bool TryFindDescendantOrSelf<TControl>(Node root, out TControl control)
         where TControl : class
     {
+        control = null;
+
+        if (root is null || !GodotObject.IsInstanceValid(root))
+            return false;
+
         if (root is TControl direct)
         {
             control = direct;
             return true;
         }
 
-        foreach (Node child in root.GetChildren())
+        Godot.Collections.Array<Node> children;
+        try
+        {
+            children = root.GetChildren();
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+
+        foreach (Node child in children)
         {
             if (TryFindDescendantOrSelf(child, out control))
                 return true;
         }
 
-        control = null;
         return false;
     }
 
@@ -855,7 +889,7 @@ public class CommonHelpers
     public static string OwnedItemId<TModel>(LoadoutOwnedItem<TModel> item)
         where TModel : AbstractModel
     {
-        return $"{item.OwnerNetId}:{item.Index}:{item.Model.Id}:{RuntimeHelpers.GetHashCode(item.Model)}";
+        return $"{item.OwnerNetId}:{item.Model.Id}:{RuntimeHelpers.GetHashCode(item.Model)}";
     }
 
     private static async Task HandleDynamicItemActivatedAsync(

@@ -165,7 +165,7 @@ public partial class NCardModificationScreen : Control
             return;
 
         LoadItem(_item);
-        _parentRefresh?.Invoke();
+        RefreshParentView();
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -780,7 +780,7 @@ public partial class NCardModificationScreen : Control
         _workingState = CardModificationStateService.GetEffectiveState(_item);
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
         _lastAppliedState = _workingState.Clone();
-        _parentRefresh?.Invoke();
+        RefreshParentView();
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -802,7 +802,7 @@ public partial class NCardModificationScreen : Control
         _workingState = CardModificationStateService.GetEffectiveState(_item);
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
         _lastAppliedState = _workingState.Clone();
-        _parentRefresh?.Invoke();
+        RefreshParentView();
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -826,7 +826,7 @@ public partial class NCardModificationScreen : Control
         _temporaryState = CardModificationStateService.GetTemporaryState(_item);
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
         _lastAppliedState = _workingState.Clone();
-        _parentRefresh?.Invoke();
+        RefreshParentView();
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -848,7 +848,7 @@ public partial class NCardModificationScreen : Control
         CardModificationStateService.SaveTemporary(_item, _temporaryState);
         CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
         _lastAppliedState = _workingState.Clone();
-        _parentRefresh?.Invoke();
+        RefreshParentView();
         RefreshPreview(forceReload: true);
     }
 
@@ -952,6 +952,21 @@ public partial class NCardModificationScreen : Control
             lineEdit.GrabFocus();
         else if (input is TextEdit textEdit)
             textEdit.GrabFocus();
+    }
+
+    private void RefreshParentView()
+    {
+        if (_parentRefresh is null)
+            return;
+
+        try
+        {
+            _parentRefresh.Invoke();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The originating select-screen slot can be recycled after deck mutations.
+        }
     }
 
     private Control CreateTextInput(TextEditTarget target)

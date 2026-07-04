@@ -116,7 +116,7 @@ public class CardPrinter
 		    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen))
 			    return;
 
-		    if (!activeScreen.IsInsideTree())
+		    if (!activeScreen.IsInsideTree() || !activeScreen.IsVisibleInTree())
 		    {
 			    cardPrinterRefreshPending = true;
 			    return;
@@ -124,7 +124,7 @@ public class CardPrinter
 
 		    Callable.From(() =>
 		    {
-			    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen) || !activeScreen.IsInsideTree())
+			    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen) || !activeScreen.IsInsideTree() || !activeScreen.IsVisibleInTree())
 				    return;
 
 			    ReconfigureCardPrinterScreen(activeScreen);
@@ -411,7 +411,7 @@ public class CardPrinter
 
     public static void RefreshCardVisuals(Control view)
     {
-	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder) || holder!.CardNode is null)
+	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
 		    return;
 
 	    holder.CardNode.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
@@ -426,7 +426,7 @@ public class CardPrinter
 
     public static void ForceRefreshCardVisuals(Control view)
     {
-	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder) || holder!.CardNode is null)
+	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
 		    return;
 
 	    CardModel model = holder.CardModel;
@@ -447,32 +447,42 @@ public class CardPrinter
 
     public static void UpdateCardGridItem(Control view, SelectItemState state)
     {
-	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))
+	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder))
 		    return;
 
-	    ApplyCardUpgradePreview(holder!, state);
+	    ApplyCardUpgradePreview(holder, state);
     }
 
     public static bool BindCardActivation(Control view, Action activate)
     {
-	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))
+	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder))
 		    return false;
 
-	    holder!.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
+	    holder.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
 	    return true;
     }
 
     public static bool BindCardActivation(Control view, Action activate, Action alternateActivate)
     {
-	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))
+	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder))
 		    return false;
 
-	    holder!.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
+	    holder.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
 	    holder.Connect(NCardHolder.SignalName.AltPressed, Callable.From<NCardHolder>(_ => alternateActivate()));
 	    return true;
     }
 
-    
+    private static bool TryFindLiveCardHolder(Control view, out NGridCardHolder holder)
+    {
+	    holder = null;
+	    if (view is null || !GodotObject.IsInstanceValid(view))
+		    return false;
+
+	    return CommonHelpers.TryFindDescendantOrSelf(view, out holder)
+	           && holder is not null
+	           && GodotObject.IsInstanceValid(holder);
+    }
+
     
     private static void ApplyCurrentCardClassFilter(NGenericSelectScreen screen)
     {

@@ -321,29 +321,30 @@ public class EventfulCompass
 	    }
 	    catch (Exception exception)
 	    {
-		    if (model is not AncientEventModel ancient)
-		    {
-			    GD.PushWarning($"LoadoutPanel: could not load event portrait for '{model.Id}'. {exception.Message}");
-			    return null;
-		    }
-
-		    try
-		    {
-			    return CreateTileBackground(ancient.RunHistoryIcon);
-		    }
-		    catch (Exception iconException)
-		    {
-			    try
-			    {
-				    return CreateTileBackground(ancient.MapIcon);
-			    }
-			    catch (Exception mapIconException)
-			    {
-				    GD.PushWarning(
-					    $"LoadoutPanel: could not load ancient portrait/icon for '{model.Id}'. portrait={exception.Message}; runHistory={iconException.Message}; map={mapIconException.Message}");
-				    return null;
-			    }
-		    }
+		    // if (model is not AncientEventModel ancient)
+		    // {
+			   //  GD.PushWarning($"LoadoutPanel: could not load event portrait for '{model.Id}'. {exception.Message}");
+			   //  return null;
+		    // }
+		    //
+		    // try
+		    // {
+			   //  return CreateTileBackground(ancient.RunHistoryIcon);
+		    // }
+		    // catch (Exception iconException)
+		    // {
+			   //  try
+			   //  {
+				  //   return CreateTileBackground(ancient.MapIcon);
+			   //  }
+			   //  catch (Exception mapIconException)
+			   //  {
+				  //   GD.PushWarning(
+					 //    $"LoadoutPanel: could not load ancient portrait/icon for '{model.Id}'. portrait={exception.Message}; runHistory={iconException.Message}; map={mapIconException.Message}");
+				  //   return null;
+			   //  }
+		    // }
+		    return null;
 	    }
     }
 
