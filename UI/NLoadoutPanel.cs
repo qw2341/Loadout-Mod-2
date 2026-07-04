@@ -47,6 +47,7 @@ using System.Text.RegularExpressions;
 using HarmonyLib;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
+using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Targets;
@@ -507,34 +508,69 @@ public partial class NLoadoutPanel : Panel
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
-	public static Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	public static async Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
-			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
+			return Array.Empty<LastActionEntry>();
 
-		LoadoutActionService.Request(
+		bool removed = LoadoutActionService.Request(
 			LoadoutActionKind.RemoveCard,
 			item.Model.Id,
 			1,
 			LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
 			item.Index,
 			item.Model.Id);
-		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
+
+		if (!removed)
+		{
+			GD.PushWarning($"LoadoutPanel: failed to remove card '{item.Model.Id}' at index {item.Index}.");
+			return Array.Empty<LastActionEntry>();
+		}
+
+		await RefreshRemoveCardScreenAsync(screen);
+		return Array.Empty<LastActionEntry>();
 	}
 
-	public static Task<IReadOnlyList<LastActionEntry>> HandleRemoveRelicActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
+	public static Task<IReadOnlyList<LastActionEntry>> HandleRemoveRelicActivatedAsync(
+		NGenericSelectScreen _,
+		IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not LoadoutOwnedItem<RelicModel> item)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		LoadoutActionService.Request(
-			LoadoutActionKind.RemoveRelic,
-			item.Model.Id,
-			1,
-			LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
-			item.Index,
-			item.Model.Id);
+		if (!LoadoutActionService.RequestRemoveRelic(item))
+		{
+			GD.PushWarning($"LoadoutPanel: failed to request relic removal for '{item.Model.Id}' at index {item.Index}.");
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
+		}
+
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
+	}
+
+	private static async Task RefreshRemoveCardScreenAsync(NGenericSelectScreen screen)
+	{
+		if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
+			return;
+
+		await screen.ToSignal(screen.GetTree(), SceneTree.SignalName.ProcessFrame);
+
+		if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
+			return;
+
+		screen.RefreshItemsPreservingViews(
+			GetSelectedTargetDeckCardsForRemoval(),
+			new SelectItemAdapter<LoadoutOwnedItem<CardModel>>
+			{
+				GetId = item => CommonHelpers.OwnedItemId(item),
+				GetName = item => CardPrinter.FormatCardTitle(item.Model),
+				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
+				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
+				ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
+				UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
+				BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
+			},
+			animateRelayout: true,
+			resetScroll: false);
 	}
 
 	private static Task ReplayLoadoutBagLastActionAsync()

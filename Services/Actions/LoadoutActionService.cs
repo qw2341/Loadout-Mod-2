@@ -49,7 +49,8 @@ public static class LoadoutActionService
         int ownedItemIndex = -1,
         ModelId? expectedModelId = null,
         CardModificationOperation cardModificationOperation = CardModificationOperation.None,
-        string? cardModificationStateJson = null)
+        string? cardModificationStateJson = null,
+        RelicModel? ownedRelic = null)
     {
         Player? localPlayer = GetLocalRunPlayer();
         if (localPlayer is null)
@@ -65,9 +66,22 @@ public static class LoadoutActionService
             expectedModelId ?? ModelId.none,
             CombatManager.Instance.IsInProgress,
             cardModificationOperation,
-            cardModificationStateJson ?? string.Empty);
+            cardModificationStateJson ?? string.Empty,
+            ownedRelic);
         RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(action);
         return true;
+    }
+
+    public static bool RequestRemoveRelic(LoadoutOwnedItem<RelicModel> item)
+    {
+        return Request(
+            LoadoutActionKind.RemoveRelic,
+            item.Model.Id,
+            1,
+            LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+            item.Index,
+            item.Model.Id,
+            ownedRelic: item.Model);
     }
 
     public static bool RequestCardModification(
@@ -118,7 +132,8 @@ public sealed class LoadoutGameAction : GameAction
         ModelId expectedModelId,
         bool enqueuedInCombat,
         CardModificationOperation cardModificationOperation = CardModificationOperation.None,
-        string cardModificationStateJson = "")
+        string cardModificationStateJson = "",
+        RelicModel? ownedRelic = null)
     {
         Player = player;
         Kind = kind;
@@ -130,6 +145,7 @@ public sealed class LoadoutGameAction : GameAction
         WasEnqueuedInCombat = enqueuedInCombat;
         CardModificationOperation = cardModificationOperation;
         CardModificationStateJson = cardModificationStateJson ?? string.Empty;
+        OwnedRelic = ownedRelic;
     }
 
     public override ulong OwnerId => Player.NetId;
@@ -148,6 +164,7 @@ public sealed class LoadoutGameAction : GameAction
     public bool WasEnqueuedInCombat { get; }
     public CardModificationOperation CardModificationOperation { get; }
     public string CardModificationStateJson { get; }
+    private RelicModel? OwnedRelic { get; }
 
     protected override async Task ExecuteAction()
     {
@@ -175,7 +192,8 @@ public sealed class LoadoutGameAction : GameAction
                 CardModificationStateService.NotifyStateChanged();
                 break;
             case LoadoutActionKind.RemoveRelic:
-                await RemoveRelicAsync();
+                if (await RemoveRelicAsync())
+                    CardModificationStateService.NotifyStateChanged();
                 break;
             case LoadoutActionKind.AdjustPower:
                 PowerGiverStateService.AdjustCounterFromAction(ModelId.ToString(), Amount, Target, Player);
@@ -398,12 +416,13 @@ public sealed class LoadoutGameAction : GameAction
         }
     }
 
-    private async Task RemoveRelicAsync()
+    private async Task<bool> RemoveRelicAsync()
     {
         if (TryGetOwnedRelic() is not { } relic)
-            return;
+            return false;
 
         await RelicCmd.Remove(relic);
+        return true;
     }
 
     private void ApplyCardModification()
@@ -446,7 +465,17 @@ public sealed class LoadoutGameAction : GameAction
     private RelicModel? TryGetOwnedRelic()
     {
         Player? targetPlayer = ResolveSingleTargetPlayer();
-        if (targetPlayer is null || OwnedItemIndex < 0 || OwnedItemIndex >= targetPlayer.Relics.Count)
+        if (targetPlayer is null)
+            return null;
+
+        if (OwnedRelic is not null
+            && targetPlayer.Relics.Contains(OwnedRelic)
+            && IdMatches(OwnedRelic, ExpectedModelId))
+        {
+            return OwnedRelic;
+        }
+
+        if (OwnedItemIndex < 0 || OwnedItemIndex >= targetPlayer.Relics.Count)
             return null;
 
         RelicModel relic = targetPlayer.Relics[OwnedItemIndex];

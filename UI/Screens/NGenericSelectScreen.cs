@@ -120,6 +120,8 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<Control, Tween> _relayoutTweens = new();
     private readonly Dictionary<Control, Vector2> _relayoutTargets = new();
     private readonly HashSet<Control> _relayoutPositionLockedViews = new();
+    private readonly Dictionary<Control, IGenericSelectItem> _activationItemsByView = new();
+    private readonly HashSet<Control> _activationBoundViews = new();
     private readonly List<Control> _pendingCustomSidebarControls = new();
 
     private LineEdit? _searchLineEdit;
@@ -338,7 +340,7 @@ public partial class NGenericSelectScreen : Control
             GenericSelectItem<TModel> item = new(model, adapter, index);
             if (reusableViews.Remove(item.Id, out Control? view) && GodotObject.IsInstanceValid(view))
             {
-                item.SetView(view);
+                SetItemView(item, view);
                 if (animateRelayout && previousPositions.TryGetValue(item.Id, out Vector2 previousPosition))
                     relayoutStartPositions[view] = previousPosition;
             }
@@ -353,6 +355,7 @@ public partial class NGenericSelectScreen : Control
                 continue;
 
             staleView.GetParent()?.RemoveChild(staleView);
+            ClearActivationBinding(staleView);
             staleView.QueueFreeSafely();
         }
 
@@ -391,7 +394,7 @@ public partial class NGenericSelectScreen : Control
             GenericSelectItem<TModel> item = new(model, adapter, index);
             if (reusableViews.Remove(item.Id, out Control? view) && GodotObject.IsInstanceValid(view))
             {
-                item.SetView(view);
+                SetItemView(item, view);
                 if (animateRelayout && previousPositions.TryGetValue(item.Id, out Vector2 previousPosition))
                     relayoutStartPositions[view] = previousPosition;
             }
@@ -406,6 +409,7 @@ public partial class NGenericSelectScreen : Control
                 continue;
 
             staleView.GetParent()?.RemoveChild(staleView);
+            ClearActivationBinding(staleView);
             staleView.QueueFreeSafely();
         }
 
@@ -1997,7 +2001,8 @@ public partial class NGenericSelectScreen : Control
             try
             {
                 view = CreateFailedItemFallbackView(item, layout.Size);
-                item.SetView(view);
+                SetItemView(item, view);
+                BindViewActivation(item, view);
                 _itemGrid?.AddChild(view);
                 return true;
             }
@@ -2026,7 +2031,6 @@ public partial class NGenericSelectScreen : Control
         button.AddThemeFontOverride("font", LoadGameFont("res://themes/kreon_regular_glyph_space_one.tres"));
         button.AddThemeFontSizeOverride("font_size", 18);
         button.AddThemeColorOverride("font_color", StsColors.cream);
-        button.Pressed += () => ActivateItem(item);
         return button;
     }
 
@@ -2231,7 +2235,7 @@ public partial class NGenericSelectScreen : Control
         if (item.View is null || !GodotObject.IsInstanceValid(item.View))
         {
             Control view = CreateLayoutView(item, BuildState(item, -1));
-            item.SetView(view);
+            SetItemView(item, view);
             NormalizeItemForGrid(view);
             BindViewActivation(item, view);
         }
@@ -2274,19 +2278,52 @@ public partial class NGenericSelectScreen : Control
 
     private void BindViewActivation(IGenericSelectItem item, Control view)
     {
-        if (item.TryBindActivation(() => ActivateItem(item)))
+        if (!_activationBoundViews.Add(view))
+            return;
+
+        Action activate = () => ActivateCurrentItemForView(view);
+        if (item.TryBindActivation(activate))
             return;
 
         if (view is NClickableControl clickableControl || TryFindDescendant(view, out clickableControl))
         {
-            clickableControl.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => ActivateItem(item)));
+            clickableControl.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => ActivateCurrentItemForView(view)));
             return;
         }
 
         if (view is BaseButton button || TryFindDescendant(view, out button))
-            button.Pressed += () => ActivateItem(item);
+            button.Pressed += () => ActivateCurrentItemForView(view);
 
         // For non-button views, the adapter should provide BindActivation.
+    }
+
+    private void SetItemView(IGenericSelectItem item, Control view)
+    {
+        if (item.View is Control previousView && previousView != view)
+            _activationItemsByView.Remove(previousView);
+
+        item.SetView(view);
+        _activationItemsByView[view] = item;
+    }
+
+    private void ClearActivationBinding(Control view)
+    {
+        _activationItemsByView.Remove(view);
+        _activationBoundViews.Remove(view);
+    }
+
+    private void ActivateCurrentItemForView(Control view)
+    {
+        if (!_activationItemsByView.TryGetValue(view, out IGenericSelectItem? item) || !_items.Contains(item))
+        {
+            item = _items.FirstOrDefault(candidate => candidate.View == view);
+            if (item is null)
+                return;
+
+            _activationItemsByView[view] = item;
+        }
+
+        ActivateItem(item);
     }
 
     private static bool TryFindDescendant<TControl>(Node root, out TControl control)
@@ -2390,6 +2427,7 @@ public partial class NGenericSelectScreen : Control
 
             item.View.GetParent()?.RemoveChild(item.View);
             item.View.QueueFree();
+            ClearActivationBinding(item.View);
             item.SetView(null);
         }
     }
