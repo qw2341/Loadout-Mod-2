@@ -10,8 +10,10 @@ public partial class NLoadoutPanelButton : Button
 	public override void _Ready()
 	{
 		_nLoadoutPanel = GetParent<NLoadoutPanel>();
+		_nLoadoutPanel.VisibilityStateChanged += RefreshState;
 		Pressed += OnPressed;
 		_signalsConnected = true;
+		RefreshState();
 	}
 
 	public override void _ExitTree()
@@ -20,12 +22,25 @@ public partial class NLoadoutPanelButton : Button
 			return;
 
 		Pressed -= OnPressed;
+		_nLoadoutPanel.VisibilityStateChanged -= RefreshState;
 		_signalsConnected = false;
 	}
 
 	private void OnPressed()
 	{
+		if (_nLoadoutPanel.Hidden)
+		{
+			RefreshState();
+			return;
+		}
+
 		_nLoadoutPanel.ToggleShown();
-		this.Text = _nLoadoutPanel.Shown ? "<" : ">"; // TODO: change to sprites instead of text
+		RefreshState();
+	}
+
+	private void RefreshState()
+	{
+		Disabled = _nLoadoutPanel.Hidden;
+		Text = _nLoadoutPanel.Shown ? "<" : ">"; // TODO: change to sprites instead of text
 	}
 }

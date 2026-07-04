@@ -57,6 +57,7 @@ namespace  Loadout.UI;
 public partial class NLoadoutPanel : Panel
 {
 	private const int MaxLoadoutItemInitAttempts = 120;
+	private static bool DebugForceShownExpanded = true;
 	private const string LoadoutBagTargetDropdownName = "LoadoutBagTargetDropdown";
 	private const string LoadoutCauldronTargetKey = "loadout_cauldron";
 	private const string LoadoutCauldronTargetDropdownName = "LoadoutCauldronTargetDropdown";
@@ -70,27 +71,44 @@ public partial class NLoadoutPanel : Panel
 	public bool Shown = true;
 
 	[Export]
+	public new bool Hidden = true;
+
+	[Export]
 	public float SlideSpeed = 12f;
 	
 	private PanelContainer _panelContainer = null!;
 	private MarginContainer _marginContainer = null!;
 	private Control _itemsContainer = null!;
+	private Control _toggleButton = null!;
 
 	public static Control ItemsContainer = null!;
+
+	private static NLoadoutPanel? _instance;
 
 	private int _loadoutItemInitAttempts;
 	private bool _loadoutItemsAdded;
 	private bool _loadoutItemRetryScheduled;
+	private bool _runStartedConnected;
 	
+	public event Action? VisibilityStateChanged;
+
+	public override void _EnterTree()
+	{
+		InitializePanelState();
+	}
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
+		_instance = this;
+		_toggleButton = GetNode<Control>("LoadoutPanelButton");
 		_panelContainer = GetNode<PanelContainer>("PanelContainer");
 		_marginContainer = GetNode<MarginContainer>("PanelContainer/MarginContainer");
 		_itemsContainer = GetNode<Control>("PanelContainer/MarginContainer/VBoxContainer");
 		ItemsContainer = _itemsContainer;
 		
+		BindRunHooks();
+		SnapToTargetPosition();
 		
 		TryAddLoadoutItems();
 
@@ -99,9 +117,20 @@ public partial class NLoadoutPanel : Panel
 		// _itemsContainer.MinimumSizeChanged += UpdatePanelHeight;
 	}
 
+	public override void _ExitTree()
+	{
+		UnbindRunHooks();
+
+		if (_instance == this)
+			_instance = null;
+	}
+
 	public void ToggleShown()
 	{
-		Shown = !Shown;
+		if (Hidden)
+			return;
+
+		SetPanelState(Hidden, !Shown);
 	}
 
 	public override void _Process(double delta)
@@ -109,14 +138,113 @@ public partial class NLoadoutPanel : Panel
 		UpdatePosition(delta);
 	}
 	
+	private void InitializePanelState()
+	{
+		if (DebugForceShownExpanded)
+		{
+			SetPanelState(hidden: false, shown: true, notify: false);
+			return;
+		}
+
+		SetPanelState(!IsPlayerInGame(), shown: false, notify: false);
+	}
+
+	private void BindRunHooks()
+	{
+		if (_runStartedConnected)
+			return;
+
+		RunManager.Instance.RunStarted += OnRunStarted;
+		_runStartedConnected = true;
+	}
+
+	private void UnbindRunHooks()
+	{
+		if (!_runStartedConnected)
+			return;
+
+		RunManager.Instance.RunStarted -= OnRunStarted;
+		_runStartedConnected = false;
+	}
+
+	private void OnRunStarted(RunState _)
+	{
+		if (DebugForceShownExpanded)
+			return;
+
+		SetPanelState(hidden: false, shown: false);
+	}
+
+	private void OnRunCleanedUp()
+	{
+		if (DebugForceShownExpanded)
+			return;
+
+		SetPanelState(hidden: true, shown: false);
+		NLoadoutPanelRoot.Instance?.CloseAllScreens();
+	}
+
+	public static void NotifyRunCleanedUp()
+	{
+		if (_instance is null || !IsInstanceValid(_instance))
+			return;
+
+		_instance.OnRunCleanedUp();
+	}
+
+	private void SetPanelState(bool hidden, bool shown, bool notify = true)
+	{
+		if (Hidden == hidden && Shown == shown)
+			return;
+
+		Hidden = hidden;
+		Shown = shown;
+
+		if (notify)
+			VisibilityStateChanged?.Invoke();
+	}
+
+	private static bool IsPlayerInGame()
+	{
+		try
+		{
+			return RunManager.Instance.IsInProgress;
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: could not resolve run state for panel visibility. {exception.Message}");
+			return false;
+		}
+	}
+
 	private void UpdatePosition(double delta)
 	{
-		Vector2 target = Position;
-		target.Y = (GetParent<Control>().Size.Y - Size.Y) / 2f;
-		target.X = Shown ? 0 : -Size.X;
+		Vector2 target = GetTargetPosition();
 		
 		float weight = Mathf.Clamp((float)(SlideSpeed * delta), 0f, 1f);
 		Position = Position.Lerp(target, weight);
+	}
+
+	private void SnapToTargetPosition()
+	{
+		Position = GetTargetPosition();
+	}
+
+	private Vector2 GetTargetPosition()
+	{
+		Vector2 target = Position;
+		target.Y = (GetParent<Control>().Size.Y - Size.Y) / 2f;
+		target.X = Hidden ? GetHiddenXOffset() : Shown ? 0 : -Size.X;
+		return target;
+	}
+
+	private float GetHiddenXOffset()
+	{
+		float rightEdge = Size.X;
+		if (_toggleButton is not null && IsInstanceValid(_toggleButton))
+			rightEdge = Mathf.Max(rightEdge, _toggleButton.Position.X + _toggleButton.Size.X);
+
+		return -rightEdge;
 	}
 
 	private void AddLoadoutItems()
