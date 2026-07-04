@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -213,38 +214,38 @@ public sealed class LoadoutGameAction : GameAction
 
         foreach (Player targetPlayer in ResolveTargetPlayers())
         {
-            List<CardPileAddResult> results = new();
-            for (int i = 0; i < Amount; i++)
-            {
-                try
-                {
-                    CardModel card = targetPlayer.RunState.CreateCard(canonicalCard, targetPlayer);
-                    CardPileAddResult result = await CardPileCmd.Add(card, PileType.Deck);
-                    if (!result.success)
-                        break;
-
-                    results.Add(result);
-                }
-                catch (Exception exception)
-                {
-                    GD.PushWarning($"LoadoutPanel: stopped adding card '{ModelId}' to player {targetPlayer.NetId} after {results.Count}/{Amount}. {exception.Message}");
-                    break;
-                }
-            }
-
-            if (results.Count > 0)
-            {
-                CardPreviewStyle previewStyle = results.Count > 5
-                    ? CardPreviewStyle.MessyLayout
-                    : CardPreviewStyle.HorizontalLayout;
-                CardCmd.PreviewCardPileAdd(results, 2f, previewStyle);
-            }
+            await AddDeckCardCopiesAsync(targetPlayer, canonicalCard);
 
             if (CombatManager.Instance.IsInProgress)
                 await AddGeneratedCardCopiesToCombatHandAsync(targetPlayer, canonicalCard);
         }
+    }
 
-        CardModificationStateService.NotifyStateChanged();
+    private async Task AddDeckCardCopiesAsync(Player targetPlayer, CardModel canonicalCard)
+    {
+        List<CardModel> cards = CreateRunCards(targetPlayer, canonicalCard, Amount);
+        if (cards.Count == 0)
+            return;
+
+        IReadOnlyList<CardPileAddResult> results;
+        try
+        {
+            results = await CardPileCmd.Add(cards, targetPlayer.Deck);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutPanel: failed adding deck cards '{ModelId}' to player {targetPlayer.NetId}. {exception.Message}");
+            return;
+        }
+
+        List<CardPileAddResult> addedResults = results.Where(result => result.success).ToList();
+        if (addedResults.Count == 0)
+            return;
+
+        CardPreviewStyle previewStyle = addedResults.Count > 5
+            ? CardPreviewStyle.MessyLayout
+            : CardPreviewStyle.HorizontalLayout;
+        CardCmd.PreviewCardPileAdd(addedResults, 2f, previewStyle);
     }
 
     private async Task AddGeneratedCardCopiesToCombatHandAsync(Player targetPlayer, CardModel canonicalCard)
@@ -256,19 +257,68 @@ public sealed class LoadoutGameAction : GameAction
         if (combatState is null)
             return;
 
-        for (int i = 0; i < Amount; i++)
+        List<CardModel> cards = CreateCombatCards(combatState, targetPlayer, canonicalCard, Amount);
+        if (cards.Count == 0)
+            return;
+
+        foreach (CardModel card in cards)
+            CombatManager.Instance.History.CardGenerated(combatState, card, targetPlayer);
+
+        IReadOnlyList<CardPileAddResult> results;
+        try
+        {
+            using (LoadoutCardAddRules.IgnoreHandLimit())
+                results = await CardPileCmd.Add(cards, PileType.Hand);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutPanel: failed adding combat hand cards '{ModelId}' to player {targetPlayer.NetId}. {exception.Message}");
+            return;
+        }
+
+        foreach (CardPileAddResult result in results)
+        {
+            if (result.success)
+                await Hook.AfterCardGeneratedForCombat(combatState, result.cardAdded, targetPlayer);
+        }
+    }
+
+    private List<CardModel> CreateRunCards(Player targetPlayer, CardModel canonicalCard, int amount)
+    {
+        List<CardModel> cards = new(Math.Max(0, amount));
+        for (int i = 0; i < amount; i++)
         {
             try
             {
-                CardModel card = combatState.CreateCard(canonicalCard, targetPlayer);
-                await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Hand, targetPlayer);
+                cards.Add(targetPlayer.RunState.CreateCard(canonicalCard, targetPlayer));
             }
             catch (Exception exception)
             {
-                GD.PushWarning($"LoadoutPanel: stopped adding combat hand card '{ModelId}' to player {targetPlayer.NetId} after {i}/{Amount}. {exception.Message}");
+                GD.PushWarning($"LoadoutPanel: stopped creating deck card '{ModelId}' for player {targetPlayer.NetId} after {cards.Count}/{amount}. {exception.Message}");
                 break;
             }
         }
+
+        return cards;
+    }
+
+    private List<CardModel> CreateCombatCards(ICombatState combatState, Player targetPlayer, CardModel canonicalCard, int amount)
+    {
+        List<CardModel> cards = new(Math.Max(0, amount));
+        for (int i = 0; i < amount; i++)
+        {
+            try
+            {
+                cards.Add(combatState.CreateCard(canonicalCard, targetPlayer));
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"LoadoutPanel: stopped creating combat hand card '{ModelId}' for player {targetPlayer.NetId} after {cards.Count}/{amount}. {exception.Message}");
+                break;
+            }
+        }
+
+        return cards;
     }
 
     private async Task AddRelicCopiesAsync()

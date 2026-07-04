@@ -18,7 +18,7 @@ public partial class MainFile : Node
 
     public static void Initialize()
     {
-        Logger.Info("[Loadout] Build marker DLL: 2026-07-04-preload-hook-v3");
+        Logger.Info("[Loadout] Build marker DLL: 2026-07-04-card-printer-native-batch-v5");
 
         var assembly = Assembly.GetExecutingAssembly();
         Logger.Info($"[Loadout] Assembly location: {assembly.Location}");

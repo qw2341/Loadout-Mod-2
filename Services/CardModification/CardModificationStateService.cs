@@ -71,6 +71,7 @@ public static class CardModificationStateService
     private static Stack<CardModel>? _locStringContext;
 
     public static event Action? StateChanged;
+    public static event Action<ModelId>? PermanentCardDisplayChanged;
 
     public static void Register()
     {
@@ -288,21 +289,33 @@ public static class CardModificationStateService
     public static void SavePermanent(ModelId cardId, CardModificationState state)
     {
         EnsureLoaded();
+        bool changed;
         lock (SyncRoot)
         {
             string key = ToCardKey(cardId);
             CardModificationState normalized = state.Clone();
             normalized.Normalize();
             if (normalized.IsEmpty)
-                _permanent.Cards.Remove(key);
+            {
+                changed = _permanent.Cards.Remove(key);
+            }
             else
+            {
+                changed = !_permanent.Cards.TryGetValue(key, out CardModificationState? existing)
+                          || !PermanentStatesEquivalent(existing, normalized);
                 _permanent.Cards[key] = normalized;
+            }
 
-            InvalidateDisplayCacheLocked();
-            SavePermanentState();
+            if (changed)
+            {
+                InvalidateDisplayCacheLocked();
+                SavePermanentState();
+            }
         }
 
         CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
+        if (changed)
+            RaisePermanentCardDisplayChanged(cardId);
         RaiseStateChanged();
     }
 
@@ -321,9 +334,11 @@ public static class CardModificationStateService
     public static void ResetPermanent(ModelId cardId)
     {
         EnsureLoaded();
+        bool changed;
         lock (SyncRoot)
         {
-            if (_permanent.Cards.Remove(ToCardKey(cardId)))
+            changed = _permanent.Cards.Remove(ToCardKey(cardId));
+            if (changed)
             {
                 InvalidateDisplayCacheLocked();
                 SavePermanentState();
@@ -331,6 +346,8 @@ public static class CardModificationStateService
         }
 
         CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
+        if (changed)
+            RaisePermanentCardDisplayChanged(cardId);
         RaiseStateChanged();
     }
 
@@ -731,32 +748,38 @@ public static class CardModificationStateService
         }
 
         Dictionary<string, CardModificationState> previousPermanentStates;
+        List<string> changedPermanentKeys;
         lock (SyncRoot)
         {
             previousPermanentStates = _hasHostPermanentOverlay
                 ? CloneStateDictionary(_hostPermanentOverlay)
                 : CloneStateDictionary(_permanent.Cards);
+            changedPermanentKeys = GetChangedPermanentKeys(previousPermanentStates, overlay);
             _hostPermanentOverlay = overlay;
             _hasHostPermanentOverlay = true;
             InvalidateDisplayCacheLocked();
         }
 
-        ApplySavedRunStateToLiveDecks(previousPermanentStates);
+        ApplySavedRunStateToLiveDecks(previousPermanentStates, raiseStateChanged: false);
+        RaisePermanentCardDisplayChanged(ResolvePermanentCardIds(changedPermanentKeys));
         RaiseStateChanged();
     }
 
     public static void ClearHostPermanentOverlay()
     {
+        List<string> changedPermanentKeys;
         lock (SyncRoot)
         {
             if (!_hasHostPermanentOverlay && _hostPermanentOverlay.Count == 0)
                 return;
 
+            changedPermanentKeys = GetChangedPermanentKeys(_hostPermanentOverlay, _permanent.Cards);
             _hostPermanentOverlay.Clear();
             _hasHostPermanentOverlay = false;
             InvalidateDisplayCacheLocked();
         }
 
+        RaisePermanentCardDisplayChanged(ResolvePermanentCardIds(changedPermanentKeys));
         RaiseStateChanged();
     }
 
@@ -1055,7 +1078,9 @@ public static class CardModificationStateService
         ApplySavedRunStateToLiveDecks(null);
     }
 
-    private static void ApplySavedRunStateToLiveDecks(IReadOnlyDictionary<string, CardModificationState>? previousPermanentStates)
+    private static void ApplySavedRunStateToLiveDecks(
+        IReadOnlyDictionary<string, CardModificationState>? previousPermanentStates,
+        bool raiseStateChanged = true)
     {
         try
         {
@@ -1069,7 +1094,8 @@ public static class CardModificationStateService
             foreach (Player player in runState.Players)
                 ApplySavedRunStateToPlayerDeck(player, previousPermanentStates);
 
-            RaiseStateChanged();
+            if (raiseStateChanged)
+                RaiseStateChanged();
         }
         catch (Exception exception)
         {
@@ -1114,6 +1140,102 @@ public static class CardModificationStateService
         }
     }
 
+    private static List<string> GetChangedPermanentKeys(
+        IReadOnlyDictionary<string, CardModificationState> before,
+        IReadOnlyDictionary<string, CardModificationState> after)
+    {
+        HashSet<string> keys = new(before.Keys, StringComparer.Ordinal);
+        keys.UnionWith(after.Keys);
+
+        List<string> changed = new();
+        foreach (string key in keys)
+        {
+            before.TryGetValue(key, out CardModificationState? beforeState);
+            after.TryGetValue(key, out CardModificationState? afterState);
+            if (!PermanentStatesEquivalent(beforeState, afterState))
+                changed.Add(key);
+        }
+
+        return changed;
+    }
+
+    private static IReadOnlyList<ModelId> ResolvePermanentCardIds(IEnumerable<string> cardKeys)
+    {
+        List<ModelId> cardIds = new();
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        foreach (string cardKey in cardKeys)
+        {
+            if (!TryResolveModel(cardKey, ModelDb.AllCards, out CardModel? card) || card is null)
+                continue;
+
+            string resolvedKey = card.Id.ToString();
+            if (seen.Add(resolvedKey))
+                cardIds.Add(card.Id);
+        }
+
+        return cardIds;
+    }
+
+    private static bool PermanentStatesEquivalent(CardModificationState? left, CardModificationState? right)
+    {
+        if (ReferenceEquals(left, right))
+            return true;
+
+        if (left is null)
+            return right is null || right.IsEmpty;
+
+        if (right is null)
+            return left.IsEmpty;
+
+        return left.EnergyCost == right.EnergyCost
+               && left.BaseReplayCount == right.BaseReplayCount
+               && left.BaseStarCost == right.BaseStarCost
+               && DictionaryEquals(left.DynamicVars, right.DynamicVars)
+               && string.Equals(left.PoolId, right.PoolId, StringComparison.Ordinal)
+               && string.Equals(left.Type, right.Type, StringComparison.Ordinal)
+               && string.Equals(left.Rarity, right.Rarity, StringComparison.Ordinal)
+               && string.Equals(left.CustomTitle, right.CustomTitle, StringComparison.Ordinal)
+               && string.Equals(left.CustomDescription, right.CustomDescription, StringComparison.Ordinal)
+               && string.Equals(left.PortraitPath, right.PortraitPath, StringComparison.Ordinal)
+               && string.Equals(left.BetaPortraitPath, right.BetaPortraitPath, StringComparison.Ordinal)
+               && DictionaryEquals(left.KeywordOverrides, right.KeywordOverrides)
+               && AttachmentSpecsEquivalent(left.Enchantment, right.Enchantment)
+               && AttachmentSpecsEquivalent(left.Affliction, right.Affliction);
+    }
+
+    private static bool DictionaryEquals<TValue>(
+        IReadOnlyDictionary<string, TValue> left,
+        IReadOnlyDictionary<string, TValue> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        EqualityComparer<TValue> comparer = EqualityComparer<TValue>.Default;
+        foreach ((string key, TValue leftValue) in left)
+        {
+            if (!right.TryGetValue(key, out TValue? rightValue) || !comparer.Equals(leftValue, rightValue))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool AttachmentSpecsEquivalent(CardAttachmentSpec? left, CardAttachmentSpec? right)
+    {
+        if (ReferenceEquals(left, right))
+            return true;
+
+        if (left is null)
+            return right is null || right.IsEmpty;
+
+        if (right is null)
+            return left.IsEmpty;
+
+        return string.Equals(left.ModelId, right.ModelId, StringComparison.Ordinal)
+               && left.Amount == right.Amount
+               && left.Clear == right.Clear;
+    }
+
     private static Dictionary<string, CardModificationState> CloneStateDictionary(
         Dictionary<string, CardModificationState> states)
     {
@@ -1121,6 +1243,36 @@ public static class CardModificationStateService
             pair => pair.Key,
             pair => pair.Value.Clone(),
             StringComparer.Ordinal);
+    }
+
+    private static void RaisePermanentCardDisplayChanged(ModelId cardId)
+    {
+        Action<ModelId>? handlers = PermanentCardDisplayChanged;
+        if (handlers is null)
+            return;
+
+        foreach (Action<ModelId> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(cardId);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"CardModification: permanent-card display handler failed. {exception.Message}");
+            }
+        }
+    }
+
+    private static void RaisePermanentCardDisplayChanged(IEnumerable<ModelId> cardIds)
+    {
+        HashSet<string> raised = new(StringComparer.Ordinal);
+        foreach (ModelId cardId in cardIds)
+        {
+            string key = cardId.ToString();
+            if (!string.IsNullOrWhiteSpace(key) && raised.Add(key))
+                RaisePermanentCardDisplayChanged(cardId);
+        }
     }
 
     private static void RaiseStateChanged()

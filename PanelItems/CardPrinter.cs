@@ -10,10 +10,8 @@ using Loadout.Services.Targets;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
-using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
-using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -34,7 +32,7 @@ public class CardPrinter
     {
 	    IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
 	    NGenericSelectScreen activeScreen = null;
-	    bool cardPrinterRefreshPending = false;
+	    HashSet<string> pendingCardRefreshIds = new(StringComparer.Ordinal);
 	    SelectItemAdapter<CardModel> cardPrinterAdapter = new()
 	    {
 		    GetId = card => card.Id.ToString(),
@@ -88,50 +86,66 @@ public class CardPrinter
 			    ApplyCurrentCardClassFilter(screen);
 	    }
 
-	    void ReconfigureCardPrinterScreen(NGenericSelectScreen screen)
-	    {
-		    SelectScreenUiState state = screen.CaptureUiState();
-		    screen.Configure(allCards, cardPrinterAdapter, BuildCardPrinterScreen);
-		    BindCardPrinterSidebar(screen, applyDefaultClassFilter: false);
-		    screen.RestoreUiState(state);
-		    screen.ForEachVisibleItemView((_, view) => ForceRefreshCardVisuals(view));
-		    screen.RequestDeferredVisibleRefresh();
-	    }
-
 	    void ConfigureCardPrinterSidebar(NGenericSelectScreen screen, bool applyDefaultClassFilter = true)
 	    {
 		    activeScreen = screen;
-		    if (cardPrinterRefreshPending)
-		    {
-			    cardPrinterRefreshPending = false;
-			    ReconfigureCardPrinterScreen(screen);
-			    return;
-		    }
-
 		    BindCardPrinterSidebar(screen, applyDefaultClassFilter);
+
+		    if (pendingCardRefreshIds.Count > 0)
+		    {
+			    string[] cardIds = pendingCardRefreshIds.ToArray();
+			    pendingCardRefreshIds.Clear();
+			    RefreshVisibleCardPrinterCards(screen, cardIds);
+		    }
 	    }
 
-	    void RefreshActiveCardPrinterScreen()
+	    void RefreshCardPrinterCard(ModelId cardId)
 	    {
-		    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen))
+		    string cardKey = cardId.ToString();
+		    if (string.IsNullOrWhiteSpace(cardKey))
 			    return;
+
+		    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen))
+		    {
+			    pendingCardRefreshIds.Add(cardKey);
+			    return;
+		    }
 
 		    if (!activeScreen.IsInsideTree() || !activeScreen.IsVisibleInTree())
 		    {
-			    cardPrinterRefreshPending = true;
+			    pendingCardRefreshIds.Add(cardKey);
 			    return;
 		    }
 
+		    RefreshVisibleCardPrinterCards(activeScreen, new[] { cardKey });
+	    }
+
+	    void RefreshVisibleCardPrinterCards(NGenericSelectScreen screen, IReadOnlyCollection<string> cardIds)
+	    {
+		    if (cardIds.Count == 0)
+			    return;
+
 		    Callable.From(() =>
 		    {
-			    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen) || !activeScreen.IsInsideTree() || !activeScreen.IsVisibleInTree())
+			    if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
 				    return;
 
-			    ReconfigureCardPrinterScreen(activeScreen);
+			    if (!screen.IsVisibleInTree())
+			    {
+				    foreach (string cardId in cardIds)
+					    pendingCardRefreshIds.Add(cardId);
+				    return;
+			    }
+
+			    screen.ForEachVisibleItemView((item, view) =>
+			    {
+				    if (item.UntypedModel is CardModel card && MatchesCardRefreshId(card, cardIds))
+					    ForceRefreshCardVisuals(view);
+			    });
 		    }).CallDeferred();
 	    }
 
-	    CardModificationStateService.StateChanged += RefreshActiveCardPrinterScreen;
+	    CardModificationStateService.PermanentCardDisplayChanged += RefreshCardPrinterCard;
 
 		CommonHelpers.CreateAndAddLoadoutItem(
 			allCards,
@@ -164,39 +178,6 @@ public class CardPrinter
 	    };
 	    entry.SetTargetSelection(target);
 	    return Task.FromResult<IReadOnlyList<LastActionEntry>>(new[] { entry });
-    }
-
-    private static async Task<int> AddCardCopiesAsync(CardModel canonicalCard, int amount, string logId)
-    {
-	    Player localPlayer = CommonHelpers.GetLocalRunPlayer();
-	    if (localPlayer is null || amount <= 0)
-		    return 0;
-
-	    List<CardPileAddResult> results = new();
-	    for (int i = 0; i < amount; i++)
-	    {
-		    try
-		    {
-			    CardModel card = localPlayer.RunState.CreateCard(canonicalCard, localPlayer);
-			    CardPileAddResult result = await CardPileCmd.Add(card, PileType.Deck);
-			    if (!result.success)
-				    break;
-
-			    results.Add(result);
-		    }
-		    catch (Exception exception)
-		    {
-			    GD.PushWarning($"LoadoutPanel: stopped adding card '{logId}' after {results.Count}/{amount} copies. {exception.Message}");
-			    break;
-		    }
-	    }
-
-	    if (results.Count == 0)
-		    return 0;
-
-	    CardPreviewStyle previewStyle = results.Count > 5 ? CardPreviewStyle.MessyLayout : CardPreviewStyle.HorizontalLayout;
-	    CardCmd.PreviewCardPileAdd(results, 2f, previewStyle);
-	    return results.Count;
     }
 
     private static Task ReplayCardPrinterLastActionAsync()
@@ -496,6 +477,12 @@ public class CardPrinter
 
 	    if (screen.SetExclusiveFilterSelection("class", filterId, resetScroll: true))
 		    _currentCardFilterId = filterId;
+    }
+
+    private static bool MatchesCardRefreshId(CardModel card, IReadOnlyCollection<string> cardIds)
+    {
+	    return cardIds.Contains(card.Id.ToString())
+	           || cardIds.Contains(card.Id.Entry);
     }
     
     private static int CompareCardLibraryOrder(CardModel left, CardModel right, IReadOnlyList<CardPoolModel> orderedPools)
