@@ -16,16 +16,19 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Runs;
 
-public partial class NDeckLoadoutPanel : PanelContainer
+public partial class NDeckLoadoutPanel : Control
 {
     private const string NodeName = "LoadoutDeckLoadoutPanel";
     private const string NoSelectionId = "__none__";
     private const string TargetKey = "deck_loadout_apply";
-    private const float PanelWidth = 360f;
-    private const float ButtonHeight = 42f;
+    private const float PanelWidth = 245f;
+    private const float PanelHeight = 420f;
+    private const float DropdownHeight = 38f;
+    private const float ButtonHeight = 26f;
 
     private readonly Dictionary<string, LoadoutCatalogEntry> _entriesByOptionId = new(StringComparer.Ordinal);
 
@@ -34,6 +37,7 @@ public partial class NDeckLoadoutPanel : PanelContainer
     private NLoadoutDropdown? _loadoutDropdown;
     private NLoadoutDropdown? _targetDropdown;
     private LineEdit? _nameInput;
+    private MegaLabel? _emptyLoadoutLabel;
     private MegaLabel? _statusLabel;
     private string _selectedOptionId = NoSelectionId;
     private bool _built;
@@ -67,7 +71,7 @@ public partial class NDeckLoadoutPanel : PanelContainer
 
     public override void _Ready()
     {
-        MouseFilter = MouseFilterEnum.Stop;
+        MouseFilter = MouseFilterEnum.Ignore;
         ZIndex = 240;
         BuildControlTree();
         BindEvents();
@@ -116,72 +120,50 @@ public partial class NDeckLoadoutPanel : PanelContainer
         _built = true;
         ApplyPanelLayout();
 
-        StyleBoxFlat panelStyle = new()
-        {
-            BgColor = new Color(0.035f, 0.028f, 0.024f, 0.88f),
-            BorderColor = StsColors.gold,
-            CornerRadiusBottomLeft = 4,
-            CornerRadiusBottomRight = 4,
-            CornerRadiusTopLeft = 4,
-            CornerRadiusTopRight = 4
-        };
-        panelStyle.SetBorderWidthAll(2);
-        panelStyle.SetContentMarginAll(10f);
-        AddThemeStyleboxOverride("panel", panelStyle);
-
         MarginContainer margin = new()
         {
             Name = "MarginContainer",
-            MouseFilter = MouseFilterEnum.Pass
+            MouseFilter = MouseFilterEnum.Ignore
         };
-        margin.AddThemeConstantOverride("margin_left", 10);
-        margin.AddThemeConstantOverride("margin_top", 10);
-        margin.AddThemeConstantOverride("margin_right", 10);
-        margin.AddThemeConstantOverride("margin_bottom", 10);
+        margin.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(margin);
 
         _content = new VBoxContainer
         {
             Name = "Content",
-            MouseFilter = MouseFilterEnum.Pass
+            MouseFilter = MouseFilterEnum.Ignore
         };
-        _content.AddThemeConstantOverride("separation", 8);
+        _content.AddThemeConstantOverride("separation", 4);
         margin.AddChild(_content);
 
-        _content.AddChild(CreateLabel(LocMan.Loc("DECK_LOADOUTS_TITLE", "Loadouts"), 28, StsColors.gold));
+        _content.AddChild(CreateLabel(LocMan.Loc("DECK_LOADOUTS_TITLE", "Loadouts"), 23, StsColors.gold));
 
-        _loadoutDropdown = new NLoadoutDropdown
-        {
-            Name = "LoadoutDropdown",
-            CustomMinimumSize = new Vector2(PanelWidth - 40f, 52f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill
-        };
+        _emptyLoadoutLabel = CreateLabel(LocMan.Loc("NO_SAVED_LOADOUTS", "No saved loadouts"), 16, StsColors.cream);
+        _emptyLoadoutLabel.CustomMinimumSize = new Vector2(PanelWidth, 24f);
+        _content.AddChild(_emptyLoadoutLabel);
+
+        _loadoutDropdown = CreateCompactDropdown("LoadoutDropdown");
         _loadoutDropdown.SelectedItemChanged += OnLoadoutSelected;
         _content.AddChild(_loadoutDropdown);
 
-        _targetDropdown = new NLoadoutDropdown
-        {
-            Name = "TargetDropdown",
-            CustomMinimumSize = new Vector2(PanelWidth - 40f, 52f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill
-        };
+        _targetDropdown = CreateCompactDropdown("TargetDropdown");
         _targetDropdown.SelectedItemChanged += OnTargetSelected;
         _content.AddChild(_targetDropdown);
 
         _nameInput = CreateNameInput();
         _content.AddChild(_nameInput);
 
-        _content.AddChild(CreateButton("save_cards", LocMan.Loc("SAVE_CARDS_LOADOUT", "Save Cards"), () => SaveCurrent(LoadoutKind.Cards), "CardPrinter.png"));
-        _content.AddChild(CreateButton("save_relics", LocMan.Loc("SAVE_RELICS_LOADOUT", "Save Relics"), () => SaveCurrent(LoadoutKind.Relics), "LoadoutBag.png"));
-        _content.AddChild(CreateButton("save_both", LocMan.Loc("SAVE_CARDS_RELICS_LOADOUT", "Save Cards + Relics"), () => SaveCurrent(LoadoutKind.CardsAndRelics), "AllInOneBag.png"));
-        _content.AddChild(CreateButton("apply", LocMan.Loc("APPLY_LOADOUT", "Apply"), ApplySelected, "LoadoutCauldron.png"));
+        _content.AddChild(CreateButton("save_cards", LocMan.Loc("SAVE_CARDS_LOADOUT", "Save Cards"), () => SaveCurrent(LoadoutKind.Cards)));
+        _content.AddChild(CreateButton("save_relics", LocMan.Loc("SAVE_RELICS_LOADOUT", "Save Relics"), () => SaveCurrent(LoadoutKind.Relics)));
+        _content.AddChild(CreateButton("save_both", LocMan.Loc("SAVE_CARDS_RELICS_LOADOUT", "Save Cards + Relics"), () => SaveCurrent(LoadoutKind.CardsAndRelics)));
+        _content.AddChild(CreateButton("apply", LocMan.Loc("APPLY_LOADOUT", "Apply"), ApplySelected));
         _content.AddChild(CreateButton("rename", LocMan.Loc("RENAME_LOADOUT", "Rename"), RenameSelected));
-        _content.AddChild(CreateButton("delete", LocMan.Loc("DELETE_LOADOUT", "Delete"), DeleteSelected, "TrashBin.png"));
-        _content.AddChild(CreateButton("copy", LocMan.Loc("COPY_LOADOUT", "Copy"), CopySelected));
+        _content.AddChild(CreateButton("delete", LocMan.Loc("DELETE_LOADOUT", "Delete"), DeleteSelected));
+        _content.AddChild(CreateButton("export", LocMan.Loc("EXPORT_LOADOUT", "Export"), CopySelected));
         _content.AddChild(CreateButton("import", LocMan.Loc("IMPORT_LOADOUT", "Import"), ImportFromClipboard));
 
-        _statusLabel = CreateLabel(string.Empty, 17, StsColors.cream);
-        _statusLabel.CustomMinimumSize = new Vector2(PanelWidth - 40f, 56f);
+        _statusLabel = CreateLabel(string.Empty, 15, StsColors.cream);
+        _statusLabel.CustomMinimumSize = new Vector2(PanelWidth, 44f);
         _content.AddChild(_statusLabel);
     }
 
@@ -190,12 +172,31 @@ public partial class NDeckLoadoutPanel : PanelContainer
         AnchorLeft = 0f;
         AnchorTop = 0f;
         AnchorRight = 0f;
-        AnchorBottom = 1f;
-        OffsetLeft = 14f;
-        OffsetTop = 156f;
-        OffsetRight = 14f + PanelWidth;
-        OffsetBottom = -96f;
-        CustomMinimumSize = new Vector2(PanelWidth, 0f);
+        AnchorBottom = 0f;
+        OffsetLeft = 18f;
+        OffsetTop = 44f;
+        OffsetRight = 18f + PanelWidth;
+        OffsetBottom = 44f + PanelHeight;
+        CustomMinimumSize = new Vector2(PanelWidth, PanelHeight);
+        Size = CustomMinimumSize;
+    }
+
+    private static NLoadoutDropdown CreateCompactDropdown(string name)
+    {
+        return new NLoadoutDropdown
+        {
+            Name = name,
+            CustomMinimumSize = new Vector2(PanelWidth, DropdownHeight),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            DropdownWidth = PanelWidth,
+            ItemHeight = 34f,
+            MaxVisibleItems = 6,
+            ButtonHeight = DropdownHeight,
+            UseFullScreenDismisser = false,
+            LabelMinFontSize = 13,
+            LabelMaxFontSize = 17,
+            ItemFontSize = 18
+        };
     }
 
     private LineEdit CreateNameInput()
@@ -204,25 +205,25 @@ public partial class NDeckLoadoutPanel : PanelContainer
         {
             Name = "NameInput",
             PlaceholderText = LocMan.Loc("LOADOUT_NAME_PLACEHOLDER", "Loadout name"),
-            CustomMinimumSize = new Vector2(PanelWidth - 40f, 42f),
+            CustomMinimumSize = new Vector2(PanelWidth, 32f),
             MouseFilter = MouseFilterEnum.Stop
         };
         lineEdit.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/kreon_regular_glyph_space_one.tres"));
-        lineEdit.AddThemeFontSizeOverride("font_size", 21);
+        lineEdit.AddThemeFontSizeOverride("font_size", 17);
         lineEdit.AddThemeColorOverride("font_color", StsColors.cream);
         lineEdit.AddThemeColorOverride("font_placeholder_color", new Color(0.95f, 0.9f, 0.75f, 0.55f));
         return lineEdit;
     }
 
-    private NLoadoutActionButton CreateButton(string id, string label, Action action, string? iconFileName = null)
+    private NDeckLoadoutTextAction CreateButton(string id, string label, Action action)
     {
-        NLoadoutActionButton button = new()
+        NDeckLoadoutTextAction button = new()
         {
             Name = CommonHelpers.MakeSafeNodeName($"{id}_button"),
-            CustomMinimumSize = new Vector2(PanelWidth - 40f, ButtonHeight),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill
+            CustomMinimumSize = new Vector2(PanelWidth, ButtonHeight),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin
         };
-        button.Init(id, label, iconFileName is null ? null : CommonHelpers.LoadActionButtonIcon(iconFileName));
+        button.Init(id, label);
         button.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => action()));
         return button;
     }
@@ -281,12 +282,21 @@ public partial class NDeckLoadoutPanel : PanelContainer
         }
 
         if (options.Count == 0)
-            options.Add(new LoadoutDropdownOption(NoSelectionId, LocMan.Loc("NO_LOADOUTS", "No Loadouts")));
+        {
+            _selectedOptionId = NoSelectionId;
+            _loadoutDropdown.Visible = false;
+            if (_emptyLoadoutLabel is not null)
+                _emptyLoadoutLabel.Visible = true;
+            return;
+        }
 
         if (!_entriesByOptionId.ContainsKey(_selectedOptionId))
             _selectedOptionId = options[0].Id;
 
-        _loadoutDropdown.SetItems(LocMan.Loc("LOADOUT_SELECT_LABEL", "Loadout"), options, _selectedOptionId);
+        _loadoutDropdown.Visible = true;
+        if (_emptyLoadoutLabel is not null)
+            _emptyLoadoutLabel.Visible = false;
+        _loadoutDropdown.SetItems(string.Empty, options, _selectedOptionId);
     }
 
     private string FormatLoadoutOption(SavedLoadout loadout)
@@ -318,7 +328,8 @@ public partial class NDeckLoadoutPanel : PanelContainer
         IReadOnlyList<LoadoutDropdownOption> options = LoadoutTargetService.GetDropdownOptions(LoadoutTargetMode.AllPlayersAndPlayers);
         LoadoutTargetSelection selected = LoadoutTargetService.GetSelected(TargetKey, LoadoutTargetMode.AllPlayersAndPlayers);
         _targetDropdown.Visible = options.Count > 1;
-        _targetDropdown.SetItems(LocMan.Loc("LOADOUT_TARGET", "Target"), options, selected.ToOptionId());
+        if (_targetDropdown.Visible)
+            _targetDropdown.SetItems(string.Empty, options, selected.ToOptionId());
     }
 
     private void RefreshSelectedName()
@@ -357,9 +368,11 @@ public partial class NDeckLoadoutPanel : PanelContainer
 
         SavedLoadout loadout = LoadoutSerializationService.Capture(player, kind);
         loadout.Name = GetRequestedName(loadout.Name);
+        _selectedOptionId = $"local:{loadout.Id}";
         SavedLoadout saved = LoadoutStorageService.Upsert(loadout);
         _selectedOptionId = $"local:{saved.Id}";
         RefreshAll();
+        RefreshAllDeferred();
         SetStatus(LocMan.Loc("LOADOUT_SAVED", "Saved loadout."));
         LoadoutHostSharingService.BroadcastHostCatalog();
     }
@@ -392,6 +405,7 @@ public partial class NDeckLoadoutPanel : PanelContainer
         if (LoadoutStorageService.Rename(entry.Loadout.Id, GetRequestedName(entry.Loadout.Name)))
         {
             RefreshAll();
+            RefreshAllDeferred();
             SetStatus(LocMan.Loc("LOADOUT_RENAMED", "Renamed loadout."));
             LoadoutHostSharingService.BroadcastHostCatalog();
         }
@@ -409,6 +423,7 @@ public partial class NDeckLoadoutPanel : PanelContainer
         {
             _selectedOptionId = NoSelectionId;
             RefreshAll();
+            RefreshAllDeferred();
             SetStatus(LocMan.Loc("LOADOUT_DELETED", "Deleted loadout."));
             LoadoutHostSharingService.BroadcastHostCatalog();
         }
@@ -423,8 +438,8 @@ public partial class NDeckLoadoutPanel : PanelContainer
         }
 
         SetStatus(LoadoutClipboardService.Copy(entry.Loadout)
-            ? LocMan.Loc("LOADOUT_COPIED", "Copied loadout.")
-            : LocMan.Loc("LOADOUT_COPY_FAILED", "Could not copy loadout."));
+            ? LocMan.Loc("LOADOUT_EXPORTED", "Exported loadout.")
+            : LocMan.Loc("LOADOUT_EXPORT_FAILED", "Could not export loadout."));
     }
 
     private void ImportFromClipboard()
@@ -438,6 +453,7 @@ public partial class NDeckLoadoutPanel : PanelContainer
         SavedLoadout imported = LoadoutStorageService.Import(loadout);
         _selectedOptionId = $"local:{imported.Id}";
         RefreshAll();
+        RefreshAllDeferred();
         SetStatus(LocMan.Loc("LOADOUT_IMPORTED", "Imported loadout."));
         LoadoutHostSharingService.BroadcastHostCatalog();
     }
@@ -498,5 +514,110 @@ public partial class NDeckLoadoutPanel : PanelContainer
     {
         if (_statusLabel is not null)
             _statusLabel.SetTextAutoSize(status);
+    }
+
+    private void RefreshAllDeferred()
+    {
+        Callable.From(RefreshAll).CallDeferred();
+    }
+}
+
+public partial class NDeckLoadoutTextAction : NButton
+{
+    private const int NormalOutlineSize = 7;
+    private const int HoverOutlineSize = 10;
+
+    private MegaLabel? _label;
+    private string _pendingLabel = string.Empty;
+
+    public string ActionButtonId { get; private set; } = string.Empty;
+
+    public void Init(string id, string label)
+    {
+        ActionButtonId = id;
+        _pendingLabel = label;
+
+        if (IsNodeReady())
+            ApplyLabel();
+    }
+
+    public override void _Ready()
+    {
+        FocusMode = FocusModeEnum.All;
+        MouseFilter = MouseFilterEnum.Stop;
+        BuildControlTree();
+        ConnectSignals();
+        ApplyLabel();
+        ApplyVisualState(isHot: false, isPressed: false);
+    }
+
+    protected override void OnFocus()
+    {
+        base.OnFocus();
+        ApplyVisualState(isHot: true, isPressed: false);
+    }
+
+    protected override void OnUnfocus()
+    {
+        base.OnUnfocus();
+        ApplyVisualState(isHot: false, isPressed: false);
+    }
+
+    protected override void OnPress()
+    {
+        base.OnPress();
+        ApplyVisualState(isHot: true, isPressed: true);
+    }
+
+    protected override void OnRelease()
+    {
+        base.OnRelease();
+        ApplyVisualState(isHot: true, isPressed: false);
+    }
+
+    private void BuildControlTree()
+    {
+        CustomMinimumSize = new Vector2(
+            CustomMinimumSize.X > 0f ? CustomMinimumSize.X : 245f,
+            CustomMinimumSize.Y > 0f ? CustomMinimumSize.Y : 26f);
+
+        if (GetNodeOrNull<MegaLabel>("Label") is { } existing)
+        {
+            _label = existing;
+            return;
+        }
+
+        MegaLabel label = new()
+        {
+            Name = "Label",
+            AutoSizeEnabled = true,
+            MinFontSize = 13,
+            MaxFontSize = 18,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        label.SetAnchorsPreset(LayoutPreset.FullRect);
+        label.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/kreon_bold_glyph_space_one.tres"));
+        label.AddThemeFontSizeOverride("font_size", 18);
+        AddChild(label);
+        _label = label;
+    }
+
+    private void ApplyLabel()
+    {
+        _label?.SetTextAutoSize(_pendingLabel);
+    }
+
+    private void ApplyVisualState(bool isHot, bool isPressed)
+    {
+        if (_label is null)
+            return;
+
+        _label.AddThemeColorOverride("font_color", isPressed ? StsColors.cream : StsColors.gold);
+        _label.AddThemeColorOverride("font_outline_color", isHot
+            ? new Color(1f, 0.94f, 0.62f, 0.82f)
+            : new Color(0f, 0f, 0f, 0.58f));
+        _label.AddThemeConstantOverride("outline_size", isHot ? HoverOutlineSize : NormalOutlineSize);
     }
 }

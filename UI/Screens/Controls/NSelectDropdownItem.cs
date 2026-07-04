@@ -10,6 +10,8 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 public partial class NSelectDropdownItem : NDropdownItem
 {
     public string OptionId { get; private set; } = string.Empty;
+    public int FontSize { get; set; } = 24;
+
     private string _pendingLabel = "DropdownItem";
     private ColorRect? _highlight;
     private bool _signalsConnected;
@@ -32,6 +34,7 @@ public partial class NSelectDropdownItem : NDropdownItem
         FocusEntered += ShowHoverHighlight;
         FocusExited += HideHoverHighlight;
         _signalsConnected = true;
+        ApplyFontSize();
         Text = _pendingLabel;
     }
 
@@ -95,8 +98,13 @@ public partial class NSelectDropdownItem : NDropdownItem
         label.AddThemeConstantOverride("shadow_offset_x", 3);
         label.AddThemeConstantOverride("shadow_offset_y", 2);
         label.AddThemeFontOverride("font", LoadFont("res://themes/kreon_bold_glyph_space_one.tres"));
-        label.AddThemeFontSizeOverride("font_size", 24);
+        label.AddThemeFontSizeOverride("font_size", FontSize);
         AddChild(label);
+    }
+
+    private void ApplyFontSize()
+    {
+        GetNodeOrNull<MegaLabel>("Label")?.AddThemeFontSizeOverride("font_size", FontSize);
     }
 
     private static Font? LoadFont(string path)

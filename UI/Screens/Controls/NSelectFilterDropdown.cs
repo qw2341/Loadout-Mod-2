@@ -21,7 +21,7 @@ public partial class NLoadoutDropdown : NDropdown
     private const float DefaultDropdownWidth = 320f;
     private const float DefaultItemHeight = 44f;
     private const int DefaultMaxVisibleItems = 8;
-    private const float ButtonHeight = 52f;
+    private const float DefaultButtonHeight = 52f;
     private const float ScrollbarLaneWidth = 42f;
 
     private readonly List<LoadoutDropdownOption> _items = new();
@@ -45,6 +45,11 @@ public partial class NLoadoutDropdown : NDropdown
     public float DropdownWidth { get; set; } = DefaultDropdownWidth;
     public float ItemHeight { get; set; } = DefaultItemHeight;
     public int MaxVisibleItems { get; set; } = DefaultMaxVisibleItems;
+    public float ButtonHeight { get; set; } = DefaultButtonHeight;
+    public bool UseFullScreenDismisser { get; set; } = true;
+    public int LabelMinFontSize { get; set; } = 18;
+    public int LabelMaxFontSize { get; set; } = 28;
+    public int ItemFontSize { get; set; } = 24;
 
     public event Action<string>? SelectedItemChanged;
 
@@ -217,6 +222,7 @@ public partial class NLoadoutDropdown : NDropdown
                 FocusMode = FocusModeEnum.All,
                 MouseFilter = MouseFilterEnum.Stop
             };
+            item.FontSize = ItemFontSize;
             item.Init(option.Id, option.Label);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(OnDropdownItemSelected));
             _dropdownItems.AddChild(item);
@@ -253,7 +259,10 @@ public partial class NLoadoutDropdown : NDropdown
 
         LoadoutDropdownOption selectedItem = _items.FirstOrDefault(item => item.Id == _selectedItemId);
         if (string.IsNullOrWhiteSpace(selectedItem.Id))
+        {
             selectedItem = _items[0];
+            _selectedItemId = selectedItem.Id;
+        }
 
         string label = string.IsNullOrWhiteSpace(_labelPrefix)
             ? selectedItem.Label
@@ -268,8 +277,16 @@ public partial class NLoadoutDropdown : NDropdown
 
         _isOpen = true;
         RefreshButtonHighlight();
-        _dismisser?.SetEnabled(true);
-        _dismisser?.Show();
+        if (UseFullScreenDismisser)
+        {
+            _dismisser?.SetEnabled(true);
+            _dismisser?.Show();
+        }
+        else
+        {
+            _dismisser?.SetEnabled(false);
+            _dismisser?.Hide();
+        }
 
         Control? layer = NLoadoutPanelRoot.Instance?.DropdownLayer;
         if (layer is not null && _dropdownContainer.GetParent() != layer)
@@ -475,8 +492,8 @@ public partial class NLoadoutDropdown : NDropdown
             Name = "Label",
             UniqueNameInOwner = true,
             Text = "Select",
-            MinFontSize = 18,
-            MaxFontSize = 28,
+            MinFontSize = LabelMinFontSize,
+            MaxFontSize = LabelMaxFontSize,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
@@ -487,7 +504,7 @@ public partial class NLoadoutDropdown : NDropdown
         label.AddThemeConstantOverride("shadow_offset_x", 3);
         label.AddThemeConstantOverride("shadow_offset_y", 2);
         label.AddThemeFontOverride("font", LoadFont("res://themes/kreon_bold_glyph_space_one.tres"));
-        label.AddThemeFontSizeOverride("font_size", 28);
+        label.AddThemeFontSizeOverride("font_size", LabelMaxFontSize);
         currentOption.AddChild(label);
 
         TextureRect arrow = new()
