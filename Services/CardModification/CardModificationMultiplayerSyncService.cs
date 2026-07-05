@@ -41,6 +41,7 @@ public static class CardModificationMultiplayerSyncService
         RegisteredLobbies.Clear();
         LobbyConnectedHandlers.Clear();
         UnregisterRunNetService(clearClientOverlay: true);
+        CardModificationStateService.ClearHostPermanentOverlay();
         ClearPendingHostPermanentSnapshot();
         _registered = false;
     }
@@ -203,6 +204,7 @@ public static class CardModificationMultiplayerSyncService
             return;
 
         StorePendingHostPermanentSnapshot(message.payload);
+        CardModificationStateService.ApplyHostPermanentSnapshotJson(message.payload);
     }
 
     private static void HandleTemporarySync(LoadoutCardModificationTemporarySyncMessage message, ulong senderId)

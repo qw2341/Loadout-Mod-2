@@ -49,7 +49,7 @@ public class CardModifier
                 HandleUpgradeAllDeckCards,
                 CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
             builder.ActionButton(
-                "host_permamods", LocMan.Loc("HOST_PERMAMODS_TITLE", "Host Permamods"),
+                "host_permamods", LocMan.Loc("HOST_PERMAMODS_DOWNLOAD_TITLE", "Download Host Permamods"),
                 _ => OpenHostPermamodConflictScreen(),
                 CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
         }
@@ -128,7 +128,7 @@ public class CardModifier
     {
         if (!CardModificationMultiplayerSyncService.HasPendingHostPermanentSnapshot)
         {
-            GD.PushWarning("CardModifier: no host permamod snapshot is available.");
+            GD.PushWarning("CardModifier: no host permamod snapshot is available to download.");
             return;
         }
 

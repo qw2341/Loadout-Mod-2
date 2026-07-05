@@ -79,14 +79,14 @@ public partial class NHostPermamodConflictScreen : Control
         content.AddThemeConstantOverride("separation", 10);
         margin.AddChild(content);
 
-        content.AddChild(CreateLabel(LocMan.Loc("HOST_PERMAMODS_TITLE", "Host Permamods"), 30, StsColors.gold));
+        content.AddChild(CreateLabel(LocMan.Loc("HOST_PERMAMODS_DOWNLOAD_TITLE", "Download Host Permamods"), 30, StsColors.gold));
         content.AddChild(CreateLabel(
-            LocMan.Loc("HOST_PERMAMODS_BODY", "Choose how to import the host's permanent card modifications."),
+            LocMan.Loc("HOST_PERMAMODS_DOWNLOAD_BODY", "The host's permamods are already active for this multiplayer session. Save them to this profile for solo games or future hosting."),
             20,
             StsColors.cream));
-        content.AddChild(CreateButton("keep_mine", LocMan.Loc("PERMAMODS_KEEP_MINE", "Keep Mine"), () => Apply(CardModificationPermanentImportMode.KeepMine)));
-        content.AddChild(CreateButton("use_host", LocMan.Loc("PERMAMODS_USE_HOST", "Use Host"), () => Apply(CardModificationPermanentImportMode.UseHost)));
-        content.AddChild(CreateButton("merge", LocMan.Loc("PERMAMODS_MERGE", "Merge Non-Conflicting"), () => Apply(CardModificationPermanentImportMode.MergeNonConflicting)));
+        content.AddChild(CreateButton("keep_mine", LocMan.Loc("PERMAMODS_KEEP_LOCAL_PROFILE", "Keep Local Profile"), () => Apply(CardModificationPermanentImportMode.KeepMine)));
+        content.AddChild(CreateButton("use_host", LocMan.Loc("PERMAMODS_REPLACE_WITH_HOST", "Replace With Host"), () => Apply(CardModificationPermanentImportMode.UseHost)));
+        content.AddChild(CreateButton("merge", LocMan.Loc("PERMAMODS_MERGE_HOST_NEW", "Merge New Host Permamods"), () => Apply(CardModificationPermanentImportMode.MergeNonConflicting)));
         content.AddChild(CreateButton("cancel", LocMan.Loc("CANCEL", "Cancel"), Close));
     }
 
