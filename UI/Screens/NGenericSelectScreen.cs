@@ -14,9 +14,12 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 /// <summary>
 /// Generic, reusable select-screen root for Godot/STS2 mods.
@@ -33,11 +36,12 @@ public partial class NGenericSelectScreen : Control
     private const float CardVisualLeftOverhang = 96f;
     private const float CardScrollbarReserve = 48f;
     private const int InitialMaterializeBudget = 96;
-    private const int ScrollMaterializeBudget = 48;
-    private const int DeferredMaterializeBatchSize = 24;
-    private const float MaterializeRowsAhead = 3f;
-    private const float MaterializeRowsBehind = 2f;
-    private const float CullRetentionRows = 0.75f;
+    private const int ScrollMaterializeBudget = 164;
+    private const float ScrollSmoothingRate = 15f;
+    private const float MaterializeRowsAhead = 5f;
+    private const float MaterializeRowsBehind = 3f;
+    private const float CullRetentionRows = 2.5f;
+    private const float CullUpdateRowsThreshold = 0.5f;
     private const float RelayoutTweenSeconds = 0.18f;
     private const float RelayoutTweenMinDistance = 1f;
 
@@ -109,8 +113,10 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<string, SelectGroupDefinition> _groupsBySorterId = new(StringComparer.Ordinal);
     private readonly List<Control> _generatedGroupContainers = new();
     private readonly List<Control> _visibleLayoutNodes = new();
+    private readonly HashSet<Control> _visibleLayoutNodeSet = new();
     private readonly Dictionary<IGenericSelectItem, SelectItemLayout> _itemLayouts = new();
     private readonly List<IGenericSelectItem> _itemLayoutOrder = new();
+    private readonly HashSet<IGenericSelectItem> _itemsUpdatedForCurrentLayout = new();
 
     private readonly Dictionary<string, NLoadoutDropdown> _filterDropdownsByGroupId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NCardViewSortButton> _sortButtonsById = new(StringComparer.Ordinal);
@@ -158,7 +164,6 @@ public partial class NGenericSelectScreen : Control
     private float _maxScrollY;
     private bool _scrollbarPressed;
     private System.Threading.CancellationTokenSource? _searchDelayCts;
-    private System.Threading.CancellationTokenSource? _materializeCts;
     private ulong _layoutGeneration;
     private ulong _scheduledEagerRefreshGeneration;
     private ulong _scheduledVisibleRefreshGeneration;
@@ -168,6 +173,12 @@ public partial class NGenericSelectScreen : Control
     private Func<IGenericSelectItem, bool>? _customVisibilityPredicate;
     private bool _isSubscribedToLocaleChanges;
     private string _configuredLocaleLanguage = string.Empty;
+    private float _lastCullScrollY = float.NaN;
+    private int _lastCullNodeCount = -1;
+    private CancellationTokenSource? _preloadCts;
+    private long _completedPreloadGeneration = -1;
+    private readonly ConcurrentQueue<string> _preloadWarnings = new();
+    private bool _warnedLazyMaterializationIgnored;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -223,6 +234,7 @@ public partial class NGenericSelectScreen : Control
 
     public override void _Process(double delta)
     {
+        CompleteThreadedPreloadIfReady();
         UpdateSelectScroll(delta);
         UpdateMultiplierBadge();
         KeepHoverTipsAboveSelectScreen();
@@ -384,9 +396,7 @@ public partial class NGenericSelectScreen : Control
 
         _items.Clear();
         _visibleItems.Clear();
-        _itemLayouts.Clear();
-        _itemLayoutOrder.Clear();
-        _visibleLayoutNodes.Clear();
+        ClearLayoutTracking();
 
         int index = 0;
         foreach (TModel model in models)
@@ -444,7 +454,7 @@ public partial class NGenericSelectScreen : Control
             foreach (IGenericSelectItem item in _itemLayoutOrder.ToList())
             {
                 if (_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
-                    MaterializeItemView(item, layout);
+                    MaterializeItemView(item, layout, updateExistingView: true);
             }
         }
 
@@ -457,7 +467,7 @@ public partial class NGenericSelectScreen : Control
         }
 
         if (materializeMissing)
-            UpdateViewportCulling();
+            UpdateViewportCulling(force: true);
     }
 
     public void SetCustomVisibilityPredicate(Func<IGenericSelectItem, bool>? predicate)
@@ -552,8 +562,7 @@ public partial class NGenericSelectScreen : Control
 
         _items.Clear();
         _visibleItems.Clear();
-        _itemLayouts.Clear();
-        _itemLayoutOrder.Clear();
+        ClearLayoutTracking();
         _filters.Clear();
         _filtersById.Clear();
         _filterGroupsById.Clear();
@@ -608,6 +617,18 @@ public partial class NGenericSelectScreen : Control
 
     public void SetMaterializationMode(SelectMaterializationMode mode)
     {
+        if (mode == SelectMaterializationMode.Lazy)
+        {
+            if (!_warnedLazyMaterializationIgnored)
+            {
+                _warnedLazyMaterializationIgnored = true;
+                GD.PushWarning($"{nameof(NGenericSelectScreen)}: Lazy scroll materialization is disabled. Using eager threaded preload + full main-thread materialization instead.");
+            }
+
+            _materializationMode = SelectMaterializationMode.Eager;
+            return;
+        }
+
         _materializationMode = mode;
     }
 
@@ -725,9 +746,7 @@ public partial class NGenericSelectScreen : Control
         _visibleItems.Clear();
         _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
         _visibleItems.Sort(CompareItems);
-        _visibleLayoutNodes.Clear();
-        _itemLayouts.Clear();
-        _itemLayoutOrder.Clear();
+        ClearLayoutTracking();
 
         foreach (IGenericSelectItem item in _items)
         {
@@ -748,18 +767,8 @@ public partial class NGenericSelectScreen : Control
         if (resetScroll)
             ScrollToTop();
 
-        if (_materializationMode == SelectMaterializationMode.Eager)
-        {
-            FinalizeEagerMaterialization(warnOnMismatch: true);
-            ScheduleDeferredEagerMaterializationRefresh();
-        }
-        else
-        {
-            MaterializeViewportItemViews(InitialMaterializeBudget);
-            StartDeferredItemMaterialization();
-        }
-
-        UpdateViewportCulling();
+        StartThreadedPreloadThenMaterializeAll();
+        UpdateViewportCulling(force: true);
     }
 
     private Dictionary<string, Control> CaptureReusableItemViewsById()
@@ -1280,9 +1289,31 @@ public partial class NGenericSelectScreen : Control
     private void CancelPendingMaterialization()
     {
         _layoutGeneration++;
-        _materializeCts?.Cancel();
-        _materializeCts?.Dispose();
-        _materializeCts = null;
+
+        CancellationTokenSource? preloadCts = _preloadCts;
+        _preloadCts = null;
+        if (preloadCts is not null)
+        {
+            preloadCts.Cancel();
+            preloadCts.Dispose();
+        }
+
+        Interlocked.Exchange(ref _completedPreloadGeneration, -1);
+        while (_preloadWarnings.TryDequeue(out _))
+        {
+            // discard stale warnings from cancelled generations
+        }
+    }
+
+    private void ClearLayoutTracking()
+    {
+        _visibleLayoutNodes.Clear();
+        _visibleLayoutNodeSet.Clear();
+        _itemLayouts.Clear();
+        _itemLayoutOrder.Clear();
+        _itemsUpdatedForCurrentLayout.Clear();
+        _lastCullScrollY = float.NaN;
+        _lastCullNodeCount = -1;
     }
 
     private void RebuildCustomControls()
@@ -1774,7 +1805,7 @@ public partial class NGenericSelectScreen : Control
             groupContainer.Size = new Vector2(headerWidth, _layout.GroupHeaderHeight);
             _itemGrid!.AddChild(groupContainer);
             _generatedGroupContainers.Add(groupContainer);
-            _visibleLayoutNodes.Add(groupContainer);
+            TrackVisibleLayoutNode(groupContainer);
             y += _layout.GroupHeaderHeight + _layout.GroupHeaderGap;
 
             if (groupItems.Count == 0)
@@ -1812,24 +1843,29 @@ public partial class NGenericSelectScreen : Control
         _itemLayoutOrder.Add(item);
     }
 
-    private void MaterializeViewportItemViews(int maxCount)
+    private void TrackVisibleLayoutNode(Control control)
+    {
+        if (_visibleLayoutNodeSet.Add(control))
+            _visibleLayoutNodes.Add(control);
+    }
+
+    private int MaterializeViewportItemViews(int maxCount, bool updateExistingViews = false)
     {
         if (_itemGrid is null || maxCount <= 0)
-            return;
+            return 0;
 
-        int materialized = 0;
-        foreach (IGenericSelectItem item in _itemLayoutOrder)
-        {
-            if (materialized >= maxCount)
-                break;
+        int materialized = MaterializeLayoutWindow(BuildViewportMaterializeRect(_scrollY, 0.5f, 0.75f), maxCount, updateExistingViews);
+        if (materialized >= maxCount)
+            return materialized;
 
-            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout) || !IsLayoutNearViewport(layout))
-                continue;
+        if (Mathf.Abs(_targetScrollY - _scrollY) > Math.Max(1f, ResolveConfiguredItemSize().Y + ItemVerticalGap) * 0.5f)
+            materialized += MaterializeLayoutWindow(BuildViewportMaterializeRect(_targetScrollY, 0.5f, 1.5f), maxCount - materialized, updateExistingViews);
 
-            bool needsView = item.View is null || !GodotObject.IsInstanceValid(item.View);
-            if (MaterializeItemView(item, layout) && needsView)
-                materialized++;
-        }
+        if (materialized >= maxCount)
+            return materialized;
+
+        materialized += MaterializeLayoutWindow(BuildViewportMaterializeRect(_targetScrollY, MaterializeRowsBehind, MaterializeRowsAhead), maxCount - materialized, updateExistingViews);
+        return materialized;
     }
 
     private void MaterializeAllItemViews()
@@ -1842,8 +1878,86 @@ public partial class NGenericSelectScreen : Control
             if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
                 continue;
 
-            MaterializeItemView(item, layout);
+            MaterializeItemView(item, layout, updateExistingView: true);
         }
+    }
+
+    private Rect2 BuildViewportMaterializeRect(float scrollY, float rowsBehind, float rowsAhead)
+    {
+        if (_itemGrid is null)
+            return new Rect2();
+
+        float viewportHeight = _scrollMask?.Size.Y ?? _itemGrid.GetParent<Control>()?.Size.Y ?? Size.Y;
+        float rowHeight = Math.Max(1f, ResolveConfiguredItemSize().Y + ItemVerticalGap);
+        float top = Mathf.Clamp(scrollY, 0f, _maxScrollY) - rowHeight * rowsBehind;
+        float height = viewportHeight + rowHeight * (rowsBehind + rowsAhead);
+        return new Rect2(new Vector2(0f, top), new Vector2(_itemGrid.Size.X, height));
+    }
+
+    private int MaterializeLayoutWindow(Rect2 materializeRect, int maxCount, bool updateExistingViews)
+    {
+        if (maxCount <= 0 || _itemLayoutOrder.Count == 0)
+            return 0;
+
+        int materialized = 0;
+        float top = materializeRect.Position.Y;
+        float bottom = materializeRect.End.Y;
+        for (int i = FindFirstLayoutIndexAtOrAfter(top); i < _itemLayoutOrder.Count; i++)
+        {
+            IGenericSelectItem item = _itemLayoutOrder[i];
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                continue;
+
+            if (layout.Position.Y > bottom)
+                break;
+
+            if (layout.Position.Y + layout.Size.Y < top)
+                continue;
+
+            bool needsView = item.View is null || !GodotObject.IsInstanceValid(item.View);
+            bool needsStateUpdate = updateExistingViews || !_itemsUpdatedForCurrentLayout.Contains(item);
+            if (!needsView && !needsStateUpdate)
+                continue;
+
+            if (MaterializeItemView(item, layout, updateExistingViews) && needsView)
+                materialized++;
+
+            if (materialized >= maxCount)
+                break;
+        }
+
+        return materialized;
+    }
+
+    private int FindFirstLayoutIndexAtOrAfter(float y)
+    {
+        int low = 0;
+        int high = _itemLayoutOrder.Count - 1;
+        int result = _itemLayoutOrder.Count;
+
+        while (low <= high)
+        {
+            int middle = low + ((high - low) / 2);
+            IGenericSelectItem item = _itemLayoutOrder[middle];
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+            {
+                result = middle;
+                high = middle - 1;
+                continue;
+            }
+
+            if (layout.Position.Y + layout.Size.Y >= y)
+            {
+                result = middle;
+                high = middle - 1;
+            }
+            else
+            {
+                low = middle + 1;
+            }
+        }
+
+        return result;
     }
 
     private void FinalizeEagerMaterialization(bool warnOnMismatch)
@@ -1851,46 +1965,14 @@ public partial class NGenericSelectScreen : Control
         if (_itemGrid is null)
             return;
 
-        MaterializeAllItemViews();
-
-        foreach (Control control in _visibleLayoutNodes)
-        {
-            if (GodotObject.IsInstanceValid(control))
-                control.Visible = true;
-        }
-
         int visibleItemViews = 0;
         foreach (IGenericSelectItem item in _itemLayoutOrder)
         {
             if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
                 continue;
 
-            if (!TryMaterializeOrRecoverItemView(item, layout, out Control? materializedView) || materializedView is null)
-                continue;
-
-            Control view = materializedView;
-            if (view.GetParent() != _itemGrid)
-            {
-                view.GetParent()?.RemoveChild(view);
-                _itemGrid.AddChild(view);
-            }
-
-            view.Visible = true;
-            view.Size = layout.Size;
-            if (!IsRelayoutPositionLocked(view))
-                view.Position = layout.Position;
-
-            try
-            {
-                item.UpdateView(BuildState(item, layout.VisibleIndex));
-            }
-            catch (Exception exception)
-            {
-                GD.PushWarning(
-                    $"Loadout select screen '{Name}' failed to update item '{item.Id}' ({item.Name}): {exception}");
-            }
-
-            visibleItemViews++;
+            if (MaterializeItemView(item, layout, updateExistingView: true))
+                visibleItemViews++;
         }
 
         if (!warnOnMismatch || visibleItemViews == _itemLayoutOrder.Count || _lastEagerMismatchWarningGeneration == _layoutGeneration)
@@ -1900,6 +1982,105 @@ public partial class NGenericSelectScreen : Control
         GD.PushWarning(
             $"Loadout select screen '{Name}' eager materialization mismatch: " +
             $"layouts={_itemLayoutOrder.Count}, visibleItemViews={visibleItemViews}, layoutNodes={_visibleLayoutNodes.Count}.");
+    }
+
+    private void StartThreadedPreloadThenMaterializeAll()
+    {
+        if (_itemGrid is null)
+            return;
+
+        IGenericSelectItem[] preloadItems = _itemLayoutOrder
+            .Where(item => item.HasPreloadResources)
+            .ToArray();
+
+        if (preloadItems.Length == 0)
+        {
+            FinalizeEagerMaterialization(warnOnMismatch: true);
+            return;
+        }
+
+        ulong generation = _layoutGeneration;
+        string screenName = Name;
+        CancellationTokenSource preloadCts = new();
+        _preloadCts = preloadCts;
+        _ = ThreadedPreloadThenMaterializeAllAsync(generation, screenName, preloadItems, preloadCts.Token);
+    }
+
+    private async Task ThreadedPreloadThenMaterializeAllAsync(
+        ulong generation,
+        string screenName,
+        IReadOnlyList<IGenericSelectItem> preloadItems,
+        CancellationToken token)
+    {
+        int maxDegreeOfParallelism = Math.Max(1, Math.Min(preloadItems.Count, System.Environment.ProcessorCount - 1));
+
+        try
+        {
+            await Parallel.ForEachAsync(
+                preloadItems,
+                new ParallelOptions
+                {
+                    CancellationToken = token,
+                    MaxDegreeOfParallelism = maxDegreeOfParallelism
+                },
+                (item, cancellationToken) =>
+                {
+                    try
+                    {
+                        item.PreloadResources(cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        _preloadWarnings.Enqueue(
+                            $"Loadout select screen '{screenName}' failed to preload item '{item.Id}' ({item.Name}): {exception}");
+                    }
+
+                    return ValueTask.CompletedTask;
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (!token.IsCancellationRequested)
+            Interlocked.Exchange(ref _completedPreloadGeneration, unchecked((long)generation));
+    }
+
+    private void CompleteThreadedPreloadIfReady()
+    {
+        long completedGeneration = Interlocked.Read(ref _completedPreloadGeneration);
+        if (completedGeneration < 0)
+            return;
+
+        if (completedGeneration != unchecked((long)_layoutGeneration))
+        {
+            Interlocked.CompareExchange(ref _completedPreloadGeneration, -1, completedGeneration);
+            return;
+        }
+
+        Interlocked.Exchange(ref _completedPreloadGeneration, -1);
+
+        _preloadCts?.Dispose();
+        _preloadCts = null;
+
+        FlushThreadedPreloadWarnings();
+
+        if (!_isConfigured || _itemGrid is null || !IsInsideTree())
+            return;
+
+        FinalizeEagerMaterialization(warnOnMismatch: true);
+        UpdateViewportCulling(force: true);
+    }
+
+    private void FlushThreadedPreloadWarnings()
+    {
+        while (_preloadWarnings.TryDequeue(out string? warning))
+            GD.PushWarning(warning);
     }
 
     private void ScheduleDeferredVisibleRefresh()
@@ -1953,11 +2134,12 @@ public partial class NGenericSelectScreen : Control
         FinalizeEagerMaterialization(warnOnMismatch: true);
     }
 
-    private bool MaterializeItemView(IGenericSelectItem item, SelectItemLayout layout)
+    private bool MaterializeItemView(IGenericSelectItem item, SelectItemLayout layout, bool updateExistingView)
     {
         if (_itemGrid is null)
             return false;
 
+        bool needsView = item.View is null || !GodotObject.IsInstanceValid(item.View);
         if (!TryMaterializeOrRecoverItemView(item, layout, out Control? materializedView) || materializedView is null)
             return false;
 
@@ -1968,17 +2150,21 @@ public partial class NGenericSelectScreen : Control
         view.ZIndex = 0;
         view.Visible = true;
 
-        if (!_visibleLayoutNodes.Contains(view))
-            _visibleLayoutNodes.Add(view);
+        TrackVisibleLayoutNode(view);
 
-        try
+        if (needsView || updateExistingView || !_itemsUpdatedForCurrentLayout.Contains(item))
         {
-            item.UpdateView(BuildState(item, layout.VisibleIndex));
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning(
-                $"Loadout select screen '{Name}' failed to update item '{item.Id}' ({item.Name}): {exception}");
+            try
+            {
+                item.UpdateView(BuildState(item, layout.VisibleIndex));
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning(
+                    $"Loadout select screen '{Name}' failed to update item '{item.Id}' ({item.Name}): {exception}");
+            }
+
+            _itemsUpdatedForCurrentLayout.Add(item);
         }
 
         return true;
@@ -2047,45 +2233,6 @@ public partial class NGenericSelectScreen : Control
                 dropdown.CloseLoadoutDropdown(restoreFocus: false);
 
             CloseOpenDropdowns(child);
-        }
-    }
-
-    private void StartDeferredItemMaterialization()
-    {
-        if (!IsInsideTree() || _itemLayoutOrder.Count == 0)
-            return;
-
-        _materializeCts = new System.Threading.CancellationTokenSource();
-        ulong generation = _layoutGeneration;
-        _ = MaterializeRemainingItemViewsAsync(_itemLayoutOrder.ToList(), generation, _materializeCts.Token);
-    }
-
-    private async System.Threading.Tasks.Task MaterializeRemainingItemViewsAsync(
-        IReadOnlyList<IGenericSelectItem> itemOrder,
-        ulong generation,
-        System.Threading.CancellationToken token)
-    {
-        int index = 0;
-        while (!token.IsCancellationRequested && generation == _layoutGeneration && IsInsideTree() && index < itemOrder.Count)
-        {
-            int materializedThisFrame = 0;
-            while (index < itemOrder.Count && materializedThisFrame < DeferredMaterializeBatchSize)
-            {
-                IGenericSelectItem item = itemOrder[index++];
-                if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
-                    continue;
-
-                if (item.View is not null && GodotObject.IsInstanceValid(item.View))
-                    continue;
-
-                if (MaterializeItemView(item, layout))
-                    materializedThisFrame++;
-            }
-
-            UpdateViewportCulling();
-
-            if (index < itemOrder.Count)
-                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
     }
 
@@ -2415,6 +2562,7 @@ public partial class NGenericSelectScreen : Control
                 continue;
 
             item.UpdateView(BuildState(item, i));
+            _itemsUpdatedForCurrentLayout.Add(item);
         }
     }
 
@@ -2554,7 +2702,7 @@ public partial class NGenericSelectScreen : Control
         UpdateScrollBounds();
     }
 
-    private void UpdateViewportCulling()
+    private void UpdateViewportCulling(bool force = false)
     {
         if (_visibleLayoutNodes.Count == 0)
             return;
@@ -2562,17 +2710,40 @@ public partial class NGenericSelectScreen : Control
         if (_materializationMode == SelectMaterializationMode.Eager)
             return;
 
-        Rect2 viewportRect = _scrollMask?.GetGlobalRect() ?? new Rect2(Vector2.Zero, GetViewportRect().Size);
         float rowHeight = Math.Max(1f, ResolveConfiguredItemSize().Y + ItemVerticalGap);
-        Rect2 cullRect = viewportRect.Grow(rowHeight * CullRetentionRows);
-
-        foreach (Control control in _visibleLayoutNodes)
+        float cullThreshold = Math.Max(16f, rowHeight * CullUpdateRowsThreshold);
+        if (!force
+            && _lastCullNodeCount == _visibleLayoutNodes.Count
+            && !float.IsNaN(_lastCullScrollY)
+            && Math.Abs(_scrollY - _lastCullScrollY) < cullThreshold)
         {
-            if (!GodotObject.IsInstanceValid(control))
-                continue;
+            return;
+        }
 
-            Rect2 rect = control.GetGlobalRect();
-            control.Visible = rect.Intersects(cullRect, includeBorders: true);
+        _lastCullScrollY = _scrollY;
+        _lastCullNodeCount = _visibleLayoutNodes.Count;
+
+        float viewportHeight = _scrollMask?.Size.Y ?? _itemGrid?.GetParent<Control>()?.Size.Y ?? Size.Y;
+        float cullTop = _scrollY - rowHeight * CullRetentionRows;
+        float cullBottom = _scrollY + viewportHeight + rowHeight * CullRetentionRows;
+
+        for (int i = _visibleLayoutNodes.Count - 1; i >= 0; i--)
+        {
+            Control control = _visibleLayoutNodes[i];
+            if (!GodotObject.IsInstanceValid(control))
+            {
+                _visibleLayoutNodes.RemoveAt(i);
+                _visibleLayoutNodeSet.Remove(control);
+                continue;
+            }
+
+            Vector2 controlSize = control.Size;
+            if (controlSize.Y <= 0f)
+                controlSize = control.GetCombinedMinimumSize();
+
+            float top = control.Position.Y;
+            float bottom = top + Math.Max(controlSize.Y, control.CustomMinimumSize.Y);
+            control.Visible = bottom >= cullTop && top <= cullBottom;
         }
     }
 
@@ -2675,9 +2846,16 @@ public partial class NGenericSelectScreen : Control
             return;
 
         if (_scrollbarPressed && _scrollbar is not null && _maxScrollY > 0f)
+        {
             _targetScrollY = Mathf.Clamp((float)_scrollbar.Value * 0.01f * _maxScrollY, 0f, _maxScrollY);
+            _scrollY = _targetScrollY;
+        }
+        else
+        {
+            float scrollBlend = Mathf.Clamp((float)delta * ScrollSmoothingRate, 0f, 1f);
+            _scrollY = Mathf.Lerp(_scrollY, _targetScrollY, scrollBlend);
+        }
 
-        _scrollY = Mathf.Lerp(_scrollY, _targetScrollY, (float)delta * 15f);
         if (Mathf.Abs(_scrollY - _targetScrollY) < 0.5f)
             _scrollY = _targetScrollY;
 
@@ -2686,11 +2864,8 @@ public partial class NGenericSelectScreen : Control
         if (_scrollbar is not null && !_scrollbarPressed)
             _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
 
-        if (_materializationMode != SelectMaterializationMode.Eager)
-        {
-            MaterializeViewportItemViews(ScrollMaterializeBudget);
-            UpdateViewportCulling();
-        }
+        // Do not materialize on scroll. All resource preloading happens before the screen is assembled,
+        // then every visible item view is materialized once on the main thread.
     }
 
     private void SetTargetScroll(float value)
@@ -3168,6 +3343,7 @@ public sealed class SelectItemAdapter<TModel>
     public required Func<TModel, string> GetName { get; init; }
     public Func<TModel, string>? GetSearchText { get; init; }
     public required Func<TModel, SelectItemState, Control> CreateView { get; init; }
+    public Action<TModel, CancellationToken>? PreloadResources { get; init; }
     public Action<TModel, Control>? ViewReady { get; init; }
     public Action<TModel, Control, SelectItemState>? UpdateView { get; init; }
     public Func<TModel, string, bool>? MatchesSearch { get; init; }
@@ -3182,8 +3358,10 @@ public interface IGenericSelectItem
     string SearchText { get; }
     int OriginalIndex { get; }
     Control? View { get; }
+    bool HasPreloadResources { get; }
 
     Control CreateView(SelectItemState state);
+    void PreloadResources(CancellationToken token);
     void NotifyViewReady(Control renderedView);
     void UpdateView(SelectItemState state);
     bool MatchesSearch(string normalizedQuery);
@@ -3212,10 +3390,16 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
     public string SearchText { get; }
     public int OriginalIndex { get; }
     public Control? View { get; private set; }
+    public bool HasPreloadResources => _adapter.PreloadResources is not null;
 
     public Control CreateView(SelectItemState state)
     {
         return _adapter.CreateView(Model, state);
+    }
+
+    public void PreloadResources(CancellationToken token)
+    {
+        _adapter.PreloadResources?.Invoke(Model, token);
     }
 
     public void UpdateView(SelectItemState state)
