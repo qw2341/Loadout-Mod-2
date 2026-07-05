@@ -204,7 +204,9 @@ public static class CardModificationMultiplayerSyncService
             return;
 
         StorePendingHostPermanentSnapshot(message.payload);
-        CardModificationStateService.ApplyHostPermanentSnapshotJson(message.payload);
+        CardModificationStateService.ApplyHostPermanentSnapshotJson(
+            message.payload,
+            HostPermanentSnapshotApplyMode.CatalogOnly);
     }
 
     private static void HandleTemporarySync(LoadoutCardModificationTemporarySyncMessage message, ulong senderId)

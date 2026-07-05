@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
@@ -35,6 +36,7 @@ public class CommonHelpers
 {
     private const string BaseGameModId = "slaythespire2";
     private const string BaseGameModName = "Slay the Spire 2";
+    private const int DynamicRelayoutAnimationItemLimit = 60;
 
     public const string FavoriteModeAllKey = "all";
     public const string FavoriteModeFavoritesKey = "favorites";
@@ -156,7 +158,9 @@ public class CommonHelpers
 		void RefreshCurrentModels(NGenericSelectScreen target, bool animateRelayout = false, bool resetScroll = false)
 		{
 			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
-			target.RefreshItemsPreservingViews(getModels(), adapter, animateRelayout, resetScroll);
+			IReadOnlyList<TModel> models = getModels();
+			bool shouldAnimateRelayout = animateRelayout && models.Count <= DynamicRelayoutAnimationItemLimit;
+			target.RefreshItemsPreservingViews(models, adapter, shouldAnimateRelayout, resetScroll);
 			configuredRunState = currentRunState;
 		}
 
@@ -198,6 +202,19 @@ public class CommonHelpers
 
 			RefreshCurrentModels(screen, animateRelayout: true);
 		};
+		LoadoutRunContentChangeService.Changed += change =>
+		{
+			if (!MatchesRunContentChange<TModel>(change))
+				return;
+
+			if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsVisibleInTree())
+			{
+				dynamicRefreshPending = true;
+				return;
+			}
+
+			RefreshCurrentModels(screen, animateRelayout: true);
+		};
 		screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
 		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
 		screen.ItemActivated += (selectItem, state) =>
@@ -218,6 +235,26 @@ public class CommonHelpers
 		item.BeforeOpen = RefreshDynamicScreenForOpen;
 
 		NLoadoutPanel.ItemsContainer.AddChild(item);
+	}
+
+	private static bool MatchesRunContentChange<TModel>(LoadoutRunContentChangedEventArgs change)
+	{
+		Type modelType = typeof(TModel);
+		return change.Kind switch
+		{
+			LoadoutRunContentKind.Cards => modelType == typeof(CardModel)
+			                              || IsOwnedItemModel(modelType, typeof(CardModel)),
+			LoadoutRunContentKind.Relics => modelType == typeof(RelicModel)
+			                               || IsOwnedItemModel(modelType, typeof(RelicModel)),
+			_ => false
+		};
+	}
+
+	private static bool IsOwnedItemModel(Type modelType, Type itemModelType)
+	{
+		return modelType.IsGenericType
+		       && modelType.GetGenericTypeDefinition() == typeof(LoadoutOwnedItem<>)
+		       && modelType.GetGenericArguments()[0] == itemModelType;
 	}
 
     public static void LogEmptyDynamicScreen(string title)

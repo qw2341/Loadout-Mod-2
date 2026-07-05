@@ -27,10 +27,10 @@ public class CardModifier
             GetName = item => CardPrinter.FormatCardTitle(item.Model),
             GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
             CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
-            ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
-            UpdateView = (_, view, state) =>
+            ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model),
+            UpdateView = (item, view, state) =>
             {
-                CardPrinter.ForceRefreshCardVisuals(view);
+                CardPrinter.ForceRefreshCardVisuals(view, item.Model);
                 CardPrinter.UpdateCardGridItem(view, state);
             },
             BindActivation = (item, view, activate) => CardPrinter.BindCardActivation(

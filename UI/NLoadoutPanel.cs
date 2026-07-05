@@ -367,8 +367,12 @@ public partial class NLoadoutPanel : Panel
 				GetName = item => CardPrinter.FormatCardTitle(item.Model),
 				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
 				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
-				ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
-				UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
+				ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model),
+				UpdateView = (item, view, state) =>
+				{
+					CardPrinter.ForceRefreshCardVisuals(view, item.Model);
+					CardPrinter.UpdateCardGridItem(view, state);
+				},
 				BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
 			},
 			builder =>
@@ -508,10 +512,10 @@ public partial class NLoadoutPanel : Panel
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
-	public static async Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
+	public static Task<IReadOnlyList<LastActionEntry>> HandleRemoveCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)
 	{
 		if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
-			return Array.Empty<LastActionEntry>();
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 		bool removed = LoadoutActionService.Request(
 			LoadoutActionKind.RemoveCard,
@@ -524,11 +528,10 @@ public partial class NLoadoutPanel : Panel
 		if (!removed)
 		{
 			GD.PushWarning($"LoadoutPanel: failed to remove card '{item.Model.Id}' at index {item.Index}.");
-			return Array.Empty<LastActionEntry>();
+			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 		}
 
-		await RefreshRemoveCardScreenAsync(screen);
-		return Array.Empty<LastActionEntry>();
+		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
 	public static Task<IReadOnlyList<LastActionEntry>> HandleRemoveRelicActivatedAsync(
@@ -565,8 +568,12 @@ public partial class NLoadoutPanel : Panel
 				GetName = item => CardPrinter.FormatCardTitle(item.Model),
 				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
 				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
-				ViewReady = (_, view) => CardPrinter.RefreshCardVisuals(view),
-				UpdateView = (_, view, state) => CardPrinter.UpdateCardGridItem(view, state),
+				ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model),
+				UpdateView = (item, view, state) =>
+				{
+					CardPrinter.ForceRefreshCardVisuals(view, item.Model);
+					CardPrinter.UpdateCardGridItem(view, state);
+				},
 				BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
 			},
 			animateRelayout: true,

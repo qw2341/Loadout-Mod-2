@@ -40,6 +40,12 @@ public enum CardModificationPermanentImportMode
     MergeNonConflicting
 }
 
+public enum HostPermanentSnapshotApplyMode
+{
+    LiveDecks,
+    CatalogOnly
+}
+
 public static class CardModificationStateService
 {
     private const int CurrentSchemaVersion = 1;
@@ -737,7 +743,9 @@ public static class CardModificationStateService
         }
     }
 
-    public static void ApplyHostPermanentSnapshotJson(string? snapshotJson)
+    public static void ApplyHostPermanentSnapshotJson(
+        string? snapshotJson,
+        HostPermanentSnapshotApplyMode applyMode = HostPermanentSnapshotApplyMode.LiveDecks)
     {
         Dictionary<string, CardModificationState> overlay = new(StringComparer.Ordinal);
 
@@ -771,10 +779,15 @@ public static class CardModificationStateService
         if (changedPermanentKeys.Count == 0)
             return;
 
-        HashSet<string> changedPermanentKeySet = new(changedPermanentKeys, StringComparer.Ordinal);
-        ApplySavedRunStateToLiveDecks(previousPermanentStates, raiseStateChanged: false, changedPermanentKeys: changedPermanentKeySet);
+        if (applyMode == HostPermanentSnapshotApplyMode.LiveDecks)
+        {
+            HashSet<string> changedPermanentKeySet = new(changedPermanentKeys, StringComparer.Ordinal);
+            ApplySavedRunStateToLiveDecks(previousPermanentStates, raiseStateChanged: false, changedPermanentKeys: changedPermanentKeySet);
+        }
+
         RaisePermanentCardDisplayChanged(ResolvePermanentCardIds(changedPermanentKeys));
-        RaiseStateChanged();
+        if (applyMode == HostPermanentSnapshotApplyMode.LiveDecks)
+            RaiseStateChanged();
     }
 
     public static void ClearHostPermanentOverlay()
@@ -904,6 +917,56 @@ public static class CardModificationStateService
 
         if (changed)
             RaiseStateChanged();
+    }
+
+    public static bool ReplaceTemporaryStatesForPlayer(
+        Player? player,
+        IReadOnlyDictionary<CardModel, CardModificationState>? statesByCard)
+    {
+        if (player is null)
+            return false;
+
+        EnsureLoaded();
+
+        Dictionary<string, CardModificationState> replacementStates = new(StringComparer.Ordinal);
+        List<LoadoutOwnedItem<CardModel>> modifiedCards = new();
+        IReadOnlyList<CardModel> cards = player.Deck.Cards;
+        for (int index = 0; index < cards.Count; index++)
+        {
+            CardModel card = cards[index];
+            if (statesByCard is null || !statesByCard.TryGetValue(card, out CardModificationState? state))
+                continue;
+
+            CardModificationState normalized = state.Clone();
+            normalized.Normalize();
+            if (normalized.IsEmpty)
+                continue;
+
+            replacementStates[GetCopyKey(player.NetId, index, card.Id)] = normalized;
+            modifiedCards.Add(new LoadoutOwnedItem<CardModel>(player, index, card));
+        }
+
+        bool changed = false;
+        lock (SyncRoot)
+        {
+            string prefix = $"{player.NetId}:";
+            foreach (string key in _run.Cards.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+                changed |= _run.Cards.Remove(key);
+
+            foreach ((string key, CardModificationState state) in replacementStates)
+            {
+                _run.Cards[key] = state.Clone();
+                changed = true;
+            }
+
+            if (changed)
+                SaveRunState();
+        }
+
+        foreach (LoadoutOwnedItem<CardModel> item in modifiedCards)
+            ApplyEffectiveStateToOwnedCard(item);
+
+        return changed;
     }
 
     private static void TryApplyRemoteTemporaryToLiveCard(

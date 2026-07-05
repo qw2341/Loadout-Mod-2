@@ -39,10 +39,10 @@ public class CardPrinter
 		    GetName = card => FormatCardTitle(card),
 		    GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
 		    CreateView = CreateCardGridItem,
-		    ViewReady = (_, view) => RefreshCardVisuals(view),
-		    UpdateView = (_, view, state) =>
+		    ViewReady = (card, view) => RefreshCardVisuals(view, card),
+		    UpdateView = (card, view, state) =>
 		    {
-			    ForceRefreshCardVisuals(view);
+			    ForceRefreshCardVisuals(view, card);
 			    UpdateCardGridItem(view, state);
 		    },
 		    BindActivation = (_, view, activate) => BindCardActivation(view, activate)
@@ -140,7 +140,7 @@ public class CardPrinter
 			    screen.ForEachVisibleItemView((item, view) =>
 			    {
 				    if (item.UntypedModel is CardModel card && MatchesCardRefreshId(card, cardIds))
-					    ForceRefreshCardVisuals(view);
+					    ForceRefreshCardVisuals(view, card);
 			    });
 		    }).CallDeferred();
 	    }
@@ -210,7 +210,8 @@ public class CardPrinter
 
     public static Control CreateCardGridItem(CardModel model, SelectItemState state)
     {
-	    var card = NCard.Create(model);
+	    CardModel displayModel = CardModificationStateService.GetEffectivePermanentCardForDisplay(model);
+	    var card = NCard.Create(displayModel);
 	    if (card is null)
 	    {
 		    return new Control
@@ -390,11 +391,12 @@ public class CardPrinter
 	    return card.Title;
     }
 
-    public static void RefreshCardVisuals(Control view)
+    public static void RefreshCardVisuals(Control view, CardModel sourceModel = null)
     {
 	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
 		    return;
 
+	    RebindCardHolderModel(holder, sourceModel);
 	    holder.CardNode.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
 
 	    if (holder.CardModel is not null
@@ -405,12 +407,12 @@ public class CardPrinter
 	    }
     }
 
-    public static void ForceRefreshCardVisuals(Control view)
+    public static void ForceRefreshCardVisuals(Control view, CardModel sourceModel = null)
     {
 	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
 		    return;
 
-	    CardModel model = holder.CardModel;
+	    CardModel model = ResolveDisplayModel(sourceModel ?? holder.CardModel);
 	    if (model is null)
 		    return;
 
@@ -432,6 +434,23 @@ public class CardPrinter
 		    return;
 
 	    ApplyCardUpgradePreview(holder, state);
+    }
+
+    private static void RebindCardHolderModel(NGridCardHolder holder, CardModel sourceModel)
+    {
+	    CardModel model = ResolveDisplayModel(sourceModel ?? holder.CardModel);
+	    if (model is null || ReferenceEquals(holder.CardModel, model))
+		    return;
+
+	    holder.CardNode.Model = null;
+	    holder.CardNode.Model = model;
+    }
+
+    private static CardModel ResolveDisplayModel(CardModel model)
+    {
+	    return model is null
+		    ? null
+		    : CardModificationStateService.GetEffectivePermanentCardForDisplay(model);
     }
 
     public static bool BindCardActivation(Control view, Action activate)

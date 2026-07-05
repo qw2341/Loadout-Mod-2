@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Combat;
@@ -128,10 +129,21 @@ public sealed class ApplyLoadoutGameAction : GameAction
 
         loadout.Kind = Kind;
         IReadOnlyList<Player> targets = ResolveTargetPlayers();
+        HashSet<ulong> changedCardPlayers = new();
+        HashSet<ulong> changedRelicPlayers = new();
         foreach (Player targetPlayer in targets)
-            await ApplyToPlayer(loadout, targetPlayer);
+        {
+            (bool cardsChanged, bool relicsChanged) = await ApplyToPlayer(loadout, targetPlayer);
+            if (cardsChanged)
+                changedCardPlayers.Add(targetPlayer.NetId);
+            if (relicsChanged)
+                changedRelicPlayers.Add(targetPlayer.NetId);
+        }
 
-        CardModificationStateService.NotifyStateChanged();
+        if (changedCardPlayers.Count > 0)
+            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedCardPlayers);
+        if (changedRelicPlayers.Count > 0)
+            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Relics, changedRelicPlayers);
     }
 
     public override INetAction ToNetAction()
@@ -150,19 +162,21 @@ public sealed class ApplyLoadoutGameAction : GameAction
         return $"ApplyLoadoutGameAction player {Player.NetId} kind {Kind} target {Target}";
     }
 
-    private async Task ApplyToPlayer(SavedLoadout loadout, Player targetPlayer)
+    private async Task<(bool CardsChanged, bool RelicsChanged)> ApplyToPlayer(SavedLoadout loadout, Player targetPlayer)
     {
+        bool cardsChanged = false;
+        bool relicsChanged = false;
         if (loadout.HasCards)
-            await ReplaceCards(targetPlayer, loadout.Cards);
+            cardsChanged = await ReplaceCards(targetPlayer, loadout.Cards);
 
         if (loadout.HasRelics)
-            await ReplaceRelics(targetPlayer, loadout.Relics);
+            relicsChanged = await ReplaceRelics(targetPlayer, loadout.Relics);
+
+        return (cardsChanged, relicsChanged);
     }
 
-    private async Task ReplaceCards(Player targetPlayer, IReadOnlyList<SavedCardLoadoutEntry> entries)
+    private async Task<bool> ReplaceCards(Player targetPlayer, IReadOnlyList<SavedCardLoadoutEntry> entries)
     {
-        CardModificationStateService.ClearTemporaryStatesForPlayer(targetPlayer.NetId);
-
         List<CardModel> existingCards = targetPlayer.Deck.Cards.ToList();
         if (existingCards.Count > 0)
         {
@@ -177,7 +191,7 @@ public sealed class ApplyLoadoutGameAction : GameAction
         }
 
         List<CardModel> cardsToAdd = [];
-        Dictionary<CardModel, CardModificationState> stateByCard = new();
+        Dictionary<CardModel, CardModificationState> stateByCard = new(ReferenceEqualityComparer.Instance);
         foreach (SavedCardLoadoutEntry entry in entries)
         {
             CardModel? canonical = LoadoutSerializationService.ResolveCard(entry.ModelId);
@@ -201,7 +215,12 @@ public sealed class ApplyLoadoutGameAction : GameAction
         }
 
         if (cardsToAdd.Count == 0)
-            return;
+        {
+            CardModificationStateService.ReplaceTemporaryStatesForPlayer(
+                targetPlayer,
+                new Dictionary<CardModel, CardModificationState>(ReferenceEqualityComparer.Instance));
+            return existingCards.Count > 0;
+        }
 
         IReadOnlyList<CardPileAddResult> results;
         try
@@ -211,18 +230,23 @@ public sealed class ApplyLoadoutGameAction : GameAction
         catch (Exception exception)
         {
             LoadoutApplyService.Warn($"Loadout: failed adding loadout cards to player {targetPlayer.NetId}. {exception.Message}");
-            return;
+            CardModificationStateService.ReplaceTemporaryStatesForPlayer(
+                targetPlayer,
+                new Dictionary<CardModel, CardModificationState>(ReferenceEqualityComparer.Instance));
+            return existingCards.Count > 0;
         }
 
+        Dictionary<CardModel, CardModificationState> appliedStatesByCard = new(ReferenceEqualityComparer.Instance);
         foreach (CardPileAddResult result in results)
         {
             if (!result.success || !stateByCard.TryGetValue(result.cardAdded, out CardModificationState? state))
                 continue;
 
-            int index = FindDeckIndex(targetPlayer, result.cardAdded);
-            if (index >= 0)
-                CardModificationStateService.ApplyRemoteTemporaryState(targetPlayer.NetId, index, result.cardAdded.Id.ToString(), state);
+            appliedStatesByCard[result.cardAdded] = state;
         }
+
+        CardModificationStateService.ReplaceTemporaryStatesForPlayer(targetPlayer, appliedStatesByCard);
+        return existingCards.Count > 0 || results.Any(result => result.success);
     }
 
     private static CardModel? CreateDeckCard(Player targetPlayer, CardModel canonical, int upgradeLevel)
@@ -243,20 +267,9 @@ public sealed class ApplyLoadoutGameAction : GameAction
         }
     }
 
-    private static int FindDeckIndex(Player player, CardModel card)
+    private async Task<bool> ReplaceRelics(Player targetPlayer, IReadOnlyList<SavedRelicLoadoutEntry> entries)
     {
-        IReadOnlyList<CardModel> cards = player.Deck.Cards;
-        for (int i = 0; i < cards.Count; i++)
-        {
-            if (ReferenceEquals(cards[i], card))
-                return i;
-        }
-
-        return -1;
-    }
-
-    private async Task ReplaceRelics(Player targetPlayer, IReadOnlyList<SavedRelicLoadoutEntry> entries)
-    {
+        bool changed = targetPlayer.Relics.Count > 0;
         foreach (RelicModel relic in targetPlayer.Relics.ToList())
         {
             try
@@ -284,6 +297,7 @@ public sealed class ApplyLoadoutGameAction : GameAction
                 try
                 {
                     await RelicCmd.Obtain(canonical.ToMutable(), targetPlayer);
+                    changed = true;
                 }
                 catch (Exception exception)
                 {
@@ -292,6 +306,8 @@ public sealed class ApplyLoadoutGameAction : GameAction
                 }
             }
         }
+
+        return changed;
     }
 
     private IReadOnlyList<Player> ResolveTargetPlayers()

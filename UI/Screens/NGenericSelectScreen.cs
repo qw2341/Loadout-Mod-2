@@ -178,7 +178,6 @@ public partial class NGenericSelectScreen : Control
     private CancellationTokenSource? _preloadCts;
     private long _completedPreloadGeneration = -1;
     private readonly ConcurrentQueue<string> _preloadWarnings = new();
-    private bool _warnedLazyMaterializationIgnored;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -617,18 +616,6 @@ public partial class NGenericSelectScreen : Control
 
     public void SetMaterializationMode(SelectMaterializationMode mode)
     {
-        if (mode == SelectMaterializationMode.Lazy)
-        {
-            if (!_warnedLazyMaterializationIgnored)
-            {
-                _warnedLazyMaterializationIgnored = true;
-                GD.PushWarning($"{nameof(NGenericSelectScreen)}: Lazy scroll materialization is disabled. Using eager threaded preload + full main-thread materialization instead.");
-            }
-
-            _materializationMode = SelectMaterializationMode.Eager;
-            return;
-        }
-
         _materializationMode = mode;
     }
 
@@ -767,7 +754,11 @@ public partial class NGenericSelectScreen : Control
         if (resetScroll)
             ScrollToTop();
 
-        StartThreadedPreloadThenMaterializeAll();
+        if (_materializationMode == SelectMaterializationMode.Lazy)
+            MaterializeViewportItemViews(InitialMaterializeBudget, updateExistingViews: true);
+        else
+            StartThreadedPreloadThenMaterializeAll();
+
         UpdateViewportCulling(force: true);
     }
 
@@ -2864,8 +2855,11 @@ public partial class NGenericSelectScreen : Control
         if (_scrollbar is not null && !_scrollbarPressed)
             _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
 
-        // Do not materialize on scroll. All resource preloading happens before the screen is assembled,
-        // then every visible item view is materialized once on the main thread.
+        if (_materializationMode == SelectMaterializationMode.Lazy)
+        {
+            MaterializeViewportItemViews(ScrollMaterializeBudget);
+            UpdateViewportCulling();
+        }
     }
 
     private void SetTargetScroll(float value)

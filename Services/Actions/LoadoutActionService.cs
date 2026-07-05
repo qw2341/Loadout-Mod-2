@@ -180,20 +180,21 @@ public sealed class LoadoutGameAction : GameAction
                 await AddPotionCopiesAsync();
                 break;
             case LoadoutActionKind.RemoveCard:
-                await RemoveDeckCardAsync();
-                CardModificationStateService.NotifyStateChanged();
+                if (await RemoveDeckCardAsync() is { } removedCardPlayerNetId)
+                    LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, removedCardPlayerNetId);
                 break;
             case LoadoutActionKind.UpgradeCard:
-                UpgradeDeckCard();
-                CardModificationStateService.NotifyStateChanged();
+                if (UpgradeDeckCard() is { } upgradedCardPlayerNetId)
+                    LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, upgradedCardPlayerNetId);
                 break;
             case LoadoutActionKind.UpgradeAllDeckCards:
-                UpgradeAllDeckCards();
-                CardModificationStateService.NotifyStateChanged();
+                HashSet<ulong> upgradedPlayers = UpgradeAllDeckCards();
+                if (upgradedPlayers.Count > 0)
+                    LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, upgradedPlayers);
                 break;
             case LoadoutActionKind.RemoveRelic:
-                if (await RemoveRelicAsync())
-                    CardModificationStateService.NotifyStateChanged();
+                if (await RemoveRelicAsync() is { } removedRelicPlayerNetId)
+                    LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Relics, removedRelicPlayerNetId);
                 break;
             case LoadoutActionKind.AdjustPower:
                 PowerGiverStateService.AdjustCounterFromAction(ModelId.ToString(), Amount, Target, Player);
@@ -232,18 +233,19 @@ public sealed class LoadoutGameAction : GameAction
 
         foreach (Player targetPlayer in ResolveTargetPlayers())
         {
-            await AddDeckCardCopiesAsync(targetPlayer, canonicalCard);
+            if (await AddDeckCardCopiesAsync(targetPlayer, canonicalCard))
+                LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, targetPlayer.NetId);
 
             if (CombatManager.Instance.IsInProgress)
                 await AddGeneratedCardCopiesToCombatHandAsync(targetPlayer, canonicalCard);
         }
     }
 
-    private async Task AddDeckCardCopiesAsync(Player targetPlayer, CardModel canonicalCard)
+    private async Task<bool> AddDeckCardCopiesAsync(Player targetPlayer, CardModel canonicalCard)
     {
         List<CardModel> cards = CreateRunCards(targetPlayer, canonicalCard, Amount);
         if (cards.Count == 0)
-            return;
+            return false;
 
         IReadOnlyList<CardPileAddResult> results;
         try
@@ -253,17 +255,18 @@ public sealed class LoadoutGameAction : GameAction
         catch (Exception exception)
         {
             GD.PushWarning($"LoadoutPanel: failed adding deck cards '{ModelId}' to player {targetPlayer.NetId}. {exception.Message}");
-            return;
+            return false;
         }
 
         List<CardPileAddResult> addedResults = results.Where(result => result.success).ToList();
         if (addedResults.Count == 0)
-            return;
+            return false;
 
         CardPreviewStyle previewStyle = addedResults.Count > 5
             ? CardPreviewStyle.MessyLayout
             : CardPreviewStyle.HorizontalLayout;
         CardCmd.PreviewCardPileAdd(addedResults, 2f, previewStyle);
+        return true;
     }
 
     private async Task AddGeneratedCardCopiesToCombatHandAsync(Player targetPlayer, CardModel canonicalCard)
@@ -346,11 +349,13 @@ public sealed class LoadoutGameAction : GameAction
 
         foreach (Player targetPlayer in ResolveTargetPlayers())
         {
+            bool changed = false;
             for (int i = 0; i < Amount; i++)
             {
                 try
                 {
                     await RelicCmd.Obtain(canonicalRelic.ToMutable(), targetPlayer);
+                    changed = true;
                 }
                 catch (Exception exception)
                 {
@@ -358,6 +363,9 @@ public sealed class LoadoutGameAction : GameAction
                     break;
                 }
             }
+
+            if (changed)
+                LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Relics, targetPlayer.NetId);
         }
     }
 
@@ -385,44 +393,59 @@ public sealed class LoadoutGameAction : GameAction
         }
     }
 
-    private async Task RemoveDeckCardAsync()
+    private async Task<ulong?> RemoveDeckCardAsync()
     {
         if (TryGetOwnedDeckCard() is not { } card)
-            return;
+            return null;
 
+        ulong playerNetId = card.Owner?.NetId ?? ResolveSingleTargetPlayer()?.NetId ?? Player.NetId;
         await CardPileCmd.RemoveFromDeck(card);
+        return playerNetId;
     }
 
-    private void UpgradeDeckCard()
+    private ulong? UpgradeDeckCard()
     {
         if (TryGetOwnedDeckCard() is not { } card)
-            return;
+            return null;
 
         int upgrades = Math.Max(1, Amount);
         for (int i = 0; i < upgrades; i++)
             CardCmd.Upgrade(card, CardPreviewStyle.None);
+
+        return card.Owner?.NetId ?? ResolveSingleTargetPlayer()?.NetId ?? Player.NetId;
     }
 
-    private void UpgradeAllDeckCards()
+    private HashSet<ulong> UpgradeAllDeckCards()
     {
+        HashSet<ulong> changedPlayers = new();
         int upgrades = Math.Max(1, Amount);
         foreach (Player targetPlayer in ResolveTargetPlayers())
         {
+            bool changed = false;
             foreach (CardModel card in targetPlayer.Deck.Cards.ToList())
             {
                 for (int i = 0; i < upgrades; i++)
+                {
                     CardCmd.Upgrade(card, CardPreviewStyle.None);
+                    changed = true;
+                }
             }
+
+            if (changed)
+                changedPlayers.Add(targetPlayer.NetId);
         }
+
+        return changedPlayers;
     }
 
-    private async Task<bool> RemoveRelicAsync()
+    private async Task<ulong?> RemoveRelicAsync()
     {
         if (TryGetOwnedRelic() is not { } relic)
-            return false;
+            return null;
 
+        ulong playerNetId = ResolveSingleTargetPlayer()?.NetId ?? Player.NetId;
         await RelicCmd.Remove(relic);
-        return true;
+        return playerNetId;
     }
 
     private void ApplyCardModification()
