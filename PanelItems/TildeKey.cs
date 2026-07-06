@@ -460,7 +460,7 @@ public static partial class TildeKey
             if (_isRefreshing)
                 return;
 
-            if (!int.TryParse(_valueEntry.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+            if (!TryParseEntryValue(_valueEntry.Text, out int value))
             {
                 Refresh(_definition);
                 return;
@@ -475,7 +475,7 @@ public static partial class TildeKey
             if (_isRefreshing)
                 return;
 
-            if (!int.TryParse(_valueEntry.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+            if (!TryParseEntryValue(_valueEntry.Text, out int value))
                 value = TildeKeyStateService.GetDisplayValue(_definition, GetSelectedTarget());
 
             LoadoutImmediateMutationService.RequestTildeSetLock(
@@ -484,6 +484,41 @@ public static partial class TildeKey
                 toggle.IsChecked,
                 GetSelectedTarget());
             _screen.RefreshCurrentItemStates();
+        }
+
+        private static bool TryParseEntryValue(string? text, out int value)
+        {
+            value = 0;
+            string trimmed = (text ?? string.Empty).Trim();
+            if (long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed))
+            {
+                value = (int)Math.Clamp(parsed, int.MinValue, int.MaxValue);
+                return true;
+            }
+
+            if (LooksLikeIntegerOverflow(trimmed, out bool isNegative))
+            {
+                value = isNegative ? int.MinValue : int.MaxValue;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool LooksLikeIntegerOverflow(string text, out bool isNegative)
+        {
+            isNegative = false;
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            int index = 0;
+            if (text[0] is '+' or '-')
+            {
+                isNegative = text[0] == '-';
+                index = 1;
+            }
+
+            return index < text.Length && text[index..].All(char.IsDigit);
         }
 
         private static LineEdit CreateEntry()

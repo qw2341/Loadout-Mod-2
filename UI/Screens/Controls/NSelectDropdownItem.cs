@@ -2,10 +2,15 @@
 
 namespace Loadout.UI.Screens.Controls;
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 
 public partial class NSelectDropdownItem : NDropdownItem
 {
@@ -14,6 +19,7 @@ public partial class NSelectDropdownItem : NDropdownItem
 
     private string _pendingLabel = "DropdownItem";
     private ColorRect? _highlight;
+    private Func<IReadOnlyList<IHoverTip>>? _hoverTipsFactory;
     private bool _signalsConnected;
 
     public void Init(string optionId, string label)
@@ -23,6 +29,11 @@ public partial class NSelectDropdownItem : NDropdownItem
 
         if (IsNodeReady())
             Text = label;
+    }
+
+    public void SetHoverTipsFactory(Func<IReadOnlyList<IHoverTip>>? hoverTipsFactory)
+    {
+        _hoverTipsFactory = hoverTipsFactory;
     }
 
     public override void _Ready()
@@ -50,6 +61,7 @@ public partial class NSelectDropdownItem : NDropdownItem
         FocusEntered -= ShowHoverHighlight;
         FocusExited -= HideHoverHighlight;
         _signalsConnected = false;
+        NHoverTipSet.Remove(this);
     }
 
     public override void _GuiInput(InputEvent inputEvent)
@@ -120,11 +132,37 @@ public partial class NSelectDropdownItem : NDropdownItem
     {
         if (_highlight is not null && GodotObject.IsInstanceValid(_highlight))
             _highlight.Visible = true;
+
+        ShowHoverTips();
     }
 
     private void HideHoverHighlight()
     {
         if (_highlight is not null && GodotObject.IsInstanceValid(_highlight))
             _highlight.Visible = false;
+
+        NHoverTipSet.Remove(this);
+    }
+
+    private void ShowHoverTips()
+    {
+        if (_hoverTipsFactory is null)
+            return;
+
+        try
+        {
+            List<IHoverTip> tips = _hoverTipsFactory()
+                .Where(tip => tip is not null)
+                .ToList();
+            if (tips.Count == 0)
+                return;
+
+            NHoverTipSet.Remove(this);
+            NHoverTipSet.CreateAndShow(this, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(this));
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Dropdown item '{OptionId}' hover tip failed. {exception.Message}");
+        }
     }
 }

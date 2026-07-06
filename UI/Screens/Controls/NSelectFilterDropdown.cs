@@ -8,13 +8,17 @@ using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-public readonly record struct LoadoutDropdownOption(string Id, string Label);
+public readonly record struct LoadoutDropdownOption(
+    string Id,
+    string Label,
+    Func<IReadOnlyList<IHoverTip>>? HoverTipsFactory = null);
 
 public partial class NLoadoutDropdown : NDropdown
 {
@@ -224,6 +228,7 @@ public partial class NLoadoutDropdown : NDropdown
             };
             item.FontSize = ItemFontSize;
             item.Init(option.Id, option.Label);
+            item.SetHoverTipsFactory(option.HoverTipsFactory);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(OnDropdownItemSelected));
             _dropdownItems.AddChild(item);
             _itemIdsByNode[item] = option.Id;

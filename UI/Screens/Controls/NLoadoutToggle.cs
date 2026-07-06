@@ -2,9 +2,14 @@
 
 namespace Loadout.UI.Screens.Controls;
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 
 public partial class NLoadoutToggle : Control
 {
@@ -23,11 +28,17 @@ public partial class NLoadoutToggle : Control
     private TextureRect? _notTickedImage;
     private MegaLabel? _label;
     private Tween? _tween;
+    private Func<IReadOnlyList<IHoverTip>>? _hoverTipsFactory;
     private bool _signalsConnected;
 
     public string ToggleId { get; private set; } = string.Empty;
 
     public bool IsChecked { get; private set; }
+
+    public void SetHoverTipsFactory(Func<IReadOnlyList<IHoverTip>>? hoverTipsFactory)
+    {
+        _hoverTipsFactory = hoverTipsFactory;
+    }
 
     public void Init(string id, string label, bool checkedByDefault)
     {
@@ -79,6 +90,7 @@ public partial class NLoadoutToggle : Control
         if (_tween is not null && GodotObject.IsInstanceValid(_tween))
             _tween.Kill();
 
+        NHoverTipSet.Remove(this);
         _tween = null;
     }
 
@@ -128,12 +140,37 @@ public partial class NLoadoutToggle : Control
     private void OnHoverStart()
     {
         AnimateTickbox(HoverTickboxScale);
+        ShowHoverTips();
     }
 
     private void OnHoverEnd()
     {
         if (!HasFocus())
             AnimateTickbox(BaseTickboxScale);
+
+        NHoverTipSet.Remove(this);
+    }
+
+    private void ShowHoverTips()
+    {
+        if (_hoverTipsFactory is null)
+            return;
+
+        try
+        {
+            List<IHoverTip> tips = _hoverTipsFactory()
+                .Where(tip => tip is not null)
+                .ToList();
+            if (tips.Count == 0)
+                return;
+
+            NHoverTipSet.Remove(this);
+            NHoverTipSet.CreateAndShow(this, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(this));
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Toggle '{ToggleId}' hover tip failed. {exception.Message}");
+        }
     }
 
     private void AnimateTickbox(float scale)

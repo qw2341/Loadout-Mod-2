@@ -3,6 +3,8 @@
 namespace Loadout.UI.Screens.Controls;
 
 using System;
+using System.Globalization;
+using System.Linq;
 using Godot;
 using MegaCrit.Sts2.Core.Helpers;
 
@@ -17,6 +19,7 @@ public partial class NLoadoutNumberStepper : HBoxContainer
     private LineEdit? _entry;
     private int _value;
     private bool _isSyncing;
+    private bool _suppressNextFocusCommit;
 
     public event Action<int>? ValueChanged;
 
@@ -42,8 +45,22 @@ public partial class NLoadoutNumberStepper : HBoxContainer
         if (_entry is not null)
         {
             _entry.TextSubmitted -= OnTextSubmitted;
-            _entry.FocusExited -= CommitText;
+            _entry.FocusExited -= OnFocusExited;
         }
+    }
+
+    public override void _Input(InputEvent @event)
+    {
+        if (_entry is null || !_entry.HasFocus())
+            return;
+
+        if (@event is not InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } mouseButton)
+            return;
+
+        if (_entry.GetGlobalRect().HasPoint(mouseButton.GlobalPosition))
+            return;
+
+        CommitAndReleaseFocus();
     }
 
     public void Init(int value, int minimum = -999, int maximum = 999, int step = 1)
@@ -56,7 +73,12 @@ public partial class NLoadoutNumberStepper : HBoxContainer
 
     public void SetValue(int value, bool emit = true)
     {
-        int next = Mathf.Clamp(value, Minimum, Maximum);
+        SetValueFromLong(value, emit);
+    }
+
+    private void SetValueFromLong(long value, bool emit = true)
+    {
+        int next = (int)Math.Clamp(value, (long)Minimum, (long)Maximum);
         if (_value == next && _entry is not null && _entry.Text == next.ToString())
             return;
 
@@ -69,22 +91,39 @@ public partial class NLoadoutNumberStepper : HBoxContainer
 
     private void Increment()
     {
-        SetValue(_value + GetCurrentStepAmount());
+        SetValueFromLong((long)_value + GetCurrentStepAmount());
     }
 
     private void Decrement()
     {
-        SetValue(_value - GetCurrentStepAmount());
+        SetValueFromLong((long)_value - GetCurrentStepAmount());
     }
 
-    private int GetCurrentStepAmount()
+    private long GetCurrentStepAmount()
     {
-        return Step * Math.Max(1, Loadout.UI.Screens.NGenericSelectScreen.GetCurrentInputMultiplier());
+        return (long)Step * Math.Max(1, Loadout.UI.Screens.NGenericSelectScreen.GetCurrentInputMultiplier());
     }
 
     private void OnTextSubmitted(string _)
     {
+        CommitAndReleaseFocus();
+    }
+
+    private void OnFocusExited()
+    {
+        if (_suppressNextFocusCommit)
+        {
+            _suppressNextFocusCommit = false;
+            return;
+        }
+
         CommitText();
+    }
+
+    private void CommitAndReleaseFocus()
+    {
+        CommitText();
+        _suppressNextFocusCommit = true;
         _entry?.ReleaseFocus();
     }
 
@@ -93,7 +132,7 @@ public partial class NLoadoutNumberStepper : HBoxContainer
         if (_isSyncing || _entry is null)
             return;
 
-        if (int.TryParse(_entry.Text, out int parsed))
+        if (TryParseEntryValue(_entry.Text, out int parsed))
         {
             SetValue(parsed);
             return;
@@ -110,6 +149,41 @@ public partial class NLoadoutNumberStepper : HBoxContainer
         _isSyncing = true;
         _entry.Text = _value.ToString();
         _isSyncing = false;
+    }
+
+    private bool TryParseEntryValue(string? text, out int value)
+    {
+        value = _value;
+        string trimmed = (text ?? string.Empty).Trim();
+        if (long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed))
+        {
+            value = (int)Math.Clamp(parsed, (long)Minimum, (long)Maximum);
+            return true;
+        }
+
+        if (LooksLikeIntegerOverflow(trimmed, out bool isNegative))
+        {
+            value = isNegative ? Minimum : Maximum;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeIntegerOverflow(string text, out bool isNegative)
+    {
+        isNegative = false;
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        int index = 0;
+        if (text[0] is '+' or '-')
+        {
+            isNegative = text[0] == '-';
+            index = 1;
+        }
+
+        return index < text.Length && text[index..].All(char.IsDigit);
     }
 
     private void BuildControlTree()
@@ -137,7 +211,7 @@ public partial class NLoadoutNumberStepper : HBoxContainer
         _entry.AddThemeColorOverride("font_color", StsColors.cream);
         _entry.AddThemeColorOverride("font_focus_color", StsColors.gold);
         _entry.TextSubmitted += OnTextSubmitted;
-        _entry.FocusExited += CommitText;
+        _entry.FocusExited += OnFocusExited;
         AddChild(_entry);
 
         _upButton = CreateButton("+");

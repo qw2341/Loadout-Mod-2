@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Loadout.Services.Targets;
+using MegaCrit.Sts2.Core.Models;
 
 public enum LoadoutRunContentKind
 {
@@ -22,12 +24,15 @@ public enum LoadoutRunContentChangeMode
     Replace
 }
 
+public readonly record struct LoadoutChangedCard(ulong OwnerNetId, int Index, ModelId ModelId);
+
 public sealed class LoadoutRunContentChangedEventArgs
 {
     public LoadoutRunContentChangedEventArgs(
         LoadoutRunContentKind kind,
         IEnumerable<ulong>? playerNetIds,
-        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown)
+        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown,
+        IEnumerable<LoadoutChangedCard>? changedCards = null)
     {
         Kind = kind;
         Mode = mode;
@@ -35,6 +40,7 @@ public sealed class LoadoutRunContentChangedEventArgs
             .Where(id => id != 0)
             .ToHashSet()
             ?? new HashSet<ulong>();
+        ChangedCards = changedCards?.ToList() ?? [];
     }
 
     public LoadoutRunContentKind Kind { get; }
@@ -42,6 +48,8 @@ public sealed class LoadoutRunContentChangedEventArgs
     public LoadoutRunContentChangeMode Mode { get; }
 
     public IReadOnlySet<ulong> PlayerNetIds { get; }
+
+    public IReadOnlyList<LoadoutChangedCard> ChangedCards { get; }
 
     public bool AffectsPlayer(ulong playerNetId)
     {
@@ -64,9 +72,10 @@ public static class LoadoutRunContentChangeService
     public static void Notify(
         LoadoutRunContentKind kind,
         IEnumerable<ulong> playerNetIds,
-        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown)
+        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown,
+        IEnumerable<LoadoutChangedCard>? changedCards = null)
     {
-        LoadoutRunContentChangedEventArgs args = new(kind, playerNetIds, mode);
+        LoadoutRunContentChangedEventArgs args = new(kind, playerNetIds, mode, changedCards);
         Action<LoadoutRunContentChangedEventArgs>? handlers = Changed;
         if (handlers is null)
             return;
@@ -82,5 +91,14 @@ public static class LoadoutRunContentChangeService
                 GD.PushWarning($"LoadoutPanel: run content changed handler failed. {exception.Message}");
             }
         }
+    }
+
+    public static void NotifyCardUpdated(LoadoutOwnedItem<CardModel> item)
+    {
+        Notify(
+            LoadoutRunContentKind.Cards,
+            [item.OwnerNetId],
+            LoadoutRunContentChangeMode.Update,
+            [new LoadoutChangedCard(item.OwnerNetId, item.Index, item.Model.Id)]);
     }
 }

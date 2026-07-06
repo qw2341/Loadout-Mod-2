@@ -185,6 +185,13 @@ public partial class NCardModificationScreen : Control
             return;
         }
 
+        if (change.Mode == LoadoutRunContentChangeMode.Update
+            && change.ChangedCards.Count > 0
+            && !change.ChangedCards.Any(changed => MatchesChangedCard(_item, changed)))
+        {
+            return;
+        }
+
         Callable.From(RefreshAfterDeckMutation).CallDeferred();
     }
 
@@ -647,21 +654,21 @@ public partial class NCardModificationScreen : Control
         _rightControls.AddChild(grid);
 
         IReadOnlySet<CardKeyword> localKeywords = _item.Model.GetKeywordsWithSources(KeywordSources.Local);
-        foreach (CardKeyword keyword in Enum.GetValues<CardKeyword>()
-                     .Where(keyword => keyword != CardKeyword.None)
-                     .OrderBy(keyword => Convert.ToInt32(keyword)))
+        foreach (CardKeyword keyword in GetAvailableKeywords(_item.Model))
         {
-            string key = keyword.ToString();
+            CardKeyword localKeyword = keyword;
+            string key = localKeyword.ToString();
             bool isChecked = _workingState.KeywordOverrides.TryGetValue(key, out bool saved)
                 ? saved
-                : localKeywords.Contains(keyword);
+                : localKeywords.Contains(localKeyword);
 
             NLoadoutToggle toggle = new()
             {
                 CustomMinimumSize = new Vector2(206f, 44f),
                 SizeFlagsHorizontal = SizeFlags.ShrinkBegin
             };
-            toggle.Init($"keyword_{key}", CardPrinter.GetCardKeywordLabel(keyword), isChecked);
+            toggle.SetHoverTipsFactory(() => GetKeywordHoverTips(localKeyword));
+            toggle.Init($"keyword_{key}", CardPrinter.GetCardKeywordLabel(localKeyword), isChecked);
             toggle.Toggled += changed =>
             {
                 _workingState.KeywordOverrides[key] = changed.IsChecked;
@@ -702,7 +709,7 @@ public partial class NCardModificationScreen : Control
             HBoxContainer currentRow = new()
             {
                 CustomMinimumSize = new Vector2(0f, 44f),
-                MouseFilter = MouseFilterEnum.Ignore
+                MouseFilter = MouseFilterEnum.Pass
             };
             currentRow.AddThemeConstantOverride("separation", 8);
             MegaLabel currentLabel = CreateLabel(
@@ -711,6 +718,8 @@ public partial class NCardModificationScreen : Control
                 StsColors.cream);
             currentLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             currentRow.AddChild(currentLabel);
+            if ((current ?? currentModel) is { } hoverModel)
+                AttachHoverTips(currentRow, () => GetAttachmentHoverTips(hoverModel));
 
             NLoadoutActionButton removeButton = CreateActionButton($"remove_{label}", LocMan.Loc("REMOVE", "Remove"));
             removeButton.CustomMinimumSize = new Vector2(120f, 42f);
@@ -738,7 +747,14 @@ public partial class NCardModificationScreen : Control
         }
 
         IReadOnlyList<LoadoutDropdownOption> options = models
-            .Select(model => new LoadoutDropdownOption(model.Id.ToString(), GetAttachmentTitle(model)))
+            .Select(model =>
+            {
+                TModel localModel = model;
+                return new LoadoutDropdownOption(
+                    localModel.Id.ToString(),
+                    GetAttachmentTitle(localModel),
+                    () => GetAttachmentHoverTips(localModel));
+            })
             .ToList();
 
         if (options.Count == 0)
@@ -859,24 +875,11 @@ public partial class NCardModificationScreen : Control
         if (_item is null)
             return;
 
-        CardModificationState previousState = _lastAppliedState.Clone();
         _hasPendingTemporaryCommit = false;
-        if (LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetTemporary, _item))
-        {
-            _temporaryState = new CardModificationState();
-            _workingState = CardModificationStateService.GetEffectivePermanentState(_item.Model.Id);
-            CardModificationStateService.ApplyPreviewStateToOwnedCard(_item, _workingState, previousState);
-            _lastAppliedState = _workingState.Clone();
-            RefreshParentView();
-            RebuildControls();
-            RefreshPreview(forceReload: true);
-            return;
-        }
-
-        CardModificationStateService.ResetTemporary(_item);
+        CardModificationStateService.ResetTemporaryToBasic(_item);
+        LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetTemporaryToBasic, _item);
         _temporaryState = new CardModificationState();
-        _workingState = CardModificationStateService.GetEffectiveState(_item);
-        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
+        _workingState = CardModificationStateService.GetEffectivePermanentState(_item.Model.Id);
         _lastAppliedState = _workingState.Clone();
         RefreshParentView();
         RebuildControls();
@@ -888,27 +891,11 @@ public partial class NCardModificationScreen : Control
         if (_item is null)
             return;
 
-        CardModificationState previousState = _lastAppliedState.Clone();
         _hasPendingTemporaryCommit = false;
-        CardModificationStateService.ResetPermanent(_item.Model.Id);
-        if (LoadoutImmediateMutationService.RequestCardModification(
-                CardModificationOperation.ApplyPermanent,
-                _item,
-                new CardModificationState()))
-        {
-            _workingState = CardModificationStateService.GetEffectiveState(_item);
-            _temporaryState = CardModificationStateService.GetTemporaryState(_item);
-            CardModificationStateService.ApplyPreviewStateToOwnedCard(_item, _workingState, previousState);
-            _lastAppliedState = _workingState.Clone();
-            RefreshParentView();
-            RebuildControls();
-            RefreshPreview(forceReload: true);
-            return;
-        }
-
+        CardModificationStateService.ResetPermanentToBasic(_item);
+        LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);
         _workingState = CardModificationStateService.GetEffectiveState(_item);
         _temporaryState = CardModificationStateService.GetTemporaryState(_item);
-        CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
         _lastAppliedState = _workingState.Clone();
         RefreshParentView();
         RebuildControls();
@@ -1277,7 +1264,8 @@ public partial class NCardModificationScreen : Control
 
         _nativeHoverTipAnchor.SetAnchorsPreset(LayoutPreset.TopLeft);
         x = Mathf.Clamp(x, HoverTipViewportMargin, MathF.Max(HoverTipViewportMargin, viewport.X - HoverTipWidth - HoverTipViewportMargin));
-        y = _rightArrow.GlobalPosition.Y + _rightArrow.Size.Y * 1.5f;
+        if (_rightArrow is not null && GodotObject.IsInstanceValid(_rightArrow))
+            y = _rightArrow.GlobalPosition.Y + _rightArrow.Size.Y * 1.5f;
         _nativeHoverTipAnchor.Position = new Vector2(x, y);
         _nativeHoverTipAnchor.Size = new Vector2(HoverTipWidth, GetHoverTipAvailableHeight(viewport, y));
         _nativeHoverTipAnchor.MouseFilter = MouseFilterEnum.Ignore;
@@ -1414,6 +1402,13 @@ public partial class NCardModificationScreen : Control
                && left.Model.Id.Equals(right.Model.Id);
     }
 
+    private static bool MatchesChangedCard(LoadoutOwnedItem<CardModel> item, LoadoutChangedCard changed)
+    {
+        return item.OwnerNetId == changed.OwnerNetId
+               && item.Index == changed.Index
+               && item.Model.Id.Equals(changed.ModelId);
+    }
+
     private static NLoadoutActionButton CreateActionButton(string id, string label, Texture2D? icon = null)
     {
         NLoadoutActionButton button = new()
@@ -1487,6 +1482,101 @@ public partial class NCardModificationScreen : Control
     {
         return string.Equals(model.Id.ToString(), id, StringComparison.Ordinal)
                || string.Equals(model.Id.Entry, id, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<CardKeyword> GetAvailableKeywords(CardModel card)
+    {
+        HashSet<CardKeyword> keywords = Enum.GetValues<CardKeyword>()
+            .Where(keyword => keyword != CardKeyword.None)
+            .ToHashSet();
+
+        foreach (CardKeyword keyword in GetKeywordsSafely(card))
+            keywords.Add(keyword);
+
+        foreach (CardModel model in ModelDb.AllCards)
+        {
+            foreach (CardKeyword keyword in GetKeywordsSafely(model))
+                keywords.Add(keyword);
+        }
+
+        return keywords
+            .Where(keyword => keyword != CardKeyword.None)
+            .OrderBy(keyword => Convert.ToInt32(keyword))
+            .ToList();
+    }
+
+    private static IEnumerable<CardKeyword> GetKeywordsSafely(CardModel card)
+    {
+        try
+        {
+            return card.GetKeywordsWithSources(KeywordSources.Local);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<IHoverTip> GetKeywordHoverTips(CardKeyword keyword)
+    {
+        try
+        {
+            return [HoverTipFactory.FromKeyword(keyword)];
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to create hover tip for keyword '{keyword}'. {exception.Message}");
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<IHoverTip> GetAttachmentHoverTips(AbstractModel model)
+    {
+        try
+        {
+            IEnumerable<IHoverTip> tips = model switch
+            {
+                EnchantmentModel enchantment => enchantment.HoverTips,
+                AfflictionModel affliction => affliction.HoverTips,
+                _ => []
+            };
+
+            return IHoverTip.RemoveDupes(tips)
+                .Where(tip => tip is not null)
+                .ToList();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to create hover tip for attachment '{model.Id}'. {exception.Message}");
+            return [];
+        }
+    }
+
+    private static void AttachHoverTips(Control control, Func<IReadOnlyList<IHoverTip>> tipsFactory)
+    {
+        control.MouseEntered += () => ShowHoverTips(control, tipsFactory);
+        control.FocusEntered += () => ShowHoverTips(control, tipsFactory);
+        control.MouseExited += () => NHoverTipSet.Remove(control);
+        control.FocusExited += () => NHoverTipSet.Remove(control);
+    }
+
+    private static void ShowHoverTips(Control control, Func<IReadOnlyList<IHoverTip>> tipsFactory)
+    {
+        try
+        {
+            List<IHoverTip> tips = tipsFactory()
+                .Where(tip => tip is not null)
+                .ToList();
+            if (tips.Count == 0)
+                return;
+
+            NHoverTipSet.Remove(control);
+            NHoverTipSet.CreateAndShow(control, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(control));
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to show hover tip. {exception.Message}");
+        }
     }
 
     private static string GetAttachmentTitle(AbstractModel model)

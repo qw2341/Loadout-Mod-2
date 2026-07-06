@@ -636,7 +636,7 @@ public static class LoadoutImmediateMutationService
 
         if (UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount)))
         {
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, item.OwnerNetId, LoadoutRunContentChangeMode.Update);
+            LoadoutRunContentChangeService.NotifyCardUpdated(item);
         }
     }
 

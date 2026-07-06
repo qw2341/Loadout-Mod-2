@@ -183,6 +183,20 @@ public class CommonHelpers
 
 			if (change.Mode == LoadoutRunContentChangeMode.Update)
 			{
+				if (change.ChangedCards.Count > 0)
+				{
+					foreach (IGenericSelectItem item in target.VisibleItems)
+					{
+						if (item.UntypedModel is LoadoutOwnedItem<CardModel> ownedCard
+						    && change.ChangedCards.Any(changed => MatchesChangedCard(ownedCard, changed)))
+						{
+							target.RefreshItemView(item.Id);
+						}
+					}
+
+					return true;
+				}
+
 				target.RefreshCurrentItemStates();
 				return true;
 			}
@@ -284,6 +298,13 @@ public class CommonHelpers
 		return modelType.IsGenericType
 		       && modelType.GetGenericTypeDefinition() == typeof(LoadoutOwnedItem<>)
 		       && modelType.GetGenericArguments()[0] == itemModelType;
+	}
+
+	private static bool MatchesChangedCard(LoadoutOwnedItem<CardModel> item, LoadoutChangedCard changed)
+	{
+		return item.OwnerNetId == changed.OwnerNetId
+		       && item.Index == changed.Index
+		       && item.Model.Id.Equals(changed.ModelId);
 	}
 
     public static void LogEmptyDynamicScreen(string title)

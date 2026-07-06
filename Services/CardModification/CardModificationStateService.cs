@@ -30,7 +30,9 @@ public enum CardModificationOperation
     None,
     SaveTemporary,
     ResetTemporary,
-    ApplyPermanent
+    ResetTemporaryToBasic,
+    ApplyPermanent,
+    ResetPermanentToBasic
 }
 
 public enum CardModificationPermanentImportMode
@@ -344,23 +346,43 @@ public static class CardModificationStateService
         }
     }
 
+    public static void ResetTemporaryToBasic(LoadoutOwnedItem<CardModel> item)
+    {
+        EnsureLoaded();
+        CardModificationState permanentState = GetEffectivePermanentState(item.Model.Id);
+        bool changed = ResetTemporaryLocal(item);
+        ResetOwnedCardToBasicState(item, permanentState);
+
+        if (changed)
+            CardModificationMultiplayerSyncService.BroadcastTemporary(item, new CardModificationState());
+
+        RaiseStateChanged();
+    }
+
     public static void ResetPermanent(ModelId cardId)
     {
         EnsureLoaded();
-        bool changed;
-        lock (SyncRoot)
-        {
-            changed = _permanent.Cards.Remove(ToCardKey(cardId));
-            if (changed)
-            {
-                InvalidateDisplayCacheLocked();
-                SavePermanentState();
-            }
-        }
+        bool changed = ResetPermanentLocal(cardId);
 
         CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
         if (changed)
             RaisePermanentCardDisplayChanged(cardId);
+        RaiseStateChanged();
+    }
+
+    public static void ResetPermanentToBasic(LoadoutOwnedItem<CardModel> item)
+    {
+        EnsureLoaded();
+        bool temporaryChanged = ResetTemporaryLocal(item);
+        bool permanentChanged = ResetPermanentLocal(item.Model.Id);
+        ResetOwnedCardToBasicState(item, new CardModificationState());
+
+        CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
+        if (temporaryChanged)
+            CardModificationMultiplayerSyncService.BroadcastTemporary(item, new CardModificationState());
+
+        if (permanentChanged)
+            RaisePermanentCardDisplayChanged(item.Model.Id);
         RaiseStateChanged();
     }
 
@@ -406,6 +428,18 @@ public static class CardModificationStateService
 
         if (hasCardMutation || HasVisualOverrides(normalized) || HasVisualOverrides(previousState))
             RefreshLiveCardVisuals(item.Model);
+    }
+
+    public static void ResetOwnedCardToBasicState(LoadoutOwnedItem<CardModel> item, CardModificationState? state)
+    {
+        CardModificationState normalized = state?.Clone() ?? new CardModificationState();
+        normalized.Normalize();
+
+        ResetCardToCanonicalBaseline(item.Model, resetAttachments: true, resetUpgrade: true);
+        if (!normalized.IsEmpty)
+            ApplyStateToCard(item.Model, normalized);
+
+        RefreshLiveCardVisuals(item.Model);
     }
 
     public static void ReapplyEffectiveStateAfterUpgrade(IEnumerable<CardModel>? cards)
@@ -485,11 +519,25 @@ public static class CardModificationStateService
                 RaiseStateChanged();
                 break;
 
+            case CardModificationOperation.ResetTemporaryToBasic:
+                if (TryResolveOwnedDeckCard(target, ownedItemIndex, expectedModelId, actionPlayer) is not { } resetBasicItem)
+                    return;
+
+                ResetTemporaryToBasic(resetBasicItem);
+                break;
+
             case CardModificationOperation.ApplyPermanent:
                 CardModificationState permanentState = state?.Clone() ?? new CardModificationState();
                 permanentState.Normalize();
                 ApplyPermanentStateToLiveCardsFromAction(modelId, permanentState);
                 RaiseStateChanged();
+                break;
+
+            case CardModificationOperation.ResetPermanentToBasic:
+                if (TryResolveOwnedDeckCard(target, ownedItemIndex, expectedModelId, actionPlayer) is not { } resetPermanentItem)
+                    return;
+
+                ResetPermanentToBasic(resetPermanentItem);
                 break;
         }
     }
@@ -675,6 +723,21 @@ public static class CardModificationStateService
             bool changed = _run.Cards.Remove(GetCopyKey(item));
             if (changed)
                 SaveRunState();
+
+            return changed;
+        }
+    }
+
+    private static bool ResetPermanentLocal(ModelId cardId)
+    {
+        lock (SyncRoot)
+        {
+            bool changed = _permanent.Cards.Remove(ToCardKey(cardId));
+            if (changed)
+            {
+                InvalidateDisplayCacheLocked();
+                SavePermanentState();
+            }
 
             return changed;
         }
@@ -1166,7 +1229,7 @@ public static class CardModificationStateService
         }
     }
 
-    private static void ResetCardToCanonicalBaseline(CardModel card, bool resetAttachments)
+    private static void ResetCardToCanonicalBaseline(CardModel card, bool resetAttachments, bool resetUpgrade = false)
     {
         if (card.IsCanonical)
             return;
@@ -1175,9 +1238,17 @@ public static class CardModificationStateService
         if (canonical is null)
             return;
 
-        CardModel baseline = CreateCanonicalBaselineForCurrentUpgrade(card, canonical);
+        CardModel baseline = resetUpgrade
+            ? canonical.ToMutable()
+            : CreateCanonicalBaselineForCurrentUpgrade(card, canonical);
         try
         {
+            if (resetUpgrade && card.CurrentUpgradeLevel > 0)
+            {
+                card.DowngradeInternal();
+                card.FinalizeUpgradeInternal();
+            }
+
             if (!card.EnergyCost.CostsX)
                 SetEnergyCost(card, baseline.EnergyCost.Canonical);
 
