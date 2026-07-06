@@ -12,6 +12,7 @@ using Loadout.Services.CardModification;
 using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Targets;
+using Loadout.Services.TildeKey;
 using Loadout.UI;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -44,7 +45,12 @@ public enum LoadoutImmediateMutationKind
     ApplyLoadout,
     AdjustPower,
     EnterEvent,
-    GoToRoom
+    GoToRoom,
+    TildeStatSet,
+    TildeStatLock,
+    TildeToggleSet,
+    TildeKillEnemies,
+    TildeSpareEnemies
 }
 
 public static class LoadoutImmediateMutationService
@@ -221,6 +227,62 @@ public static class LoadoutImmediateMutationService
         });
     }
 
+    public static bool RequestTildeSetStat(string statId, int value, LoadoutTargetSelection target)
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.TildeStatSet,
+            ModelId = ModelId.none,
+            Amount = value,
+            Target = target,
+            TildePayloadJson = JsonSerializer.Serialize(new TildeKeyMutationPayload { StatId = statId })
+        });
+    }
+
+    public static bool RequestTildeSetLock(string statId, int value, bool locked, LoadoutTargetSelection target)
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.TildeStatLock,
+            ModelId = ModelId.none,
+            Amount = value,
+            Target = target,
+            TildePayloadJson = JsonSerializer.Serialize(new TildeKeyMutationPayload { StatId = statId, Enabled = locked })
+        });
+    }
+
+    public static bool RequestTildeSetToggle(string toggleId, bool enabled, LoadoutTargetSelection target)
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.TildeToggleSet,
+            ModelId = ModelId.none,
+            Amount = enabled ? 1 : 0,
+            Target = target,
+            TildePayloadJson = JsonSerializer.Serialize(new TildeKeyMutationPayload { ToggleId = toggleId, Enabled = enabled })
+        });
+    }
+
+    public static bool RequestTildeKillEnemies()
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.TildeKillEnemies,
+            ModelId = ModelId.none,
+            Amount = 1
+        });
+    }
+
+    public static bool RequestTildeSpareEnemies()
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.TildeSpareEnemies,
+            ModelId = ModelId.none,
+            Amount = 1
+        });
+    }
+
     public static bool Request(
         LoadoutImmediateMutationKind kind,
         ModelId modelId,
@@ -255,7 +317,7 @@ public static class LoadoutImmediateMutationService
             return false;
 
         payload.RequesterNetId = localPlayer.NetId;
-        payload.Target = ForceClientTargetToSelf(payload.Target, localPlayer);
+        payload.Target = ForceClientTargetToSelf(payload.Target, localPlayer, payload.Kind);
 
         try
         {
@@ -393,6 +455,21 @@ public static class LoadoutImmediateMutationService
                 break;
             case LoadoutImmediateMutationKind.GoToRoom:
                 ApplyGoToRoom(payload);
+                break;
+            case LoadoutImmediateMutationKind.TildeStatSet:
+                TildeKeyStateService.ApplySynchronizedStatSet(payload.TildePayloadJson, payload.Amount, payload.Target, requester);
+                break;
+            case LoadoutImmediateMutationKind.TildeStatLock:
+                TildeKeyStateService.ApplySynchronizedStatLock(payload.TildePayloadJson, payload.Amount, payload.Target, requester);
+                break;
+            case LoadoutImmediateMutationKind.TildeToggleSet:
+                TildeKeyStateService.ApplySynchronizedToggle(payload.TildePayloadJson, payload.Target, requester);
+                break;
+            case LoadoutImmediateMutationKind.TildeKillEnemies:
+                TaskHelper.RunSafely(TildeKeyStateService.KillCurrentEnemiesAsync());
+                break;
+            case LoadoutImmediateMutationKind.TildeSpareEnemies:
+                TaskHelper.RunSafely(TildeKeyStateService.SpareCurrentEnemiesAsync());
                 break;
         }
     }
@@ -780,11 +857,15 @@ public static class LoadoutImmediateMutationService
         }
     }
 
-    private static LoadoutTargetSelection ForceClientTargetToSelf(LoadoutTargetSelection target, Player localPlayer)
+    private static LoadoutTargetSelection ForceClientTargetToSelf(
+        LoadoutTargetSelection target,
+        Player localPlayer,
+        LoadoutImmediateMutationKind kind)
     {
         try
         {
             return RunManager.Instance.NetService.Type == NetGameType.Client
+                   && !AllowsClientSelectedTarget(kind)
                 ? LoadoutTargetSelection.ForPlayer(localPlayer.NetId)
                 : target;
         }
@@ -799,8 +880,16 @@ public static class LoadoutImmediateMutationService
         if (payload.RequesterNetId == hostNetId)
             return payload;
 
-        payload.Target = LoadoutTargetSelection.ForPlayer(payload.RequesterNetId);
+        if (!AllowsClientSelectedTarget(payload.Kind))
+            payload.Target = LoadoutTargetSelection.ForPlayer(payload.RequesterNetId);
         return payload;
+    }
+
+    private static bool AllowsClientSelectedTarget(LoadoutImmediateMutationKind kind)
+    {
+        return kind is LoadoutImmediateMutationKind.TildeStatSet
+            or LoadoutImmediateMutationKind.TildeStatLock
+            or LoadoutImmediateMutationKind.TildeToggleSet;
     }
 
     private static bool IsHostSession()
@@ -861,6 +950,7 @@ public struct LoadoutImmediateMutationPayload
     public string CardModificationStateJson;
     public LoadoutKind LoadoutKind;
     public string LoadoutPayload;
+    public string TildePayloadJson;
 
     public void Serialize(PacketWriter writer)
     {
@@ -879,6 +969,7 @@ public struct LoadoutImmediateMutationPayload
         writer.WriteString(CardModificationStateJson ?? string.Empty);
         writer.WriteInt((int)LoadoutKind, 4);
         writer.WriteString(LoadoutPayload ?? string.Empty);
+        writer.WriteString(TildePayloadJson ?? string.Empty);
     }
 
     public void Deserialize(PacketReader reader)
@@ -897,6 +988,7 @@ public struct LoadoutImmediateMutationPayload
         CardModificationStateJson = reader.ReadString();
         LoadoutKind = (LoadoutKind)reader.ReadInt(4);
         LoadoutPayload = reader.ReadString();
+        TildePayloadJson = reader.ReadString();
     }
 
     public override readonly string ToString()

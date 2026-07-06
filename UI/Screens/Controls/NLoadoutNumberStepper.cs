@@ -20,8 +20,8 @@ public partial class NLoadoutNumberStepper : HBoxContainer
 
     public event Action<int>? ValueChanged;
 
-    public int Minimum { get; private set; } = -999;
-    public int Maximum { get; private set; } = 999;
+    public int Minimum { get; private set; } = int.MinValue;
+    public int Maximum { get; private set; } = int.MaxValue;
     public int Step { get; private set; } = 1;
     public int Value => _value;
 

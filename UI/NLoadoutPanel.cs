@@ -397,7 +397,9 @@ public partial class NLoadoutPanel : Panel
 				
 		//07 - EVENTFUL COMPASS
 		EventfulCompass.Initialize();
-		//08 - POWER GIVER
+		//08 - TILDE KEY
+		TildeKey.Initialize();
+		//09 - POWER GIVER
 		PowerGiver.Initialize();
 	}
 

@@ -123,13 +123,14 @@ public partial class NLoadoutPanelItem : TextureButton
 		if (@event is not InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: false } mouseButton)
 			return;
 
-		if (IsQuickActionGesture(mouseButton) && QuickAction is not null)
+		Func<Task> quickAction = GetQuickActionForGesture(mouseButton);
+		if (quickAction is not null)
 		{
 			AcceptEvent();
 			if (!_quickActionInFlight)
 			{
 				_quickActionInFlight = true;
-				_ = RunQuickActionAsync();
+				_ = RunQuickActionAsync(quickAction);
 			}
 			return;
 		}
@@ -244,9 +245,15 @@ public partial class NLoadoutPanelItem : TextureButton
 		UpdatePivotOffset();
 	}
 
-	private static bool IsQuickActionGesture(InputEventMouseButton mouseButton)
+	private Func<Task> GetQuickActionForGesture(InputEventMouseButton mouseButton)
 	{
-		return mouseButton.CtrlPressed || Input.IsKeyPressed(Key.Ctrl);
+		if ((mouseButton.CtrlPressed || Input.IsKeyPressed(Key.Ctrl)) && QuickAction is not null)
+			return QuickAction;
+
+		if ((mouseButton.ShiftPressed || Input.IsKeyPressed(Key.Shift)) && ShiftQuickAction is not null)
+			return ShiftQuickAction;
+
+		return null;
 	}
 
 	private void OpenSelectScreen()
@@ -291,12 +298,13 @@ public partial class NLoadoutPanelItem : TextureButton
 
 	public Func<Task> QuickAction { get; set; }
 
-	private async Task RunQuickActionAsync()
+	public Func<Task> ShiftQuickAction { get; set; }
+
+	private async Task RunQuickActionAsync(Func<Task> quickAction)
 	{
 		try
 		{
-			if (QuickAction is not null)
-				await QuickAction();
+			await quickAction();
 		}
 		catch (Exception exception)
 		{

@@ -5,6 +5,7 @@ using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
+using Loadout.Services.TildeKey;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Logging;
 
@@ -87,6 +88,7 @@ public static class UIAttach
         CardModificationStateService.Register();
         LoadoutStorageService.Register();
         LoadoutHostSharingService.Register();
+        TildeKeyStateService.Register();
 
         Log.Info("[Loadout] Services registered.");
     }
