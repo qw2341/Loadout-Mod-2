@@ -318,6 +318,8 @@ public partial class NLoadoutDropdown : NDropdown
     {
         _isOpen = false;
         _dismisser?.Hide();
+        foreach (NSelectDropdownItem item in _dropdownItems.GetChildren().OfType<NSelectDropdownItem>())
+            item.ClearHoverTips();
 
         if (_dropdownContainer is not null)
             _dropdownContainer.Visible = false;

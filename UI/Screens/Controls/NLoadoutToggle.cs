@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Loadout.UI;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
@@ -165,7 +166,8 @@ public partial class NLoadoutToggle : Control
                 return;
 
             NHoverTipSet.Remove(this);
-            NHoverTipSet.CreateAndShow(this, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(this));
+            NHoverTipSet.CreateAndShow(this, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(this))?.SetFollowOwner();
+            NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
         }
         catch (Exception exception)
         {

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Loadout.UI;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
@@ -20,7 +21,7 @@ public partial class NSelectDropdownItem : NDropdownItem
     private string _pendingLabel = "DropdownItem";
     private ColorRect? _highlight;
     private Func<IReadOnlyList<IHoverTip>>? _hoverTipsFactory;
-    private bool _signalsConnected;
+    private bool _hoverTipsVisible;
 
     public void Init(string optionId, string label)
     {
@@ -36,37 +37,32 @@ public partial class NSelectDropdownItem : NDropdownItem
         _hoverTipsFactory = hoverTipsFactory;
     }
 
+    public void ClearHoverTips()
+    {
+        NHoverTipSet.Remove(this);
+        _hoverTipsVisible = false;
+    }
+
     public override void _Ready()
     {
         EnsureControlTree();
         base._Ready();
-        MouseEntered += ShowHoverHighlight;
-        MouseExited += HideHoverHighlight;
-        FocusEntered += ShowHoverHighlight;
-        FocusExited += HideHoverHighlight;
-        _signalsConnected = true;
         ApplyFontSize();
         Text = _pendingLabel;
     }
 
     public override void _ExitTree()
     {
+        ClearHoverTips();
         base._ExitTree();
-
-        if (!_signalsConnected)
-            return;
-
-        MouseEntered -= ShowHoverHighlight;
-        MouseExited -= HideHoverHighlight;
-        FocusEntered -= ShowHoverHighlight;
-        FocusExited -= HideHoverHighlight;
-        _signalsConnected = false;
-        NHoverTipSet.Remove(this);
     }
 
     public override void _GuiInput(InputEvent inputEvent)
     {
         base._GuiInput(inputEvent);
+
+        if (inputEvent is InputEventMouseMotion)
+            ShowHoverTips();
 
         if (GetParent()?.GetParent() is not NLoadoutDropdownContainer dropdownContainer)
             return;
@@ -128,25 +124,27 @@ public partial class NSelectDropdownItem : NDropdownItem
         return ResourceLoader.Exists(path) ? GD.Load<Font>(path) : null;
     }
 
-    private void ShowHoverHighlight()
+    protected override void OnFocus()
     {
-        if (_highlight is not null && GodotObject.IsInstanceValid(_highlight))
-            _highlight.Visible = true;
-
+        base.OnFocus();
         ShowHoverTips();
     }
 
-    private void HideHoverHighlight()
+    protected override void OnUnfocus()
     {
-        if (_highlight is not null && GodotObject.IsInstanceValid(_highlight))
-            _highlight.Visible = false;
+        base.OnUnfocus();
+        ClearHoverTips();
+    }
 
-        NHoverTipSet.Remove(this);
+    protected override void OnPress()
+    {
+        base.OnPress();
+        ClearHoverTips();
     }
 
     private void ShowHoverTips()
     {
-        if (_hoverTipsFactory is null)
+        if (_hoverTipsVisible || _hoverTipsFactory is null)
             return;
 
         try
@@ -158,7 +156,13 @@ public partial class NSelectDropdownItem : NDropdownItem
                 return;
 
             NHoverTipSet.Remove(this);
-            NHoverTipSet.CreateAndShow(this, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(this));
+            NHoverTipSet? tipSet = NHoverTipSet.CreateAndShow(this, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(this));
+            if (tipSet is null)
+                return;
+
+            tipSet.SetFollowOwner();
+            NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+            _hoverTipsVisible = true;
         }
         catch (Exception exception)
         {

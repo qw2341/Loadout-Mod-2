@@ -766,31 +766,23 @@ public partial class NCardModificationScreen : Control
             return;
         }
 
-        string addId = options.FirstOrDefault().Id ?? NoneOptionId;
-
         NLoadoutDropdown dropdown = new()
         {
             CustomMinimumSize = new Vector2(0f, 52f),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             DropdownWidth = 420f
         };
-        dropdown.SetItems(LocMan.Loc("ADD", "Add"), options, addId);
-        dropdown.SelectedItemChanged += id => addId = id;
-        _rightControls.AddChild(dropdown);
-
-        NLoadoutActionButton addButton = CreateActionButton($"add_{label}", LocMan.Loc("ADD", "Add"));
-        addButton.CustomMinimumSize = new Vector2(180f, 42f);
-        addButton.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
-        ConnectActionButton(addButton, () =>
+        dropdown.SetItems(LocMan.Loc("ADD", "Add"), options, options.FirstOrDefault().Id ?? NoneOptionId);
+        dropdown.SelectedItemChanged += id =>
         {
-            if (addId == NoneOptionId)
+            if (id == NoneOptionId)
                 return;
 
-            setSpec(new CardAttachmentSpec { ModelId = addId, Amount = 1 });
+            setSpec(new CardAttachmentSpec { ModelId = id, Amount = 1 });
             ApplyWorkingState();
-            RebuildControls();
-        });
-        _rightControls.AddChild(addButton);
+            Callable.From(RebuildControls).CallDeferred();
+        };
+        _rightControls.AddChild(dropdown);
         _rightControls.AddChild(CreateSpacer(8f));
     }
 
@@ -1571,7 +1563,8 @@ public partial class NCardModificationScreen : Control
                 return;
 
             NHoverTipSet.Remove(control);
-            NHoverTipSet.CreateAndShow(control, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(control));
+            NHoverTipSet.CreateAndShow(control, IHoverTip.RemoveDupes(tips), HoverTip.GetHoverTipAlignment(control))?.SetFollowOwner();
+            NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
         }
         catch (Exception exception)
         {

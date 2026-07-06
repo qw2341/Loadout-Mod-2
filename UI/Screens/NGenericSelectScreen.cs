@@ -38,6 +38,7 @@ public partial class NGenericSelectScreen : Control
     private const int InitialMaterializeBudget = 96;
     private const int ScrollMaterializeBudget = 164;
     private const float ScrollSmoothingRate = 15f;
+    private const float ScrollSpeedMultiplier = 3f;
     private const float MaterializeRowsAhead = 5f;
     private const float MaterializeRowsBehind = 3f;
     private const float CullRetentionRows = 2.5f;
@@ -253,7 +254,7 @@ public partial class NGenericSelectScreen : Control
         if (!_scrollMask.GetGlobalRect().HasPoint(mouseButton.GlobalPosition))
             return;
 
-        float drag = ScrollHelper.GetDragForScrollEvent(@event);
+        float drag = ScrollHelper.GetDragForScrollEvent(@event) * ScrollSpeedMultiplier;
         if (!Mathf.IsZeroApprox(drag))
             SetTargetScroll(_targetScrollY - drag);
 
