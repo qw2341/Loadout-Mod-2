@@ -227,7 +227,7 @@ public class CommonHelpers
 				screen,
 				selectItem,
 				onActivated,
-				target => RefreshCurrentModels(target, animateRelayout: true),
+				target => RefreshCurrentModels(target, animateRelayout: false),
 				() => activationInFlight = false);
 		};
 

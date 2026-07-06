@@ -390,6 +390,24 @@ public static class CardModificationStateService
             RefreshLiveCardVisuals(item.Model);
     }
 
+    public static void ApplyPreviewStateToOwnedCard(
+        LoadoutOwnedItem<CardModel> item,
+        CardModificationState state,
+        CardModificationState? previousState = null)
+    {
+        CardModificationState normalized = state.Clone();
+        normalized.Normalize();
+        bool hasCardMutation = HasCardMutations(normalized) || HasCardMutations(previousState);
+        if (hasCardMutation)
+        {
+            PrepareCardForState(item.Model, normalized, includeAffliction: true, previousState);
+            ApplyStateToCard(item.Model, normalized);
+        }
+
+        if (hasCardMutation || HasVisualOverrides(normalized) || HasVisualOverrides(previousState))
+            RefreshLiveCardVisuals(item.Model);
+    }
+
     public static void ReapplyEffectiveStateAfterUpgrade(IEnumerable<CardModel>? cards)
     {
         if (cards is null || IsCombatEnding())

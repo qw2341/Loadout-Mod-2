@@ -167,7 +167,7 @@ public class CardPrinter
 
 	    int multiplier = screen.GetCurrentActivationMultiplier();
 	    LoadoutTargetSelection target = LoadoutTargetService.GetSelected(LastActionService.CardPrinterKey, LoadoutTargetMode.AllPlayersAndPlayers);
-	    if (!LoadoutActionService.Request(LoadoutActionKind.AddCard, canonicalCard.Id, multiplier, target))
+	    if (!LoadoutImmediateMutationService.RequestAddCard(canonicalCard.Id, multiplier, target))
 		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 	    LastActionEntry entry = new()
@@ -195,8 +195,7 @@ public class CardPrinter
 			    continue;
 		    }
 
-		    if (!LoadoutActionService.Request(
-			        LoadoutActionKind.AddCard,
+		    if (!LoadoutImmediateMutationService.RequestAddCard(
 			        card.Id,
 			        entry.Amount,
 			        entry.GetTargetSelection(fallbackTarget)))

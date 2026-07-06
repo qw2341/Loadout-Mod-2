@@ -150,8 +150,7 @@ public class PowerGiver
 				continue;
 			}
 
-			if (!LoadoutActionService.Request(
-				    LoadoutActionKind.AdjustPower,
+			if (!LoadoutImmediateMutationService.RequestAdjustPower(
 				    power.Id,
 				    entry.Amount,
 				    entry.GetTargetSelection(fallbackTarget)))
@@ -295,7 +294,7 @@ public class PowerGiver
 			int multiplier = screen.GetCurrentActivationMultiplier();
 			int delta = mouseButton.ButtonIndex == MouseButton.Right ? -multiplier : multiplier;
 			LoadoutTargetSelection target = LoadoutTargetService.GetSelected(PowerGiverStateService.TargetKey, LoadoutTargetMode.PowerGiver);
-			if (LoadoutActionService.Request(LoadoutActionKind.AdjustPower, power.Id, delta, target))
+			if (LoadoutImmediateMutationService.RequestAdjustPower(power.Id, delta, target))
 			{
 				LastActionEntry entry = new()
 				{

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Services.Actions;
 using Loadout.Services.LastActions;
 using Loadout.UI;
 using Loadout.UI.Managers;
@@ -156,9 +157,8 @@ public class EventfulCompass
 
 	    try
 	    {
-		    NLoadoutPanelRoot.CloseBlockingRunScreens();
-		    RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
-			    new ConsoleCmdGameAction(localPlayer, $"room {SelectedRoomType}", CombatManager.Instance.IsInProgress));
+		    if (!LoadoutImmediateMutationService.RequestGoToRoom(SelectedRoomType))
+			    GD.PushWarning($"LoadoutPanel: failed to request room jump to '{SelectedRoomType}'.");
 	    }
 	    catch (Exception exception)
 	    {
@@ -188,39 +188,24 @@ public class EventfulCompass
 		    : [];
     }
 
-    private static async Task<bool> EnterEventAsync(EventModel eventModel, string logId)
+    private static Task<bool> EnterEventAsync(EventModel eventModel, string logId)
     {
 
 	    Player localPlayer = CommonHelpers.GetLocalRunPlayer();
 	    if (localPlayer is null || !RunManager.Instance.IsInProgress)
 	    {
 		    GD.PushWarning($"LoadoutPanel: cannot enter event '{logId}' because no local run player was resolved.");
-		    return false;
+		    return Task.FromResult(false);
 	    }
 
 	    try
 	    {
-		    NLoadoutPanelRoot.CloseBlockingRunScreens();
-
-		    if (!RunManager.Instance.IsSingleplayerOrFakeMultiplayer)
-		    {
-			    string command = $"event {eventModel.Id.Entry}";
-			    RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
-				    new ConsoleCmdGameAction(localPlayer, command, CombatManager.Instance.IsInProgress));
-			    return true;
-		    }
-
-		    MapPointType mapPointType = eventModel is AncientEventModel
-			    ? MapPointType.Ancient
-			    : MapPointType.Unknown;
-		    localPlayer.RunState.AppendToMapPointHistory(mapPointType, RoomType.Event, eventModel.Id);
-		    await RunManager.Instance.EnterRoom(new EventRoom(eventModel));
-		    return true;
+		    return Task.FromResult(LoadoutImmediateMutationService.RequestEnterEvent(eventModel.Id));
 	    }
 	    catch (Exception exception)
 	    {
 		    GD.PushError($"LoadoutPanel: failed to enter event '{eventModel.Id}': {exception}");
-		    return false;
+		    return Task.FromResult(false);
 	    }
     }
 

@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
+using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
@@ -275,6 +276,7 @@ public static class RunManagerLaunchCardModificationPatch
     [HarmonyPostfix]
     public static void Postfix()
     {
+        LoadoutImmediateMutationService.OnRunLaunched();
         CardModificationMultiplayerSyncService.OnRunLaunched();
         CardModificationStateService.ApplySavedRunStateToLiveDecks();
     }
@@ -286,6 +288,7 @@ public static class RunManagerCleanUpCardModificationPatch
     [HarmonyPrefix]
     public static void Prefix()
     {
+        LoadoutImmediateMutationService.OnRunCleaningUp();
         CardModificationMultiplayerSyncService.OnRunCleaningUp();
     }
 }

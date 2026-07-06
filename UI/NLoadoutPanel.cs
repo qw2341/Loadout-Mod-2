@@ -461,7 +461,7 @@ public partial class NLoadoutPanel : Panel
 
 		int amount = screen.GetCurrentActivationMultiplier();
 		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(LastActionService.LoadoutBagKey, LoadoutTargetMode.AllPlayersAndPlayers);
-		if (!LoadoutActionService.Request(LoadoutActionKind.AddRelic, canonicalRelic.Id, amount, target))
+		if (!LoadoutImmediateMutationService.RequestAddRelic(canonicalRelic.Id, amount, target))
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 		LastActionEntry entry = new()
@@ -503,8 +503,7 @@ public partial class NLoadoutPanel : Panel
 		if (selectItem.UntypedModel is not PotionModel canonicalPotion)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		LoadoutActionService.Request(
-			LoadoutActionKind.AddPotion,
+		LoadoutImmediateMutationService.RequestAddPotion(
 			canonicalPotion.Id,
 			screen.GetCurrentActivationMultiplier(),
 			LoadoutTargetService.GetSelected(LoadoutCauldronTargetKey, LoadoutTargetMode.AllPlayersAndPlayers));
@@ -517,13 +516,7 @@ public partial class NLoadoutPanel : Panel
 		if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		bool removed = LoadoutActionService.Request(
-			LoadoutActionKind.RemoveCard,
-			item.Model.Id,
-			1,
-			LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
-			item.Index,
-			item.Model.Id);
+		bool removed = LoadoutImmediateMutationService.RequestRemoveCard(item);
 
 		if (!removed)
 		{
@@ -541,7 +534,7 @@ public partial class NLoadoutPanel : Panel
 		if (selectItem.UntypedModel is not LoadoutOwnedItem<RelicModel> item)
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
-		if (!LoadoutActionService.RequestRemoveRelic(item))
+		if (!LoadoutImmediateMutationService.RequestRemoveRelic(item))
 		{
 			GD.PushWarning($"LoadoutPanel: failed to request relic removal for '{item.Model.Id}' at index {item.Index}.");
 			return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
@@ -595,8 +588,7 @@ public partial class NLoadoutPanel : Panel
 				continue;
 			}
 
-			if (!LoadoutActionService.Request(
-				    LoadoutActionKind.AddRelic,
+			if (!LoadoutImmediateMutationService.RequestAddRelic(
 				    relic.Id,
 				    entry.Amount,
 				    entry.GetTargetSelection(fallbackTarget)))

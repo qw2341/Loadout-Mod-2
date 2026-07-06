@@ -78,13 +78,9 @@ public class CardModifier
         if (selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> item)
             return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
 
-        bool requested = LoadoutActionService.Request(
-            LoadoutActionKind.UpgradeCard,
-            item.Model.Id,
-            screen.GetCurrentActivationMultiplier(),
-            LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
-            item.Index,
-            item.Model.Id);
+        bool requested = LoadoutImmediateMutationService.RequestUpgradeCard(
+            item,
+            screen.GetCurrentActivationMultiplier());
 
         if (requested && selectItem.View is Control view)
             CommonHelpers.PlayCardSmithFeedback(view);
@@ -95,7 +91,7 @@ public class CardModifier
     public static void HandleUpgradeAllDeckCards(NGenericSelectScreen screen)
     {
         LoadoutTargetSelection target = LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
-        if (!LoadoutActionService.Request(LoadoutActionKind.UpgradeAllDeckCards, ModelId.none, 1, target))
+        if (!LoadoutImmediateMutationService.RequestUpgradeAllDeckCards(target))
             return;
 
         screen.ForEachVisibleItemView((item, view) =>
