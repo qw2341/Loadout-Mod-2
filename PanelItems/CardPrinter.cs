@@ -12,6 +12,7 @@ using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -395,8 +396,7 @@ public class CardPrinter
 	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
 		    return;
 
-	    RebindCardHolderModel(holder, sourceModel);
-	    holder.CardNode.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+	    RefreshHolderModel(holder, sourceModel, forceReassign: false);
 
 	    if (holder.CardModel is not null
 	        && holder.CardModel.IsUpgradable
@@ -416,15 +416,8 @@ public class CardPrinter
 		    return;
 
 	    bool shouldPreviewUpgrade = model.IsUpgradable && holder.GetMeta(PreviewUpgradeMetaKey, false).AsBool();
-	    if (model.IsUpgradable)
-		    holder.SetIsPreviewingUpgrade(false);
-
-	    holder.CardNode.Model = null;
-	    holder.CardNode.Model = model;
-	    holder.CardNode.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
-
-	    if (shouldPreviewUpgrade)
-		    holder.SetIsPreviewingUpgrade(true);
+	    RefreshHolderModel(holder, model, forceReassign: true);
+	    holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
     }
 
     public static void UpdateCardGridItem(Control view, SelectItemState state)
@@ -435,14 +428,20 @@ public class CardPrinter
 	    ApplyCardUpgradePreview(holder, state);
     }
 
-    private static void RebindCardHolderModel(NGridCardHolder holder, CardModel sourceModel)
+    private static void RefreshHolderModel(NGridCardHolder holder, CardModel sourceModel, bool forceReassign)
     {
 	    CardModel model = ResolveDisplayModel(sourceModel ?? holder.CardModel);
-	    if (model is null || ReferenceEquals(holder.CardModel, model))
+	    if (model is null)
 		    return;
 
-	    holder.CardNode.Model = null;
-	    holder.CardNode.Model = model;
+	    if (forceReassign || !ReferenceEquals(holder.CardModel, model))
+	    {
+		    holder.ReassignToCard(model, PileType.None, null, ModelVisibility.Visible);
+		    return;
+	    }
+
+	    holder.SetIsPreviewingUpgrade(false);
+	    holder.CardNode?.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
     }
 
     private static CardModel ResolveDisplayModel(CardModel model)

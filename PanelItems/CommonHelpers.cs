@@ -157,7 +157,11 @@ public class CommonHelpers
 			configuredRunState = currentRunState;
 		}
 
-		void RefreshCurrentModels(NGenericSelectScreen target, bool animateRelayout = false, bool resetScroll = false)
+		void RefreshCurrentModels(
+			NGenericSelectScreen target,
+			bool animateRelayout = false,
+			bool resetScroll = false,
+			bool updateExistingViews = true)
 		{
 			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
 			IReadOnlyList<TModel> models = getModels();
@@ -170,7 +174,7 @@ public class CommonHelpers
 				return;
 			}
 
-			target.RefreshItemsPreservingViews(models, adapter, shouldAnimateRelayout, resetScroll);
+			target.RefreshItemsPreservingViews(models, adapter, shouldAnimateRelayout, resetScroll, updateExistingViews);
 			configuredRunState = currentRunState;
 		}
 
@@ -205,7 +209,7 @@ public class CommonHelpers
 
 			if (change.Mode == LoadoutRunContentChangeMode.Add)
 			{
-				RefreshCurrentModels(target, animateRelayout: false);
+				RefreshCurrentModels(target, animateRelayout: false, updateExistingViews: false);
 				return true;
 			}
 

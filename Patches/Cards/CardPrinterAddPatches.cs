@@ -84,6 +84,7 @@ public static class CardPrinterOverflowHandShortcutPatch
         if (index < 10 || SelectCardShortcutsField?.GetValue(__instance) is not StringName[] current)
             return;
 
+        EnsureOverflowShortcutAction();
         int requiredLength = index + 1;
         if (current.Length >= requiredLength)
             return;
@@ -96,5 +97,11 @@ public static class CardPrinterOverflowHandShortcutPatch
             expanded[i] = OverflowNoShortcut;
 
         SelectCardShortcutsField.SetValue(__instance, expanded);
+    }
+
+    private static void EnsureOverflowShortcutAction()
+    {
+        if (!InputMap.HasAction(OverflowNoShortcut))
+            InputMap.AddAction(OverflowNoShortcut);
     }
 }

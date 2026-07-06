@@ -671,6 +671,7 @@ public static class LoadoutImmediateMutationService
     private static void ApplyUpgradeAllDeckCards(LoadoutImmediateMutationPayload payload, Player requester)
     {
         HashSet<ulong> changedPlayers = [];
+        List<LoadoutChangedCard> changedCards = [];
         int upgrades = Math.Max(1, payload.Amount);
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
@@ -685,10 +686,11 @@ public static class LoadoutImmediateMutationService
                 continue;
 
             changedPlayers.Add(targetPlayer.NetId);
+            changedCards.AddRange(BuildChangedCards(targetPlayer, upgradedCards));
         }
 
         if (changedPlayers.Count > 0)
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedPlayers, LoadoutRunContentChangeMode.Update);
+            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedPlayers, LoadoutRunContentChangeMode.Update, changedCards);
     }
 
     private static bool UpgradeCardWithCommand(CardModel card, int upgrades)
@@ -698,8 +700,15 @@ public static class LoadoutImmediateMutationService
         {
             try
             {
+                int previousUpgradeLevel = card.CurrentUpgradeLevel;
                 CardCmd.Upgrade(card, CardPreviewStyle.None);
-                changed = true;
+                if (card.CurrentUpgradeLevel <= previousUpgradeLevel && card.IsUpgradable && !CombatManager.Instance.IsEnding)
+                {
+                    card.UpgradeInternal();
+                    card.FinalizeUpgradeInternal();
+                }
+
+                changed |= card.CurrentUpgradeLevel > previousUpgradeLevel;
             }
             catch (Exception exception)
             {

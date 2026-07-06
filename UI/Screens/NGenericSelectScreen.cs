@@ -386,9 +386,10 @@ public partial class NGenericSelectScreen : Control
         IEnumerable<TModel> models,
         SelectItemAdapter<TModel> adapter,
         bool animateRelayout = false,
-        bool resetScroll = false)
+        bool resetScroll = false,
+        bool updateExistingViews = true)
     {
-        ApplyModelSnapshotPreservingViews(models, adapter, animateRelayout, resetScroll);
+        ApplyModelSnapshotPreservingViews(models, adapter, animateRelayout, resetScroll, updateExistingViews);
     }
 
     public bool TryApplySingleItemRemoval<TModel>(
@@ -405,7 +406,7 @@ public partial class NGenericSelectScreen : Control
         if (removedCount != 1 || modelSnapshot.Count != _items.Count - 1)
             return false;
 
-        ApplyModelSnapshotPreservingViews(modelSnapshot, adapter, animateRelayout, resetScroll: false);
+        ApplyModelSnapshotPreservingViews(modelSnapshot, adapter, animateRelayout, resetScroll: false, updateExistingViews: true);
         return true;
     }
 
@@ -424,7 +425,8 @@ public partial class NGenericSelectScreen : Control
         IEnumerable<TModel> models,
         SelectItemAdapter<TModel> adapter,
         bool animateRelayout,
-        bool resetScroll)
+        bool resetScroll,
+        bool updateExistingViews)
     {
         CancelRelayoutAnimations(applyFinalPositions: false);
         CancelPendingMaterialization();
@@ -469,7 +471,7 @@ public partial class NGenericSelectScreen : Control
             LockRelayoutPositions(relayoutStartPositions);
 
         _configuredLocaleLanguage = GetCurrentLocaleLanguage();
-        RebuildCurrentLayout(resetScroll, updateExistingViews: true);
+        RebuildCurrentLayout(resetScroll, updateExistingViews);
 
         if (animateRelayout)
             AnimateRelayoutFrom(relayoutStartPositions);

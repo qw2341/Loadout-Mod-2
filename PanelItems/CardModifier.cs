@@ -72,7 +72,7 @@ public class CardModifier
                     LoadoutTargetMode.PlayersOnly,
                     refresh);
             },
-            (screen, selectItem) => screen.RefreshItemView(selectItem.Id));
+            (_, _) => { });
 
     }
 
