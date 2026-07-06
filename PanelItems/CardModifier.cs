@@ -21,6 +21,7 @@ public class CardModifier
     private const string CardModifierTargetDropdownName = "CardModifierTargetDropdown";
     public static void Initialize()
     {
+        NGenericSelectScreen modifierScreen = null;
         SelectItemAdapter<LoadoutOwnedItem<CardModel>> cardModifierAdapter = new()
         {
             GetId = item => CommonHelpers.OwnedItemId(item),
@@ -36,7 +37,7 @@ public class CardModifier
             BindActivation = (item, view, activate) => CardPrinter.BindCardActivation(
                 view,
                 activate,
-                () => OpenCardModificationScreen(item, view))
+                () => OpenCardModificationScreen(modifierScreen, item, view))
         };
 
         void BuildCardModifierScreen(SelectScreenBuilder<LoadoutOwnedItem<CardModel>> builder)
@@ -63,6 +64,7 @@ public class CardModifier
             LocMan.Loc("CARDMODIFIER_DESC", "Right-click this relic to modify any card you want; right-click cards to modify them."),
             (screen, refresh) =>
             {
+                modifierScreen = screen;
                 LoadoutTargetService.UpsertTargetDropdown(
                     screen,
                     CardModifierTargetDropdownName,
@@ -102,15 +104,19 @@ public class CardModifier
         });
     }
 
-    private static void OpenCardModificationScreen(LoadoutOwnedItem<CardModel> item, Control sourceView)
+    private static void OpenCardModificationScreen(
+        NGenericSelectScreen selectScreen,
+        LoadoutOwnedItem<CardModel> fallbackItem,
+        Control sourceView)
     {
+        LoadoutOwnedItem<CardModel> item = ResolveCurrentItem(selectScreen, sourceView, fallbackItem);
         NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance;
         if (root is null)
             return;
 
-        NCardModificationScreen screen = NCardModificationScreen.Create();
-        screen.Name = $"CardModification_{CommonHelpers.MakeSafeNodeName(CommonHelpers.OwnedItemId(item))}";
-        screen.Init(
+        NCardModificationScreen modificationScreen = NCardModificationScreen.Create();
+        modificationScreen.Name = $"CardModification_{CommonHelpers.MakeSafeNodeName(CommonHelpers.OwnedItemId(item))}";
+        modificationScreen.Init(
             item,
             GetSelectedTargetDeckCardsForModifier(),
             () =>
@@ -118,7 +124,23 @@ public class CardModifier
                 if (GodotObject.IsInstanceValid(sourceView) && sourceView.IsInsideTree())
                     CardPrinter.ForceRefreshCardVisuals(sourceView);
             });
-        root.OpenScreen(screen);
+        root.OpenScreen(modificationScreen);
+    }
+
+    private static LoadoutOwnedItem<CardModel> ResolveCurrentItem(
+        NGenericSelectScreen screen,
+        Control sourceView,
+        LoadoutOwnedItem<CardModel> fallbackItem)
+    {
+        if (screen is not null
+            && sourceView is not null
+            && screen.TryGetItemForView(sourceView, out IGenericSelectItem currentItem)
+            && currentItem.UntypedModel is LoadoutOwnedItem<CardModel> currentOwnedCard)
+        {
+            return currentOwnedCard;
+        }
+
+        return fallbackItem;
     }
 
     private static void OpenHostPermamodConflictScreen()

@@ -2497,16 +2497,30 @@ public partial class NGenericSelectScreen : Control
         _activationBoundViews.Remove(view);
     }
 
+    public bool TryGetItemForView(Control view, out IGenericSelectItem item)
+    {
+        if (_activationItemsByView.TryGetValue(view, out IGenericSelectItem? mappedItem) && _items.Contains(mappedItem))
+        {
+            item = mappedItem;
+            return true;
+        }
+
+        IGenericSelectItem? matchingItem = _items.FirstOrDefault(candidate => candidate.View == view);
+        if (matchingItem is null)
+        {
+            item = null!;
+            return false;
+        }
+
+        item = matchingItem;
+        _activationItemsByView[view] = item;
+        return true;
+    }
+
     private void ActivateCurrentItemForView(Control view)
     {
-        if (!_activationItemsByView.TryGetValue(view, out IGenericSelectItem? item) || !_items.Contains(item))
-        {
-            item = _items.FirstOrDefault(candidate => candidate.View == view);
-            if (item is null)
-                return;
-
-            _activationItemsByView[view] = item;
-        }
+        if (!TryGetItemForView(view, out IGenericSelectItem item))
+            return;
 
         ActivateItem(item);
     }
