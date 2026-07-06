@@ -493,7 +493,7 @@ public partial class NCardModificationScreen : Control
 
         AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_ENERGY_COST", "Energy Cost"),
             _workingState.EnergyCost ?? (card.EnergyCost.CostsX ? 0 : card.EnergyCost.GetWithModifiers(CostModifiers.Local)),
-            -1, 99, value =>
+            int.MinValue, int.MaxValue, value =>
             {
                 _workingState.EnergyCost = value;
                 _temporaryState.EnergyCost = value;
@@ -502,7 +502,7 @@ public partial class NCardModificationScreen : Control
 
         AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_REPLAY_COUNT", "Replay Count"),
             _workingState.BaseReplayCount ?? card.BaseReplayCount,
-            0, 99, value =>
+            int.MinValue, int.MaxValue, value =>
             {
                 _workingState.BaseReplayCount = value;
                 _temporaryState.BaseReplayCount = value;
@@ -511,7 +511,7 @@ public partial class NCardModificationScreen : Control
 
         AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_STAR_COST", "Star Cost"),
             _workingState.BaseStarCost ?? card.BaseStarCost,
-            -1, 99, value =>
+            int.MinValue, int.MaxValue, value =>
             {
                 _workingState.BaseStarCost = value;
                 _temporaryState.BaseStarCost = value;
@@ -524,7 +524,7 @@ public partial class NCardModificationScreen : Control
                 ? Decimal.ToInt32(saved)
                 : Decimal.ToInt32(dynamicVar.BaseValue);
             
-            AddStepperRow(_leftControls, dynamicVar.Name, current, -999, 999, value =>
+            AddStepperRow(_leftControls, dynamicVar.Name, current, int.MinValue, int.MaxValue, value =>
             {
                 _workingState.DynamicVars[name] = value;
                 _temporaryState.DynamicVars[name] = value;
