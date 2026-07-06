@@ -1,6 +1,11 @@
 ﻿using System;
+using System.Linq;
+using System.Reflection;
 using Godot;
+using Loadout.Helpers;
 using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
+using MegaCrit.Sts2.Core.Models;
 
 namespace Loadout.UI.Managers;
 
@@ -111,5 +116,80 @@ public static class LocMan
 
             return fallback;
         }
+    }
+
+    static bool TryGetPowerVarTitle(object dynamicVar, out string title)
+    {
+        title = null;
+
+        if (!TryGetPowerVarGenericType(dynamicVar, out Type powerType))
+            return false;
+
+        PowerModel powerModel = GetPowerModel(powerType);
+
+        if (powerModel == null)
+            return false;
+
+        title = powerModel.Title.GetFormattedText();
+        return true;
+    }
+
+    static bool TryGetPowerVarGenericType(object obj, out Type powerType)
+    {
+        powerType = null;
+
+        if (obj == null)
+            return false;
+
+        Type type = obj.GetType();
+
+        while (type != null)
+        {
+            if (type.IsGenericType &&
+                type.GetGenericTypeDefinition() == typeof(PowerVar<>))
+            {
+                powerType = type.GetGenericArguments()[0];
+                return true;
+            }
+
+            type = type.BaseType;
+        }
+
+        return false;
+    }
+
+    static PowerModel GetPowerModel(Type powerType)
+    {
+        MethodInfo method = typeof(ModelDb)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Single(m =>
+                m.Name == "Power" &&
+                m.IsGenericMethodDefinition &&
+                m.GetGenericArguments().Length == 1 &&
+                m.GetParameters().Length == 0
+            );
+
+        MethodInfo closedMethod = method.MakeGenericMethod(powerType);
+
+        object result = closedMethod.Invoke(null, null);
+
+        return result as PowerModel;
+    }
+    
+    public static string DynamicVarLoc(DynamicVar dynamicVar)
+    {
+
+        if (TryGetPowerVarTitle(dynamicVar,out string loc))
+        {
+            return loc;
+        }
+
+        return dynamicVar switch
+        {
+            BlockVar _ => CommonLoc.Block,
+            DamageVar _ => CommonLoc.Damage,
+            _ => dynamicVar.Name
+
+        };
     }
 }

@@ -139,9 +139,9 @@ TILDEKEY_STAT_BASE_ORB_SLOTS,Base Orb Slots,基础充能球栏位
 TILDEKEY_STAT_MAX_POTION_SLOTS,Max Potion Slots,最大药水栏位
 TILDEKEY_STAT_TURN_NUMBER,Turn Number,回合数
 TILDEKEY_STAT_CARD_SHOP_REMOVALS_USED,Card Shop Removals Used,商店删卡次数
-TILDEKEY_STAT_WONGO_POINTS,Wongo Points,Wongo 点数
-TILDEKEY_STAT_DAMAGE_DEALT,Damage Dealt,造成伤害
-TILDEKEY_STAT_DEBUFFS_APPLIED,Debuffs Applied,施加减益
+TILDEKEY_STAT_WONGO_POINTS,Wongo Points,旺购点数
+TILDEKEY_STAT_DAMAGE_DEALT,Damage Dealt,已造成伤害
+TILDEKEY_STAT_DEBUFFS_APPLIED,Debuffs Applied,已施加减益
 TILDEKEYALT_TITLE,Tilde Key,波浪键
 TILDEKEYALT_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。
 BOTTLEDMONSTER_TITLE,Bottled Monster,瓶装怪物
@@ -162,3 +162,7 @@ BLIGHTCHESTALT_TITLE,Tiny Blight Chest,小荒疫箱
 BLIGHTCHESTALT_DESC,"Right-click this relic to obtain any blights. Left-click to obtain, right-click to remove. Ctrl x5, Shift x10.",右键获得任何你想要的荒疫。左键获取，右键移除。Ctrl x5，Shift x10。
 ALLINONEBAGUP_TITLE,Ultimate Bag,终极装备箱
 ALLINONEBAGUP_DESC,Right-click this relic to win the game.,右键此遗物来获取胜利。
+HOST_PERMAMODS_DOWNLOAD_TITLE, Download Host Permamod, 下载主机永久修改
+DAMAGE,Damage,伤害
+DAMAGEBACK,Damage Back, 伤害返还
+
