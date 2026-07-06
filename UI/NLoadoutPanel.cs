@@ -390,7 +390,8 @@ public partial class NLoadoutPanel : Panel
 				RemoveCardTargetDropdownName,
 				RemoveCardTargetKey,
 				LoadoutTargetMode.PlayersOnly,
-				refresh));
+				refresh),
+			(_, _) => { });
 		//06 - CARD MODIFIER
 		CardModifier.Initialize();
 				
@@ -541,36 +542,6 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
-	}
-
-	private static async Task RefreshRemoveCardScreenAsync(NGenericSelectScreen screen)
-	{
-		if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
-			return;
-
-		await screen.ToSignal(screen.GetTree(), SceneTree.SignalName.ProcessFrame);
-
-		if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
-			return;
-
-		screen.RefreshItemsPreservingViews(
-			GetSelectedTargetDeckCardsForRemoval(),
-			new SelectItemAdapter<LoadoutOwnedItem<CardModel>>
-			{
-				GetId = item => CommonHelpers.OwnedItemId(item),
-				GetName = item => CardPrinter.FormatCardTitle(item.Model),
-				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
-				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
-				ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model),
-				UpdateView = (item, view, state) =>
-				{
-					CardPrinter.ForceRefreshCardVisuals(view, item.Model);
-					CardPrinter.UpdateCardGridItem(view, state);
-				},
-				BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
-			},
-			animateRelayout: true,
-			resetScroll: false);
 	}
 
 	private static Task ReplayLoadoutBagLastActionAsync()

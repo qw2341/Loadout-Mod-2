@@ -387,6 +387,44 @@ public partial class NGenericSelectScreen : Control
         bool animateRelayout = false,
         bool resetScroll = false)
     {
+        ApplyModelSnapshotPreservingViews(models, adapter, animateRelayout, resetScroll);
+    }
+
+    public bool TryApplySingleItemRemoval<TModel>(
+        IEnumerable<TModel> models,
+        SelectItemAdapter<TModel> adapter,
+        bool animateRelayout = true)
+    {
+        List<TModel> modelSnapshot = models.ToList();
+        HashSet<string> nextIds = modelSnapshot
+            .Select(adapter.GetId)
+            .ToHashSet(StringComparer.Ordinal);
+        int removedCount = _items.Count(item => !nextIds.Contains(item.Id));
+
+        if (removedCount != 1 || modelSnapshot.Count != _items.Count - 1)
+            return false;
+
+        ApplyModelSnapshotPreservingViews(modelSnapshot, adapter, animateRelayout, resetScroll: false);
+        return true;
+    }
+
+    public bool RefreshItemView(string itemId)
+    {
+        IGenericSelectItem? item = _items.FirstOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+        if (item is null || item.View is null || !GodotObject.IsInstanceValid(item.View))
+            return false;
+
+        item.UpdateView(BuildState(item, _visibleItems.IndexOf(item)));
+        _itemsUpdatedForCurrentLayout.Add(item);
+        return true;
+    }
+
+    private void ApplyModelSnapshotPreservingViews<TModel>(
+        IEnumerable<TModel> models,
+        SelectItemAdapter<TModel> adapter,
+        bool animateRelayout,
+        bool resetScroll)
+    {
         CancelRelayoutAnimations(applyFinalPositions: false);
         CancelPendingMaterialization();
         Dictionary<string, Control> reusableViews = CaptureReusableItemViewsById();
@@ -430,7 +468,7 @@ public partial class NGenericSelectScreen : Control
             LockRelayoutPositions(relayoutStartPositions);
 
         _configuredLocaleLanguage = GetCurrentLocaleLanguage();
-        RefreshNow(resetScroll);
+        RebuildCurrentLayout(resetScroll, updateExistingViews: true);
 
         if (animateRelayout)
             AnimateRelayoutFrom(relayoutStartPositions);
@@ -727,6 +765,14 @@ public partial class NGenericSelectScreen : Control
         if (!_isConfigured || _itemGrid is null)
             return;
 
+        RebuildCurrentLayout(resetScroll, updateExistingViews: true);
+    }
+
+    private void RebuildCurrentLayout(bool resetScroll, bool updateExistingViews)
+    {
+        if (!_isConfigured || _itemGrid is null)
+            return;
+
         CancelPendingMaterialization();
         CancelPendingSearchRefresh();
 
@@ -755,7 +801,7 @@ public partial class NGenericSelectScreen : Control
             ScrollToTop();
 
         if (_materializationMode == SelectMaterializationMode.Lazy)
-            MaterializeViewportItemViews(InitialMaterializeBudget, updateExistingViews: true);
+            MaterializeViewportItemViews(InitialMaterializeBudget, updateExistingViews);
         else
             StartThreadedPreloadThenMaterializeAll();
 

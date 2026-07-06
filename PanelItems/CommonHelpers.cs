@@ -7,7 +7,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
-using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
 using Loadout.UI;
@@ -126,7 +125,8 @@ public class CommonHelpers
 		string textureFileName,
 		string title,
 		string description,
-		Action<NGenericSelectScreen, Action>? afterConfigure = null)
+		Action<NGenericSelectScreen, Action>? afterConfigure = null,
+		Action<NGenericSelectScreen, IGenericSelectItem>? afterActivationRefresh = null)
 	{
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
@@ -160,8 +160,44 @@ public class CommonHelpers
 			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
 			IReadOnlyList<TModel> models = getModels();
 			bool shouldAnimateRelayout = animateRelayout && models.Count <= DynamicRelayoutAnimationItemLimit;
+			if (!resetScroll
+			    && animateRelayout
+			    && target.TryApplySingleItemRemoval(models, adapter, shouldAnimateRelayout))
+			{
+				configuredRunState = currentRunState;
+				return;
+			}
+
 			target.RefreshItemsPreservingViews(models, adapter, shouldAnimateRelayout, resetScroll);
 			configuredRunState = currentRunState;
+		}
+
+		bool TryHandleTargetedRunContentChange(NGenericSelectScreen target, LoadoutRunContentChangedEventArgs change)
+		{
+			Type modelType = typeof(TModel);
+			if (change.Kind != LoadoutRunContentKind.Cards
+			    || !IsOwnedItemModel(modelType, typeof(CardModel)))
+			{
+				return false;
+			}
+
+			if (change.Mode == LoadoutRunContentChangeMode.Update)
+			{
+				target.RefreshCurrentItemStates();
+				return true;
+			}
+
+			if (change.Mode != LoadoutRunContentChangeMode.Remove)
+				return false;
+
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
+			IReadOnlyList<TModel> models = getModels();
+			bool shouldAnimateRelayout = models.Count <= DynamicRelayoutAnimationItemLimit;
+			if (!target.TryApplySingleItemRemoval(models, adapter, shouldAnimateRelayout))
+				return false;
+
+			configuredRunState = currentRunState;
+			return true;
 		}
 
 		void RefreshDynamicScreenForOpen(NGenericSelectScreen target)
@@ -192,16 +228,6 @@ public class CommonHelpers
 			dynamicRefreshPending = false;
 			RefreshCurrentModels(screen, animateRelayout: true);
 		};
-		CardModificationStateService.StateChanged += () =>
-		{
-			if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsVisibleInTree())
-			{
-				dynamicRefreshPending = true;
-				return;
-			}
-
-			RefreshCurrentModels(screen, animateRelayout: true);
-		};
 		LoadoutRunContentChangeService.Changed += change =>
 		{
 			if (!MatchesRunContentChange<TModel>(change))
@@ -212,6 +238,9 @@ public class CommonHelpers
 				dynamicRefreshPending = true;
 				return;
 			}
+
+			if (TryHandleTargetedRunContentChange(screen, change))
+				return;
 
 			RefreshCurrentModels(screen, animateRelayout: true);
 		};
@@ -227,7 +256,7 @@ public class CommonHelpers
 				screen,
 				selectItem,
 				onActivated,
-				target => RefreshCurrentModels(target, animateRelayout: false),
+				afterActivationRefresh ?? ((target, _) => RefreshCurrentModels(target, animateRelayout: false)),
 				() => activationInFlight = false);
 		};
 
@@ -933,8 +962,8 @@ public class CommonHelpers
         NGenericSelectScreen screen,
         IGenericSelectItem selectItem,
         CommonHelpers.SelectActivationHandler onActivated,
-        Action<NGenericSelectScreen> refresh,
-        Action clearActivation)
+		Action<NGenericSelectScreen, IGenericSelectItem> refresh,
+		Action clearActivation)
     {
         try
         {
@@ -946,7 +975,7 @@ public class CommonHelpers
         }
         finally
         {
-            refresh(screen);
+            refresh(screen, selectItem);
             clearActivation();
         }
     }

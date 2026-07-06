@@ -13,11 +13,24 @@ public enum LoadoutRunContentKind
     Relics
 }
 
+public enum LoadoutRunContentChangeMode
+{
+    Unknown,
+    Add,
+    Remove,
+    Update,
+    Replace
+}
+
 public sealed class LoadoutRunContentChangedEventArgs
 {
-    public LoadoutRunContentChangedEventArgs(LoadoutRunContentKind kind, IEnumerable<ulong>? playerNetIds)
+    public LoadoutRunContentChangedEventArgs(
+        LoadoutRunContentKind kind,
+        IEnumerable<ulong>? playerNetIds,
+        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown)
     {
         Kind = kind;
+        Mode = mode;
         PlayerNetIds = playerNetIds?
             .Where(id => id != 0)
             .ToHashSet()
@@ -25,6 +38,8 @@ public sealed class LoadoutRunContentChangedEventArgs
     }
 
     public LoadoutRunContentKind Kind { get; }
+
+    public LoadoutRunContentChangeMode Mode { get; }
 
     public IReadOnlySet<ulong> PlayerNetIds { get; }
 
@@ -38,14 +53,20 @@ public static class LoadoutRunContentChangeService
 {
     public static event Action<LoadoutRunContentChangedEventArgs>? Changed;
 
-    public static void Notify(LoadoutRunContentKind kind, ulong playerNetId)
+    public static void Notify(
+        LoadoutRunContentKind kind,
+        ulong playerNetId,
+        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown)
     {
-        Notify(kind, [playerNetId]);
+        Notify(kind, [playerNetId], mode);
     }
 
-    public static void Notify(LoadoutRunContentKind kind, IEnumerable<ulong> playerNetIds)
+    public static void Notify(
+        LoadoutRunContentKind kind,
+        IEnumerable<ulong> playerNetIds,
+        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown)
     {
-        LoadoutRunContentChangedEventArgs args = new(kind, playerNetIds);
+        LoadoutRunContentChangedEventArgs args = new(kind, playerNetIds, mode);
         Action<LoadoutRunContentChangedEventArgs>? handlers = Changed;
         if (handlers is null)
             return;

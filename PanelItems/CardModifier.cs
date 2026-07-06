@@ -69,7 +69,8 @@ public class CardModifier
                     CardModifierTargetKey,
                     LoadoutTargetMode.PlayersOnly,
                     refresh);
-            });
+            },
+            (screen, selectItem) => screen.RefreshItemView(selectItem.Id));
 
     }
 
@@ -98,7 +99,7 @@ public class CardModifier
         {
             if (item.UntypedModel is LoadoutOwnedItem<CardModel>)
                 CommonHelpers.PlayCardSmithFeedback(view);
-        }, materializeMissing: true);
+        });
     }
 
     private static void OpenCardModificationScreen(LoadoutOwnedItem<CardModel> item, Control sourceView)

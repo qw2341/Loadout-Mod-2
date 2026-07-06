@@ -359,16 +359,16 @@ public static class LoadoutImmediateMutationService
         switch (payload.Kind)
         {
             case LoadoutImmediateMutationKind.AddCard:
-                ApplyAddCard(payload, requester);
+                TaskHelper.RunSafely(ApplyAddCardAsync(payload, requester));
                 break;
             case LoadoutImmediateMutationKind.AddRelic:
-                _ = ApplyAddRelicAsync(payload, requester);
+                TaskHelper.RunSafely(ApplyAddRelicAsync(payload, requester));
                 break;
             case LoadoutImmediateMutationKind.AddPotion:
-                _ = ApplyAddPotionAsync(payload, requester);
+                TaskHelper.RunSafely(ApplyAddPotionAsync(payload, requester));
                 break;
             case LoadoutImmediateMutationKind.RemoveCard:
-                ApplyRemoveCard(payload, requester);
+                TaskHelper.RunSafely(ApplyRemoveCardAsync(payload, requester));
                 break;
             case LoadoutImmediateMutationKind.UpgradeCard:
                 ApplyUpgradeCard(payload, requester);
@@ -383,7 +383,7 @@ public static class LoadoutImmediateMutationService
                 ApplyCardModification(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.ApplyLoadout:
-                LoadoutApplyService.ApplyImmediate(payload.LoadoutKind, payload.LoadoutPayload, payload.Target, requester.NetId);
+                TaskHelper.RunSafely(LoadoutApplyService.ApplyImmediateAsync(payload.LoadoutKind, payload.LoadoutPayload, payload.Target, requester.NetId));
                 break;
             case LoadoutImmediateMutationKind.AdjustPower:
                 ApplyAdjustPower(payload, requester);
@@ -397,32 +397,37 @@ public static class LoadoutImmediateMutationService
         }
     }
 
-    private static void ApplyAddCard(LoadoutImmediateMutationPayload payload, Player requester)
+    private static async Task ApplyAddCardAsync(LoadoutImmediateMutationPayload payload, Player requester)
     {
         if (payload.Amount <= 0 || ResolveCanonicalCard(payload.ModelId) is not { } canonicalCard)
             return;
 
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            bool deckChanged = AddDeckCardCopiesDirect(targetPlayer, canonicalCard, payload.Amount);
+            bool deckChanged = await AddDeckCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount);
             bool combatChanged = CombatManager.Instance.IsInProgress
-                                  && AddCombatHandCardCopiesDirect(targetPlayer, canonicalCard, payload.Amount);
+                                  && await AddCombatHandCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount);
 
             if (deckChanged || combatChanged)
-                LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, targetPlayer.NetId);
+                LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, targetPlayer.NetId, LoadoutRunContentChangeMode.Add);
         }
     }
 
-    private static bool AddDeckCardCopiesDirect(Player targetPlayer, CardModel canonicalCard, int amount)
+    private static async Task<bool> AddDeckCardCopiesAsync(Player targetPlayer, CardModel canonicalCard, int amount)
     {
         bool changed = false;
+        List<CardPileAddResult> addedCards = [];
         for (int i = 0; i < amount; i++)
         {
             try
             {
                 CardModel card = targetPlayer.RunState.CreateCard(canonicalCard, targetPlayer);
-                targetPlayer.Deck.AddInternal(card, -1, silent: true);
-                changed = true;
+                CardPileAddResult result = await CardPileCmd.Add(card, targetPlayer.Deck);
+                if (result.success)
+                {
+                    addedCards.Add(result);
+                    changed = true;
+                }
             }
             catch (Exception exception)
             {
@@ -431,23 +436,32 @@ public static class LoadoutImmediateMutationService
             }
         }
 
+        PreviewAddedCards(addedCards);
         return changed;
     }
 
-    private static bool AddCombatHandCardCopiesDirect(Player targetPlayer, CardModel canonicalCard, int amount)
+    private static async Task<bool> AddCombatHandCardCopiesAsync(Player targetPlayer, CardModel canonicalCard, int amount)
     {
         ICombatState? combatState = targetPlayer.Creature.CombatState;
-        if (combatState is null || TryFindCardPile(targetPlayer, "Hand") is not { } handPile)
+        if (combatState is null)
             return false;
 
         bool changed = false;
+        List<CardPileAddResult> addedCards = [];
         for (int i = 0; i < amount; i++)
         {
             try
             {
                 CardModel card = combatState.CreateCard(canonicalCard, targetPlayer);
-                handPile.AddInternal(card, -1, silent: false);
-                changed = true;
+                CardPileAddResult result;
+                using (LoadoutCardAddRules.IgnoreHandLimit())
+                    result = await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Hand, targetPlayer);
+
+                if (result.success)
+                {
+                    addedCards.Add(result);
+                    changed = true;
+                }
             }
             catch (Exception exception)
             {
@@ -456,7 +470,19 @@ public static class LoadoutImmediateMutationService
             }
         }
 
+        PreviewAddedCards(addedCards);
         return changed;
+    }
+
+    private static void PreviewAddedCards(IReadOnlyList<CardPileAddResult> addedCards)
+    {
+        if (addedCards.Count == 0)
+            return;
+
+        CardPreviewStyle style = addedCards.Count > 5
+            ? CardPreviewStyle.GridLayout
+            : CardPreviewStyle.HorizontalLayout;
+        CardCmd.PreviewCardPileAdd(addedCards, 1.2f, style);
     }
 
     private static async Task ApplyAddRelicAsync(LoadoutImmediateMutationPayload payload, Player requester)
@@ -510,16 +536,15 @@ public static class LoadoutImmediateMutationService
         }
     }
 
-    private static void ApplyRemoveCard(LoadoutImmediateMutationPayload payload, Player requester)
+    private static async Task ApplyRemoveCardAsync(LoadoutImmediateMutationPayload payload, Player requester)
     {
         if (TryGetOwnedDeckCard(payload, requester) is not { } item)
             return;
 
         try
         {
-            item.Owner.Deck.RemoveInternal(item.Model, silent: true);
-            item.Model.HasBeenRemovedFromState = true;
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, item.OwnerNetId);
+            await CardPileCmd.RemoveFromDeck(item.Model, showPreview: false);
+            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, item.OwnerNetId, LoadoutRunContentChangeMode.Remove);
         }
         catch (Exception exception)
         {
@@ -532,10 +557,9 @@ public static class LoadoutImmediateMutationService
         if (TryGetOwnedDeckCard(payload, requester) is not { } item)
             return;
 
-        if (UpgradeCardDirect(item.Model, Math.Max(1, payload.Amount)))
+        if (UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount)))
         {
-            CardModificationStateService.ReapplyEffectiveStateAfterUpgrade([item.Model]);
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, item.OwnerNetId);
+            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, item.OwnerNetId, LoadoutRunContentChangeMode.Update);
         }
     }
 
@@ -548,30 +572,28 @@ public static class LoadoutImmediateMutationService
             List<CardModel> upgradedCards = [];
             foreach (CardModel card in targetPlayer.Deck.Cards.ToList())
             {
-                if (UpgradeCardDirect(card, upgrades))
+                if (UpgradeCardWithCommand(card, upgrades))
                     upgradedCards.Add(card);
             }
 
             if (upgradedCards.Count == 0)
                 continue;
 
-            CardModificationStateService.ReapplyEffectiveStateAfterUpgrade(upgradedCards);
             changedPlayers.Add(targetPlayer.NetId);
         }
 
         if (changedPlayers.Count > 0)
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedPlayers);
+            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedPlayers, LoadoutRunContentChangeMode.Update);
     }
 
-    private static bool UpgradeCardDirect(CardModel card, int upgrades)
+    private static bool UpgradeCardWithCommand(CardModel card, int upgrades)
     {
         bool changed = false;
         for (int i = 0; i < upgrades && card.IsUpgradable; i++)
         {
             try
             {
-                card.UpgradeInternal();
-                card.FinalizeUpgradeInternal();
+                CardCmd.Upgrade(card, CardPreviewStyle.None);
                 changed = true;
             }
             catch (Exception exception)
@@ -791,61 +813,6 @@ public static class LoadoutImmediateMutationService
         {
             return false;
         }
-    }
-
-    private static CardPile? TryFindCardPile(object? root, string nameFragment)
-    {
-        if (root is null)
-            return null;
-
-        Type type = root.GetType();
-        const System.Reflection.BindingFlags flags =
-            System.Reflection.BindingFlags.Instance
-            | System.Reflection.BindingFlags.Public
-            | System.Reflection.BindingFlags.NonPublic;
-
-        foreach (System.Reflection.PropertyInfo property in type.GetProperties(flags))
-        {
-            if (!property.CanRead
-                || !typeof(CardPile).IsAssignableFrom(property.PropertyType)
-                || !property.Name.Contains(nameFragment, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            try
-            {
-                if (property.GetValue(root) is CardPile pile)
-                    return pile;
-            }
-            catch
-            {
-                // Continue searching.
-            }
-        }
-
-        foreach (System.Reflection.FieldInfo field in type.GetFields(flags))
-        {
-            if (!typeof(CardPile).IsAssignableFrom(field.FieldType)
-                || !field.Name.Contains(nameFragment, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            try
-            {
-                if (field.GetValue(root) is CardPile pile)
-                    return pile;
-            }
-            catch
-            {
-                // Continue searching.
-            }
-        }
-
-        return root is Player player
-            ? TryFindCardPile(player.Creature?.CombatState, nameFragment)
-            : null;
     }
 
     private static bool IdMatches(AbstractModel model, ModelId id)

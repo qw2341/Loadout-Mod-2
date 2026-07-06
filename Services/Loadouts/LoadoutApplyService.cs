@@ -5,10 +5,8 @@ namespace Loadout.Services.Loadouts;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
-using HarmonyLib;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.Targets;
@@ -19,15 +17,11 @@ using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 
 public static class LoadoutApplyService
 {
-    private static readonly MethodInfo? PopulateDeckMethod = AccessTools.Method(
-        typeof(Player),
-        "PopulateDeck",
-        [typeof(IEnumerable<CardModel>), typeof(bool)]);
-
     public static event Action<string>? WarningRaised;
 
     public static bool RequestApply(SavedLoadout loadout, LoadoutTargetSelection target)
@@ -41,7 +35,7 @@ public static class LoadoutApplyService
         return LoadoutImmediateMutationService.RequestApplyLoadout(loadout.Kind, encodedPayload, effectiveTarget);
     }
 
-    internal static void ApplyImmediate(
+    internal static async Task ApplyImmediateAsync(
         LoadoutKind kind,
         string encodedPayload,
         LoadoutTargetSelection target,
@@ -66,12 +60,12 @@ public static class LoadoutApplyService
             if (!loadout.HasCards)
                 continue;
 
-            if (ReplaceCardsDirect(targetPlayer, loadout.Cards))
+            if (await ReplaceCardsWithCommandsAsync(targetPlayer, loadout.Cards))
                 changedCardPlayers.Add(targetPlayer.NetId);
         }
 
         if (changedCardPlayers.Count > 0)
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedCardPlayers);
+            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedCardPlayers, LoadoutRunContentChangeMode.Replace);
 
         if (loadout.HasRelics)
             _ = ReplaceRelicsAsync(targets, loadout.Relics);
@@ -91,11 +85,10 @@ public static class LoadoutApplyService
         }
     }
 
-    private static bool ReplaceCardsDirect(Player targetPlayer, IReadOnlyList<SavedCardLoadoutEntry> entries)
+    private static async Task<bool> ReplaceCardsWithCommandsAsync(Player targetPlayer, IReadOnlyList<SavedCardLoadoutEntry> entries)
     {
         List<CardModel> existingCards = targetPlayer.Deck.Cards.ToList();
-        List<CardModel> cardsToInstall = [];
-        Dictionary<CardModel, CardModificationState> stateByCard = new(ReferenceEqualityComparer.Instance);
+        List<(CardModel Card, CardModificationState? ModificationState)> cardsToInstall = [];
 
         foreach (SavedCardLoadoutEntry entry in entries)
         {
@@ -109,24 +102,23 @@ public static class LoadoutApplyService
             int count = Math.Max(1, entry.Count);
             for (int i = 0; i < count; i++)
             {
-                CardModel? card = CreateDeckCardDirect(targetPlayer, canonical, entry.UpgradeLevel);
+                CardModel? card = CreateDeckCardForLoadout(targetPlayer, canonical, entry.UpgradeLevel);
                 if (card is null)
                     continue;
 
-                cardsToInstall.Add(card);
-                if (entry.ModificationState is not null && !entry.ModificationState.IsEmpty)
-                    stateByCard[card] = entry.ModificationState.Clone();
+                CardModificationState? modificationState = entry.ModificationState is not null && !entry.ModificationState.IsEmpty
+                    ? entry.ModificationState.Clone()
+                    : null;
+                cardsToInstall.Add((card, modificationState));
             }
         }
 
         try
         {
-            foreach (CardModel card in existingCards)
-                card.HasBeenRemovedFromState = true;
-
-            ReplacePlayerDeck(targetPlayer, existingCards, cardsToInstall);
+            (bool changed, Dictionary<CardModel, CardModificationState> stateByCard) =
+                await ReplacePlayerDeckWithCommandsAsync(targetPlayer, existingCards, cardsToInstall);
             CardModificationStateService.ReplaceTemporaryStatesForPlayer(targetPlayer, stateByCard);
-            return existingCards.Count > 0 || cardsToInstall.Count > 0;
+            return changed;
         }
         catch (Exception exception)
         {
@@ -138,50 +130,59 @@ public static class LoadoutApplyService
         }
     }
 
-    private static void ReplacePlayerDeck(
+    private static async Task<(bool Changed, Dictionary<CardModel, CardModificationState> StateByCard)> ReplacePlayerDeckWithCommandsAsync(
         Player targetPlayer,
         IReadOnlyList<CardModel> existingCards,
-        IReadOnlyList<CardModel> cardsToInstall)
+        IReadOnlyList<(CardModel Card, CardModificationState? ModificationState)> cardsToInstall)
     {
-        if (PopulateDeckMethod is not null)
-        {
-            PopulateDeckMethod.Invoke(targetPlayer, [cardsToInstall, true]);
-            return;
-        }
+        bool changed = false;
+        Dictionary<CardModel, CardModificationState> stateByCard = new(ReferenceEqualityComparer.Instance);
 
         foreach (CardModel card in existingCards)
         {
             try
             {
-                targetPlayer.Deck.RemoveInternal(card, silent: true);
-                card.HasBeenRemovedFromState = true;
+                if (card.Pile?.Type != PileType.Deck)
+                    continue;
+
+                await CardPileCmd.RemoveFromDeck(card, showPreview: false);
+                changed = true;
             }
-            catch
+            catch (Exception exception)
             {
-                // Continue replacing the rest of the deck.
+                Warn($"Loadout: failed removing card '{card.Id}' from player {targetPlayer.NetId}. {exception.Message}");
             }
         }
 
-        foreach (CardModel card in cardsToInstall)
-            targetPlayer.Deck.AddInternal(card, -1, silent: true);
+        foreach ((CardModel card, CardModificationState? modificationState) in cardsToInstall)
+        {
+            try
+            {
+                CardPileAddResult result = await CardPileCmd.Add(card, targetPlayer.Deck, skipVisuals: true);
+                if (!result.success)
+                    continue;
+
+                changed = true;
+                if (modificationState is not null)
+                    stateByCard[result.cardAdded] = modificationState;
+            }
+            catch (Exception exception)
+            {
+                Warn($"Loadout: failed adding card '{card.Id}' to player {targetPlayer.NetId}. {exception.Message}");
+            }
+        }
+
+        return (changed, stateByCard);
     }
 
-    private static CardModel? CreateDeckCardDirect(Player targetPlayer, CardModel canonical, int upgradeLevel)
+    private static CardModel? CreateDeckCardForLoadout(Player targetPlayer, CardModel canonical, int upgradeLevel)
     {
         try
         {
             CardModel card = targetPlayer.RunState.CreateCard(canonical, targetPlayer);
             int upgrades = Math.Min(Math.Max(0, upgradeLevel), Math.Max(0, card.MaxUpgradeLevel));
-            bool upgraded = false;
             for (int i = 0; i < upgrades && card.IsUpgradable; i++)
-            {
-                card.UpgradeInternal();
-                card.FinalizeUpgradeInternal();
-                upgraded = true;
-            }
-
-            if (upgraded)
-                CardModificationStateService.ReapplyEffectiveStateAfterUpgrade([card]);
+                CardCmd.Upgrade(card, CardPreviewStyle.None);
 
             return card;
         }
