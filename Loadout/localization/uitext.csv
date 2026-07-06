@@ -128,6 +128,20 @@ POWERGIVERALT_TITLE,Lemegeton,所罗门魔典
 POWERGIVERALT_DESC,"Right-click this relic to select the power for you/monsters at the start/middle of combat. Left-click to increase, right-click to decrease. Ctrl x5, Shift x10. Alt + left-click to favorite. Ctrl + right click to repeat the last action.","右键此遗物来选择你或怪物在战斗开始时/中获得的能力。 左键增加，右键减少。Ctrl x5, Shift x10。 Alt+左键收藏。Ctrl + 右键来重复上一次操作。"
 TILDEKEY_TITLE,Reality Manipulator,现实操纵仪
 TILDEKEY_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。
+TILDEKEY_GODMODE,Godmode,上帝模式
+TILDEKEY_GO_TO_ANY_ROOM,Go To Any Room,前往任意房间
+TILDEKEY_LOCK,Lock,锁定
+TILDEKEY_STAT_CURRENT_HP,Current HP,当前生命值
+TILDEKEY_STAT_MAX_HP,Max HP,最大生命值
+TILDEKEY_STAT_MAX_ENERGY,Max Energy,最大能量
+TILDEKEY_STAT_COMBAT_ENERGY,Combat Energy,战斗能量
+TILDEKEY_STAT_BASE_ORB_SLOTS,Base Orb Slots,基础充能球栏位
+TILDEKEY_STAT_MAX_POTION_SLOTS,Max Potion Slots,最大药水栏位
+TILDEKEY_STAT_TURN_NUMBER,Turn Number,回合数
+TILDEKEY_STAT_CARD_SHOP_REMOVALS_USED,Card Shop Removals Used,商店删卡次数
+TILDEKEY_STAT_WONGO_POINTS,Wongo Points,Wongo 点数
+TILDEKEY_STAT_DAMAGE_DEALT,Damage Dealt,造成伤害
+TILDEKEY_STAT_DEBUFFS_APPLIED,Debuffs Applied,施加减益
 TILDEKEYALT_TITLE,Tilde Key,波浪键
 TILDEKEYALT_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。
 BOTTLEDMONSTER_TITLE,Bottled Monster,瓶装怪物

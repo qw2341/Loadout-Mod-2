@@ -3,7 +3,9 @@
 namespace Loadout.PanelItems;
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
@@ -15,13 +17,29 @@ using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Runs;
 
 public static partial class TildeKey
 {
     private const string TargetDropdownName = "TildeKeyTargetDropdown";
     private const string GodmodeToggleName = "TildeKeyGodmodeToggle";
     private const string GoToAnyRoomToggleName = "TildeKeyGoToAnyRoomToggle";
+    private const string StaticHoverTipsTable = "static_hover_tips";
+    private const string HeartIconPath = "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_heart.tres";
+    private const string GoldIconPath = "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_gold.tres";
+    private const string BlockIconPath = "res://images/ui/combat/block.png";
+    private const string StarIconPath = "res://images/ui/combat/energy_star.png";
+    private const string OrbSlotIconPath = "res://images/orbs/empty_orb.png";
+    private const string PotionSlotIconPath = "res://images/packed/potions/potion_placeholder.png";
+    private const string TurnIconPath = "res://images/ui/run_history/unknown_monster.png";
+    private const string CardRemovalIconPath = "res://images/ui/reward_screen/reward_icon_card_removal.png";
+    private const string WongoIconPath = "res://images/relics/wongo_customer_appreciation_badge.png";
+    private const string DamageIconPath = "res://images/ui/game_over_screen/badge_damage_leader.png";
+    private const string DebuffIconPath = "res://images/ui/game_over_screen/badge_debuffer.png";
+    private static readonly Color HpAccent = new("F1373E");
+    private static readonly Color BlockAccent = new("3B6FA3");
     private static readonly Vector2 StatRowSize = new(720f, 54f);
+    private static readonly Dictionary<string, Texture2D?> TextureCache = new(StringComparer.Ordinal);
 
     public static void Initialize()
     {
@@ -36,8 +54,8 @@ public static partial class TildeKey
         SelectItemAdapter<TildeKeyStatDefinition> adapter = new()
         {
             GetId = definition => definition.Id,
-            GetName = definition => definition.Label,
-            GetSearchText = definition => $"{definition.Id} {definition.Label}",
+            GetName = GetStatLabel,
+            GetSearchText = GetStatSearchText,
             CreateView = (definition, _) => new TildeStatRow(screen, definition),
             UpdateView = (definition, view, _) =>
             {
@@ -184,14 +202,149 @@ public static partial class TildeKey
             LoadoutTargetMode.AllPlayersAndPlayers);
     }
 
+    private static string GetStatLabel(TildeKeyStatDefinition definition)
+    {
+        return GetStatPresentation(definition).Label;
+    }
+
+    private static string GetStatSearchText(TildeKeyStatDefinition definition)
+    {
+        string label = GetStatLabel(definition);
+        return string.Equals(label, definition.Label, StringComparison.Ordinal)
+            ? $"{definition.Id} {definition.Label}"
+            : $"{definition.Id} {definition.Label} {label}";
+    }
+
+    private static TildeStatPresentation GetStatPresentation(TildeKeyStatDefinition definition)
+    {
+        return definition.Id switch
+        {
+            "current_hp" => new(
+                LocMan.Loc("TILDEKEY_STAT_CURRENT_HP", $"Current {StaticHoverTitle("HIT_POINTS", "HP")}"),
+                HeartIconPath,
+                HpAccent),
+            "max_hp" => new(
+                LocMan.Loc("TILDEKEY_STAT_MAX_HP", $"Max {StaticHoverTitle("HIT_POINTS", "HP")}"),
+                HeartIconPath,
+                HpAccent),
+            "block" => new(
+                StaticHoverTitle("BLOCK", definition.Label),
+                BlockIconPath,
+                BlockAccent),
+            "gold" => new(
+                StaticHoverTitle("MONEY_POUCH", definition.Label),
+                GoldIconPath,
+                StsColors.gold),
+            "max_energy" => new(
+                LocMan.Loc("TILDEKEY_STAT_MAX_ENERGY", $"Max {StaticHoverTitle("ENERGY_COUNT", "Energy")}"),
+                GetEnergyIconPath(),
+                StsColors.energyBlue),
+            "combat_energy" => new(
+                LocMan.Loc("TILDEKEY_STAT_COMBAT_ENERGY", $"Combat {StaticHoverTitle("ENERGY_COUNT", "Energy")}"),
+                GetEnergyIconPath(),
+                StsColors.energyBlue),
+            "stars" => new(
+                StaticHoverTitle("STAR_COUNT", definition.Label),
+                StarIconPath,
+                StsColors.blue),
+            "base_orb_slots" => new(
+                LocMan.Loc("TILDEKEY_STAT_BASE_ORB_SLOTS", "Base Orb Slots"),
+                OrbSlotIconPath,
+                StsColors.lightGray),
+            "max_potion_slots" => new(
+                LocMan.Loc("TILDEKEY_STAT_MAX_POTION_SLOTS", $"Max {StaticHoverTitle("POTION_SLOT", "Potion Slot")}s"),
+                PotionSlotIconPath,
+                StsColors.lightGray),
+            "turn_number" => new(
+                LocMan.Loc("TILDEKEY_STAT_TURN_NUMBER", "Turn Number"),
+                TurnIconPath,
+                StsColors.gray),
+            "extra_card_shop_removals" => new(
+                LocMan.Loc("TILDEKEY_STAT_CARD_SHOP_REMOVALS_USED", "Card Shop Removals Used"),
+                CardRemovalIconPath,
+                StsColors.gray),
+            "extra_wongo_points" => new(
+                LocMan.Loc("TILDEKEY_STAT_WONGO_POINTS", "Wongo Points"),
+                WongoIconPath,
+                StsColors.gray),
+            "extra_damage_dealt" => new(
+                LocMan.Loc("TILDEKEY_STAT_DAMAGE_DEALT", "Damage Dealt"),
+                DamageIconPath,
+                StsColors.gray),
+            "extra_debuffs_applied" => new(
+                LocMan.Loc("TILDEKEY_STAT_DEBUFFS_APPLIED", "Debuffs Applied"),
+                DebuffIconPath,
+                StsColors.gray),
+            _ => new(definition.Label, null, StsColors.gold)
+        };
+    }
+
+    private static string StaticHoverTitle(string key, string fallback)
+    {
+        return LocMan.GameLoc(StaticHoverTipsTable, $"{key}.title", fallback);
+    }
+
+    private static string GetEnergyIconPath()
+    {
+        const string fallback = "res://images/atlases/ui_atlas.sprites/card/energy_ironclad.tres";
+        try
+        {
+            if (!RunManager.Instance.IsInProgress)
+                return fallback;
+
+            var runState = RunManager.Instance.DebugOnlyGetState();
+            if (runState is null)
+                return fallback;
+
+            string? path = LoadoutTargetService.ResolvePlayers(GetSelectedTarget(), runState)
+                .FirstOrDefault()
+                ?.Character
+                .CardPool
+                .EnergyIconPath;
+            return string.IsNullOrWhiteSpace(path) ? fallback : path;
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    private static Texture2D? LoadTexture(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        if (TextureCache.TryGetValue(path, out Texture2D? cached))
+            return cached;
+
+        Texture2D? texture = null;
+        try
+        {
+            texture = ResourceLoader.Exists(path)
+                ? ResourceLoader.Load<Texture2D>(path, null, ResourceLoader.CacheMode.Reuse)
+                : null;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"TildeKey: failed to load icon '{path}'. {exception.Message}");
+        }
+
+        TextureCache[path] = texture;
+        return texture;
+    }
+
+    private readonly record struct TildeStatPresentation(string Label, string? IconPath, Color Accent);
+
     private sealed partial class TildeStatRow : HBoxContainer
     {
         private readonly NGenericSelectScreen _screen;
         private TildeKeyStatDefinition _definition;
+        private readonly TextureRect _icon;
         private readonly MegaLabel _nameLabel;
         private readonly LineEdit _valueEntry;
         private readonly NLoadoutToggle? _lockToggle;
         private bool _isRefreshing;
+        private bool _suppressNextFocusCommit;
 
         public TildeStatRow(NGenericSelectScreen screen, TildeKeyStatDefinition definition)
         {
@@ -203,12 +356,15 @@ public static partial class TildeKey
             AddThemeConstantOverride("separation", 12);
             MouseFilter = MouseFilterEnum.Pass;
 
-            _nameLabel = CreateLabel("Name", definition.Label, new Vector2(300f, 52f), 22, HorizontalAlignment.Left, StsColors.gold);
+            _icon = CreateIcon();
+            AddChild(_icon);
+
+            _nameLabel = CreateLabel("Name", definition.Label, new Vector2(254f, 52f), 22, HorizontalAlignment.Left, StsColors.gold);
             AddChild(_nameLabel);
 
             _valueEntry = CreateEntry();
             _valueEntry.TextSubmitted += OnTextSubmitted;
-            _valueEntry.FocusExited += CommitText;
+            _valueEntry.FocusExited += OnFocusExited;
             AddChild(_valueEntry);
 
             if (definition.SupportsLock)
@@ -240,7 +396,13 @@ public static partial class TildeKey
         {
             _definition = definition;
             _isRefreshing = true;
-            _nameLabel.Text = definition.Label;
+            TildeStatPresentation presentation = GetStatPresentation(definition);
+            Texture2D? iconTexture = LoadTexture(presentation.IconPath);
+            _icon.Texture = iconTexture;
+            _icon.Visible = iconTexture is not null;
+            _icon.Modulate = presentation.Accent;
+            _nameLabel.Text = presentation.Label;
+            _nameLabel.AddThemeColorOverride("font_color", presentation.Accent);
 
             int value = TildeKeyStateService.GetDisplayValue(definition, GetSelectedTarget());
             if (!_valueEntry.HasFocus())
@@ -253,12 +415,43 @@ public static partial class TildeKey
         public override void _ExitTree()
         {
             _valueEntry.TextSubmitted -= OnTextSubmitted;
-            _valueEntry.FocusExited -= CommitText;
+            _valueEntry.FocusExited -= OnFocusExited;
+        }
+
+        public override void _Input(InputEvent @event)
+        {
+            if (!_valueEntry.HasFocus())
+                return;
+
+            if (@event is not InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } mouseButton)
+                return;
+
+            if (_valueEntry.GetGlobalRect().HasPoint(mouseButton.GlobalPosition))
+                return;
+
+            CommitAndReleaseFocus();
         }
 
         private void OnTextSubmitted(string _)
         {
+            CommitAndReleaseFocus();
+        }
+
+        private void OnFocusExited()
+        {
+            if (_suppressNextFocusCommit)
+            {
+                _suppressNextFocusCommit = false;
+                return;
+            }
+
             CommitText();
+        }
+
+        private void CommitAndReleaseFocus()
+        {
+            CommitText();
+            _suppressNextFocusCommit = true;
             _valueEntry.ReleaseFocus();
         }
 
@@ -307,6 +500,20 @@ public static partial class TildeKey
             entry.AddThemeColorOverride("font_color", StsColors.cream);
             entry.AddThemeColorOverride("font_focus_color", StsColors.gold);
             return entry;
+        }
+
+        private static TextureRect CreateIcon()
+        {
+            return new TextureRect
+            {
+                Name = "Icon",
+                CustomMinimumSize = new Vector2(44f, 44f),
+                SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+                SizeFlagsVertical = SizeFlags.ShrinkCenter,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
         }
 
         private static MegaLabel CreateLabel(
