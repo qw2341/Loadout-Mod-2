@@ -5,8 +5,10 @@ namespace Loadout.Services.Loadouts;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
+using HarmonyLib;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.Targets;
@@ -17,11 +19,12 @@ using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
-using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 
 public static class LoadoutApplyService
 {
+    private static readonly FieldInfo? CardPileCardsField = AccessTools.Field(typeof(CardPile), "_cards");
+
     public static event Action<string>? WarningRaised;
 
     public static bool RequestApply(SavedLoadout loadout, LoadoutTargetSelection target)
@@ -35,7 +38,7 @@ public static class LoadoutApplyService
         return LoadoutImmediateMutationService.RequestApplyLoadout(loadout.Kind, encodedPayload, effectiveTarget);
     }
 
-    internal static async Task ApplyImmediateAsync(
+    internal static void ApplyImmediate(
         LoadoutKind kind,
         string encodedPayload,
         LoadoutTargetSelection target,
@@ -60,7 +63,7 @@ public static class LoadoutApplyService
             if (!loadout.HasCards)
                 continue;
 
-            if (await ReplaceCardsWithCommandsAsync(targetPlayer, loadout.Cards))
+            if (ReplaceCardsDirect(targetPlayer, loadout.Cards))
                 changedCardPlayers.Add(targetPlayer.NetId);
         }
 
@@ -85,10 +88,17 @@ public static class LoadoutApplyService
         }
     }
 
-    private static async Task<bool> ReplaceCardsWithCommandsAsync(Player targetPlayer, IReadOnlyList<SavedCardLoadoutEntry> entries)
+    private static bool ReplaceCardsDirect(Player targetPlayer, IReadOnlyList<SavedCardLoadoutEntry> entries)
     {
-        List<CardModel> existingCards = targetPlayer.Deck.Cards.ToList();
-        List<(CardModel Card, CardModificationState? ModificationState)> cardsToInstall = [];
+        if (!TryGetDeckBackingList(targetPlayer, out List<CardModel> deckCards))
+        {
+            Warn($"Loadout: failed replacing deck for player {targetPlayer.NetId}. Could not access deck backing list.");
+            return false;
+        }
+
+        List<CardModel> oldCards = deckCards.ToList();
+        List<CardModel> newCards = [];
+        Dictionary<CardModel, CardModificationState> stateByCard = new(ReferenceEqualityComparer.Instance);
 
         foreach (SavedCardLoadoutEntry entry in entries)
         {
@@ -106,19 +116,17 @@ public static class LoadoutApplyService
                 if (card is null)
                     continue;
 
-                CardModificationState? modificationState = entry.ModificationState is not null && !entry.ModificationState.IsEmpty
-                    ? entry.ModificationState.Clone()
-                    : null;
-                cardsToInstall.Add((card, modificationState));
+                newCards.Add(card);
+                if (entry.ModificationState is not null && !entry.ModificationState.IsEmpty)
+                    stateByCard[card] = entry.ModificationState.Clone();
             }
         }
 
         try
         {
-            (bool changed, Dictionary<CardModel, CardModificationState> stateByCard) =
-                await ReplacePlayerDeckWithCommandsAsync(targetPlayer, existingCards, cardsToInstall);
+            ReplacePlayerDeckDirect(targetPlayer, deckCards, oldCards, newCards);
             CardModificationStateService.ReplaceTemporaryStatesForPlayer(targetPlayer, stateByCard);
-            return changed;
+            return oldCards.Count > 0 || newCards.Count > 0;
         }
         catch (Exception exception)
         {
@@ -126,53 +134,34 @@ public static class LoadoutApplyService
             CardModificationStateService.ReplaceTemporaryStatesForPlayer(
                 targetPlayer,
                 new Dictionary<CardModel, CardModificationState>(ReferenceEqualityComparer.Instance));
-            return existingCards.Count > 0;
+            return oldCards.Count > 0;
         }
     }
 
-    private static async Task<(bool Changed, Dictionary<CardModel, CardModificationState> StateByCard)> ReplacePlayerDeckWithCommandsAsync(
+    private static void ReplacePlayerDeckDirect(
         Player targetPlayer,
-        IReadOnlyList<CardModel> existingCards,
-        IReadOnlyList<(CardModel Card, CardModificationState? ModificationState)> cardsToInstall)
+        List<CardModel> deckCards,
+        IReadOnlyList<CardModel> oldCards,
+        IReadOnlyList<CardModel> newCards)
     {
-        bool changed = false;
-        Dictionary<CardModel, CardModificationState> stateByCard = new(ReferenceEqualityComparer.Instance);
-
-        foreach (CardModel card in existingCards)
+        foreach (CardModel oldCard in oldCards)
         {
             try
             {
-                if (card.Pile?.Type != PileType.Deck)
-                    continue;
-
-                await CardPileCmd.RemoveFromDeck(card, showPreview: false);
-                changed = true;
+                targetPlayer.RunState.RemoveCard(oldCard);
+                oldCard.HasBeenRemovedFromState = true;
             }
             catch (Exception exception)
             {
-                Warn($"Loadout: failed removing card '{card.Id}' from player {targetPlayer.NetId}. {exception.Message}");
+                Warn($"Loadout: failed unregistering old card '{oldCard.Id}' from player {targetPlayer.NetId}. {exception.Message}");
             }
         }
 
-        foreach ((CardModel card, CardModificationState? modificationState) in cardsToInstall)
-        {
-            try
-            {
-                CardPileAddResult result = await CardPileCmd.Add(card, targetPlayer.Deck, skipVisuals: true);
-                if (!result.success)
-                    continue;
-
-                changed = true;
-                if (modificationState is not null)
-                    stateByCard[result.cardAdded] = modificationState;
-            }
-            catch (Exception exception)
-            {
-                Warn($"Loadout: failed adding card '{card.Id}' to player {targetPlayer.NetId}. {exception.Message}");
-            }
-        }
-
-        return (changed, stateByCard);
+        deckCards.Clear();
+        deckCards.AddRange(newCards);
+        targetPlayer.Deck.InvokeContentsChanged();
+        targetPlayer.Deck.InvokeCardRemoveFinished();
+        targetPlayer.Deck.InvokeCardAddFinished();
     }
 
     private static CardModel? CreateDeckCardForLoadout(Player targetPlayer, CardModel canonical, int upgradeLevel)
@@ -180,10 +169,8 @@ public static class LoadoutApplyService
         try
         {
             CardModel card = targetPlayer.RunState.CreateCard(canonical, targetPlayer);
-            int upgrades = Math.Min(Math.Max(0, upgradeLevel), Math.Max(0, card.MaxUpgradeLevel));
-            for (int i = 0; i < upgrades && card.IsUpgradable; i++)
-                CardCmd.Upgrade(card, CardPreviewStyle.None);
-
+            ApplyLoadoutUpgradeLevelDirect(card, upgradeLevel);
+            CardModificationStateService.ApplyPermanentToCard(card);
             return card;
         }
         catch (Exception exception)
@@ -191,6 +178,35 @@ public static class LoadoutApplyService
             Warn($"Loadout: failed creating card '{canonical.Id}'. {exception.Message}");
             return null;
         }
+    }
+
+    private static void ApplyLoadoutUpgradeLevelDirect(CardModel card, int upgradeLevel)
+    {
+        int upgrades = Math.Min(Math.Max(0, upgradeLevel), Math.Max(0, card.MaxUpgradeLevel));
+        for (int i = 0; i < upgrades && card.IsUpgradable; i++)
+        {
+            card.UpgradeInternal();
+            card.FinalizeUpgradeInternal();
+        }
+    }
+
+    private static bool TryGetDeckBackingList(Player targetPlayer, out List<CardModel> deckCards)
+    {
+        deckCards = null!;
+        try
+        {
+            if (CardPileCardsField?.GetValue(targetPlayer.Deck) is List<CardModel> cards)
+            {
+                deckCards = cards;
+                return true;
+            }
+        }
+        catch (Exception exception)
+        {
+            Warn($"Loadout: failed reading deck backing list for player {targetPlayer.NetId}. {exception.Message}");
+        }
+
+        return false;
     }
 
     private static async Task ReplaceRelicsAsync(

@@ -383,7 +383,7 @@ public static class LoadoutImmediateMutationService
                 ApplyCardModification(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.ApplyLoadout:
-                TaskHelper.RunSafely(LoadoutApplyService.ApplyImmediateAsync(payload.LoadoutKind, payload.LoadoutPayload, payload.Target, requester.NetId));
+                LoadoutApplyService.ApplyImmediate(payload.LoadoutKind, payload.LoadoutPayload, payload.Target, requester.NetId);
                 break;
             case LoadoutImmediateMutationKind.AdjustPower:
                 ApplyAdjustPower(payload, requester);
