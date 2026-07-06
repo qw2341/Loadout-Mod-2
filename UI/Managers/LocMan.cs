@@ -187,8 +187,25 @@ public static class LocMan
         return dynamicVar switch
         {
             BlockVar _ => CommonLoc.Block,
+            CalculatedBlockVar _ => CommonLoc.CalculatedBlock,
+            CalculatedDamageVar _ => CommonLoc.CalculatedDamage,
+            CalculationBaseVar _ => CommonLoc.CalculationBase,
+            CalculationExtraVar _ => CommonLoc.CalculationExtra,
+            CardsVar _ => CommonLoc.Cards,
             DamageVar _ => CommonLoc.Damage,
-            _ => dynamicVar.Name
+            EnergyVar _ => CommonLoc.Energy,
+            ExtraDamageVar _ => CommonLoc.ExtraDamage,
+            ForgeVar _ => CommonLoc.Forge,
+            GoldVar _ => CommonLoc.Gold,
+            HealVar _ => CommonLoc.Heal,
+            HpLossVar _ => CommonLoc.HpLoss,
+            IfUpgradedVar _ => CommonLoc.IfUpgraded,
+            MaxHpVar _ => CommonLoc.MaxHp,
+            OstyDamageVar _ => CommonLoc.OstyDamage,
+            RepeatVar _ => CommonLoc.Repeat,
+            StarsVar _ => CommonLoc.Stars,
+            SummonVar _ => CommonLoc.Summon,
+            _ => Loc($"DYNAMIC_VAR_{dynamicVar.Name.ToUpper()}",dynamicVar.Name)
 
         };
     }

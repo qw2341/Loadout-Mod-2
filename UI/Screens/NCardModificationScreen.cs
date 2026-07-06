@@ -531,7 +531,7 @@ public partial class NCardModificationScreen : Control
                 ? Decimal.ToInt32(saved)
                 : Decimal.ToInt32(dynamicVar.BaseValue);
             
-            AddStepperRow(_leftControls, dynamicVar.Name, current, int.MinValue, int.MaxValue, value =>
+            AddStepperRow(_leftControls, LocMan.DynamicVarLoc(dynamicVar), current, int.MinValue, int.MaxValue, value =>
             {
                 _workingState.DynamicVars[name] = value;
                 _temporaryState.DynamicVars[name] = value;
