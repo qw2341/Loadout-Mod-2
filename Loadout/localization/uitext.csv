@@ -74,9 +74,9 @@ POWER_GIVER_TARGET,Target,目标
 POWER_GIVER_TARGET_PLAYER,Player,玩家
 POWER_GIVER_TARGET_PLAYERS,Players,玩家
 POWER_GIVER_TARGET_MONSTERS,Monsters,怪物
-POOL_SHARED,Shared,共享
-POOL_COLORLESS,Colorless,无色
-POOL_EVENT,Event,事件
+SHARED,Shared,共享
+COLORLESS,Colorless,无色
+EVENT,Event,事件
 NONE,None,无
 OTHER,Other,其他
 ENUM_POTIONRARITY_COMMON,Common,普通
@@ -162,9 +162,9 @@ BLIGHTCHESTALT_TITLE,Tiny Blight Chest,小荒疫箱
 BLIGHTCHESTALT_DESC,"Right-click this relic to obtain any blights. Left-click to obtain, right-click to remove. Ctrl x5, Shift x10.",右键获得任何你想要的荒疫。左键获取，右键移除。Ctrl x5，Shift x10。
 ALLINONEBAGUP_TITLE,Ultimate Bag,终极装备箱
 ALLINONEBAGUP_DESC,Right-click this relic to win the game.,右键此遗物来获取胜利。
-HOST_PERMAMODS_DOWNLOAD_TITLE, Download Host Permamod, 下载主机永久修改
+HOST_PERMAMODS_DOWNLOAD_TITLE, Download Host Permamod,下载主机永久修改
 DAMAGE,Damage,伤害
-DYNAMIC_VAR_DAMAGEBACK,Damage Back, 伤害返还
+DYNAMIC_VAR_DAMAGEBACK,Damage Back,伤害返还
 DYNAMIC_VAR_CALCULATED_BLOCK,Calculated Block,计算格挡
 DYNAMIC_VAR_CALCULATED_DAMAGE,Calculated Damage,计算伤害
 DYNAMIC_VAR_CALCULATION_BASE,Base Value,基础数值
@@ -180,3 +180,7 @@ DYNAMIC_VAR_OSTY_DAMAGE,Osty Damage,奥斯蒂伤害
 DYNAMIC_VAR_STRENGTHLOSS,Strength Loss,力量失去
 DYNAMIC_VAR_POWER,Power,效力
 DYNAMIC_VAR_INCREASE,Increase,增加
+CURSE,Curse,诅咒
+QUEST,Quest,任务
+STATUS,Status,状态
+TOKEN,Token,衍生

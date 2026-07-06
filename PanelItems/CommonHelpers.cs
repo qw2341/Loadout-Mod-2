@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Helpers;
 using Loadout.Services.Actions;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
@@ -22,6 +23,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
@@ -443,18 +445,27 @@ public class CommonHelpers
 
         if (pool is CardPoolModel cardPool && !string.IsNullOrWhiteSpace(cardPool.Title))
         {
-            return cardPool.Title;
+            return cardPool switch
+            {
+                ColorlessCardPool => CommonLoc.Colorless,
+                CurseCardPool => CommonLoc.Curse,
+                EventCardPool => CommonLoc.Event,
+                QuestCardPool => CommonLoc.Quest,
+                StatusCardPool => CommonLoc.Status,
+                TokenCardPool => CommonLoc.Token,
+                _ => cardPool.Title
+            };
         }
 
         string typeName = pool.GetType().Name;
         if (typeName.StartsWith("Shared", StringComparison.Ordinal))
-            return LocMan.Loc("POOL_SHARED", "Shared");
+            return LocMan.Loc("SHARED", "Shared");
 
         if (typeName.StartsWith("Colorless", StringComparison.Ordinal))
-            return LocMan.Loc("POOL_COLORLESS", "Colorless");
+            return LocMan.Loc("COLORLESS", "Colorless");
 
         if (typeName.StartsWith("Event", StringComparison.Ordinal))
-            return LocMan.Loc("POOL_EVENT", "Event");
+            return LocMan.Loc("EVENT", "Event");
 
         return PrettifyPoolTypeName(typeName);
     }

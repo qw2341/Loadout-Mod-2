@@ -59,4 +59,10 @@ public static class CommonLoc
 
     public static string Summon =>
         LocMan.GameLoc("static_hover_tips", "SUMMON_STATIC.title", "Summon");
+    public static string Colorless => LocMan.Loc("COLORLESS", "Colorless");
+    public static string Curse => LocMan.Loc("CURSE", "Curse");
+    public static string Event => LocMan.Loc("EVENT", "Event");
+    public static string Quest => LocMan.Loc("QUEST", "Quest");
+    public static string Status => LocMan.Loc("STATUS", "Status");
+    public static string Token => LocMan.Loc("TOKEN", "Token");
 }
