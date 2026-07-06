@@ -15,6 +15,8 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -47,8 +49,7 @@ internal static class DeckViewRefreshService
 {
     private static readonly FieldInfo? PlayerField = AccessTools.Field(typeof(NDeckViewScreen), "_player");
     private static readonly FieldInfo? PileField = AccessTools.Field(typeof(NDeckViewScreen), "_pile");
-    private static readonly FieldInfo? CardsField = AccessTools.Field(typeof(NCardsViewScreen), "_cards");
-    private static readonly MethodInfo? DisplayCardsMethod = AccessTools.Method(typeof(NDeckViewScreen), "DisplayCards");
+    private static readonly FieldInfo? GridField = AccessTools.Field(typeof(NCardsViewScreen), "_grid");
     private static readonly HashSet<NDeckViewScreen> Screens = [];
     private static readonly HashSet<NDeckViewScreen> PendingRefreshes = [];
 
@@ -70,7 +71,7 @@ internal static class DeckViewRefreshService
 
     private static void OnRunContentChanged(LoadoutRunContentChangedEventArgs change)
     {
-        if (change.Kind != LoadoutRunContentKind.Cards)
+        if (change.Kind != LoadoutRunContentKind.Cards || change.Mode != LoadoutRunContentChangeMode.Update)
             return;
 
         foreach (NDeckViewScreen screen in Screens.ToList())
@@ -86,11 +87,11 @@ internal static class DeckViewRefreshService
             if (player is not null && !change.AffectsPlayer(player.NetId))
                 continue;
 
-            ScheduleRefresh(screen);
+            ScheduleRefresh(screen, change);
         }
     }
 
-    private static void ScheduleRefresh(NDeckViewScreen screen)
+    private static void ScheduleRefresh(NDeckViewScreen screen, LoadoutRunContentChangedEventArgs change)
     {
         if (!PendingRefreshes.Add(screen))
             return;
@@ -98,11 +99,11 @@ internal static class DeckViewRefreshService
         Callable.From(() =>
         {
             PendingRefreshes.Remove(screen);
-            Refresh(screen);
+            RefreshVisibleCardVisuals(screen, change);
         }).CallDeferred();
     }
 
-    private static void Refresh(NDeckViewScreen screen)
+    private static void RefreshVisibleCardVisuals(NDeckViewScreen screen, LoadoutRunContentChangedEventArgs change)
     {
         if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
             return;
@@ -110,16 +111,42 @@ internal static class DeckViewRefreshService
         try
         {
             CardPile? pile = PileField?.GetValue(screen) as CardPile;
-            if (pile is null)
+            NCardGrid? grid = GridField?.GetValue(screen) as NCardGrid;
+            if (pile is null || grid is null)
                 return;
 
-            CardsField?.SetValue(screen, pile.Cards.ToList());
-            DisplayCardsMethod?.Invoke(screen, null);
+            foreach (NGridCardHolder holder in grid.CurrentlyDisplayedCardHolders.ToList())
+            {
+                CardModel? card = holder.CardModel;
+                if (card?.Owner is null || !change.AffectsPlayer(card.Owner.NetId))
+                    continue;
+
+                if (change.ChangedCards.Count > 0
+                    && !change.ChangedCards.Any(changed => MatchesChangedCard(card, changed)))
+                {
+                    continue;
+                }
+
+                holder.CardNode?.UpdateVisuals(pile.Type, CardPreviewMode.Normal);
+                if (grid.IsShowingUpgrades && holder.CardModel.IsUpgradable)
+                    holder.SetIsPreviewingUpgrade(true);
+            }
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"Loadout: failed to refresh deck view after loadout card change. {exception.Message}");
+            GD.PushWarning($"Loadout: failed to refresh visible deck cards after loadout card update. {exception.Message}");
         }
+    }
+
+    private static bool MatchesChangedCard(CardModel card, LoadoutChangedCard changed)
+    {
+        if (card.Owner?.NetId != changed.OwnerNetId || !card.Id.Equals(changed.ModelId))
+            return false;
+
+        IReadOnlyList<CardModel> deckCards = card.Owner.Deck.Cards;
+        return changed.Index < 0
+               || changed.Index >= deckCards.Count
+               || ReferenceEquals(deckCards[changed.Index], card);
     }
 }
 

@@ -180,7 +180,8 @@ public partial class NCardModificationScreen : Control
         if (change.Kind != LoadoutRunContentKind.Cards
             || _item is null
             || !change.AffectsPlayer(_item.OwnerNetId)
-            || !IsInsideTree())
+            || !IsInsideTree()
+            || change.Mode == LoadoutRunContentChangeMode.Add)
         {
             return;
         }

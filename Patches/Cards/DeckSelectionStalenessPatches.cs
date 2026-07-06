@@ -71,8 +71,11 @@ internal static class LoadoutDeckSelectionRefreshBridge
 
     private static void OnRunContentChanged(LoadoutRunContentChangedEventArgs change)
     {
-        if (change.Kind != LoadoutRunContentKind.Cards)
+        if (change.Kind != LoadoutRunContentKind.Cards
+            || change.Mode is LoadoutRunContentChangeMode.Add or LoadoutRunContentChangeMode.Update)
+        {
             return;
+        }
 
         foreach (NCardGridSelectionScreen screen in Screens.ToList())
         {

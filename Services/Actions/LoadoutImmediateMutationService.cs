@@ -481,19 +481,26 @@ public static class LoadoutImmediateMutationService
 
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            bool deckChanged = await AddDeckCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount);
+            IReadOnlyList<CardModel> addedDeckCards = await AddDeckCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount);
+            bool deckChanged = addedDeckCards.Count > 0;
             bool combatChanged = CombatManager.Instance.IsInProgress
                                   && await AddCombatHandCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount);
 
             if (deckChanged || combatChanged)
-                LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, targetPlayer.NetId, LoadoutRunContentChangeMode.Add);
+            {
+                LoadoutRunContentChangeService.Notify(
+                    LoadoutRunContentKind.Cards,
+                    [targetPlayer.NetId],
+                    LoadoutRunContentChangeMode.Add,
+                    BuildChangedCards(targetPlayer, addedDeckCards));
+            }
         }
     }
 
-    private static async Task<bool> AddDeckCardCopiesAsync(Player targetPlayer, CardModel canonicalCard, int amount)
+    private static async Task<IReadOnlyList<CardModel>> AddDeckCardCopiesAsync(Player targetPlayer, CardModel canonicalCard, int amount)
     {
-        bool changed = false;
         List<CardPileAddResult> addedCards = [];
+        List<CardModel> changedCards = [];
         for (int i = 0; i < amount; i++)
         {
             try
@@ -503,7 +510,7 @@ public static class LoadoutImmediateMutationService
                 if (result.success)
                 {
                     addedCards.Add(result);
-                    changed = true;
+                    changedCards.Add(result.cardAdded);
                 }
             }
             catch (Exception exception)
@@ -514,7 +521,28 @@ public static class LoadoutImmediateMutationService
         }
 
         PreviewAddedCards(addedCards);
-        return changed;
+        return changedCards;
+    }
+
+    private static IEnumerable<LoadoutChangedCard> BuildChangedCards(Player owner, IReadOnlyList<CardModel> cards)
+    {
+        foreach (CardModel card in cards)
+        {
+            int index = FindCardIndex(owner.Deck.Cards, card);
+            if (index >= 0)
+                yield return new LoadoutChangedCard(owner.NetId, index, card.Id);
+        }
+    }
+
+    private static int FindCardIndex(IReadOnlyList<CardModel> cards, CardModel card)
+    {
+        for (int i = 0; i < cards.Count; i++)
+        {
+            if (ReferenceEquals(cards[i], card))
+                return i;
+        }
+
+        return -1;
     }
 
     private static async Task<bool> AddCombatHandCardCopiesAsync(Player targetPlayer, CardModel canonicalCard, int amount)

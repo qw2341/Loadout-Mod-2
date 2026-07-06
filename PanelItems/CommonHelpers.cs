@@ -201,6 +201,12 @@ public class CommonHelpers
 				return true;
 			}
 
+			if (change.Mode == LoadoutRunContentChangeMode.Add)
+			{
+				RefreshCurrentModels(target, animateRelayout: false);
+				return true;
+			}
+
 			if (change.Mode != LoadoutRunContentChangeMode.Remove)
 				return false;
 
