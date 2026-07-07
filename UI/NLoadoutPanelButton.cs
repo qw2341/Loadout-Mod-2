@@ -1,5 +1,7 @@
 using Godot;
 using Loadout.UI.Managers;
+using MegaCrit.Sts2.Core.Audio;
+using MegaCrit.Sts2.Core.Commands;
 
 namespace Loadout.UI;
 
@@ -23,6 +25,7 @@ public partial class NLoadoutPanelButton : Button
 		BuildVisuals();
 		_nLoadoutPanel.VisibilityStateChanged += RefreshState;
 		Pressed += OnPressed;
+		MouseEntered += OnMouseEntered;
 		Resized += OnResized;
 		_signalsConnected = true;
 		RefreshState();
@@ -34,6 +37,7 @@ public partial class NLoadoutPanelButton : Button
 			return;
 
 		Pressed -= OnPressed;
+		MouseEntered -= OnMouseEntered;
 		Resized -= OnResized;
 		_nLoadoutPanel.VisibilityStateChanged -= RefreshState;
 		_signalsConnected = false;
@@ -96,6 +100,12 @@ public partial class NLoadoutPanelButton : Button
 
 		_nLoadoutPanel.ToggleShown();
 		RefreshState();
+	}
+
+	private void OnMouseEntered()
+	{
+		if (!Disabled)
+			SfxCmd.Play(FmodSfx.uiHover);
 	}
 
 	private void RefreshState()

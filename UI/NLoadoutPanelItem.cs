@@ -1,6 +1,8 @@
 using Godot;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using MegaCrit.Sts2.Core.Audio;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System;
@@ -284,7 +286,7 @@ public partial class NLoadoutPanelItem : TextureButton
 			: 0f;
 		Color outlineColor = OutlineRestColor.Lerp(_animationProfile.GlowColor, glowAmount);
 		_outlineMaterial?.SetShaderParameter("outline_color", outlineColor);
-		_outline.Scale = Vector2.One * Mathf.Lerp(1f, _animationProfile.GlowScale, glowAmount);
+		_outline.Scale = Vector2.One;
 		_outline.Position = Vector2.Zero;
 		_outline.Size = Size;
 		_outline.PivotOffset = Size * 0.5f;
@@ -293,6 +295,7 @@ public partial class NLoadoutPanelItem : TextureButton
 	private void OnMouseEntered()
 	{
 		_isHovered = true;
+		SfxCmd.Play(FmodSfx.uiHover);
 		ShowHoverTip();
 	}
 
