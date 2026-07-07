@@ -16,8 +16,10 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Runs;
 
 public partial class NDeckLoadoutPanel : Control
@@ -31,6 +33,9 @@ public partial class NDeckLoadoutPanel : Control
     private const float ButtonHeight = 26f;
     private const float ButtonRowGap = 8f;
     private const float HalfButtonWidth = (PanelWidth - ButtonRowGap) / 2f;
+    private const float DefaultPanelLeft = 18f;
+    private const float DefaultPanelTop = 160f;
+    private const float MultiplayerPanelGap = 10f;
 
     private readonly Dictionary<string, LoadoutCatalogEntry> _entriesByOptionId = new(StringComparer.Ordinal);
 
@@ -45,6 +50,9 @@ public partial class NDeckLoadoutPanel : Control
     private string _selectedOptionId = NoSelectionId;
     private bool _built;
     private bool _eventsBound;
+    private bool _layoutEventsBound;
+    private bool _layoutRefreshScheduled;
+    private Callable _layoutRefreshCallable;
 
     public static void AttachTo(Control deckScreen, Player? player)
     {
@@ -76,8 +84,11 @@ public partial class NDeckLoadoutPanel : Control
     {
         MouseFilter = MouseFilterEnum.Pass;
         ZIndex = 240;
+        _layoutRefreshCallable = Callable.From(SchedulePanelLayoutRefresh);
         BuildControlTree();
         BindEvents();
+        BindLayoutEvents();
+        SchedulePanelLayoutRefresh();
         RefreshAll();
     }
 
@@ -85,6 +96,7 @@ public partial class NDeckLoadoutPanel : Control
     {
         _statusTween?.Kill();
         _statusTween = null;
+        UnbindLayoutEvents();
         UnbindEvents();
     }
 
@@ -92,7 +104,10 @@ public partial class NDeckLoadoutPanel : Control
     {
         _player = player;
         if (IsNodeReady())
+        {
+            SchedulePanelLayoutRefresh();
             RefreshAll();
+        }
     }
 
     private void BindEvents()
@@ -177,16 +192,103 @@ public partial class NDeckLoadoutPanel : Control
 
     private void ApplyPanelLayout()
     {
+        float panelTop = GetPanelTop();
         AnchorLeft = 0f;
         AnchorTop = 0f;
         AnchorRight = 0f;
         AnchorBottom = 0f;
-        OffsetLeft = 18f;
-        OffsetTop = 160f;
-        OffsetRight = 18f + PanelWidth;
-        OffsetBottom = 160f + PanelHeight;
+        OffsetLeft = DefaultPanelLeft;
+        OffsetTop = panelTop;
+        OffsetRight = DefaultPanelLeft + PanelWidth;
+        OffsetBottom = panelTop + PanelHeight;
         CustomMinimumSize = new Vector2(PanelWidth, PanelHeight);
         Size = CustomMinimumSize;
+    }
+
+    private float GetPanelTop()
+    {
+        if (!IsMultiplayerRun())
+            return DefaultPanelTop;
+
+        try
+        {
+            Control? container = NRun.Instance?.GlobalUi.MultiplayerPlayerContainer;
+            Control? lastPlayer = container?.GetChildren()
+                .OfType<Control>()
+                .Where(child => child.Visible)
+                .LastOrDefault();
+            if (container is null || lastPlayer is null)
+                return DefaultPanelTop;
+
+            Rect2 lastPlayerRect = lastPlayer.GetGlobalRect();
+            float bottom = lastPlayerRect.Position.Y + Math.Max(lastPlayerRect.Size.Y, lastPlayer.CustomMinimumSize.Y);
+            float localBottom = GetParent() is Control parent
+                ? (parent.GetGlobalTransformWithCanvas().AffineInverse() * new Vector2(0f, bottom)).Y
+                : bottom;
+            return Math.Max(DefaultPanelTop, localBottom + MultiplayerPanelGap);
+        }
+        catch
+        {
+            return DefaultPanelTop;
+        }
+    }
+
+    private static bool IsMultiplayerRun()
+    {
+        try
+        {
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            return !RunManager.Instance.IsSingleplayerOrFakeMultiplayer
+                   && runState is not null
+                   && runState.Players.Count > 1;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void BindLayoutEvents()
+    {
+        if (_layoutEventsBound)
+            return;
+
+        GetViewport()?.Connect(Viewport.SignalName.SizeChanged, _layoutRefreshCallable);
+        NRun.Instance?.GlobalUi.RelicInventory.Connect(NRelicInventory.SignalName.RelicsChanged, _layoutRefreshCallable);
+        _layoutEventsBound = true;
+    }
+
+    private void UnbindLayoutEvents()
+    {
+        if (!_layoutEventsBound)
+            return;
+
+        Viewport? viewport = GetViewport();
+        if (viewport is not null && viewport.IsConnected(Viewport.SignalName.SizeChanged, _layoutRefreshCallable))
+            viewport.Disconnect(Viewport.SignalName.SizeChanged, _layoutRefreshCallable);
+
+        NRelicInventory? relicInventory = NRun.Instance?.GlobalUi.RelicInventory;
+        if (relicInventory is not null && relicInventory.IsConnected(NRelicInventory.SignalName.RelicsChanged, _layoutRefreshCallable))
+            relicInventory.Disconnect(NRelicInventory.SignalName.RelicsChanged, _layoutRefreshCallable);
+
+        _layoutEventsBound = false;
+    }
+
+    private void SchedulePanelLayoutRefresh()
+    {
+        if (_layoutRefreshScheduled)
+            return;
+
+        _layoutRefreshScheduled = true;
+        Callable.From(() =>
+        {
+            Callable.From(() =>
+            {
+                _layoutRefreshScheduled = false;
+                if (IsInsideTree())
+                    ApplyPanelLayout();
+            }).CallDeferred();
+        }).CallDeferred();
     }
 
     private static NLoadoutDropdown CreateCompactDropdown(string name)
