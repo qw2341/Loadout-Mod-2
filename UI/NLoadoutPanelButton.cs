@@ -67,6 +67,7 @@ public partial class NLoadoutPanelButton : Button
 		_arrowImage = GetNodeOrNull<TextureRect>("ArrowImage") ?? CreateTextureRect("ArrowImage", false);
 
 		_tabImage.Texture = LoadPanelTexture(TabTextureFileName);
+		_tabImage.StretchMode = TextureRect.StretchModeEnum.Scale;
 		_arrowImage.Texture = LoadPanelTexture(ArrowTextureFileName);
 		_tabImage.Material = null;
 		_arrowImage.Material = null;
@@ -123,6 +124,7 @@ public partial class NLoadoutPanelButton : Button
 	{
 		if (_tabImage is not null && IsInstanceValid(_tabImage))
 		{
+			_tabImage.Position = Vector2.Zero;
 			_tabImage.Size = Size;
 			_tabImage.PivotOffset = Size * 0.5f;
 		}

@@ -59,7 +59,7 @@ namespace  Loadout.UI;
 public partial class NLoadoutPanel : Panel
 {
 	private const int MaxLoadoutItemInitAttempts = 120;
-	private static bool DebugForceShownExpanded = true;
+	private static bool DebugForceShownExpanded = false;
 	private const string LoadoutBagTargetDropdownName = "LoadoutBagTargetDropdown";
 	private const string LoadoutCauldronTargetKey = "loadout_cauldron";
 	private const string LoadoutCauldronTargetDropdownName = "LoadoutCauldronTargetDropdown";
