@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Helpers;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
@@ -64,6 +65,7 @@ public class CardPrinter
 		    AddCardTypeFilters(builder, effectiveCards);
 		    builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity")));
 		    AddCardRarityFilters(builder, effectiveCards);
+		    AddCardCostFilterGroup(builder, effectiveCards);
 		    AddCardKeywordFilterGroup(builder, effectiveCards);
 		    AddCardTagFilterGroup(builder, effectiveCards);
 		    CommonHelpers.AddModFilters(builder, allCards);
@@ -330,6 +332,36 @@ public class CardPrinter
 			    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Tags.Contains(localTag),
 			    "tag");
 	    }
+    }
+    
+    private static void AddCardCostFilterGroup(SelectScreenBuilder<CardModel> builder, IEnumerable<CardModel> cards)
+    {
+
+	    builder.FilterGroup("energy_cost", LocMan.Loc("FILTER_GROUP_COST", "Cost"));
+	    builder.Filter(
+		    $"card_energy_cost_0", "0",
+		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.Canonical == 0 && !CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.CostsX,
+		    "energy_cost");
+	    for (int i = 1; i < 3; i++)
+	    {
+		    int localI = i;
+		    builder.Filter(
+            		    $"card_energy_cost_{localI}", localI.ToString(),
+            		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.Canonical == localI,
+            		    "energy_cost");
+	    }
+	    builder.Filter(
+		    $"card_energy_cost_3+", "3+",
+		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.Canonical >= 3,
+		    "energy_cost");
+	    builder.Filter(
+		    $"card_energy_cost_X", "X",
+		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.CostsX,
+		    "energy_cost");
+	    builder.Filter(
+		    $"card_energy_cost_unplayable", CommonLoc.Unplayable,
+		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.Canonical < 0,
+		    "energy_cost");
     }
 
     public static IReadOnlyList<CardPoolModel> BuildOrderedCardPools()

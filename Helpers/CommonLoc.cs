@@ -65,4 +65,5 @@ public static class CommonLoc
     public static string Quest => LocMan.Loc("QUEST", "Quest");
     public static string Status => LocMan.Loc("STATUS", "Status");
     public static string Token => LocMan.Loc("TOKEN", "Token");
+    public static string Unplayable => LocMan.GameLoc("card_keywords", "UNPLAYABLE.title", "Unplayable");
 }
