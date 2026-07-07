@@ -316,6 +316,9 @@ public static class LoadoutImmediateMutationService
         if (localPlayer is null)
             return false;
 
+        if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+            return false;
+
         payload.RequesterNetId = localPlayer.NetId;
         payload.Target = ForceClientTargetToSelf(payload.Target, localPlayer, payload.Kind);
 
@@ -369,6 +372,9 @@ public static class LoadoutImmediateMutationService
         {
             INetGameService? netService = _runNetService ?? RunManager.Instance.NetService;
             if (netService?.Type != NetGameType.Host)
+                return;
+
+            if (!LoadoutPanelAccessService.CanRequesterUsePanel(senderId))
                 return;
 
             LoadoutImmediateMutationPayload payload = message.payload;

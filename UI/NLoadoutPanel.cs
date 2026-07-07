@@ -49,6 +49,7 @@ using Loadout.PanelItems;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
+using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Targets;
 using Loadout.UI.Managers;
@@ -110,6 +111,7 @@ public partial class NLoadoutPanel : Panel
 		ItemsContainer = _itemsContainer;
 		
 		BindRunHooks();
+		LoadoutPanelAccessService.AccessChanged += OnLoadoutPanelAccessChanged;
 		SnapToTargetPosition();
 		
 		TryAddLoadoutItems();
@@ -122,6 +124,7 @@ public partial class NLoadoutPanel : Panel
 	public override void _ExitTree()
 	{
 		UnbindRunHooks();
+		LoadoutPanelAccessService.AccessChanged -= OnLoadoutPanelAccessChanged;
 
 		if (_instance == this)
 			_instance = null;
@@ -129,7 +132,7 @@ public partial class NLoadoutPanel : Panel
 
 	public void ToggleShown()
 	{
-		if (Hidden)
+		if (Hidden || !LoadoutPanelAccessService.CanLocalPlayerUsePanel())
 			return;
 
 		SetPanelState(Hidden, !Shown);
@@ -142,6 +145,13 @@ public partial class NLoadoutPanel : Panel
 	
 	private void InitializePanelState()
 	{
+		if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+		{
+			SetPanelState(hidden: true, shown: false, notify: false);
+			NLoadoutPanelRoot.Instance?.CloseAllScreens();
+			return;
+		}
+
 		if (DebugForceShownExpanded)
 		{
 			SetPanelState(hidden: false, shown: true, notify: false);
@@ -171,10 +181,30 @@ public partial class NLoadoutPanel : Panel
 
 	private void OnRunStarted(RunState _)
 	{
+		if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+		{
+			SetPanelState(hidden: true, shown: false);
+			NLoadoutPanelRoot.Instance?.CloseAllScreens();
+			return;
+		}
+
 		if (DebugForceShownExpanded)
 			return;
 
 		SetPanelState(hidden: false, shown: false);
+	}
+
+	private void OnLoadoutPanelAccessChanged()
+	{
+		if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+		{
+			SetPanelState(hidden: true, shown: false);
+			NLoadoutPanelRoot.Instance?.CloseAllScreens();
+			return;
+		}
+
+		InitializePanelState();
+		SnapToTargetPosition();
 	}
 
 	private void OnRunCleanedUp()

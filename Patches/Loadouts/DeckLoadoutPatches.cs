@@ -30,7 +30,8 @@ public static class DeckViewScreenLoadoutPanelReadyPatch
     {
         Player? player = PlayerField?.GetValue(__instance) as Player;
         DeckViewRefreshService.Register(__instance);
-        NDeckLoadoutPanel.AttachTo(__instance, player);
+        if (LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+            NDeckLoadoutPanel.AttachTo(__instance, player);
     }
 }
 
@@ -56,6 +57,7 @@ internal static class DeckViewRefreshService
     static DeckViewRefreshService()
     {
         LoadoutRunContentChangeService.Changed += OnRunContentChanged;
+        LoadoutPanelAccessService.AccessChanged += OnLoadoutPanelAccessChanged;
     }
 
     public static void Register(NDeckViewScreen screen)
@@ -88,6 +90,28 @@ internal static class DeckViewRefreshService
                 continue;
 
             ScheduleRefresh(screen, change);
+        }
+    }
+
+    private static void OnLoadoutPanelAccessChanged()
+    {
+        foreach (NDeckViewScreen screen in Screens.ToList())
+        {
+            if (!GodotObject.IsInstanceValid(screen))
+            {
+                Screens.Remove(screen);
+                PendingRefreshes.Remove(screen);
+                continue;
+            }
+
+            if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+            {
+                NDeckLoadoutPanel.DetachFrom(screen);
+                continue;
+            }
+
+            Player? player = PlayerField?.GetValue(screen) as Player;
+            NDeckLoadoutPanel.AttachTo(screen, player);
         }
     }
 
@@ -161,6 +185,7 @@ public static class StartRunLobbyLoadoutSharingConstructorPatch
     [HarmonyPostfix]
     public static void Postfix(StartRunLobby __instance)
     {
+        LoadoutPanelAccessService.RegisterLobby(__instance);
         LoadoutHostSharingService.RegisterLobby(__instance);
     }
 }
@@ -171,6 +196,7 @@ public static class StartRunLobbyLoadoutSharingCleanUpPatch
     [HarmonyPrefix]
     public static void Prefix(StartRunLobby __instance, bool disconnectSession)
     {
+        LoadoutPanelAccessService.UnregisterLobby(__instance, disconnectSession);
         LoadoutHostSharingService.UnregisterLobby(__instance, disconnectSession);
     }
 }
@@ -181,6 +207,7 @@ public static class RunManagerLaunchLoadoutSharingPatch
     [HarmonyPostfix]
     public static void Postfix()
     {
+        LoadoutPanelAccessService.OnRunLaunched();
         LoadoutHostSharingService.OnRunLaunched();
     }
 }
@@ -191,6 +218,7 @@ public static class RunManagerCleanUpLoadoutSharingPatch
     [HarmonyPrefix]
     public static void Prefix()
     {
+        LoadoutPanelAccessService.OnRunCleaningUp();
         LoadoutHostSharingService.OnRunCleaningUp();
     }
 }
