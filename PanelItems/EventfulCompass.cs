@@ -301,7 +301,7 @@ public class EventfulCompass
 		    Texture2D portrait = model.CreateInitialPortrait();
 		    return CreateTileBackground(portrait);
 	    }
-	    catch (Exception exception)
+	    catch (Exception)
 	    {
 		    // if (model is not AncientEventModel ancient)
 		    // {
