@@ -73,7 +73,7 @@ public static class NHostLobbyLoadoutAccessToggle
         toggle.AnchorRight = confirmButton.AnchorRight;
         toggle.AnchorBottom = confirmButton.AnchorBottom;
         toggle.OffsetRight = confirmButton.OffsetRight;
-        toggle.OffsetLeft = toggle.OffsetRight - 2f * ToggleWidth;
+        toggle.OffsetLeft = toggle.OffsetRight - 1.5f * ToggleWidth;
         toggle.OffsetBottom = confirmButton.OffsetTop - ConfirmGap;
         toggle.OffsetTop = toggle.OffsetBottom - ToggleHeight;
         toggle.Size = new Vector2(ToggleWidth, ToggleHeight);
