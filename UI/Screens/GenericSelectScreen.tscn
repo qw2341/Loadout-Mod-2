@@ -245,3 +245,34 @@ theme_override_font_sizes/font_size = 17
 theme_override_fonts/font = ExtResource("2_bold")
 text = "Selected: 0"
 vertical_alignment = 1
+
+[node name="SidebarBottomSpacer" type="Control" parent="Sidebar/MarginContainer/TopVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="BottomControls" type="VBoxContainer" parent="Sidebar/MarginContainer/TopVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 8
+theme_override_constants/separation = 8
+alignment = 2
+
+[node name="BottomActionButtons" type="VBoxContainer" parent="Sidebar/MarginContainer/TopVBox/BottomControls"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 8
+theme_override_constants/separation = 6
+
+[node name="BottomCustomControls" type="VBoxContainer" parent="Sidebar/MarginContainer/TopVBox/BottomControls"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 8
+theme_override_constants/separation = 6
+
+[node name="BottomToggles" type="VBoxContainer" parent="Sidebar/MarginContainer/TopVBox/BottomControls"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 8
+theme_override_constants/separation = 6

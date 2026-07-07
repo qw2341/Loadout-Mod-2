@@ -131,6 +131,7 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<Control, IGenericSelectItem> _activationItemsByView = new();
     private readonly HashSet<Control> _activationBoundViews = new();
     private readonly List<Control> _pendingCustomSidebarControls = new();
+    private readonly List<Control> _pendingCustomSidebarBottomControls = new();
 
     private LineEdit? _searchLineEdit;
     private BaseButton? _clearSearchButton;
@@ -144,6 +145,10 @@ public partial class NGenericSelectScreen : Control
     private VBoxContainer? _customControlsContainer;
     private VBoxContainer? _togglesContainer;
     private VBoxContainer? _filtersContainer;
+    private VBoxContainer? _bottomControlsContainer;
+    private VBoxContainer? _bottomActionButtonsContainer;
+    private VBoxContainer? _bottomCustomControlsContainer;
+    private VBoxContainer? _bottomTogglesContainer;
     private Control? _itemGrid;
     private Control? _scrollMask;
     private Control? _scrollContainer;
@@ -797,6 +802,17 @@ public partial class NGenericSelectScreen : Control
         _customControlsContainer.AddChild(control);
     }
 
+    public void AddCustomSidebarBottomControl(Control control)
+    {
+        if (_bottomCustomControlsContainer is null)
+        {
+            _pendingCustomSidebarBottomControls.Add(control);
+            return;
+        }
+
+        _bottomCustomControlsContainer.AddChild(control);
+    }
+
     public void ClearCustomSidebarControls()
     {
         foreach (Control pendingControl in _pendingCustomSidebarControls)
@@ -807,13 +823,30 @@ public partial class NGenericSelectScreen : Control
 
         _pendingCustomSidebarControls.Clear();
 
-        if (_customControlsContainer is null)
-            return;
-
-        foreach (Node child in _customControlsContainer.GetChildren())
+        foreach (Control pendingControl in _pendingCustomSidebarBottomControls)
         {
-            _customControlsContainer.RemoveChild(child);
-            child.QueueFree();
+            if (GodotObject.IsInstanceValid(pendingControl) && pendingControl.GetParent() is null)
+                pendingControl.QueueFree();
+        }
+
+        _pendingCustomSidebarBottomControls.Clear();
+
+        if (_customControlsContainer is not null)
+        {
+            foreach (Node child in _customControlsContainer.GetChildren())
+            {
+                _customControlsContainer.RemoveChild(child);
+                child.QueueFree();
+            }
+        }
+
+        if (_bottomCustomControlsContainer is not null)
+        {
+            foreach (Node child in _bottomCustomControlsContainer.GetChildren())
+            {
+                _bottomCustomControlsContainer.RemoveChild(child);
+                child.QueueFree();
+            }
         }
     }
 
@@ -1251,11 +1284,74 @@ public partial class NGenericSelectScreen : Control
             _filterControls.AddChild(_togglesContainer);
         }
 
+        Control? bottomSpacer = _filterControls.GetNodeOrNull<Control>("SidebarBottomSpacer");
+        if (bottomSpacer is null)
+        {
+            bottomSpacer = new Control
+            {
+                Name = "SidebarBottomSpacer",
+                MouseFilter = MouseFilterEnum.Ignore,
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                SizeFlagsVertical = SizeFlags.ExpandFill
+            };
+            _filterControls.AddChild(bottomSpacer);
+        }
+
+        _bottomControlsContainer = _filterControls.GetNodeOrNull<VBoxContainer>("BottomControls");
+        if (_bottomControlsContainer is null)
+        {
+            _bottomControlsContainer = new VBoxContainer
+            {
+                Name = "BottomControls",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            _filterControls.AddChild(_bottomControlsContainer);
+        }
+
+        _bottomActionButtonsContainer = _bottomControlsContainer.GetNodeOrNull<VBoxContainer>("BottomActionButtons");
+        if (_bottomActionButtonsContainer is null)
+        {
+            _bottomActionButtonsContainer = new VBoxContainer
+            {
+                Name = "BottomActionButtons",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            _bottomControlsContainer.AddChild(_bottomActionButtonsContainer);
+        }
+
+        _bottomCustomControlsContainer = _bottomControlsContainer.GetNodeOrNull<VBoxContainer>("BottomCustomControls");
+        if (_bottomCustomControlsContainer is null)
+        {
+            _bottomCustomControlsContainer = new VBoxContainer
+            {
+                Name = "BottomCustomControls",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            _bottomControlsContainer.AddChild(_bottomCustomControlsContainer);
+        }
+
+        _bottomTogglesContainer = _bottomControlsContainer.GetNodeOrNull<VBoxContainer>("BottomToggles");
+        if (_bottomTogglesContainer is null)
+        {
+            _bottomTogglesContainer = new VBoxContainer
+            {
+                Name = "BottomToggles",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            _bottomControlsContainer.AddChild(_bottomTogglesContainer);
+        }
+
         _sortButtonsContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         _filtersContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         _actionButtonsContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         _customControlsContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         _togglesContainer.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        bottomSpacer.SizeFlagsVertical = SizeFlags.ExpandFill;
+        _bottomControlsContainer.SizeFlagsVertical = SizeFlags.ShrinkEnd;
+        _bottomControlsContainer.Alignment = BoxContainer.AlignmentMode.End;
+        _bottomActionButtonsContainer.SizeFlagsVertical = SizeFlags.ShrinkEnd;
+        _bottomCustomControlsContainer.SizeFlagsVertical = SizeFlags.ShrinkEnd;
+        _bottomTogglesContainer.SizeFlagsVertical = SizeFlags.ShrinkEnd;
 
         if (_sortButtonsContainer.GetParent() == _filterControls && _filtersContainer.GetParent() == _filterControls)
             _filterControls.MoveChild(_filtersContainer, _sortButtonsContainer.GetIndex() + 1);
@@ -1268,6 +1364,18 @@ public partial class NGenericSelectScreen : Control
 
         if (_customControlsContainer.GetParent() == _filterControls && _togglesContainer.GetParent() == _filterControls)
             _filterControls.MoveChild(_togglesContainer, _customControlsContainer.GetIndex() + 1);
+
+        if (bottomSpacer.GetParent() == _filterControls)
+            _filterControls.MoveChild(bottomSpacer, _filterControls.GetChildCount() - 1);
+
+        if (_bottomControlsContainer.GetParent() == _filterControls)
+            _filterControls.MoveChild(_bottomControlsContainer, _filterControls.GetChildCount() - 1);
+
+        if (_bottomActionButtonsContainer.GetParent() == _bottomControlsContainer && _bottomCustomControlsContainer.GetParent() == _bottomControlsContainer)
+            _bottomControlsContainer.MoveChild(_bottomCustomControlsContainer, _bottomActionButtonsContainer.GetIndex() + 1);
+
+        if (_bottomCustomControlsContainer.GetParent() == _bottomControlsContainer && _bottomTogglesContainer.GetParent() == _bottomControlsContainer)
+            _bottomControlsContainer.MoveChild(_bottomTogglesContainer, _bottomCustomControlsContainer.GetIndex() + 1);
     }
 
     private void EnsureGameScrollbar()
@@ -1461,24 +1569,40 @@ public partial class NGenericSelectScreen : Control
 
     private void RebuildCustomControls()
     {
-        if (_customControlsContainer is null)
-            return;
-
-        _customControlsContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-
-        if (_pendingCustomSidebarControls.Count > 0)
-            EnsureCustomControlsSpacerIfNeeded();
-
-        foreach (Control control in _pendingCustomSidebarControls.ToList())
+        if (_customControlsContainer is not null)
         {
-            if (!GodotObject.IsInstanceValid(control))
-                continue;
+            _customControlsContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 
-            control.GetParent()?.RemoveChild(control);
-            _customControlsContainer.AddChild(control);
+            if (_pendingCustomSidebarControls.Count > 0)
+                EnsureCustomControlsSpacerIfNeeded();
+
+            foreach (Control control in _pendingCustomSidebarControls.ToList())
+            {
+                if (!GodotObject.IsInstanceValid(control))
+                    continue;
+
+                control.GetParent()?.RemoveChild(control);
+                _customControlsContainer.AddChild(control);
+            }
+
+            _pendingCustomSidebarControls.Clear();
         }
 
-        _pendingCustomSidebarControls.Clear();
+        if (_bottomCustomControlsContainer is not null)
+        {
+            _bottomCustomControlsContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+
+            foreach (Control control in _pendingCustomSidebarBottomControls.ToList())
+            {
+                if (!GodotObject.IsInstanceValid(control))
+                    continue;
+
+                control.GetParent()?.RemoveChild(control);
+                _bottomCustomControlsContainer.AddChild(control);
+            }
+
+            _pendingCustomSidebarBottomControls.Clear();
+        }
     }
 
     private void EnsureCustomControlsSpacerIfNeeded()
@@ -1521,6 +1645,16 @@ public partial class NGenericSelectScreen : Control
         }
     }
 
+    private static Container? GetSidebarSectionContainer(
+        SelectSidebarSection section,
+        Container? mainContainer,
+        Container? bottomContainer)
+    {
+        return section == SelectSidebarSection.Bottom
+            ? bottomContainer ?? mainContainer
+            : mainContainer ?? bottomContainer;
+    }
+
     private void RebuildSortButtons()
     {
         if (_sortButtonsContainer is null)
@@ -1550,21 +1684,39 @@ public partial class NGenericSelectScreen : Control
 
     private void RebuildActionButtons()
     {
-        if (_actionButtonsContainer is null)
+        if (_actionButtonsContainer is null && _bottomActionButtonsContainer is null)
             return;
 
-        foreach (Node child in _actionButtonsContainer.GetChildren())
-            child.QueueFree();
+        if (_actionButtonsContainer is not null)
+        {
+            foreach (Node child in _actionButtonsContainer.GetChildren())
+                child.QueueFree();
+        }
+
+        if (_bottomActionButtonsContainer is not null)
+        {
+            foreach (Node child in _bottomActionButtonsContainer.GetChildren())
+                child.QueueFree();
+        }
 
         _actionButtonNodesById.Clear();
 
         if (_actionButtons.Count == 0)
             return;
 
-        _actionButtonsContainer.AddChild(CreateSidebarSpacer("ActionButtonsTopSpacer"));
+        bool hasMainActionButtons = _actionButtons.Any(actionButton => actionButton.Section == SelectSidebarSection.Main);
+        if (hasMainActionButtons && _actionButtonsContainer is not null)
+            _actionButtonsContainer.AddChild(CreateSidebarSpacer("ActionButtonsTopSpacer"));
 
         foreach (SelectActionButtonDefinition actionButton in _actionButtons)
         {
+            Container? container = GetSidebarSectionContainer(
+                actionButton.Section,
+                _actionButtonsContainer,
+                _bottomActionButtonsContainer);
+            if (container is null)
+                continue;
+
             string actionButtonId = actionButton.Id;
             NLoadoutActionButton button = new();
             button.Name = MakeSafeNodeName($"{actionButtonId}ActionButton");
@@ -1572,7 +1724,7 @@ public partial class NGenericSelectScreen : Control
             button.CustomMinimumSize = new Vector2(0f, 42f);
             button.Init(actionButtonId, actionButton.Label, actionButton.Icon);
             button.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => OnActionButtonPressed(actionButtonId)));
-            _actionButtonsContainer.AddChild(button);
+            container.AddChild(button);
             _actionButtonNodesById[actionButtonId] = button;
         }
 
@@ -1626,23 +1778,39 @@ public partial class NGenericSelectScreen : Control
 
     private void RebuildToggleButtons()
     {
-        if (_togglesContainer is null)
+        if (_togglesContainer is null && _bottomTogglesContainer is null)
             return;
 
-        foreach (Node child in _togglesContainer.GetChildren())
-            child.QueueFree();
+        if (_togglesContainer is not null)
+        {
+            foreach (Node child in _togglesContainer.GetChildren())
+                child.QueueFree();
+        }
+
+        if (_bottomTogglesContainer is not null)
+        {
+            foreach (Node child in _bottomTogglesContainer.GetChildren())
+                child.QueueFree();
+        }
 
         _toggleButtonsById.Clear();
 
         foreach (SelectToggleDefinition toggle in _toggles)
         {
+            Container? container = GetSidebarSectionContainer(
+                toggle.Section,
+                _togglesContainer,
+                _bottomTogglesContainer);
+            if (container is null)
+                continue;
+
             bool isChecked = _toggleStates.GetValueOrDefault(toggle.Id, toggle.CheckedByDefault);
             NLoadoutToggle button = new();
             button.Name = MakeSafeNodeName($"{toggle.Id}Toggle");
             button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             button.Init(toggle.Id, toggle.Label, isChecked);
             button.Connect(NLoadoutToggle.SignalName.Toggled, Callable.From<NLoadoutToggle>(OnToggleChanged));
-            _togglesContainer.AddChild(button);
+            container.AddChild(button);
             _toggleButtonsById[toggle.Id] = button;
         }
     }
@@ -3495,9 +3663,13 @@ public sealed class SelectScreenBuilder<TModel>
         return this;
     }
 
-    public SelectScreenBuilder<TModel> Toggle(string id, string label, bool checkedByDefault = false)
+    public SelectScreenBuilder<TModel> Toggle(
+        string id,
+        string label,
+        bool checkedByDefault = false,
+        SelectSidebarSection section = SelectSidebarSection.Main)
     {
-        _screen.AddToggle(new SelectToggleDefinition(id, label, checkedByDefault));
+        _screen.AddToggle(new SelectToggleDefinition(id, label, checkedByDefault, section));
         return this;
     }
 
@@ -3505,9 +3677,10 @@ public sealed class SelectScreenBuilder<TModel>
         string id,
         string label,
         Action<NGenericSelectScreen> onPressed,
-        Texture2D? icon = null)
+        Texture2D? icon = null,
+        SelectSidebarSection section = SelectSidebarSection.Main)
     {
-        _screen.AddActionButton(new SelectActionButtonDefinition(id, label, onPressed, icon));
+        _screen.AddActionButton(new SelectActionButtonDefinition(id, label, onPressed, icon, section));
         return this;
     }
 
@@ -3852,6 +4025,12 @@ public enum SelectMaterializationMode
     Eager
 }
 
+public enum SelectSidebarSection
+{
+    Main,
+    Bottom
+}
+
 public sealed class SelectItemState
 {
     public SelectItemState(
@@ -3885,16 +4064,22 @@ public sealed class SelectItemState
 
 public sealed class SelectToggleDefinition
 {
-    public SelectToggleDefinition(string id, string label, bool checkedByDefault = false)
+    public SelectToggleDefinition(
+        string id,
+        string label,
+        bool checkedByDefault = false,
+        SelectSidebarSection section = SelectSidebarSection.Main)
     {
         Id = id;
         Label = label;
         CheckedByDefault = checkedByDefault;
+        Section = section;
     }
 
     public string Id { get; }
     public string Label { get; }
     public bool CheckedByDefault { get; }
+    public SelectSidebarSection Section { get; }
 }
 
 public sealed class SelectActionButtonDefinition
@@ -3903,18 +4088,21 @@ public sealed class SelectActionButtonDefinition
         string id,
         string label,
         Action<NGenericSelectScreen> onPressed,
-        Texture2D? icon = null)
+        Texture2D? icon = null,
+        SelectSidebarSection section = SelectSidebarSection.Main)
     {
         Id = id;
         Label = label;
         OnPressed = onPressed;
         Icon = icon;
+        Section = section;
     }
 
     public string Id { get; }
     public string Label { get; }
     public Action<NGenericSelectScreen> OnPressed { get; }
     public Texture2D? Icon { get; }
+    public SelectSidebarSection Section { get; }
 }
 
 public sealed class SelectFilterGroupDefinition

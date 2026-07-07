@@ -69,7 +69,11 @@ public class CardPrinter
 		    AddCardKeywordFilterGroup(builder, effectiveCards);
 		    AddCardTagFilterGroup(builder, effectiveCards);
 		    CommonHelpers.AddModFilters(builder, allCards);
-		    builder.Toggle(ViewUpgradesToggleId, LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")), checkedByDefault: false);
+		    builder.Toggle(
+			    ViewUpgradesToggleId,
+			    LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")),
+			    checkedByDefault: false,
+			    section: SelectSidebarSection.Bottom);
 		    IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
 		    builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
 		    builder.Sorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.Loc("SORT_NAME", "Name")), (a, b) => string.Compare(FormatCardTitle(a), FormatCardTitle(b), StringComparison.Ordinal));
