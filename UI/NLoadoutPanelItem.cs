@@ -42,11 +42,25 @@ public partial class NLoadoutPanelItem : TextureButton
 	private bool _quickActionInFlight;
 	private Vector2 _baseScale = Vector2.One;
 	private Vector2 _basePosition;
-	private TextureRect _glow;
+	private TextureRect _outline;
+	private ShaderMaterial _outlineMaterial;
 	private float _glowPulseTime;
 	private NGenericSelectScreen _boundScreen;
 	private Action<NGenericSelectScreen> _beforeOpen;
 	private Action<NGenericSelectScreen> _afterOpen;
+	private static readonly Color OutlineRestColor = Colors.Black;
+	private static readonly Shader OutlineTintShader = new()
+	{
+		Code = """
+		       shader_type canvas_item;
+		       uniform vec4 outline_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+
+		       void fragment() {
+		       	vec4 tex = texture(TEXTURE, UV);
+		       	COLOR = vec4(outline_color.rgb, tex.a * outline_color.a);
+		       }
+		       """
+	};
 	private static readonly FieldInfo HoverTipTitleField = typeof(HoverTip).GetField("<Title>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
 	private static readonly FieldInfo HoverTipDescriptionField = typeof(HoverTip).GetField("<Description>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -72,7 +86,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		SetCustomMinimumSize(new Vector2(0, MinimumSizeY));
 
 		_animationProfile = ResolveAnimationProfile();
-		EnsureGlowNode();
+		EnsureOutlineNode();
 		ApplySkinTexture();
 		UpdatePivotOffset();
 		ApplyAnimationVisuals();
@@ -177,7 +191,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		float scaleAmount = Mathf.Lerp(1f, _animationProfile.HoverScale, easedProgress);
 
 		Scale = _baseScale * scaleAmount;
-		ApplyGlowVisuals(easedProgress);
+		ApplyOutlineVisuals(easedProgress);
 
 		if (_isInsideContainer || _animationProfile.PositionLift <= 0f)
 			return;
@@ -197,31 +211,37 @@ public partial class NLoadoutPanelItem : TextureButton
 		PivotOffset = Size * 0.5f;
 	}
 
-	private void EnsureGlowNode()
+	private void EnsureOutlineNode()
 	{
-		if (_glow is not null && IsInstanceValid(_glow))
+		if (_outline is not null && IsInstanceValid(_outline))
 			return;
 
-		_glow = new TextureRect
+		_outlineMaterial = new ShaderMaterial
 		{
-			Name = "HoverGlow",
+			Shader = OutlineTintShader
+		};
+		_outlineMaterial.SetShaderParameter("outline_color", OutlineRestColor);
+
+		_outline = new TextureRect
+		{
+			Name = "Outline",
 			MouseFilter = MouseFilterEnum.Ignore,
 			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
 			StretchMode = TextureRect.StretchModeEnum.KeepCentered,
 			ShowBehindParent = true,
-			Modulate = Colors.Transparent
+			Material = _outlineMaterial
 		};
-		_glow.SetAnchorsPreset(LayoutPreset.FullRect);
-		AddChild(_glow);
+		_outline.SetAnchorsPreset(LayoutPreset.FullRect);
+		AddChild(_outline);
 	}
 
 	private void ApplyGlowTexture()
 	{
-		EnsureGlowNode();
+		EnsureOutlineNode();
 
-		Texture2D glowTexture = TryLoadOutlineTexture();
-		_glow.Texture = glowTexture;
-		_glow.Visible = glowTexture is not null;
+		Texture2D outlineTexture = TryLoadOutlineTexture();
+		_outline.Texture = outlineTexture;
+		_outline.Visible = outlineTexture is not null;
 	}
 
 	private Texture2D TryLoadOutlineTexture()
@@ -243,27 +263,31 @@ public partial class NLoadoutPanelItem : TextureButton
 		return ResourceLoader.Exists(texturePath) ? GD.Load<Texture2D>(texturePath) : null;
 	}
 
-	private void ApplyGlowVisuals(float easedProgress)
+	private void ApplyOutlineVisuals(float easedProgress)
 	{
-		if (_glow is null || !IsInstanceValid(_glow))
+		if (_outline is null || !IsInstanceValid(_outline))
 			return;
 
-		if (!_animationProfile.GlowEnabled || _glow.Texture is null)
+		if (_outline.Texture is null)
 		{
-			_glow.Modulate = Colors.Transparent;
+			_outline.Visible = false;
 			return;
 		}
+
+		_outline.Visible = true;
 
 		float pulse = _animationProfile.GlowPulseSpeed <= 0f
 			? 1f
 			: (Mathf.Sin(_glowPulseTime * _animationProfile.GlowPulseSpeed) + 1f) * 0.5f;
-		float alpha = Mathf.Lerp(_animationProfile.GlowMinAlpha, _animationProfile.GlowMaxAlpha, pulse) * easedProgress;
-		Color color = _animationProfile.GlowColor;
-		_glow.Modulate = new Color(color.R, color.G, color.B, alpha);
-		_glow.Scale = Vector2.One * Mathf.Lerp(1f, _animationProfile.GlowScale, easedProgress);
-		_glow.Position = Vector2.Zero;
-		_glow.Size = Size;
-		_glow.PivotOffset = Size * 0.5f;
+		float glowAmount = _animationProfile.GlowEnabled
+			? Mathf.Lerp(_animationProfile.GlowMinAlpha, _animationProfile.GlowMaxAlpha, pulse) * easedProgress
+			: 0f;
+		Color outlineColor = OutlineRestColor.Lerp(_animationProfile.GlowColor, glowAmount);
+		_outlineMaterial?.SetShaderParameter("outline_color", outlineColor);
+		_outline.Scale = Vector2.One * Mathf.Lerp(1f, _animationProfile.GlowScale, glowAmount);
+		_outline.Position = Vector2.Zero;
+		_outline.Size = Size;
+		_outline.PivotOffset = Size * 0.5f;
 	}
 
 	private void OnMouseEntered()
