@@ -5,22 +5,16 @@ namespace Loadout.UI;
 
 public partial class NLoadoutPanelButton : Button
 {
-	private static readonly StringName ShaderH = new("h");
-	private static readonly StringName ShaderS = new("s");
-	private static readonly StringName ShaderV = new("v");
 	private static readonly StyleBoxEmpty EmptyStyle = new();
 
 	private const string TabTextureFileName = "SidePanelTab.png";
 	private const string ArrowTextureFileName = "SidePanelArrow.png";
-	private const string HsvShaderPath = "res://shaders/hsv.gdshader";
 	private const float RainbowSpeed = 0.12f;
 
 	private NLoadoutPanel _nLoadoutPanel;
 	private TextureRect _tabImage;
 	private TextureRect _arrowImage;
-	private ShaderMaterial _tabMaterial;
-	private ShaderMaterial _arrowMaterial;
-	private float _hue;
+	private float _rainbowPhase;
 	private bool _signalsConnected;
 
 	public override void _Ready()
@@ -47,8 +41,8 @@ public partial class NLoadoutPanelButton : Button
 
 	public override void _Process(double delta)
 	{
-		_hue = Mathf.PosMod(_hue + (float)delta * RainbowSpeed, 1f);
-		UpdateHue(_hue);
+		_rainbowPhase = Mathf.PosMod(_rainbowPhase + (float)delta * RainbowSpeed * Mathf.Tau, Mathf.Tau);
+		UpdateRainbowColor(_rainbowPhase);
 	}
 
 	private void BuildVisuals()
@@ -70,10 +64,8 @@ public partial class NLoadoutPanelButton : Button
 
 		_tabImage.Texture = LoadPanelTexture(TabTextureFileName);
 		_arrowImage.Texture = LoadPanelTexture(ArrowTextureFileName);
-		_tabMaterial = CreateHsvMaterial();
-		_arrowMaterial = CreateHsvMaterial();
-		_tabImage.Material = _tabMaterial;
-		_arrowImage.Material = _arrowMaterial;
+		_tabImage.Material = null;
+		_arrowImage.Material = null;
 		OnResized();
 	}
 
@@ -134,41 +126,34 @@ public partial class NLoadoutPanelButton : Button
 		}
 	}
 
-	private void UpdateHue(float hue)
+	private void UpdateRainbowColor(float phase)
 	{
-		SetHue(_tabMaterial, hue, 1.15f, 1.05f);
-		SetHue(_arrowMaterial, Mathf.PosMod(hue + 0.08f, 1f), 1.35f, 1.25f);
+		Color tabColor = GetSineRainbowColor(phase);
+		Color arrowColor = GetSineRainbowColor(phase + Mathf.Tau * 0.08f).Lightened(0.25f);
 
-		if (_tabMaterial is null || _arrowMaterial is null)
-		{
-			Color fallback = Color.FromHsv(hue, 0.85f, 1f);
-			_tabImage.Modulate = fallback;
-			_arrowImage.Modulate = fallback.Lightened(0.25f);
-		}
+		SelfModulate = tabColor;
+
+		if (_tabImage is not null && IsInstanceValid(_tabImage))
+			_tabImage.Modulate = tabColor;
+
+		if (_arrowImage is not null && IsInstanceValid(_arrowImage))
+			_arrowImage.Modulate = arrowColor;
 	}
 
-	private static void SetHue(ShaderMaterial material, float hue, float saturation, float value)
+	private static Color GetSineRainbowColor(float phase)
 	{
-		if (material is null)
-			return;
+		const float baseChannel = 0.18f;
+		const float channelRange = 0.82f;
+		float red = baseChannel + channelRange * Sine01(phase);
+		float green = baseChannel + channelRange * Sine01(phase + Mathf.Tau / 3f);
+		float blue = baseChannel + channelRange * Sine01(phase + 2f * Mathf.Tau / 3f);
 
-		material.SetShaderParameter(ShaderH, hue);
-		material.SetShaderParameter(ShaderS, saturation);
-		material.SetShaderParameter(ShaderV, value);
+		return new Color(red, green, blue, 1f);
 	}
 
-	private static ShaderMaterial CreateHsvMaterial()
+	private static float Sine01(float value)
 	{
-		if (!ResourceLoader.Exists(HsvShaderPath))
-			return null;
-
-		ShaderMaterial material = new()
-		{
-			ResourceLocalToScene = true,
-			Shader = GD.Load<Shader>(HsvShaderPath)
-		};
-		SetHue(material, 0f, 1f, 1f);
-		return material;
+		return (Mathf.Sin(value) + 1f) * 0.5f;
 	}
 
 	private static Texture2D LoadPanelTexture(string fileName)

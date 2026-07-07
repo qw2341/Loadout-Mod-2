@@ -82,7 +82,6 @@ public class CommonHelpers
         screen.ScreenClosed += () =>
         {
             captureSession?.Commit();
-            captureSession = null;
         };
         if (onActivated is not null)
         {
@@ -91,12 +90,13 @@ public class CommonHelpers
                 if (activationInFlight)
                     return;
 
+                LastActionCaptureSession activeCaptureSession = captureSession;
                 activationInFlight = true;
                 _ = HandleStaticItemActivatedAsync(
                     screen,
                     selectItem,
                     onActivated,
-                    entries => captureSession?.Add(entries),
+                    entries => activeCaptureSession?.Add(entries),
                     () => activationInFlight = false);
             };
         }
@@ -723,6 +723,7 @@ public class CommonHelpers
     {
         private readonly string _itemKey;
         private readonly List<LastActionEntry> _entries = new();
+        private bool _committed;
 
         public LastActionCaptureSession(string itemKey)
         {
@@ -732,10 +733,13 @@ public class CommonHelpers
         public void Add(IReadOnlyList<LastActionEntry> entries)
         {
             _entries.AddRange(entries);
+            if (_committed)
+                Commit();
         }
 
         public void Commit()
         {
+            _committed = true;
             if (_entries.Count > 0)
                 LastActionService.SaveAction(_itemKey, _entries);
         }
