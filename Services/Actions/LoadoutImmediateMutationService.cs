@@ -648,7 +648,7 @@ public static class LoadoutImmediateMutationService
 
         try
         {
-            await CardPileCmd.RemoveFromDeck(item.Model, showPreview: false);
+            await CardPileCmd.RemoveFromDeck(item.Model, showPreview: true);
             LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, item.OwnerNetId, LoadoutRunContentChangeMode.Remove);
         }
         catch (Exception exception)

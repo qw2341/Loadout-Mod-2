@@ -36,6 +36,7 @@ public partial class NGenericSelectScreen : Control
     private const float CardVisualLeftOverhang = 96f;
     private const float CardScrollbarReserve = 48f;
     private const int InitialMaterializeBudget = 96;
+    private const int RemovalMaterializeBudget = 12;
     private const int ScrollMaterializeBudget = 164;
     private const float ScrollSmoothingRate = 15f;
     private const float ScrollSpeedMultiplier = 3f;
@@ -496,7 +497,7 @@ public partial class NGenericSelectScreen : Control
         Dictionary<Control, Vector2> relayoutStartPositions = new();
 
         reusableViews.Remove(removedItem.Id);
-        RemoveItemView(removedItem);
+        AnimateAndRemoveItemView(removedItem);
 
         _items.Clear();
         _visibleItems.Clear();
@@ -887,7 +888,7 @@ public partial class NGenericSelectScreen : Control
         ApplyLayoutToExistingItemViews(updateExistingViews);
 
         if (_materializationMode == SelectMaterializationMode.Lazy)
-            MaterializeViewportItemViews(InitialMaterializeBudget, updateExistingViews);
+            MaterializeViewportItemViews(RemovalMaterializeBudget, updateExistingViews);
         else
             MaterializeAllItemViews(updateExistingViews);
 
@@ -2758,6 +2759,43 @@ public partial class NGenericSelectScreen : Control
         ClearActivationBinding(view);
         view.QueueFreeSafely();
         item.SetView(null);
+    }
+
+    private void AnimateAndRemoveItemView(IGenericSelectItem item)
+    {
+        if (item.View is null || !GodotObject.IsInstanceValid(item.View))
+            return;
+
+        Control view = item.View;
+        ClearActivationBinding(view);
+        item.SetView(null);
+
+        if (_itemGrid is null || !view.Visible || !view.IsInsideTree())
+        {
+            view.GetParent()?.RemoveChild(view);
+            view.QueueFreeSafely();
+            return;
+        }
+
+        Vector2 globalPosition = view.GlobalPosition;
+        if (view.GetParent() != _itemGrid)
+        {
+            view.GetParent()?.RemoveChild(view);
+            _itemGrid.AddChild(view);
+            view.GlobalPosition = globalPosition;
+        }
+
+        view.MouseFilter = MouseFilterEnum.Ignore;
+        view.ZIndex = Math.Max(view.ZIndex, 100);
+        Vector2 startScale = view.Scale;
+        Tween tween = view.CreateTween();
+        tween.TweenProperty(view, "scale", new Vector2(startScale.X * 1.12f, startScale.Y * 0.02f), 0.18f)
+            .SetEase(Tween.EaseType.In)
+            .SetTrans(Tween.TransitionType.Cubic);
+        tween.Parallel().TweenProperty(view, "modulate", Colors.Black, 0.14f)
+            .SetEase(Tween.EaseType.In)
+            .SetTrans(Tween.TransitionType.Cubic);
+        tween.TweenCallback(Callable.From(view.QueueFreeSafely));
     }
 
     private void NormalizeItemForGrid(Control control)
