@@ -106,6 +106,7 @@ public partial class NLoadoutPanel : Panel
 		_panelContainer = GetNode<PanelContainer>("PanelContainer");
 		_marginContainer = GetNode<MarginContainer>("PanelContainer/MarginContainer");
 		_itemsContainer = GetNode<Control>("PanelContainer/MarginContainer/VBoxContainer");
+		_itemsContainer.AddThemeConstantOverride("separation", 0);
 		ItemsContainer = _itemsContainer;
 		
 		BindRunHooks();
@@ -397,10 +398,10 @@ public partial class NLoadoutPanel : Panel
 				
 		//07 - EVENTFUL COMPASS
 		EventfulCompass.Initialize();
-		//08 - TILDE KEY
-		TildeKey.Initialize();
-		//09 - POWER GIVER
+		//08 - POWER GIVER
 		PowerGiver.Initialize();
+		//09 - TILDE KEY
+		TildeKey.Initialize();
 	}
 
 	private void TryAddLoadoutItems()

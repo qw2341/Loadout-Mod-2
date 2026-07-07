@@ -22,6 +22,12 @@ public sealed class PanelItemAnimationProfile
 	public Tween.TransitionType Transition { get; }
 	public Tween.EaseType Ease { get; }
 	public bool KeepBottomAnchored { get; }
+	public bool GlowEnabled { get; }
+	public Color GlowColor { get; }
+	public float GlowScale { get; }
+	public float GlowMinAlpha { get; }
+	public float GlowMaxAlpha { get; }
+	public float GlowPulseSpeed { get; }
 
 	public PanelItemAnimationProfile(
 		string id,
@@ -32,7 +38,13 @@ public sealed class PanelItemAnimationProfile
 		float positionLift,
 		Tween.TransitionType transition,
 		Tween.EaseType ease,
-		bool keepBottomAnchored)
+		bool keepBottomAnchored,
+		bool glowEnabled = false,
+		Color? glowColor = null,
+		float glowScale = 1.12f,
+		float glowMinAlpha = 0.35f,
+		float glowMaxAlpha = 1f,
+		float glowPulseSpeed = 4f)
 	{
 		Id = id;
 		Type = type;
@@ -43,6 +55,12 @@ public sealed class PanelItemAnimationProfile
 		Transition = transition;
 		Ease = ease;
 		KeepBottomAnchored = keepBottomAnchored;
+		GlowEnabled = glowEnabled;
+		GlowColor = glowColor ?? new Color("EFC851");
+		GlowScale = Mathf.Max(1f, glowScale);
+		GlowMinAlpha = Mathf.Clamp(glowMinAlpha, 0f, 1f);
+		GlowMaxAlpha = Mathf.Clamp(glowMaxAlpha, GlowMinAlpha, 1f);
+		GlowPulseSpeed = Mathf.Max(0f, glowPulseSpeed);
 	}
 
 	public static PanelItemAnimationProfile CreateDefault(string id)
@@ -50,19 +68,20 @@ public sealed class PanelItemAnimationProfile
 		return new PanelItemAnimationProfile(
 			id: id,
 			type: PanelItemAnimationType.LerpMagnify,
-			hoverScale: 1.1f,
+			hoverScale: 1f,
 			enterSpeed: 16f,
 			exitSpeed: 11f,
 			positionLift: 0f,
 			transition: Tween.TransitionType.Back,
 			ease: Tween.EaseType.Out,
-			keepBottomAnchored: true);
+			keepBottomAnchored: true,
+			glowEnabled: true);
 	}
 }
 
 public static class LoadoutPanelItemAnimationManager
 {
-	public const string DefaultAnimationId = "dock_magnify";
+	public const string DefaultAnimationId = "yellow_glow_pulse";
 
 	private const string BaseAnimationPath = "res://Loadout/animations/panel_items";
 	private const string AnimationConfigName = "animation.json";
@@ -210,7 +229,13 @@ public static class LoadoutPanelItemAnimationManager
 			positionLift: ReadFloat(data, "position_lift", 6f),
 			transition: ParseTransition(ReadString(data, "transition", "back")),
 			ease: ParseEase(ReadString(data, "ease", "out")),
-			keepBottomAnchored: ReadBool(data, "keep_bottom_anchored", true));
+			keepBottomAnchored: ReadBool(data, "keep_bottom_anchored", true),
+			glowEnabled: ReadBool(data, "glow_enabled", false),
+			glowColor: ReadColor(data, "glow_color", new Color("EFC851")),
+			glowScale: ReadFloat(data, "glow_scale", 1.12f),
+			glowMinAlpha: ReadFloat(data, "glow_min_alpha", 0.35f),
+			glowMaxAlpha: ReadFloat(data, "glow_max_alpha", 1f),
+			glowPulseSpeed: ReadFloat(data, "glow_pulse_speed", 4f));
 
 		ProfileCache[animationId] = profile;
 		return profile;
@@ -269,6 +294,22 @@ public static class LoadoutPanelItemAnimationManager
 
 		object value = data[key];
 		return value?.ToString() ?? fallback;
+	}
+
+	private static Color ReadColor(Godot.Collections.Dictionary data, string key, Color fallback)
+	{
+		string rawValue = ReadString(data, key, string.Empty);
+		if (string.IsNullOrWhiteSpace(rawValue))
+			return fallback;
+
+		try
+		{
+			return new Color(rawValue.Trim().TrimStart('#'));
+		}
+		catch
+		{
+			return fallback;
+		}
 	}
 
 	private static PanelItemAnimationType ParseType(string rawType)

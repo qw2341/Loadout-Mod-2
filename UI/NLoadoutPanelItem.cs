@@ -27,7 +27,7 @@ public partial class NLoadoutPanelItem : TextureButton
 	public string AnimationId = LoadoutPanelItemAnimationManager.DefaultAnimationId;
 
 	[Export] 
-	public int MinimumSizeY = 100;
+	public int MinimumSizeY = 76;
 
 	[Export]
 	public string DisplayName = string.Empty;
@@ -42,6 +42,8 @@ public partial class NLoadoutPanelItem : TextureButton
 	private bool _quickActionInFlight;
 	private Vector2 _baseScale = Vector2.One;
 	private Vector2 _basePosition;
+	private TextureRect _glow;
+	private float _glowPulseTime;
 	private NGenericSelectScreen _boundScreen;
 	private Action<NGenericSelectScreen> _beforeOpen;
 	private Action<NGenericSelectScreen> _afterOpen;
@@ -67,9 +69,10 @@ public partial class NLoadoutPanelItem : TextureButton
 
 		IgnoreTextureSize = true;
 		StretchMode = StretchModeEnum.KeepCentered;
-		SetCustomMinimumSize(new Vector2(0,MinimumSizeY));
+		SetCustomMinimumSize(new Vector2(0, MinimumSizeY));
 
 		_animationProfile = ResolveAnimationProfile();
+		EnsureGlowNode();
 		ApplySkinTexture();
 		UpdatePivotOffset();
 		ApplyAnimationVisuals();
@@ -106,6 +109,7 @@ public partial class NLoadoutPanelItem : TextureButton
 
 	public override void _Process(double delta)
 	{
+		_glowPulseTime += (float)delta;
 		float target = _isHovered ? 1f : 0f;
 		_hoverProgress = LoadoutPanelItemAnimationManager.StepProgress(
 			_hoverProgress,
@@ -157,6 +161,8 @@ public partial class NLoadoutPanelItem : TextureButton
 		TextureHover = texture;
 		TexturePressed = texture;
 		TextureDisabled = texture;
+
+		ApplyGlowTexture();
 	}
 
 	private PanelItemAnimationProfile ResolveAnimationProfile()
@@ -171,6 +177,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		float scaleAmount = Mathf.Lerp(1f, _animationProfile.HoverScale, easedProgress);
 
 		Scale = _baseScale * scaleAmount;
+		ApplyGlowVisuals(easedProgress);
 
 		if (_isInsideContainer || _animationProfile.PositionLift <= 0f)
 			return;
@@ -188,6 +195,75 @@ public partial class NLoadoutPanelItem : TextureButton
 		}
 
 		PivotOffset = Size * 0.5f;
+	}
+
+	private void EnsureGlowNode()
+	{
+		if (_glow is not null && IsInstanceValid(_glow))
+			return;
+
+		_glow = new TextureRect
+		{
+			Name = "HoverGlow",
+			MouseFilter = MouseFilterEnum.Ignore,
+			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+			StretchMode = TextureRect.StretchModeEnum.KeepCentered,
+			ShowBehindParent = true,
+			Modulate = Colors.Transparent
+		};
+		_glow.SetAnchorsPreset(LayoutPreset.FullRect);
+		AddChild(_glow);
+	}
+
+	private void ApplyGlowTexture()
+	{
+		EnsureGlowNode();
+
+		Texture2D glowTexture = TryLoadOutlineTexture();
+		_glow.Texture = glowTexture;
+		_glow.Visible = glowTexture is not null;
+	}
+
+	private Texture2D TryLoadOutlineTexture()
+	{
+		string skinId = UseGlobalSkin ? LoadoutSkinManager.ActiveSkinId : SkinId;
+		Texture2D texture = TryLoadOutlineTexture(skinId);
+		if (texture is not null)
+			return texture;
+
+		return TryLoadOutlineTexture(LoadoutSkinManager.DefaultSkinId);
+	}
+
+	private Texture2D TryLoadOutlineTexture(string skinId)
+	{
+		if (string.IsNullOrWhiteSpace(skinId) || string.IsNullOrWhiteSpace(TextureFileName))
+			return null;
+
+		string texturePath = $"res://Loadout/images/relics/{skinId}/outline/{TextureFileName}";
+		return ResourceLoader.Exists(texturePath) ? GD.Load<Texture2D>(texturePath) : null;
+	}
+
+	private void ApplyGlowVisuals(float easedProgress)
+	{
+		if (_glow is null || !IsInstanceValid(_glow))
+			return;
+
+		if (!_animationProfile.GlowEnabled || _glow.Texture is null)
+		{
+			_glow.Modulate = Colors.Transparent;
+			return;
+		}
+
+		float pulse = _animationProfile.GlowPulseSpeed <= 0f
+			? 1f
+			: (Mathf.Sin(_glowPulseTime * _animationProfile.GlowPulseSpeed) + 1f) * 0.5f;
+		float alpha = Mathf.Lerp(_animationProfile.GlowMinAlpha, _animationProfile.GlowMaxAlpha, pulse) * easedProgress;
+		Color color = _animationProfile.GlowColor;
+		_glow.Modulate = new Color(color.R, color.G, color.B, alpha);
+		_glow.Scale = Vector2.One * Mathf.Lerp(1f, _animationProfile.GlowScale, easedProgress);
+		_glow.Position = Vector2.Zero;
+		_glow.Size = Size;
+		_glow.PivotOffset = Size * 0.5f;
 	}
 
 	private void OnMouseEntered()
@@ -226,6 +302,7 @@ public partial class NLoadoutPanelItem : TextureButton
 	private void OnResized()
 	{
 		UpdatePivotOffset();
+		ApplyAnimationVisuals();
 	}
 
 	private void OnSkinChanged(string _)
@@ -243,6 +320,7 @@ public partial class NLoadoutPanelItem : TextureButton
 
 		_animationProfile = ResolveAnimationProfile();
 		UpdatePivotOffset();
+		ApplyAnimationVisuals();
 	}
 
 	private Func<Task> GetQuickActionForGesture(InputEventMouseButton mouseButton)

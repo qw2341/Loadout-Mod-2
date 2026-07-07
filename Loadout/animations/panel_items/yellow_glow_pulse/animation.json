@@ -1,0 +1,16 @@
+{
+  "type": "lerp_magnify",
+  "hover_scale": 1.0,
+  "enter_speed": 18.0,
+  "exit_speed": 14.0,
+  "position_lift": 0.0,
+  "transition": "sine",
+  "ease": "out",
+  "keep_bottom_anchored": true,
+  "glow_enabled": true,
+  "glow_color": "EFC851",
+  "glow_scale": 1.12,
+  "glow_min_alpha": 0.35,
+  "glow_max_alpha": 1.0,
+  "glow_pulse_speed": 4.2
+}
