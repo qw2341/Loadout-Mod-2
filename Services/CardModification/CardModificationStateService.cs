@@ -76,6 +76,7 @@ public static class CardModificationStateService
     private static bool _hasHostPermanentOverlay;
     private static readonly Dictionary<string, CachedDisplayCard> DisplayCardCache = new(StringComparer.Ordinal);
     private static readonly ConditionalWeakTable<CardModel, LocalCatalogDisplayCardMarker> LocalCatalogDisplayCards = new();
+    private static readonly ConditionalWeakTable<CardModel, PreviewCardStateHolder> PreviewCardStates = new();
     private static bool _registered;
     private static bool _permanentLoaded;
     private static bool _runLoaded;
@@ -142,6 +143,9 @@ public static class CardModificationStateService
         EnsureLoaded();
         lock (SyncRoot)
         {
+            if (!card.IsCanonical && PreviewCardStates.TryGetValue(card, out PreviewCardStateHolder? preview))
+                return preview.State.Clone();
+
             CardModificationState effective = IsLocalCatalogDisplayCard(card)
                 ? GetCatalogPermanentStateLocked(card.Id)
                 : GetEffectivePermanentStateLocked(card.Id);
@@ -293,6 +297,7 @@ public static class CardModificationStateService
         CardModificationState normalized = state.Clone();
         normalized.Normalize();
         bool changed = SaveTemporaryLocal(item, normalized);
+        ClearPreviewState(item.Model);
 
         if (changed)
         {
@@ -338,6 +343,7 @@ public static class CardModificationStateService
     {
         EnsureLoaded();
         bool changed = ResetTemporaryLocal(item);
+        ClearPreviewState(item.Model);
 
         if (changed)
         {
@@ -400,6 +406,7 @@ public static class CardModificationStateService
 
     public static void ApplyEffectiveStateToOwnedCard(LoadoutOwnedItem<CardModel> item, CardModificationState? previousState = null)
     {
+        ClearPreviewState(item.Model);
         CardModificationState state = GetEffectiveState(item);
         bool hasCardMutation = HasCardMutations(state) || HasCardMutations(previousState);
         if (hasCardMutation)
@@ -419,6 +426,7 @@ public static class CardModificationStateService
     {
         CardModificationState normalized = state.Clone();
         normalized.Normalize();
+        SetPreviewState(item.Model, normalized);
         bool hasCardMutation = HasCardMutations(normalized) || HasCardMutations(previousState);
         if (hasCardMutation)
         {
@@ -432,6 +440,7 @@ public static class CardModificationStateService
 
     public static void ResetOwnedCardToBasicState(LoadoutOwnedItem<CardModel> item, CardModificationState? state)
     {
+        ClearPreviewState(item.Model);
         CardModificationState normalized = state?.Clone() ?? new CardModificationState();
         normalized.Normalize();
 
@@ -1407,6 +1416,21 @@ public static class CardModificationStateService
         }
     }
 
+    private static void SetPreviewState(CardModel card, CardModificationState state)
+    {
+        if (card.IsCanonical)
+            return;
+
+        PreviewCardStates.Remove(card);
+        PreviewCardStates.Add(card, new PreviewCardStateHolder(state.Clone()));
+    }
+
+    private static void ClearPreviewState(CardModel card)
+    {
+        if (!card.IsCanonical)
+            PreviewCardStates.Remove(card);
+    }
+
     private static bool IsLocalCatalogDisplayCard(CardModel card)
     {
         return card.IsCanonical || LocalCatalogDisplayCards.TryGetValue(card, out _);
@@ -1986,6 +2010,11 @@ public static class CardModificationStateService
 
     private sealed class LocalCatalogDisplayCardMarker
     {
+    }
+
+    private sealed class PreviewCardStateHolder(CardModificationState state)
+    {
+        public CardModificationState State { get; } = state;
     }
 
     private readonly record struct CachedDisplayCard(int Revision, CardModel Card);

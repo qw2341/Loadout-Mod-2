@@ -48,7 +48,7 @@ public partial class NCardModificationScreen : Control
     private LoadoutOwnedItem<CardModel>? _item;
     private List<LoadoutOwnedItem<CardModel>> _items = [];
     private int _itemIndex;
-    private Action? _parentRefresh;
+    private Action<LoadoutOwnedItem<CardModel>, bool>? _parentRefresh;
     private CardModificationState _workingState = new();
     private CardModificationState _temporaryState = new();
     private CardModificationState _lastAppliedState = new();
@@ -72,6 +72,7 @@ public partial class NCardModificationScreen : Control
     private bool _stateEventsBound;
     private bool _runContentEventsBound;
     private bool _hasPendingTemporaryCommit;
+    private bool _suppressStateRefreshThisFrame;
 
     public static NCardModificationScreen Create()
     {
@@ -89,7 +90,7 @@ public partial class NCardModificationScreen : Control
     public void Init(
         LoadoutOwnedItem<CardModel> item,
         IReadOnlyList<LoadoutOwnedItem<CardModel>>? items = null,
-        Action? parentRefresh = null)
+        Action<LoadoutOwnedItem<CardModel>, bool>? parentRefresh = null)
     {
         _items = items?.Count > 0 ? items.ToList() : [item];
         _itemIndex = Math.Max(0, _items.FindIndex(candidate => SameOwnedItem(candidate, item)));
@@ -172,6 +173,9 @@ public partial class NCardModificationScreen : Control
         if (!IsInsideTree() || _item is null || _hasPendingTemporaryCommit)
             return;
 
+        if (_suppressStateRefreshThisFrame)
+            return;
+
         Callable.From(RefreshFromAppliedState).CallDeferred();
     }
 
@@ -202,7 +206,7 @@ public partial class NCardModificationScreen : Control
             return;
 
         LoadItem(_item);
-        RefreshParentView();
+        RefreshParentView(forceReload: true);
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -241,7 +245,7 @@ public partial class NCardModificationScreen : Control
         _items = refreshedItems;
         _itemIndex = refreshedIndex;
         LoadItem(_items[_itemIndex]);
-        RefreshParentView();
+        RefreshParentView(forceReload: true);
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -563,12 +567,12 @@ public partial class NCardModificationScreen : Control
             _workingState.PoolId ?? card.Pool.Id.ToString(),
             selected =>
             {
-            _workingState.PoolId = selected;
-            _temporaryState.PoolId = selected;
-            CapturePortraitOverride();
-            ApplyWorkingState();
-            Callable.From(RebuildControls).CallDeferred();
-        });
+                CapturePortraitOverride();
+                _workingState.PoolId = selected;
+                _temporaryState.PoolId = selected;
+                ApplyWorkingState();
+                Callable.From(RebuildControls).CallDeferred();
+            });
 
         AddDropdownRow(_leftControls,
             LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")),
@@ -841,6 +845,7 @@ public partial class NCardModificationScreen : Control
         CardModificationState previousState = _lastAppliedState.Clone();
         CardModificationState permanentState = _workingState.Clone();
         _hasPendingTemporaryCommit = false;
+        SuppressStateRefreshThisFrame();
         CardModificationStateService.SavePermanent(_item.Model.Id, permanentState);
         bool requestedPermanent = LoadoutImmediateMutationService.RequestCardModification(
             CardModificationOperation.ApplyPermanent,
@@ -858,7 +863,7 @@ public partial class NCardModificationScreen : Control
         if (!requestedPermanent)
             CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
         _lastAppliedState = _workingState.Clone();
-        RefreshParentView();
+        RefreshParentView(forceReload: true);
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -869,12 +874,13 @@ public partial class NCardModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
+        SuppressStateRefreshThisFrame();
         CardModificationStateService.ResetTemporaryToBasic(_item);
         LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetTemporaryToBasic, _item);
         _temporaryState = new CardModificationState();
         _workingState = CardModificationStateService.GetEffectivePermanentState(_item.Model.Id);
         _lastAppliedState = _workingState.Clone();
-        RefreshParentView();
+        RefreshParentView(forceReload: true);
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -885,12 +891,13 @@ public partial class NCardModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
+        SuppressStateRefreshThisFrame();
         CardModificationStateService.ResetPermanentToBasic(_item);
         LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);
         _workingState = CardModificationStateService.GetEffectiveState(_item);
         _temporaryState = CardModificationStateService.GetTemporaryState(_item);
         _lastAppliedState = _workingState.Clone();
-        RefreshParentView();
+        RefreshParentView(forceReload: true);
         RebuildControls();
         RefreshPreview(forceReload: true);
     }
@@ -903,11 +910,12 @@ public partial class NCardModificationScreen : Control
         CardModificationState previousState = _lastAppliedState.Clone();
         CardModificationState previewState = _workingState.Clone();
         previewState.Normalize();
+        bool forceReload = HasStructuralVisualChange(previousState, previewState);
         CardModificationStateService.ApplyPreviewStateToOwnedCard(_item, previewState, previousState);
-        _lastAppliedState = _workingState.Clone();
+        _lastAppliedState = previewState.Clone();
         _hasPendingTemporaryCommit = true;
-        RefreshParentView();
-        RefreshPreview(forceReload: true);
+        RefreshParentView(forceReload);
+        RefreshPreview(forceReload);
     }
 
     private bool CommitPendingTemporaryModification()
@@ -918,6 +926,7 @@ public partial class NCardModificationScreen : Control
         _hasPendingTemporaryCommit = false;
         CardModificationState state = _temporaryState.Clone();
         state.Normalize();
+        SuppressStateRefreshThisFrame();
         if (LoadoutImmediateMutationService.RequestCardModification(
                 CardModificationOperation.SaveTemporary,
                 _item,
@@ -928,6 +937,36 @@ public partial class NCardModificationScreen : Control
 
         CardModificationStateService.SaveTemporary(_item, state);
         return true;
+    }
+
+    private void SuppressStateRefreshThisFrame()
+    {
+        _suppressStateRefreshThisFrame = true;
+        Callable.From(() => _suppressStateRefreshThisFrame = false).CallDeferred();
+    }
+
+    private static bool HasStructuralVisualChange(CardModificationState previousState, CardModificationState nextState)
+    {
+        CardModificationState previous = previousState.Clone();
+        CardModificationState next = nextState.Clone();
+        previous.Normalize();
+        next.Normalize();
+
+        return !SameStructuralValue(previous.PoolId, next.PoolId)
+               || !SameStructuralValue(previous.Type, next.Type)
+               || !SameStructuralValue(previous.Rarity, next.Rarity)
+               || !SameStructuralValue(previous.PortraitPath, next.PortraitPath)
+               || !SameStructuralValue(previous.BetaPortraitPath, next.BetaPortraitPath);
+    }
+
+    private static bool SameStructuralValue(string? left, string? right)
+    {
+        return string.Equals(NormalizeStructuralValue(left), NormalizeStructuralValue(right), StringComparison.Ordinal);
+    }
+
+    private static string NormalizeStructuralValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
     }
 
     private void OpenTextEditor(TextEditTarget target)
@@ -1032,14 +1071,14 @@ public partial class NCardModificationScreen : Control
             textEdit.GrabFocus();
     }
 
-    private void RefreshParentView()
+    private void RefreshParentView(bool forceReload = false)
     {
-        if (_parentRefresh is null)
+        if (_parentRefresh is null || _item is null)
             return;
 
         try
         {
-            _parentRefresh.Invoke();
+            _parentRefresh.Invoke(_item, forceReload);
         }
         catch (ObjectDisposedException)
         {
@@ -1150,12 +1189,6 @@ public partial class NCardModificationScreen : Control
             return;
 
         LayoutPreviewNavigation();
-
-        if (forceReload)
-        {
-            ClearChildren(_previewHost);
-            _previewCard = null;
-        }
 
         if (_previewCard is null || !GodotObject.IsInstanceValid(_previewCard))
         {
@@ -1338,7 +1371,7 @@ public partial class NCardModificationScreen : Control
 
     private static void ReassignPreviewCardModel(NCard card, CardModel model, bool forceReload)
     {
-        if (forceReload)
+        if (forceReload || !ReferenceEquals(card.Model, model))
             card.Model = null;
 
         card.Model = model;

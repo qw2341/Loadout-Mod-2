@@ -420,6 +420,21 @@ public class CardPrinter
 	    holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
     }
 
+    public static void ReloadCardVisuals(Control view, CardModel sourceModel = null)
+    {
+	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
+		    return;
+
+	    CardModel model = ResolveDisplayModel(sourceModel ?? holder.CardModel);
+	    if (model is null)
+		    return;
+
+	    bool shouldPreviewUpgrade = model.IsUpgradable && holder.GetMeta(PreviewUpgradeMetaKey, false).AsBool();
+	    holder.CardNode.Model = null;
+	    holder.ReassignToCard(model, PileType.None, null, ModelVisibility.Visible);
+	    holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
+    }
+
     public static void UpdateCardGridItem(Control view, SelectItemState state)
     {
 	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder))

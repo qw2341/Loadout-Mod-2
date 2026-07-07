@@ -119,12 +119,51 @@ public class CardModifier
         modificationScreen.Init(
             item,
             GetSelectedTargetDeckCardsForModifier(),
-            () =>
-            {
-                if (GodotObject.IsInstanceValid(sourceView) && sourceView.IsInsideTree())
-                    CardPrinter.ForceRefreshCardVisuals(sourceView);
-            });
+            (currentItem, forceReload) => RefreshCardModifierItemView(selectScreen, currentItem, sourceView, item, forceReload));
         root.OpenScreen(modificationScreen);
+    }
+
+    private static void RefreshCardModifierItemView(
+        NGenericSelectScreen selectScreen,
+        LoadoutOwnedItem<CardModel> item,
+        Control fallbackView,
+        LoadoutOwnedItem<CardModel> fallbackItem,
+        bool forceReload)
+    {
+        if (selectScreen is not null && GodotObject.IsInstanceValid(selectScreen))
+        {
+            bool refreshed = false;
+            selectScreen.ForEachVisibleItemView((selectItem, view) =>
+            {
+                if (refreshed
+                    || selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> visibleItem
+                    || !SameOwnedItem(visibleItem, item))
+                {
+                    return;
+                }
+
+                RefreshCardModifierView(view, item.Model, forceReload);
+                refreshed = true;
+            });
+
+            if (refreshed)
+                return;
+        }
+
+        if (SameOwnedItem(item, fallbackItem)
+            && GodotObject.IsInstanceValid(fallbackView)
+            && fallbackView.IsInsideTree())
+        {
+            RefreshCardModifierView(fallbackView, item.Model, forceReload);
+        }
+    }
+
+    private static void RefreshCardModifierView(Control view, CardModel model, bool forceReload)
+    {
+        if (forceReload)
+            CardPrinter.ReloadCardVisuals(view, model);
+        else
+            CardPrinter.RefreshCardVisuals(view, model);
     }
 
     private static LoadoutOwnedItem<CardModel> ResolveCurrentItem(
@@ -141,6 +180,13 @@ public class CardModifier
         }
 
         return fallbackItem;
+    }
+
+    private static bool SameOwnedItem(LoadoutOwnedItem<CardModel> left, LoadoutOwnedItem<CardModel> right)
+    {
+        return left.OwnerNetId == right.OwnerNetId
+               && left.Index == right.Index
+               && ReferenceEquals(left.Model, right.Model);
     }
 
     private static void OpenHostPermamodConflictScreen()

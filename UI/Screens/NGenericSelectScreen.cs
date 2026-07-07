@@ -395,18 +395,21 @@ public partial class NGenericSelectScreen : Control
     public bool TryApplySingleItemRemoval<TModel>(
         IEnumerable<TModel> models,
         SelectItemAdapter<TModel> adapter,
-        bool animateRelayout = true)
+        bool animateRelayout = true,
+        bool updateExistingViews = false)
     {
         List<TModel> modelSnapshot = models.ToList();
         HashSet<string> nextIds = modelSnapshot
             .Select(adapter.GetId)
             .ToHashSet(StringComparer.Ordinal);
-        int removedCount = _items.Count(item => !nextIds.Contains(item.Id));
+        List<IGenericSelectItem> removedItems = _items
+            .Where(item => !nextIds.Contains(item.Id))
+            .ToList();
 
-        if (removedCount != 1 || modelSnapshot.Count != _items.Count - 1)
+        if (removedItems.Count != 1 || modelSnapshot.Count != _items.Count - 1)
             return false;
 
-        ApplyModelSnapshotPreservingViews(modelSnapshot, adapter, animateRelayout, resetScroll: false, updateExistingViews: true);
+        ApplySingleItemRemoval(modelSnapshot, adapter, removedItems[0], animateRelayout, updateExistingViews);
         return true;
     }
 
@@ -472,6 +475,56 @@ public partial class NGenericSelectScreen : Control
 
         _configuredLocaleLanguage = GetCurrentLocaleLanguage();
         RebuildCurrentLayout(resetScroll, updateExistingViews);
+
+        if (animateRelayout)
+            AnimateRelayoutFrom(relayoutStartPositions);
+    }
+
+    private void ApplySingleItemRemoval<TModel>(
+        IReadOnlyList<TModel> modelSnapshot,
+        SelectItemAdapter<TModel> adapter,
+        IGenericSelectItem removedItem,
+        bool animateRelayout,
+        bool updateExistingViews)
+    {
+        CancelRelayoutAnimations(applyFinalPositions: false);
+        CancelPendingMaterialization();
+        CancelPendingSearchRefresh();
+
+        Dictionary<string, Control> reusableViews = CaptureReusableItemViewsById();
+        Dictionary<string, Vector2> previousPositions = CaptureVisibleItemPositionsById();
+        Dictionary<Control, Vector2> relayoutStartPositions = new();
+
+        reusableViews.Remove(removedItem.Id);
+        RemoveItemView(removedItem);
+
+        _items.Clear();
+        _visibleItems.Clear();
+
+        int index = 0;
+        foreach (TModel model in modelSnapshot)
+        {
+            GenericSelectItem<TModel> item = new(model, adapter, index);
+            if (reusableViews.Remove(item.Id, out Control? view) && GodotObject.IsInstanceValid(view))
+            {
+                SetItemView(item, view);
+                if (animateRelayout && previousPositions.TryGetValue(item.Id, out Vector2 previousPosition))
+                    relayoutStartPositions[view] = previousPosition;
+            }
+
+            _items.Add(item);
+            index++;
+        }
+
+        HashSet<string> currentItemIds = _items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (string staleSelectionId in _selectedAmounts.Keys.Where(id => !currentItemIds.Contains(id)).ToList())
+            _selectedAmounts.Remove(staleSelectionId);
+
+        if (animateRelayout)
+            LockRelayoutPositions(relayoutStartPositions);
+
+        _configuredLocaleLanguage = GetCurrentLocaleLanguage();
+        RebuildCurrentLayoutAfterSingleRemoval(updateExistingViews);
 
         if (animateRelayout)
             AnimateRelayoutFrom(relayoutStartPositions);
@@ -811,6 +864,36 @@ public partial class NGenericSelectScreen : Control
         UpdateViewportCulling(force: true);
     }
 
+    private void RebuildCurrentLayoutAfterSingleRemoval(bool updateExistingViews)
+    {
+        if (!_isConfigured || _itemGrid is null)
+            return;
+
+        _visibleItems.Clear();
+        _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
+        _visibleItems.Sort(CompareItems);
+        ClearLayoutTracking();
+
+        float measuredWidth = GetActiveGroupDefinition() is { } group
+            ? RefreshGroupedItems(group)
+            : RefreshFlatItems();
+
+        _lastMeasuredItemWidth = measuredWidth > 0f ? measuredWidth : FallbackItemWidth;
+        ApplyLayoutSettings();
+        UpdateConfirmButtonState();
+        UpdateScrollBounds();
+        ClampScrollToBounds();
+
+        ApplyLayoutToExistingItemViews(updateExistingViews);
+
+        if (_materializationMode == SelectMaterializationMode.Lazy)
+            MaterializeViewportItemViews(InitialMaterializeBudget, updateExistingViews);
+        else
+            MaterializeAllItemViews(updateExistingViews);
+
+        UpdateViewportCulling(force: true);
+    }
+
     private Dictionary<string, Control> CaptureReusableItemViewsById()
     {
         Dictionary<string, Control> views = new(StringComparer.Ordinal);
@@ -832,6 +915,25 @@ public partial class NGenericSelectScreen : Control
         {
             if (item.View is null || !GodotObject.IsInstanceValid(item.View) || positions.ContainsKey(item.Id))
                 continue;
+
+            positions[item.Id] = item.View.Position;
+        }
+
+        return positions;
+    }
+
+    private Dictionary<string, Vector2> CaptureVisibleItemPositionsById()
+    {
+        Dictionary<string, Vector2> positions = new(StringComparer.Ordinal);
+        foreach (IGenericSelectItem item in _items)
+        {
+            if (item.View is null
+                || !GodotObject.IsInstanceValid(item.View)
+                || !item.View.Visible
+                || positions.ContainsKey(item.Id))
+            {
+                continue;
+            }
 
             positions[item.Id] = item.View.Position;
         }
@@ -1908,7 +2010,7 @@ public partial class NGenericSelectScreen : Control
         return materialized;
     }
 
-    private void MaterializeAllItemViews()
+    private void MaterializeAllItemViews(bool updateExistingViews = true)
     {
         if (_itemGrid is null)
             return;
@@ -1918,7 +2020,22 @@ public partial class NGenericSelectScreen : Control
             if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
                 continue;
 
-            MaterializeItemView(item, layout, updateExistingView: true);
+            MaterializeItemView(item, layout, updateExistingViews);
+        }
+    }
+
+    private void ApplyLayoutToExistingItemViews(bool updateExistingViews)
+    {
+        foreach (IGenericSelectItem item in _itemLayoutOrder)
+        {
+            if (item.View is null
+                || !GodotObject.IsInstanceValid(item.View)
+                || !_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+            {
+                continue;
+            }
+
+            MaterializeItemView(item, layout, updateExistingViews);
         }
     }
 
@@ -2192,7 +2309,7 @@ public partial class NGenericSelectScreen : Control
 
         TrackVisibleLayoutNode(view);
 
-        if (needsView || updateExistingView || !_itemsUpdatedForCurrentLayout.Contains(item))
+        if (needsView || (updateExistingView && !_itemsUpdatedForCurrentLayout.Contains(item)))
         {
             try
             {
@@ -2627,11 +2744,20 @@ public partial class NGenericSelectScreen : Control
             if (item.View is null || !GodotObject.IsInstanceValid(item.View))
                 continue;
 
-            item.View.GetParent()?.RemoveChild(item.View);
-            item.View.QueueFree();
-            ClearActivationBinding(item.View);
-            item.SetView(null);
+            RemoveItemView(item);
         }
+    }
+
+    private void RemoveItemView(IGenericSelectItem item)
+    {
+        if (item.View is null || !GodotObject.IsInstanceValid(item.View))
+            return;
+
+        Control view = item.View;
+        view.GetParent()?.RemoveChild(view);
+        ClearActivationBinding(view);
+        view.QueueFreeSafely();
+        item.SetView(null);
     }
 
     private void NormalizeItemForGrid(Control control)
@@ -2928,6 +3054,17 @@ public partial class NGenericSelectScreen : Control
     private void SetTargetScroll(float value)
     {
         _targetScrollY = Mathf.Clamp(value, 0f, _maxScrollY);
+    }
+
+    private void ClampScrollToBounds()
+    {
+        _targetScrollY = Mathf.Clamp(_targetScrollY, 0f, _maxScrollY);
+        _scrollY = Mathf.Clamp(_scrollY, 0f, _maxScrollY);
+        if (_itemGrid is not null)
+            _itemGrid.Position = new Vector2(_itemGrid.Position.X, -_scrollY);
+
+        if (_scrollbar is not null && !_scrollbarPressed)
+            _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
     }
 
     private void ScrollToTop()
