@@ -753,15 +753,25 @@ public static class TildeKeyStateService
             return;
 
         int desired = 999;
-        if (TryGetSavedStat(player.NetId, "combat_energy", out TildeKeySavedStat? saved)
-            && saved is not null
-            && saved.Locked)
+        if (TryGetSavedStat(player.NetId, "combat_energy", out TildeKeySavedStat? savedEn)
+            && savedEn is not null
+            && savedEn.Locked)
         {
-            desired = Math.Max(desired, saved.Value);
+            desired = Math.Max(desired, savedEn.Value);
         }
 
         if (player.PlayerCombatState.Energy != desired)
             player.PlayerCombatState.Energy = desired;
+        
+        if (TryGetSavedStat(player.NetId, "stars", out TildeKeySavedStat? savedSt)
+            && savedSt is not null
+            && savedSt.Locked)
+        {
+            desired = Math.Max(desired, savedSt.Value);
+        }
+
+        if (player.PlayerCombatState.Stars != desired)
+            player.PlayerCombatState.Stars = desired;
     }
 
     private static void TryDrawTillHandLimit(Player player)

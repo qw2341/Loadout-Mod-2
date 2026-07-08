@@ -304,10 +304,6 @@ public static partial class TildeKey
                 LocMan.Loc("TILDEKEY_STAT_MAX_POTION_SLOTS", $"Max {StaticHoverTitle("POTION_SLOT", "Potion Slot")}s"),
                 PotionSlotIconPath,
                 StsColors.lightGray),
-            "turn_number" => new(
-                LocMan.Loc("TILDEKEY_STAT_TURN_NUMBER", "Turn Number"),
-                TurnIconPath,
-                StsColors.gray),
             TildeKeyStateService.DrawPerTurnStatId => new(
                 LocMan.Loc("TILDEKEY_STAT_DRAW_PER_TURN", "Draw per Turn"),
                 CardIconPath,
@@ -324,6 +320,12 @@ public static partial class TildeKey
                 LocMan.Loc("TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER", "Enemy Damage Multiplier"),
                 DamageIconPath,
                 HpAccent),
+            
+            //LESS USED STUFF GOES HERE
+            "turn_number" => new(
+                LocMan.Loc("TILDEKEY_STAT_TURN_NUMBER", "Turn Number"),
+                TurnIconPath,
+                StsColors.gray),
             "extra_card_shop_removals" => new(
                 LocMan.Loc("TILDEKEY_STAT_CARD_SHOP_REMOVALS_USED", "Card Shop Removals Used"),
                 CardRemovalIconPath,
