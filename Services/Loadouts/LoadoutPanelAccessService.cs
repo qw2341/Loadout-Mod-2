@@ -8,6 +8,7 @@ using System.Linq;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
+using Loadout.Services.Networking;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
@@ -163,14 +164,26 @@ public static class LoadoutPanelAccessService
 
         foreach (StartRunLobby lobby in RegisteredLobbies.ToList())
         {
-            if (lobby.NetService.Type == NetGameType.Host)
-                lobby.NetService.SendMessage(message);
+            if (lobby.NetService.Type != NetGameType.Host)
+                continue;
+
+            foreach (LobbyPlayer player in lobby.Players)
+            {
+                if (player.id != lobby.NetService.NetId)
+                    SendAccessToLobbyPlayer(lobby, player.id);
+            }
         }
 
         try
         {
-            if (RunManager.Instance.IsInProgress && RunManager.Instance.NetService.Type == NetGameType.Host)
-                RunManager.Instance.NetService.SendMessage(message);
+            INetGameService netService = RunManager.Instance.NetService;
+            if (RunManager.Instance.IsInProgress && netService.Type == NetGameType.Host)
+            {
+                LoadoutNetworkBroadcast.SendToRunClients(
+                    netService,
+                    recipient => netService.SendMessage(message, recipient),
+                    "panel access");
+            }
         }
         catch
         {

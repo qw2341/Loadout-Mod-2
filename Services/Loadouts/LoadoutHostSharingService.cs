@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json;
 using Godot;
 using Loadout.PanelItems;
+using Loadout.Services.Networking;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Logging;
@@ -133,14 +134,26 @@ public static class LoadoutHostSharingService
 
         foreach (StartRunLobby lobby in RegisteredLobbies)
         {
-            if (lobby.NetService.Type == NetGameType.Host)
-                lobby.NetService.SendMessage(message);
+            if (lobby.NetService.Type != NetGameType.Host)
+                continue;
+
+            foreach (LobbyPlayer player in lobby.Players)
+            {
+                if (player.id != lobby.NetService.NetId)
+                    SendCatalogToLobbyPlayer(lobby, player.id);
+            }
         }
 
         try
         {
-            if (RunManager.Instance.IsInProgress && RunManager.Instance.NetService.Type == NetGameType.Host)
-                RunManager.Instance.NetService.SendMessage(message);
+            INetGameService netService = RunManager.Instance.NetService;
+            if (RunManager.Instance.IsInProgress && netService.Type == NetGameType.Host)
+            {
+                LoadoutNetworkBroadcast.SendToRunClients(
+                    netService,
+                    recipient => netService.SendMessage(message, recipient),
+                    "host loadout catalog");
+            }
         }
         catch
         {

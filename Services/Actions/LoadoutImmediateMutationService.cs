@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.CardModification;
 using Loadout.Services.Loadouts;
+using Loadout.Services.Networking;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Targets;
 using Loadout.Services.TildeKey;
@@ -470,11 +471,16 @@ public static class LoadoutImmediateMutationService
 
         if (netService is not null && netService.Type == NetGameType.Host)
         {
-            netService.SendMessage(new LoadoutImmediateMutationApplyMessage
+            LoadoutImmediateMutationApplyMessage message = new()
             {
                 sequence = payload.Sequence,
                 payload = payload
-            });
+            };
+
+            LoadoutNetworkBroadcast.SendToRunClients(
+                netService,
+                recipient => netService.SendMessage(message, recipient),
+                $"immediate mutation {payload.Kind} #{payload.Sequence}");
         }
     }
 
@@ -604,7 +610,8 @@ public static class LoadoutImmediateMutationService
             }
         }
 
-        PreviewAddedCards(addedCards);
+        if (IsLocalPlayer(targetPlayer))
+            PreviewAddedCards(addedCards);
         return changedCards;
     }
 
@@ -659,7 +666,8 @@ public static class LoadoutImmediateMutationService
             }
         }
 
-        PreviewAddedCards(addedCards);
+        if (IsLocalPlayer(targetPlayer))
+            PreviewAddedCards(addedCards);
         return changed;
     }
 
@@ -948,6 +956,18 @@ public static class LoadoutImmediateMutationService
             : requester;
     }
 
+    private static bool IsLocalPlayer(Player player)
+    {
+        try
+        {
+            return LocalContext.GetMe(player.RunState)?.NetId == player.NetId;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static Player? GetLocalRunPlayer()
     {
         try
@@ -1078,14 +1098,14 @@ public struct LoadoutImmediateMutationPayload
         writer.WriteInt((int)Kind, 8);
         writer.WriteInt(Sequence);
         writer.WriteULong(RequesterNetId);
-        writer.WriteFullModelId(ModelId);
+        WriteModelIdString(writer, ModelId);
         writer.WriteInt(Amount);
         writer.WriteInt((int)Target.Scope, 4);
         writer.WriteBool(Target.PlayerNetId.HasValue);
         if (Target.PlayerNetId.HasValue)
             writer.WriteULong(Target.PlayerNetId.Value);
         writer.WriteInt(OwnedItemIndex);
-        writer.WriteFullModelId(ExpectedModelId);
+        WriteModelIdString(writer, ExpectedModelId);
         writer.WriteInt((int)CardModificationOperation, 8);
         writer.WriteString(CardModificationStateJson ?? string.Empty);
         writer.WriteInt((int)LoadoutKind, 4);
@@ -1098,13 +1118,13 @@ public struct LoadoutImmediateMutationPayload
         Kind = (LoadoutImmediateMutationKind)reader.ReadInt(8);
         Sequence = reader.ReadInt();
         RequesterNetId = reader.ReadULong();
-        ModelId = reader.ReadFullModelId();
+        ModelId = ReadModelIdString(reader);
         Amount = reader.ReadInt();
         LoadoutTargetScope scope = (LoadoutTargetScope)reader.ReadInt(4);
         ulong? playerNetId = reader.ReadBool() ? reader.ReadULong() : null;
         Target = new LoadoutTargetSelection(scope, playerNetId);
         OwnedItemIndex = reader.ReadInt();
-        ExpectedModelId = reader.ReadFullModelId();
+        ExpectedModelId = ReadModelIdString(reader);
         CardModificationOperation = (CardModificationOperation)reader.ReadInt(8);
         CardModificationStateJson = reader.ReadString();
         LoadoutKind = (LoadoutKind)reader.ReadInt(4);
@@ -1115,6 +1135,49 @@ public struct LoadoutImmediateMutationPayload
     public override readonly string ToString()
     {
         return $"LoadoutImmediateMutationPayload {Kind} seq {Sequence} requester {RequesterNetId} model {ModelId} amount {Amount} target {Target}";
+    }
+
+    private static void WriteModelIdString(PacketWriter writer, ModelId id)
+    {
+        writer.WriteString(id == ModelId.none ? string.Empty : id.ToString());
+    }
+
+    private static ModelId ReadModelIdString(PacketReader reader)
+    {
+        string rawId = reader.ReadString();
+        if (string.IsNullOrWhiteSpace(rawId))
+            return ModelId.none;
+
+        foreach (AbstractModel model in EnumerateKnownModels())
+        {
+            if (ModelIdStringMatches(model, rawId))
+                return model.Id;
+        }
+
+        GD.PushWarning($"LoadoutImmediateMutation: received unknown model id '{rawId}'.");
+        return ModelId.none;
+    }
+
+    private static IEnumerable<AbstractModel> EnumerateKnownModels()
+    {
+        foreach (CardModel model in ModelDb.AllCards)
+            yield return model;
+        foreach (RelicModel model in ModelDb.AllRelics)
+            yield return model;
+        foreach (PotionModel model in ModelDb.AllPotions)
+            yield return model;
+        foreach (PowerModel model in ModelDb.AllPowers)
+            yield return model;
+        foreach (EventModel model in ModelDb.AllEvents)
+            yield return model;
+        foreach (AncientEventModel model in ModelDb.AllAncients)
+            yield return model;
+    }
+
+    private static bool ModelIdStringMatches(AbstractModel model, string rawId)
+    {
+        return string.Equals(model.Id.ToString(), rawId, StringComparison.Ordinal)
+               || string.Equals(model.Id.Entry, rawId, StringComparison.OrdinalIgnoreCase);
     }
 }
 

@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Runs;
 using Loadout.Services.Targets;
+using Loadout.Services.Networking;
 using MegaCrit.Sts2.Core.Models;
 
 public static class CardModificationMultiplayerSyncService
@@ -122,14 +123,26 @@ public static class CardModificationMultiplayerSyncService
 
         foreach (StartRunLobby lobby in RegisteredLobbies)
         {
-            if (lobby.NetService.Type == NetGameType.Host)
-                lobby.NetService.SendMessage(message);
+            if (lobby.NetService.Type != NetGameType.Host)
+                continue;
+
+            foreach (LobbyPlayer player in lobby.Players)
+            {
+                if (player.id != lobby.NetService.NetId)
+                    SendPermanentSnapshotToLobbyPlayer(lobby, player.id);
+            }
         }
 
         try
         {
-            if (RunManager.Instance.IsInProgress && RunManager.Instance.NetService.Type == NetGameType.Host)
-                RunManager.Instance.NetService.SendMessage(message);
+            INetGameService netService = RunManager.Instance.NetService;
+            if (RunManager.Instance.IsInProgress && netService.Type == NetGameType.Host)
+            {
+                LoadoutNetworkBroadcast.SendToRunClients(
+                    netService,
+                    recipient => netService.SendMessage(message, recipient),
+                    "card modification permanent snapshot");
+            }
         }
         catch
         {
@@ -151,7 +164,11 @@ public static class CardModificationMultiplayerSyncService
                 cardId = item.Model.Id.ToString(),
                 stateJson = state.IsEmpty ? string.Empty : JsonSerializer.Serialize(state)
             };
-            RunManager.Instance.NetService.SendMessage(message);
+            INetGameService netService = RunManager.Instance.NetService;
+            LoadoutNetworkBroadcast.SendToRunClients(
+                netService,
+                recipient => netService.SendMessage(message, recipient),
+                "card modification temporary snapshot");
         }
         catch (Exception exception)
         {
