@@ -18,7 +18,13 @@ public static class CardPrinterMaxCardsInHandPatch
     public static void Postfix(ref int __result)
     {
         if (LoadoutCardAddRules.ShouldIgnoreHandLimit)
+        {
             __result = int.MaxValue;
+            return;
+        }
+
+        if (LoadoutCardAddRules.CurrentHandLimitOverride is { } handLimit)
+            __result = handLimit;
     }
 }
 

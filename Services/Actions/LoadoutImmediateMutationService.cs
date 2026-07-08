@@ -50,7 +50,9 @@ public enum LoadoutImmediateMutationKind
     TildeStatLock,
     TildeToggleSet,
     TildeKillEnemies,
-    TildeSpareEnemies
+    TildeSpareEnemies,
+    TildeRelicCounterDelta,
+    TildeRelicCounterLock
 }
 
 public static class LoadoutImmediateMutationService
@@ -283,6 +285,64 @@ public static class LoadoutImmediateMutationService
         });
     }
 
+    public static bool RequestTildeRelicCounterDelta(RelicModel relic, int delta, string counterMember)
+    {
+        return RequestTildeRelicCounterMutation(relic, LoadoutImmediateMutationKind.TildeRelicCounterDelta, delta, counterMember, enabled: false);
+    }
+
+    public static bool RequestTildeRelicCounterLock(RelicModel relic, string counterMember, int value, bool locked)
+    {
+        return RequestTildeRelicCounterMutation(relic, LoadoutImmediateMutationKind.TildeRelicCounterLock, value, counterMember, locked);
+    }
+
+    private static bool RequestTildeRelicCounterMutation(
+        RelicModel relic,
+        LoadoutImmediateMutationKind kind,
+        int amount,
+        string counterMember,
+        bool enabled)
+    {
+        Player owner;
+        try
+        {
+            owner = relic.Owner;
+        }
+        catch
+        {
+            return false;
+        }
+
+        int relicIndex = FindRelicIndex(owner.Relics, relic);
+        if (relicIndex < 0 || string.IsNullOrWhiteSpace(counterMember))
+            return false;
+
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = kind,
+            ModelId = ModelId.none,
+            Amount = amount,
+            Target = LoadoutTargetSelection.ForPlayer(owner.NetId),
+            OwnedItemIndex = relicIndex,
+            ExpectedModelId = relic.Id,
+            TildePayloadJson = JsonSerializer.Serialize(new TildeKeyMutationPayload
+            {
+                CounterMember = counterMember,
+                Enabled = enabled
+            })
+        });
+    }
+
+    private static int FindRelicIndex(IReadOnlyList<RelicModel> relics, RelicModel relic)
+    {
+        for (int i = 0; i < relics.Count; i++)
+        {
+            if (ReferenceEquals(relics[i], relic))
+                return i;
+        }
+
+        return -1;
+    }
+
     public static bool Request(
         LoadoutImmediateMutationKind kind,
         ModelId modelId,
@@ -476,6 +536,24 @@ public static class LoadoutImmediateMutationService
                 break;
             case LoadoutImmediateMutationKind.TildeSpareEnemies:
                 TaskHelper.RunSafely(TildeKeyStateService.SpareCurrentEnemiesAsync());
+                break;
+            case LoadoutImmediateMutationKind.TildeRelicCounterDelta:
+                TildeKeyStateService.ApplySynchronizedRelicCounterDelta(
+                    payload.TildePayloadJson,
+                    payload.Amount,
+                    payload.Target,
+                    payload.OwnedItemIndex,
+                    payload.ExpectedModelId,
+                    requester);
+                break;
+            case LoadoutImmediateMutationKind.TildeRelicCounterLock:
+                TildeKeyStateService.ApplySynchronizedRelicCounterLock(
+                    payload.TildePayloadJson,
+                    payload.Amount,
+                    payload.Target,
+                    payload.OwnedItemIndex,
+                    payload.ExpectedModelId,
+                    requester);
                 break;
         }
     }

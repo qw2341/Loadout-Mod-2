@@ -24,6 +24,9 @@ public static partial class TildeKey
     private const string TargetDropdownName = "TildeKeyTargetDropdown";
     private const string GodmodeToggleName = "TildeKeyGodmodeToggle";
     private const string GoToAnyRoomToggleName = "TildeKeyGoToAnyRoomToggle";
+    private const string InfiniteEnergyToggleName = "TildeKeyInfiniteEnergyToggle";
+    private const string DrawTillHandLimitToggleName = "TildeKeyDrawTillHandLimitToggle";
+    private const string ScrollRelicCounterToggleName = "TildeKeyScrollRelicCounterToggle";
     private const string StaticHoverTipsTable = "static_hover_tips";
     private const string HeartIconPath = "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_heart.tres";
     private const string GoldIconPath = "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_gold.tres";
@@ -32,6 +35,7 @@ public static partial class TildeKey
     private const string OrbSlotIconPath = "res://images/orbs/empty_orb.png";
     private const string PotionSlotIconPath = "res://images/packed/potions/potion_placeholder.png";
     private const string TurnIconPath = "res://images/ui/run_history/unknown_monster.png";
+    private const string CardIconPath = "res://images/atlases/ui_atlas.sprites/card/card_type_attack.tres";
     private const string CardRemovalIconPath = "res://images/ui/reward_screen/reward_icon_card_removal.png";
     private const string WongoIconPath = "res://images/relics/wongo_customer_appreciation_badge.png";
     private const string DamageIconPath = "res://images/ui/game_over_screen/badge_damage_leader.png";
@@ -151,6 +155,45 @@ public static partial class TildeKey
                 enabled,
                 GetSelectedTarget()));
 
+        UpsertToggle(
+            screen,
+            InfiniteEnergyToggleName,
+            TildeKeyStateService.InfiniteEnergyToggleId,
+            LocMan.Loc("TILDEKEY_INFINITE_ENERGY", "Infinite Energy"),
+            () => TildeKeyStateService.GetToggle(
+                TildeKeyStateService.InfiniteEnergyToggleId,
+                GetSelectedTarget()),
+            enabled => LoadoutImmediateMutationService.RequestTildeSetToggle(
+                TildeKeyStateService.InfiniteEnergyToggleId,
+                enabled,
+                GetSelectedTarget()));
+
+        UpsertToggle(
+            screen,
+            DrawTillHandLimitToggleName,
+            TildeKeyStateService.DrawTillHandLimitToggleId,
+            LocMan.Loc("TILDEKEY_DRAW_TILL_HAND_LIMIT", "Draw Till Hand Limit"),
+            () => TildeKeyStateService.GetToggle(
+                TildeKeyStateService.DrawTillHandLimitToggleId,
+                GetSelectedTarget()),
+            enabled => LoadoutImmediateMutationService.RequestTildeSetToggle(
+                TildeKeyStateService.DrawTillHandLimitToggleId,
+                enabled,
+                GetSelectedTarget()));
+
+        UpsertToggle(
+            screen,
+            ScrollRelicCounterToggleName,
+            TildeKeyStateService.ScrollRelicCounterToggleId,
+            LocMan.Loc("TILDEKEY_SCROLL_RELIC_COUNTER", "Scroll Relic Counters"),
+            () => TildeKeyStateService.GetToggle(
+                TildeKeyStateService.ScrollRelicCounterToggleId,
+                GetSelectedTarget()),
+            enabled => LoadoutImmediateMutationService.RequestTildeSetToggle(
+                TildeKeyStateService.ScrollRelicCounterToggleId,
+                enabled,
+                GetSelectedTarget()));
+
         RefreshSidebarToggles(screen);
     }
 
@@ -193,6 +236,12 @@ public static partial class TildeKey
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.GodmodeToggleId, GetSelectedTarget()), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{GoToAnyRoomToggleName}")
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.GoToAnyRoomToggleId, GetSelectedTarget()), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{InfiniteEnergyToggleName}")
+            ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.InfiniteEnergyToggleId, GetSelectedTarget()), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{DrawTillHandLimitToggleName}")
+            ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.DrawTillHandLimitToggleId, GetSelectedTarget()), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{ScrollRelicCounterToggleName}")
+            ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.ScrollRelicCounterToggleId, GetSelectedTarget()), emit: false);
     }
 
     private static LoadoutTargetSelection GetSelectedTarget()
@@ -259,6 +308,22 @@ public static partial class TildeKey
                 LocMan.Loc("TILDEKEY_STAT_TURN_NUMBER", "Turn Number"),
                 TurnIconPath,
                 StsColors.gray),
+            TildeKeyStateService.DrawPerTurnStatId => new(
+                LocMan.Loc("TILDEKEY_STAT_DRAW_PER_TURN", "Draw per Turn"),
+                CardIconPath,
+                StsColors.cream),
+            TildeKeyStateService.HandSizeStatId => new(
+                LocMan.Loc("TILDEKEY_STAT_HAND_SIZE", "Hand Size"),
+                CardIconPath,
+                StsColors.cream),
+            TildeKeyStateService.PlayerDamageMultiplierStatId => new(
+                LocMan.Loc("TILDEKEY_STAT_PLAYER_DAMAGE_MULTIPLIER", "Player Damage Multiplier"),
+                DamageIconPath,
+                HpAccent),
+            TildeKeyStateService.EnemyDamageMultiplierStatId => new(
+                LocMan.Loc("TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER", "Enemy Damage Multiplier"),
+                DamageIconPath,
+                HpAccent),
             "extra_card_shop_removals" => new(
                 LocMan.Loc("TILDEKEY_STAT_CARD_SHOP_REMOVALS_USED", "Card Shop Removals Used"),
                 CardRemovalIconPath,
