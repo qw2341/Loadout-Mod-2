@@ -18,6 +18,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Random;
+using MegaCrit.Sts2.Core.Rooms;
 
 namespace Loadout.PanelItems;
 
@@ -34,6 +35,7 @@ public static class BottleMonster
             .OrderBy(FormatMonsterTitle, StringComparer.Ordinal)
             .ToList();
         Dictionary<string, IReadOnlyList<string>> actNamesByMonsterId = BuildActNamesByMonsterId();
+        Dictionary<string, HashSet<RoomType>> roomTypesByMonsterId = BuildRoomTypesByMonsterId();
 
         CommonHelpers.CreateAndAddLoadoutItem(
             allMonsters,
@@ -41,7 +43,7 @@ public static class BottleMonster
             {
                 GetId = monster => monster.Id.ToString(),
                 GetName = FormatMonsterTitle,
-                GetSearchText = monster => $"{monster.Id} {FormatMonsterTitle(monster)} {CommonHelpers.GetModName(CommonHelpers.GetModelModId(monster))} {GetActSearchText(monster, actNamesByMonsterId)}",
+                GetSearchText = monster => $"{monster.Id} {FormatMonsterTitle(monster)} {CommonHelpers.GetModName(CommonHelpers.GetModelModId(monster))} {GetActSearchText(monster, actNamesByMonsterId)} {GetRoomTypeSearchText(monster, roomTypesByMonsterId)}",
                 CreateView = (monster, _) => CreateMonsterGridItem(monster),
                 BindActivation = (_, view, activate) => CommonHelpers.BindGuiReleaseActivation(view, activate)
             },
@@ -51,6 +53,7 @@ public static class BottleMonster
                 builder.Materialization(SelectMaterializationMode.Eager);
                 builder.Layout(4, MonsterButtonSize, 24, 24, fixedSlots: false);
                 AddActFilters(builder);
+                AddMonsterCategoryFilters(builder, roomTypesByMonsterId);
                 CommonHelpers.AddModFilters(builder, allMonsters);
                 builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatMonsterTitle(a), FormatMonsterTitle(b), StringComparison.Ordinal), activeByDefault: true);
                 builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
@@ -58,8 +61,8 @@ public static class BottleMonster
             },
             _ => { },
             "BottledMonster.png",
-            LocMan.Loc("BOTTLEMONSTER_TITLE", "Bottled Monster"),
-            LocMan.Loc("BOTTLEMONSTER_DESC", "Right-click this relic to summon any monster into the current combat. Ctrl + right click repeats the last summoned monster; if none exists, duplicate the current enemies."),
+            LocMan.Loc("BOTTLEDMONSTER_TITLE", "Bottled Monster"),
+            LocMan.Loc("BOTTLEDMONSTER_DESC", "Right-click this relic to summon any monster into the current combat. Ctrl + right click repeats the last summoned monster; if none exists, duplicate the current enemies."),
             HandleSummonMonsterActivatedAsync,
             LastActionService.BottleMonsterKey,
             ReplayBottleMonsterLastActionAsync);
@@ -281,6 +284,16 @@ public static class BottleMonster
         }
     }
 
+    private static void AddMonsterCategoryFilters(
+        SelectScreenBuilder<MonsterModel> builder,
+        IReadOnlyDictionary<string, HashSet<RoomType>> roomTypesByMonsterId)
+    {
+        builder.FilterGroup("monster_category", LocMan.Loc("FILTER_GROUP_MONSTER_CATEGORY", "Category"));
+        builder.Filter("monster_category_boss", LocMan.Loc("MONSTER_CATEGORY_BOSS", "Boss"), monster => HasRoomType(monster, roomTypesByMonsterId, RoomType.Boss), "monster_category");
+        builder.Filter("monster_category_elite", LocMan.Loc("MONSTER_CATEGORY_ELITE", "Elite"), monster => HasRoomType(monster, roomTypesByMonsterId, RoomType.Elite), "monster_category");
+        builder.Filter("monster_category_monster", LocMan.Loc("MONSTER_CATEGORY_MONSTER", "Monster"), monster => HasRoomType(monster, roomTypesByMonsterId, RoomType.Monster), "monster_category");
+    }
+
     private static Dictionary<string, IReadOnlyList<string>> BuildActNamesByMonsterId()
     {
         Dictionary<string, List<string>> actNamesByMonsterId = new(StringComparer.Ordinal);
@@ -314,6 +327,62 @@ public static class BottleMonster
             : string.Empty;
     }
 
+    private static Dictionary<string, HashSet<RoomType>> BuildRoomTypesByMonsterId()
+    {
+        Dictionary<string, HashSet<RoomType>> roomTypesByMonsterId = new(StringComparer.Ordinal);
+        foreach (ActModel act in ModelDb.Acts)
+        {
+            foreach (EncounterModel encounter in act.AllEncounters)
+            {
+                if (encounter.RoomType is not (RoomType.Boss or RoomType.Elite or RoomType.Monster))
+                    continue;
+
+                foreach (MonsterModel monster in encounter.AllPossibleMonsters)
+                {
+                    string monsterId = monster.Id.ToString();
+                    if (!roomTypesByMonsterId.TryGetValue(monsterId, out HashSet<RoomType>? roomTypes))
+                    {
+                        roomTypes = [];
+                        roomTypesByMonsterId[monsterId] = roomTypes;
+                    }
+
+                    roomTypes.Add(encounter.RoomType);
+                }
+            }
+        }
+
+        return roomTypesByMonsterId;
+    }
+
+    private static bool HasRoomType(
+        MonsterModel monster,
+        IReadOnlyDictionary<string, HashSet<RoomType>> roomTypesByMonsterId,
+        RoomType roomType)
+    {
+        return roomTypesByMonsterId.TryGetValue(monster.Id.ToString(), out HashSet<RoomType>? roomTypes)
+               && roomTypes.Contains(roomType);
+    }
+
+    private static string GetRoomTypeSearchText(
+        MonsterModel monster,
+        IReadOnlyDictionary<string, HashSet<RoomType>> roomTypesByMonsterId)
+    {
+        return roomTypesByMonsterId.TryGetValue(monster.Id.ToString(), out HashSet<RoomType>? roomTypes)
+            ? string.Join(" ", roomTypes.Select(FormatMonsterCategory))
+            : string.Empty;
+    }
+
+    private static string FormatMonsterCategory(RoomType roomType)
+    {
+        return roomType switch
+        {
+            RoomType.Boss => LocMan.Loc("MONSTER_CATEGORY_BOSS", "Boss"),
+            RoomType.Elite => LocMan.Loc("MONSTER_CATEGORY_ELITE", "Elite"),
+            RoomType.Monster => LocMan.Loc("MONSTER_CATEGORY_MONSTER", "Monster"),
+            _ => roomType.ToString()
+        };
+    }
+
     private static int CompareMonsterMod(MonsterModel left, MonsterModel right)
     {
         int byMod = string.Compare(
@@ -341,7 +410,7 @@ public static class BottleMonster
     {
         try
         {
-            return act.Title.GetFormattedText();
+            return (act.Index + 1) +": " + act.Title.GetFormattedText();
         }
         catch
         {
