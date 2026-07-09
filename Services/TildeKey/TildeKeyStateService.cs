@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -152,7 +153,6 @@ public static class TildeKeyStateService
     private static RunSaveData _run = new();
     private static readonly Dictionary<string, Dictionary<string, int>> VirtualStats = new(StringComparer.Ordinal);
     private static readonly Dictionary<ulong, HpDisplay> GodmodePreviousHpDisplays = new();
-    private static readonly HashSet<ulong> DrawTillHandLimitInFlight = [];
     private static bool _registered;
     private static bool _runLoaded;
     private static long? _loadedRunStartTime;
@@ -203,7 +203,6 @@ public static class TildeKeyStateService
                 _run = new RunSaveData();
                 VirtualStats.Clear();
                 GodmodePreviousHpDisplays.Clear();
-                DrawTillHandLimitInFlight.Clear();
             }
             return;
         }
@@ -378,11 +377,18 @@ public static class TildeKeyStateService
         if (!IsKnownPlayerToggle(payload.ToggleId))
             return;
 
-        foreach (Player player in ResolveTargetPlayers(target, requester))
+        IReadOnlyList<Player> players = ResolveTargetPlayers(target, requester);
+        foreach (Player player in players)
         {
             SetSavedToggle(player.NetId, payload.ToggleId, payload.Enabled);
             if (string.Equals(payload.ToggleId, GodmodeToggleId, StringComparison.Ordinal))
                 SetGodmodeDisplay(player, payload.Enabled);
+        }
+
+        if (payload.Enabled && string.Equals(payload.ToggleId, DrawTillHandLimitToggleId, StringComparison.Ordinal))
+        {
+            foreach (Player player in players)
+                RequestDrawTillHandLimitForLocalPlayer(player);
         }
 
         SaveRunState();
@@ -464,6 +470,18 @@ public static class TildeKeyStateService
         catch
         {
             return false;
+        }
+    }
+
+    private static bool IsLocalPlayer(Player player)
+    {
+        try
+        {
+            return LocalContext.GetMe(player.RunState)?.NetId == player.NetId;
+        }
+        catch
+        {
+            return LocalContext.NetId == player.NetId;
         }
     }
 
@@ -681,7 +699,6 @@ public static class TildeKeyStateService
             return;
 
         List<Player> infiniteEnergyPlayers = [];
-        List<Player> drawTillHandLimitPlayers = [];
         List<Player> godmodePlayers = [];
         lock (SyncRoot)
         {
@@ -696,9 +713,6 @@ public static class TildeKeyStateService
                 if (state.Toggles.TryGetValue(InfiniteEnergyToggleId, out bool infiniteEnergy) && infiniteEnergy)
                     infiniteEnergyPlayers.Add(player);
 
-                if (state.Toggles.TryGetValue(DrawTillHandLimitToggleId, out bool drawTillHandLimit) && drawTillHandLimit)
-                    drawTillHandLimitPlayers.Add(player);
-
                 if (state.Toggles.TryGetValue(GodmodeToggleId, out bool godmode) && godmode)
                     godmodePlayers.Add(player);
             }
@@ -706,9 +720,6 @@ public static class TildeKeyStateService
 
         foreach (Player player in infiniteEnergyPlayers)
             ApplyInfiniteEnergy(player);
-
-        foreach (Player player in drawTillHandLimitPlayers)
-            TryDrawTillHandLimit(player);
 
         foreach (Player player in godmodePlayers)
             SetGodmodeDisplay(player, enabled: true);
@@ -774,17 +785,19 @@ public static class TildeKeyStateService
             player.PlayerCombatState.Stars = desired;
     }
 
-    private static void TryDrawTillHandLimit(Player player)
+    public static void RequestDrawTillHandLimitForLocalPlayer(Player? player)
+    {
+        if (player is null || !IsLocalPlayer(player) || !IsPlayerToggleEnabled(player.NetId, DrawTillHandLimitToggleId))
+            return;
+
+        TryRequestDrawTillHandLimit(player);
+    }
+
+    private static void TryRequestDrawTillHandLimit(Player player)
     {
         PlayerCombatState? combatState = player.PlayerCombatState;
         if (combatState is null || combatState.Phase != PlayerTurnPhase.Play)
             return;
-
-        lock (SyncRoot)
-        {
-            if (DrawTillHandLimitInFlight.Contains(player.NetId))
-                return;
-        }
 
         CardPile hand = PileType.Hand.GetPile(player);
         CardPile drawPile = PileType.Draw.GetPile(player);
@@ -793,29 +806,14 @@ public static class TildeKeyStateService
         if (handSpace <= 0 || drawPile.Cards.Count + discardPile.Cards.Count <= 0)
             return;
 
-        lock (SyncRoot)
-            DrawTillHandLimitInFlight.Add(player.NetId);
-
-        TaskHelper.RunSafely(DrawTillHandLimitAsync(player, handSpace));
-    }
-
-    private static async Task DrawTillHandLimitAsync(Player player, int count)
-    {
         try
         {
-            ulong localNetId = LocalContext.NetId ?? player.NetId;
-            HookPlayerChoiceContext choiceContext = new(player, localNetId, GameActionType.Combat);
-            Task drawTask = CardPileCmd.Draw(choiceContext, count, player);
-            await choiceContext.AssignTaskAndWaitForPauseOrCompletion(drawTask);
+            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+                new ConsoleCmdGameAction(player, $"draw {handSpace}", CombatManager.Instance.IsInProgress));
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"TildeKey: failed drawing to hand limit for player {player.NetId}. {exception.Message}");
-        }
-        finally
-        {
-            lock (SyncRoot)
-                DrawTillHandLimitInFlight.Remove(player.NetId);
+            GD.PushWarning($"TildeKey: failed requesting draw to hand limit for player {player.NetId}. {exception.Message}");
         }
     }
 
@@ -1179,7 +1177,7 @@ public static class TildeKeyStateService
             foreach (Player player in players)
             {
                 if (IsPlayerToggleEnabled(player.NetId, DrawTillHandLimitToggleId))
-                    TryDrawTillHandLimit(player);
+                    RequestDrawTillHandLimitForLocalPlayer(player);
             }
         }
     }
@@ -1572,7 +1570,6 @@ public static class TildeKeyStateService
         {
             VirtualStats.Clear();
             GodmodePreviousHpDisplays.Clear();
-            DrawTillHandLimitInFlight.Clear();
         }
 
         ReloadRun();
@@ -1589,7 +1586,6 @@ public static class TildeKeyStateService
             _run = new RunSaveData();
             VirtualStats.Clear();
             GodmodePreviousHpDisplays.Clear();
-            DrawTillHandLimitInFlight.Clear();
         }
 
         EnsureLoaded();

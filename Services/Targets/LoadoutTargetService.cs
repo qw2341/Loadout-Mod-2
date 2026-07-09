@@ -121,7 +121,8 @@ public static class LoadoutTargetService
         string name,
         string key,
         LoadoutTargetMode mode,
-        Action? onChanged = null)
+        Action? onChanged = null,
+        Action? beforeChanged = null)
     {
         NLoadoutDropdown? dropdown = screen.GetNodeOrNull<NLoadoutDropdown>(
             $"Sidebar/MarginContainer/TopVBox/CustomControls/{name}");
@@ -148,6 +149,7 @@ public static class LoadoutTargetService
                 if (!LoadoutTargetSelection.TryParseOptionId(selectedId, out LoadoutTargetSelection selection))
                     return;
 
+                beforeChanged?.Invoke();
                 SetSelected(key, selection, mode);
                 onChanged?.Invoke();
             };

@@ -122,85 +122,25 @@ public static class TildeKeySetupPlayerTurnHandLimitPatch
 public static class TildeKeyDrawHandLimitPatch
 {
     [HarmonyPrefix]
-    public static bool Prefix(
-        PlayerChoiceContext choiceContext,
-        decimal count,
-        Player player,
-        bool fromHandDraw,
-        ref Task<IEnumerable<CardModel>> __result)
+    public static bool Prefix(Player player, out IDisposable? __state)
     {
+        __state = null;
         if (LoadoutCardAddRules.ShouldIgnoreHandLimit
             || !TildeKeyStateService.TryGetHandSizeOverride(player, out int handSize)
             || handSize == CardPile.MaxCardsInHand)
+        {
             return true;
+        }
 
-        __result = DrawWithEffectiveHandSize(choiceContext, count, player, fromHandDraw, handSize);
-        return false;
+        __state = LoadoutCardAddRules.OverrideHandLimit(handSize);
+        return true;
     }
 
-    private static async Task<IEnumerable<CardModel>> DrawWithEffectiveHandSize(
-        PlayerChoiceContext choiceContext,
-        decimal count,
-        Player player,
-        bool fromHandDraw,
-        int handSize)
+    [HarmonyPostfix]
+    public static void Postfix(ref Task<IEnumerable<CardModel>> __result, IDisposable? __state)
     {
-        if (CombatManager.Instance.IsOverOrEnding)
-            return Array.Empty<CardModel>();
-
-        ICombatState? combatState = player.Creature.CombatState;
-        if (combatState is null)
-            return Array.Empty<CardModel>();
-
-        if (!Hook.ShouldDraw(combatState, player, fromHandDraw, out AbstractModel? modifier))
-        {
-            if (modifier is not null)
-                await Hook.AfterPreventingDraw(combatState, modifier);
-            return Array.Empty<CardModel>();
-        }
-
-        List<CardModel> result = [];
-        CardPile hand = PileType.Hand.GetPile(player);
-        CardPile drawPile = PileType.Draw.GetPile(player);
-        int drawsRequested = count > 0m ? (int)Math.Ceiling(count) : 0;
-        if (drawsRequested == 0)
-            return result;
-
-        int handSpace = Math.Max(0, handSize - hand.Cards.Count);
-        if (handSpace == 0)
-        {
-            CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot(player, handSize);
-            return result;
-        }
-
-        for (int i = 0; i < drawsRequested; i++)
-        {
-            if (handSpace <= 0 || CombatManager.Instance.IsOverOrEnding)
-                break;
-
-            if (!CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot(player, handSize))
-                break;
-
-            await CardPileCmd.ShuffleIfNecessary(choiceContext, player);
-            if (!CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot(player, handSize))
-                break;
-
-            CardModel? card = drawPile.Cards.FirstOrDefault();
-            if (card is null || hand.Cards.Count >= handSize)
-                break;
-
-            result.Add(card);
-            using (LoadoutCardAddRules.OverrideHandLimit(handSize))
-                await CardPileCmd.Add(card, hand);
-
-            CombatManager.Instance.History.CardDrawn(combatState, card, fromHandDraw);
-            await Hook.AfterCardDrawn(combatState, choiceContext, card, fromHandDraw);
-            card.InvokeDrawn();
-            NDebugAudioManager.Instance?.Play("card_deal.mp3", 0.25f, PitchVariance.Small);
-            handSpace = Math.Max(0, handSize - hand.Cards.Count);
-        }
-
-        return result;
+        if (__state is not null)
+            __result = TildeKeyHandLimitPatchHelpers.DisposeAfter(__result, __state);
     }
 
     internal static bool CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot(Player player, int handSize)
@@ -218,6 +158,23 @@ public static class TildeKeyDrawHandLimitPatch
         }
 
         return true;
+    }
+}
+
+[HarmonyPatch(typeof(Hook), nameof(Hook.AfterCardPlayed))]
+public static class TildeKeyDrawTillHandLimitAfterCardPlayedPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(CardPlay cardPlay, ref Task __result)
+    {
+        __result = RequestDrawAfterCardPlayedAsync(__result, cardPlay);
+    }
+
+    private static async Task RequestDrawAfterCardPlayedAsync(Task original, CardPlay cardPlay)
+    {
+        await original;
+        if (cardPlay.IsLastInSeries)
+            TildeKeyStateService.RequestDrawTillHandLimitForLocalPlayer(cardPlay.Card.Owner);
     }
 }
 
