@@ -146,7 +146,7 @@ TILDEKEY_STAT_DRAW_PER_TURN,Draw Per Turn,每回合抽牌
 TILDEKEY_STAT_HAND_SIZE,Max Hand Size,手牌上限
 TILDEKEY_STAT_PLAYER_DAMAGE_MULTIPLIER,Player Damage Multiplier(%),玩家伤害倍数（%）
 TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER,Enemy Damage Multiplier(%),敌人伤害倍数（%）
-TILDEKEY_INFINITE_ENERGY,Infinite Energy,无线能量
+TILDEKEY_INFINITE_ENERGY,Infinite Energy,无限能量
 TILDEKEY_DRAW_TILL_HAND_LIMIT,Draw Till Hand Limit,抽牌至手牌上限
 TILDEKEY_SCROLL_RELIC_COUNTER,Scroll Edit Relic Counter,滚轮编辑遗物计数
 TILDEKEY_STAT_TURN_NUMBER,Turn Number,回合数
