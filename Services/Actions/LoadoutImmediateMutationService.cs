@@ -407,6 +407,8 @@ public static class LoadoutImmediateMutationService
 
     private static bool Request(LoadoutImmediateMutationPayload payload)
     {
+        payload.NormalizeDefaults();
+
         Player? localPlayer = GetLocalRunPlayer();
         if (localPlayer is null)
             return false;
@@ -500,6 +502,7 @@ public static class LoadoutImmediateMutationService
 
     private static void PublishHostApply(LoadoutImmediateMutationPayload payload, INetGameService? netService)
     {
+        payload.NormalizeDefaults();
         payload.Sequence = ++_nextHostSequence;
         Apply(payload);
 
@@ -1224,29 +1227,38 @@ public static class LoadoutImmediateMutationService
 
     private static bool IdMatches(AbstractModel model, ModelId id)
     {
-        return id == ModelId.none
-               || model.Id == id
-               || string.Equals(model.Id.ToString(), id.ToString(), StringComparison.Ordinal)
-               || string.Equals(model.Id.Entry, id.Entry, StringComparison.OrdinalIgnoreCase);
+        return LoadoutModelIdSafety.Matches(model, id);
     }
 
     private static CardModel? ResolveCanonicalCard(ModelId id)
     {
+        if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
+            return null;
+
         return ModelDb.AllCards.FirstOrDefault(card => IdMatches(card, id));
     }
 
     private static RelicModel? ResolveCanonicalRelic(ModelId id)
     {
+        if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
+            return null;
+
         return ModelDb.AllRelics.FirstOrDefault(relic => IdMatches(relic, id));
     }
 
     private static PotionModel? ResolveCanonicalPotion(ModelId id)
     {
+        if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
+            return null;
+
         return ModelDb.AllPotions.FirstOrDefault(potion => IdMatches(potion, id));
     }
 
     private static EventModel? ResolveEvent(ModelId id)
     {
+        if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
+            return null;
+
         return ModelDb.AllEvents
             .Concat(ModelDb.AllAncients)
             .Distinct()
@@ -1255,6 +1267,9 @@ public static class LoadoutImmediateMutationService
 
     private static MonsterModel? ResolveCanonicalMonster(ModelId id)
     {
+        if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
+            return null;
+
         return ModelDb.Monsters.FirstOrDefault(monster => IdMatches(monster, id));
     }
 }
@@ -1277,6 +1292,8 @@ public struct LoadoutImmediateMutationPayload
 
     public void Serialize(PacketWriter writer)
     {
+        NormalizeDefaults();
+
         writer.WriteInt((int)Kind, 8);
         writer.WriteInt(Sequence);
         writer.WriteULong(RequesterNetId);
@@ -1312,16 +1329,26 @@ public struct LoadoutImmediateMutationPayload
         LoadoutKind = (LoadoutKind)reader.ReadInt(4);
         LoadoutPayload = reader.ReadString();
         TildePayloadJson = reader.ReadString();
+        NormalizeDefaults();
+    }
+
+    public void NormalizeDefaults()
+    {
+        ModelId = LoadoutModelIdSafety.OrNone(ModelId);
+        ExpectedModelId = LoadoutModelIdSafety.OrNone(ExpectedModelId);
+        CardModificationStateJson ??= string.Empty;
+        LoadoutPayload ??= string.Empty;
+        TildePayloadJson ??= string.Empty;
     }
 
     public override readonly string ToString()
     {
-        return $"LoadoutImmediateMutationPayload {Kind} seq {Sequence} requester {RequesterNetId} model {ModelId} amount {Amount} target {Target}";
+        return $"LoadoutImmediateMutationPayload {Kind} seq {Sequence} requester {RequesterNetId} model {LoadoutModelIdSafety.ToLogString(ModelId)} amount {Amount} target {Target}";
     }
 
     private static void WriteModelIdString(PacketWriter writer, ModelId id)
     {
-        writer.WriteString(id == ModelId.none ? string.Empty : id.ToString());
+        writer.WriteString(LoadoutModelIdSafety.ToWireString(id));
     }
 
     private static ModelId ReadModelIdString(PacketReader reader)
@@ -1360,6 +1387,43 @@ public struct LoadoutImmediateMutationPayload
     {
         return string.Equals(model.Id.ToString(), rawId, StringComparison.Ordinal)
                || string.Equals(model.Id.Entry, rawId, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+internal static class LoadoutModelIdSafety
+{
+    public static ModelId OrNone(ModelId? id)
+    {
+        return IsNoneOrEmpty(id) ? ModelId.none : id!;
+    }
+
+    public static string ToWireString(ModelId? id)
+    {
+        return IsNoneOrEmpty(id) ? string.Empty : id!.ToString();
+    }
+
+    public static string ToLogString(ModelId? id)
+    {
+        return IsNoneOrEmpty(id) ? ModelId.none.ToString() : id!.ToString();
+    }
+
+    public static bool Matches(AbstractModel model, ModelId? id)
+    {
+        if (IsNoneOrEmpty(id))
+            return true;
+
+        ModelId safeId = id!;
+        return model.Id == safeId
+               || string.Equals(model.Id.ToString(), safeId.ToString(), StringComparison.Ordinal)
+               || string.Equals(model.Id.Entry, safeId.Entry, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsNoneOrEmpty(ModelId? id)
+    {
+        return id is null
+               || id == ModelId.none
+               || string.IsNullOrWhiteSpace(id.Category)
+               || string.IsNullOrWhiteSpace(id.Entry);
     }
 }
 
