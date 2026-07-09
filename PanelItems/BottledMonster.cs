@@ -17,12 +17,11 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Combat;
-using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
 
 namespace Loadout.PanelItems;
 
-public static class BottleMonster
+public static class BottledMonster
 {
     private static readonly Vector2 MonsterButtonSize = new(242f, 168f);
     private static readonly Vector2 PreviewSize = new(242f, 110f);
@@ -119,7 +118,7 @@ public static class BottleMonster
 
         try
         {
-            return LoadoutImmediateMutationService.RequestSummonMonster(monster.Id);
+            return LoadoutSummonMonsterService.RequestSummonMonster(monster.Id);
         }
         catch (Exception exception)
         {
@@ -142,7 +141,7 @@ public static class BottleMonster
                      .Select(creature => creature.Monster!.Id)
                      .ToList())
         {
-            LoadoutImmediateMutationService.RequestSummonMonster(monsterId);
+            LoadoutSummonMonsterService.RequestSummonMonster(monsterId);
         }
     }
 
@@ -201,7 +200,6 @@ public static class BottleMonster
         try
         {
             MonsterModel monster = canonical.ToMutable();
-            monster.Rng = Rng.Chaotic;
             monster.SetUpForCombat();
             Creature creature = new(monster, CombatSide.Enemy, null)
             {
@@ -216,7 +214,7 @@ public static class BottleMonster
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"LoadoutPanel: could not create monster preview for '{canonical.Id}'. {exception.Message}");
+            GD.PushWarning($"LoadoutPanel: could not create local monster preview for '{canonical.Id}'. {exception.Message}");
             preview.AddChild(CommonHelpers.CreateButtonLabel(
                 "MonsterPreviewFallback",
                 canonical.Id.Entry,
@@ -250,7 +248,7 @@ public static class BottleMonster
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"LoadoutPanel: could not fit monster preview '{creatureNode.Entity.ModelId}'. {exception.Message}");
+            GD.PushWarning($"LoadoutPanel: could not fit local monster preview '{creatureNode.Entity.ModelId}'. {exception.Message}");
         }
     }
 

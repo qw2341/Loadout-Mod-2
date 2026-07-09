@@ -50,7 +50,6 @@ public enum LoadoutImmediateMutationKind
     ApplyLoadout,
     AdjustPower,
     ClearCurrentPowers,
-    SummonMonster,
     EnterEvent,
     GoToRoom,
     TildeStatSet,
@@ -232,16 +231,7 @@ public static class LoadoutImmediateMutationService
 
     public static bool RequestSummonMonster(ModelId monsterId)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return false;
-
-        return Request(new LoadoutImmediateMutationPayload
-        {
-            Kind = LoadoutImmediateMutationKind.SummonMonster,
-            ModelId = monsterId,
-            Amount = 1,
-            Target = new LoadoutTargetSelection(LoadoutTargetScope.AllMonsters)
-        });
+        return LoadoutSummonMonsterService.RequestSummonMonster(monsterId);
     }
 
     public static bool RequestEnterEvent(ModelId eventId)
@@ -417,7 +407,7 @@ public static class LoadoutImmediateMutationService
             return false;
 
         payload.RequesterNetId = localPlayer.NetId;
-        payload.Target = ForceClientTargetToSelf(payload.Target, localPlayer, payload.Kind);
+        payload.Target = SanitizeOutgoingTarget(payload.Target, localPlayer, payload.Kind);
 
         try
         {
@@ -561,9 +551,6 @@ public static class LoadoutImmediateMutationService
                 break;
             case LoadoutImmediateMutationKind.ClearCurrentPowers:
                 TaskHelper.RunSafely(ApplyClearCurrentPowersAsync(payload));
-                break;
-            case LoadoutImmediateMutationKind.SummonMonster:
-                TaskHelper.RunSafely(ApplySummonMonsterAsync(payload));
                 break;
             case LoadoutImmediateMutationKind.EnterEvent:
                 ApplyEnterEvent(payload, requester);
@@ -946,102 +933,6 @@ public static class LoadoutImmediateMutationService
         };
     }
 
-    private static async Task ApplySummonMonsterAsync(LoadoutImmediateMutationPayload payload)
-    {
-        if (!CombatManager.Instance.IsInProgress)
-            return;
-
-        CombatState? combatState = CombatManager.Instance.DebugOnlyGetState();
-        if (combatState is null)
-            return;
-
-        MonsterModel? canonicalMonster = ResolveCanonicalMonster(payload.ModelId);
-        if (canonicalMonster is null)
-        {
-            GD.PushWarning($"LoadoutImmediateMutation: unknown monster '{payload.ModelId}'.");
-            return;
-        }
-
-        try
-        {
-            MonsterModel monster = canonicalMonster.ToMutable();
-            string? slotName = GetNextAvailableMonsterSlot(combatState);
-            IReadOnlyList<NCreature> existingEnemyNodes = GetCurrentEnemyNodes();
-            Creature creature = await CreatureCmd.Add(monster, combatState, CombatSide.Enemy, slotName);
-
-            if (slotName is null)
-                PositionUnslottedSummonedMonster(creature, existingEnemyNodes);
-        }
-        catch (Exception exception)
-        {
-            GD.PushError($"LoadoutImmediateMutation: failed to summon monster '{payload.ModelId}': {exception}");
-        }
-    }
-
-    private static string? GetNextAvailableMonsterSlot(CombatState combatState)
-    {
-        try
-        {
-            string? slotName = combatState.Encounter?.GetNextSlot(combatState);
-            return string.IsNullOrWhiteSpace(slotName) ? null : slotName;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static IReadOnlyList<NCreature> GetCurrentEnemyNodes()
-    {
-        try
-        {
-            return NCombatRoom.Instance?.CreatureNodes
-                .Where(node => node.Entity.IsMonster && node.Entity.Side == CombatSide.Enemy)
-                .ToList() ?? [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    private static void PositionUnslottedSummonedMonster(Creature creature, IReadOnlyList<NCreature> existingEnemyNodes)
-    {
-        NCreature? node = NCombatRoom.Instance?.GetCreatureNode(creature);
-        if (node is null)
-            return;
-
-        if (existingEnemyNodes.Count == 0)
-        {
-            node.Position = new Vector2(520f, 200f);
-            return;
-        }
-
-        NCreature? anchor = existingEnemyNodes
-            .Where(GodotObject.IsInstanceValid)
-            .OrderBy(existing => existing.Position.X)
-            .LastOrDefault();
-        if (anchor is null)
-        {
-            node.Position = new Vector2(520f, 200f);
-            return;
-        }
-
-        float anchorHalfWidth = MathF.Max(45f, anchor.Visuals.Bounds.Size.X * 0.5f);
-        float nodeHalfWidth = MathF.Max(45f, node.Visuals.Bounds.Size.X * 0.5f);
-        float x = anchor.Position.X + anchorHalfWidth + nodeHalfWidth + 70f;
-        float y = anchor.Position.Y;
-
-        if (x > 900f)
-        {
-            int index = existingEnemyNodes.Count;
-            x = 160f + index % 4 * 205f;
-            y = 200f + index / 4 % 3 * 74f;
-        }
-
-        node.Position = new Vector2(Mathf.Clamp(x, 120f, 900f), Mathf.Clamp(y, 120f, 380f));
-    }
-
     private static void ApplyEnterEvent(LoadoutImmediateMutationPayload payload, Player requester)
     {
         EventModel? eventModel = ResolveEvent(payload.ModelId);
@@ -1101,7 +992,7 @@ public static class LoadoutImmediateMutationService
 
     private static LoadoutOwnedItem<CardModel>? TryGetOwnedDeckCard(LoadoutImmediateMutationPayload payload, Player requester)
     {
-        Player? targetPlayer = ResolveSingleTargetPlayer(payload.Target, requester);
+        Player? targetPlayer = ResolveExactTargetPlayer(payload.Target, requester);
         if (targetPlayer is null || payload.OwnedItemIndex < 0 || payload.OwnedItemIndex >= targetPlayer.Deck.Cards.Count)
             return null;
 
@@ -1113,7 +1004,7 @@ public static class LoadoutImmediateMutationService
 
     private static LoadoutOwnedItem<RelicModel>? TryGetOwnedRelic(LoadoutImmediateMutationPayload payload, Player requester)
     {
-        Player? targetPlayer = ResolveSingleTargetPlayer(payload.Target, requester);
+        Player? targetPlayer = ResolveExactTargetPlayer(payload.Target, requester);
         if (targetPlayer is null || payload.OwnedItemIndex < 0 || payload.OwnedItemIndex >= targetPlayer.Relics.Count)
             return null;
 
@@ -1129,11 +1020,11 @@ public static class LoadoutImmediateMutationService
         return players.Count > 0 ? players : [requester];
     }
 
-    private static Player? ResolveSingleTargetPlayer(LoadoutTargetSelection target, Player requester)
+    private static Player? ResolveExactTargetPlayer(LoadoutTargetSelection target, Player requester)
     {
         return target.Scope == LoadoutTargetScope.Player && target.PlayerNetId.HasValue
             ? requester.RunState.GetPlayer(target.PlayerNetId.Value)
-            : requester;
+            : null;
     }
 
     private static bool IsLocalPlayer(Player player)
@@ -1178,7 +1069,7 @@ public static class LoadoutImmediateMutationService
         }
     }
 
-    private static LoadoutTargetSelection ForceClientTargetToSelf(
+    private static LoadoutTargetSelection SanitizeOutgoingTarget(
         LoadoutTargetSelection target,
         Player localPlayer,
         LoadoutImmediateMutationKind kind)
@@ -1186,7 +1077,7 @@ public static class LoadoutImmediateMutationService
         try
         {
             return RunManager.Instance.NetService.Type == NetGameType.Client
-                   && !AllowsClientSelectedTarget(kind)
+                   && !AllowsGuestSelectedTarget(kind)
                 ? LoadoutTargetSelection.ForPlayer(localPlayer.NetId)
                 : target;
         }
@@ -1201,16 +1092,29 @@ public static class LoadoutImmediateMutationService
         if (payload.RequesterNetId == hostNetId)
             return payload;
 
-        if (!AllowsClientSelectedTarget(payload.Kind))
+        if (!AllowsGuestSelectedTarget(payload.Kind))
             payload.Target = LoadoutTargetSelection.ForPlayer(payload.RequesterNetId);
         return payload;
     }
 
-    private static bool AllowsClientSelectedTarget(LoadoutImmediateMutationKind kind)
+    private static bool AllowsGuestSelectedTarget(LoadoutImmediateMutationKind kind)
     {
-        return kind is LoadoutImmediateMutationKind.TildeStatSet
+        return kind is LoadoutImmediateMutationKind.AddCard
+            or LoadoutImmediateMutationKind.AddRelic
+            or LoadoutImmediateMutationKind.AddPotion
+            or LoadoutImmediateMutationKind.RemoveCard
+            or LoadoutImmediateMutationKind.UpgradeCard
+            or LoadoutImmediateMutationKind.UpgradeAllDeckCards
+            or LoadoutImmediateMutationKind.RemoveRelic
+            or LoadoutImmediateMutationKind.CardModification
+            or LoadoutImmediateMutationKind.ApplyLoadout
+            or LoadoutImmediateMutationKind.AdjustPower
+            or LoadoutImmediateMutationKind.ClearCurrentPowers
+            or LoadoutImmediateMutationKind.TildeStatSet
             or LoadoutImmediateMutationKind.TildeStatLock
-            or LoadoutImmediateMutationKind.TildeToggleSet;
+            or LoadoutImmediateMutationKind.TildeToggleSet
+            or LoadoutImmediateMutationKind.TildeRelicCounterDelta
+            or LoadoutImmediateMutationKind.TildeRelicCounterLock;
     }
 
     private static bool IsHostSession()
@@ -1265,13 +1169,6 @@ public static class LoadoutImmediateMutationService
             .FirstOrDefault(eventModel => IdMatches(eventModel, id));
     }
 
-    private static MonsterModel? ResolveCanonicalMonster(ModelId id)
-    {
-        if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
-            return null;
-
-        return ModelDb.Monsters.FirstOrDefault(monster => IdMatches(monster, id));
-    }
 }
 
 public struct LoadoutImmediateMutationPayload

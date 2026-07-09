@@ -433,7 +433,7 @@ public partial class NLoadoutPanel : Panel
 		//09 - TILDE KEY
 		TildeKey.Initialize();
 		//10 - BOTTLE MONSTER
-		BottleMonster.Initialize();
+		BottledMonster.Initialize();
 	}
 
 	private void TryAddLoadoutItems()

@@ -197,3 +197,6 @@ QUEST,Quest,任务
 STATUS,Status,状态
 TOKEN,Token,衍生
 ALLOW_GUEST_LOADOUT_PANEL,Allow others to use Loadout panel,允许他人使用Loadout
+MONSTER_CATEGORY_BOSS,Boss,Boss
+MONSTER_CATEGORY_ELITE,Elite,精英
+MONSTER_CATEGORY_MONSTER,Monster,普通
