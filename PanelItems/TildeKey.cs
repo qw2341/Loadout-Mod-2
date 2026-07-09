@@ -40,6 +40,7 @@ public static partial class TildeKey
     private const string WongoIconPath = "res://images/relics/wongo_customer_appreciation_badge.png";
     private const string DamageIconPath = "res://images/ui/game_over_screen/badge_damage_leader.png";
     private const string DebuffIconPath = "res://images/ui/game_over_screen/badge_debuffer.png";
+    private static WeakReference<TildeStatRow>? ActiveStatRow;
     private static readonly Color HpAccent = new("F1373E");
     private static readonly Color BlockAccent = new("3B6FA3");
     private static readonly Vector2 StatRowSize = new(720f, 54f);
@@ -81,6 +82,7 @@ public static partial class TildeKey
         }
 
         ConfigureScreen();
+        screen.GuiInput += CommitActiveStatRowOnOutsideClick;
         screen.LocaleChanged += () =>
         {
             SelectScreenUiState state = screen.CaptureUiState();
@@ -116,6 +118,33 @@ public static partial class TildeKey
         NLoadoutPanel.ItemsContainer.AddChild(item);
     }
 
+    private static void CommitActiveStatRowOnOutsideClick(InputEvent inputEvent)
+    {
+        if (inputEvent is not InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } mouseButton)
+            return;
+
+        if (ActiveStatRow is not { } activeReference
+            || !activeReference.TryGetTarget(out TildeStatRow? row)
+            || !GodotObject.IsInstanceValid(row))
+        {
+            return;
+        }
+
+        row.CommitIfClickOutside(mouseButton.GlobalPosition);
+    }
+
+    private static void CommitActiveStatRowBeforeTargetChange()
+    {
+        if (ActiveStatRow is not { } activeReference
+            || !activeReference.TryGetTarget(out TildeStatRow? row)
+            || !GodotObject.IsInstanceValid(row))
+        {
+            return;
+        }
+
+        row.CommitAndReleaseFocus();
+    }
+
     private static void AddSidebarControls(NGenericSelectScreen screen)
     {
         LoadoutTargetService.UpsertTargetDropdown(
@@ -127,7 +156,8 @@ public static partial class TildeKey
             {
                 RefreshSidebarToggles(screen);
                 screen.RefreshCurrentItemStates();
-            });
+            },
+            CommitActiveStatRowBeforeTargetChange);
 
         UpsertToggle(
             screen,
@@ -412,6 +442,7 @@ public static partial class TildeKey
         private readonly NLoadoutToggle? _lockToggle;
         private bool _isRefreshing;
         private bool _suppressNextFocusCommit;
+        private string _targetOptionId = string.Empty;
 
         public TildeStatRow(NGenericSelectScreen screen, TildeKeyStatDefinition definition)
         {
@@ -432,6 +463,7 @@ public static partial class TildeKey
             _valueEntry = CreateEntry();
             _valueEntry.TextSubmitted += OnTextSubmitted;
             _valueEntry.FocusExited += OnFocusExited;
+            _valueEntry.FocusEntered += OnFocusEntered;
             AddChild(_valueEntry);
 
             if (definition.SupportsLock)
@@ -471,10 +503,19 @@ public static partial class TildeKey
             _nameLabel.Text = presentation.Label;
             _nameLabel.AddThemeColorOverride("font_color", presentation.Accent);
 
+            string targetOptionId = GetSelectedTarget().ToOptionId();
+            bool targetChanged = !string.Equals(_targetOptionId, targetOptionId, StringComparison.Ordinal);
             int value = TildeKeyStateService.GetDisplayValue(definition, GetSelectedTarget());
-            if (!_valueEntry.HasFocus())
+            if (targetChanged && _valueEntry.HasFocus())
+            {
+                _suppressNextFocusCommit = true;
+                _valueEntry.ReleaseFocus();
+            }
+
+            if (!_valueEntry.HasFocus() || targetChanged)
                 _valueEntry.Text = value.ToString(CultureInfo.InvariantCulture);
 
+            _targetOptionId = targetOptionId;
             _lockToggle?.SetChecked(TildeKeyStateService.IsLocked(definition, GetSelectedTarget()), emit: false);
             _isRefreshing = false;
         }
@@ -483,6 +524,7 @@ public static partial class TildeKey
         {
             _valueEntry.TextSubmitted -= OnTextSubmitted;
             _valueEntry.FocusExited -= OnFocusExited;
+            _valueEntry.FocusEntered -= OnFocusEntered;
         }
 
         public override void _Input(InputEvent @event)
@@ -493,10 +535,20 @@ public static partial class TildeKey
             if (@event is not InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } mouseButton)
                 return;
 
-            if (_valueEntry.GetGlobalRect().HasPoint(mouseButton.GlobalPosition))
+            CommitIfClickOutside(mouseButton.GlobalPosition);
+        }
+
+        public void CommitIfClickOutside(Vector2 globalPosition)
+        {
+            if (!_valueEntry.HasFocus() || _valueEntry.GetGlobalRect().HasPoint(globalPosition))
                 return;
 
             CommitAndReleaseFocus();
+        }
+
+        private void OnFocusEntered()
+        {
+            ActiveStatRow = new WeakReference<TildeStatRow>(this);
         }
 
         private void OnTextSubmitted(string _)
@@ -513,9 +565,15 @@ public static partial class TildeKey
             }
 
             CommitText();
+            if (ActiveStatRow is { } activeReference
+                && activeReference.TryGetTarget(out TildeStatRow? row)
+                && ReferenceEquals(row, this))
+            {
+                ActiveStatRow = null;
+            }
         }
 
-        private void CommitAndReleaseFocus()
+        public void CommitAndReleaseFocus()
         {
             CommitText();
             _suppressNextFocusCommit = true;
