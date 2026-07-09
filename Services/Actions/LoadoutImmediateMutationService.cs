@@ -31,7 +31,9 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
+using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -48,6 +50,7 @@ public enum LoadoutImmediateMutationKind
     ApplyLoadout,
     AdjustPower,
     ClearCurrentPowers,
+    SummonMonster,
     EnterEvent,
     GoToRoom,
     TildeStatSet,
@@ -224,6 +227,20 @@ public static class LoadoutImmediateMutationService
             ModelId = ModelId.none,
             Amount = (int)type,
             Target = target
+        });
+    }
+
+    public static bool RequestSummonMonster(ModelId monsterId)
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return false;
+
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.SummonMonster,
+            ModelId = monsterId,
+            Amount = 1,
+            Target = new LoadoutTargetSelection(LoadoutTargetScope.AllMonsters)
         });
     }
 
@@ -541,6 +558,9 @@ public static class LoadoutImmediateMutationService
                 break;
             case LoadoutImmediateMutationKind.ClearCurrentPowers:
                 TaskHelper.RunSafely(ApplyClearCurrentPowersAsync(payload));
+                break;
+            case LoadoutImmediateMutationKind.SummonMonster:
+                TaskHelper.RunSafely(ApplySummonMonsterAsync(payload));
                 break;
             case LoadoutImmediateMutationKind.EnterEvent:
                 ApplyEnterEvent(payload, requester);
@@ -923,6 +943,102 @@ public static class LoadoutImmediateMutationService
         };
     }
 
+    private static async Task ApplySummonMonsterAsync(LoadoutImmediateMutationPayload payload)
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return;
+
+        CombatState? combatState = CombatManager.Instance.DebugOnlyGetState();
+        if (combatState is null)
+            return;
+
+        MonsterModel? canonicalMonster = ResolveCanonicalMonster(payload.ModelId);
+        if (canonicalMonster is null)
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: unknown monster '{payload.ModelId}'.");
+            return;
+        }
+
+        try
+        {
+            MonsterModel monster = canonicalMonster.ToMutable();
+            string? slotName = GetNextAvailableMonsterSlot(combatState);
+            IReadOnlyList<NCreature> existingEnemyNodes = GetCurrentEnemyNodes();
+            Creature creature = await CreatureCmd.Add(monster, combatState, CombatSide.Enemy, slotName);
+
+            if (slotName is null)
+                PositionUnslottedSummonedMonster(creature, existingEnemyNodes);
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"LoadoutImmediateMutation: failed to summon monster '{payload.ModelId}': {exception}");
+        }
+    }
+
+    private static string? GetNextAvailableMonsterSlot(CombatState combatState)
+    {
+        try
+        {
+            string? slotName = combatState.Encounter?.GetNextSlot(combatState);
+            return string.IsNullOrWhiteSpace(slotName) ? null : slotName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IReadOnlyList<NCreature> GetCurrentEnemyNodes()
+    {
+        try
+        {
+            return NCombatRoom.Instance?.CreatureNodes
+                .Where(node => node.Entity.IsMonster && node.Entity.Side == CombatSide.Enemy)
+                .ToList() ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static void PositionUnslottedSummonedMonster(Creature creature, IReadOnlyList<NCreature> existingEnemyNodes)
+    {
+        NCreature? node = NCombatRoom.Instance?.GetCreatureNode(creature);
+        if (node is null)
+            return;
+
+        if (existingEnemyNodes.Count == 0)
+        {
+            node.Position = new Vector2(520f, 200f);
+            return;
+        }
+
+        NCreature? anchor = existingEnemyNodes
+            .Where(GodotObject.IsInstanceValid)
+            .OrderBy(existing => existing.Position.X)
+            .LastOrDefault();
+        if (anchor is null)
+        {
+            node.Position = new Vector2(520f, 200f);
+            return;
+        }
+
+        float anchorHalfWidth = MathF.Max(45f, anchor.Visuals.Bounds.Size.X * 0.5f);
+        float nodeHalfWidth = MathF.Max(45f, node.Visuals.Bounds.Size.X * 0.5f);
+        float x = anchor.Position.X + anchorHalfWidth + nodeHalfWidth + 70f;
+        float y = anchor.Position.Y;
+
+        if (x > 900f)
+        {
+            int index = existingEnemyNodes.Count;
+            x = 160f + index % 4 * 205f;
+            y = 200f + index / 4 % 3 * 74f;
+        }
+
+        node.Position = new Vector2(Mathf.Clamp(x, 120f, 900f), Mathf.Clamp(y, 120f, 380f));
+    }
+
     private static void ApplyEnterEvent(LoadoutImmediateMutationPayload payload, Player requester)
     {
         EventModel? eventModel = ResolveEvent(payload.ModelId);
@@ -1135,6 +1251,11 @@ public static class LoadoutImmediateMutationService
             .Concat(ModelDb.AllAncients)
             .Distinct()
             .FirstOrDefault(eventModel => IdMatches(eventModel, id));
+    }
+
+    private static MonsterModel? ResolveCanonicalMonster(ModelId id)
+    {
+        return ModelDb.Monsters.FirstOrDefault(monster => IdMatches(monster, id));
     }
 }
 

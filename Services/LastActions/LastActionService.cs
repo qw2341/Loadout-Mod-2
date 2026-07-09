@@ -19,11 +19,13 @@ public static class LastActionService
     public const string CardPrinterKey = "card_printer";
     public const string EventfulCompassKey = "eventful_compass";
     public const string PowerGiverKey = "power_giver";
+    public const string BottleMonsterKey = "bottle_monster";
 
     public const string AddCardKind = "add_card";
     public const string AddRelicKind = "add_relic";
     public const string EnterEventKind = "enter_event";
     public const string AdjustPowerKind = "adjust_power";
+    public const string SummonMonsterKind = "summon_monster";
 
     private const int CurrentSchemaVersion = 1;
     private const string SavePath = "loadout/services/last_actions.json";
