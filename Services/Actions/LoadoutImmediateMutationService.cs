@@ -19,9 +19,11 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
+using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
@@ -45,6 +47,7 @@ public enum LoadoutImmediateMutationKind
     CardModification,
     ApplyLoadout,
     AdjustPower,
+    ClearCurrentPowers,
     EnterEvent,
     GoToRoom,
     TildeStatSet,
@@ -206,6 +209,20 @@ public static class LoadoutImmediateMutationService
             Kind = LoadoutImmediateMutationKind.AdjustPower,
             ModelId = powerId,
             Amount = delta,
+            Target = target
+        });
+    }
+
+    public static bool RequestClearCurrentPowers(PowerType type, LoadoutTargetSelection target)
+    {
+        if (type is not (PowerType.Buff or PowerType.Debuff))
+            return false;
+
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.ClearCurrentPowers,
+            ModelId = ModelId.none,
+            Amount = (int)type,
             Target = target
         });
     }
@@ -521,6 +538,9 @@ public static class LoadoutImmediateMutationService
                 break;
             case LoadoutImmediateMutationKind.AdjustPower:
                 ApplyAdjustPower(payload, requester);
+                break;
+            case LoadoutImmediateMutationKind.ClearCurrentPowers:
+                TaskHelper.RunSafely(ApplyClearCurrentPowersAsync(payload));
                 break;
             case LoadoutImmediateMutationKind.EnterEvent:
                 ApplyEnterEvent(payload, requester);
@@ -860,6 +880,47 @@ public static class LoadoutImmediateMutationService
             payload.Amount,
             payload.Target,
             requester);
+    }
+
+    private static async Task ApplyClearCurrentPowersAsync(LoadoutImmediateMutationPayload payload)
+    {
+        PowerType type = (PowerType)payload.Amount;
+        if (type is not (PowerType.Buff or PowerType.Debuff) || !CombatManager.Instance.IsInProgress)
+            return;
+
+        CombatState? combatState = CombatManager.Instance.DebugOnlyGetState();
+        if (combatState is null)
+            return;
+
+        foreach (Creature creature in ResolveCurrentCombatTargets(combatState, payload.Target))
+        {
+            List<PowerModel> powers = creature.Powers
+                .Where(power => power.Type == type)
+                .ToList();
+
+            foreach (PowerModel power in powers)
+            {
+                try
+                {
+                    await PowerCmd.Remove(power);
+                }
+                catch (Exception exception)
+                {
+                    GD.PushWarning($"LoadoutImmediateMutation: failed clearing {type} power '{power.Id}' from '{creature.Name}'. {exception.Message}");
+                }
+            }
+        }
+    }
+
+    private static IReadOnlyList<Creature> ResolveCurrentCombatTargets(CombatState combatState, LoadoutTargetSelection target)
+    {
+        return target.Scope switch
+        {
+            LoadoutTargetScope.AllMonsters => combatState.Enemies.ToList(),
+            LoadoutTargetScope.AllPlayers => combatState.Players.Select(player => player.Creature).ToList(),
+            LoadoutTargetScope.Player when target.PlayerNetId.HasValue && combatState.GetPlayer(target.PlayerNetId.Value) is { } player => [player.Creature],
+            _ => []
+        };
     }
 
     private static void ApplyEnterEvent(LoadoutImmediateMutationPayload payload, Player requester)

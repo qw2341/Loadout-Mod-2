@@ -72,6 +72,8 @@ public class PowerGiver
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(5, PowerButtonSize, 24, 24, fixedSlots: false);
+				builder.ActionButton("clear_current_buffs", LocMan.Loc("POWER_GIVER_CLEAR_CURRENT_BUFFS", "Clear Current Buffs"), _ => HandleClearCurrentPowers(PowerType.Buff));
+				builder.ActionButton("clear_current_debuffs", LocMan.Loc("POWER_GIVER_CLEAR_CURRENT_DEBUFFS", "Clear Current Debuffs"), _ => HandleClearCurrentPowers(PowerType.Debuff));
 				builder.CustomVisibilityPredicate(power => !showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
 				builder.FilterGroup("type", LocMan.Loc("FILTER_GROUP_TYPE", "Type"));
 				builder.Filter("buff", LocMan.Loc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
@@ -160,6 +162,12 @@ public class PowerGiver
 		}
 
 		return Task.CompletedTask;
+	}
+
+	private static void HandleClearCurrentPowers(PowerType type)
+	{
+		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(PowerGiverStateService.TargetKey, LoadoutTargetMode.PowerGiver);
+		LoadoutImmediateMutationService.RequestClearCurrentPowers(type, target);
 	}
 
 	private static Control CreatePowerGridItem(PowerModel model, int selectedAmount = 0, bool isFavorite = false)
