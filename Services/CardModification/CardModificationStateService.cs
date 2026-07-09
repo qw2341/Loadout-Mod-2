@@ -232,6 +232,12 @@ public static class CardModificationStateService
             return true;
         }
 
+        if (beta && !string.IsNullOrWhiteSpace(state.PortraitPath))
+        {
+            path = state.PortraitPath!;
+            return true;
+        }
+
         if (string.IsNullOrWhiteSpace(state.PoolId))
             return false;
 
@@ -242,7 +248,7 @@ public static class CardModificationStateService
             return true;
         }
 
-        path = beta ? canonical.BetaPortraitPath : canonical.PortraitPath;
+        path = canonical.PortraitPath;
         return true;
     }
 
