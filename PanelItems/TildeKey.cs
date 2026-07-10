@@ -35,10 +35,12 @@ public static partial class TildeKey
     private const string OrbSlotIconPath = "res://images/orbs/empty_orb.png";
     private const string PotionSlotIconPath = "res://images/packed/potions/potion_placeholder.png";
     private const string TurnIconPath = "res://images/ui/run_history/unknown_monster.png";
-    private const string CardIconPath = "res://images/atlases/ui_atlas.sprites/card/card_type_attack.tres";
+    private const string CardIconPath = "res://images/packed/statistics_screen/stats_cards.png";
+    private const string CardIconBluePath = "res://images/packed/statistics_screen/stats_bluecards.png";
     private const string CardRemovalIconPath = "res://images/ui/reward_screen/reward_icon_card_removal.png";
     private const string WongoIconPath = "res://images/relics/wongo_customer_appreciation_badge.png";
     private const string DamageIconPath = "res://images/ui/game_over_screen/badge_damage_leader.png";
+    private const string DamageIconElitePath = "res://images/ui/game_over_screen/badge_elite.png";
     private const string DebuffIconPath = "res://images/ui/game_over_screen/badge_debuffer.png";
     private static WeakReference<TildeStatRow>? ActiveStatRow;
     private static readonly Color HpAccent = new("F1373E");
@@ -346,7 +348,7 @@ public static partial class TildeKey
                 StsColors.cream),
             TildeKeyStateService.HandSizeStatId => new(
                 LocMan.Loc("TILDEKEY_STAT_HAND_SIZE", "Hand Size"),
-                CardIconPath,
+                CardIconBluePath,
                 StsColors.cream),
             TildeKeyStateService.PlayerDamageMultiplierStatId => new(
                 LocMan.Loc("TILDEKEY_STAT_PLAYER_DAMAGE_MULTIPLIER", "Player Damage Multiplier"),
@@ -354,7 +356,7 @@ public static partial class TildeKey
                 HpAccent),
             TildeKeyStateService.EnemyDamageMultiplierStatId => new(
                 LocMan.Loc("TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER", "Enemy Damage Multiplier"),
-                DamageIconPath,
+                DamageIconElitePath,
                 HpAccent),
             
             //LESS USED STUFF GOES HERE
