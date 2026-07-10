@@ -79,6 +79,7 @@ public static class CardModificationStateService
     private static readonly Dictionary<string, CachedDisplayCard> DisplayCardCache = new(StringComparer.Ordinal);
     private static readonly ConditionalWeakTable<CardModel, LocalCatalogDisplayCardMarker> LocalCatalogDisplayCards = new();
     private static readonly ConditionalWeakTable<CardModel, PreviewCardStateHolder> PreviewCardStates = new();
+    private static readonly Dictionary<string, WeakReference<CardModel>> RecentDeckCardIdentities = new(StringComparer.Ordinal);
     private static bool _registered;
     private static bool _permanentLoaded;
     private static bool _runLoaded;
@@ -723,6 +724,16 @@ public static class CardModificationStateService
         }
     }
 
+    public static void CarryEffectiveStateToClone(CardModel source, CardModel clone)
+    {
+        if (source is null || clone is null || clone.IsCanonical)
+            return;
+
+        CardModificationState state = GetEffectiveStateForCard(source);
+        if (!state.IsEmpty)
+            SetPreviewState(clone, state);
+    }
+
     public static CardModel GetEffectivePermanentCardForDisplay(CardModel card)
     {
         if (!card.IsCanonical)
@@ -879,13 +890,39 @@ public static class CardModificationStateService
             ? actionPlayer.RunState.GetPlayer(target.PlayerNetId.Value)
             : actionPlayer;
 
-        if (targetPlayer is null || ownedItemIndex < 0 || ownedItemIndex >= targetPlayer.Deck.Cards.Count)
+        if (targetPlayer is null || ownedItemIndex < 0)
             return null;
 
-        CardModel card = targetPlayer.Deck.Cards[ownedItemIndex];
-        return ModelIdMatches(card, expectedModelId) && card.Pile?.Type == PileType.Deck
-            ? new LoadoutOwnedItem<CardModel>(targetPlayer, ownedItemIndex, card)
-            : null;
+        if (ownedItemIndex < targetPlayer.Deck.Cards.Count)
+        {
+            CardModel indexedCard = targetPlayer.Deck.Cards[ownedItemIndex];
+            if (ModelIdMatches(indexedCard, expectedModelId) && indexedCard.Pile?.Type == PileType.Deck)
+                return new LoadoutOwnedItem<CardModel>(targetPlayer, ownedItemIndex, indexedCard);
+        }
+
+        string previousKey = GetCopyKey(targetPlayer.NetId, ownedItemIndex, expectedModelId);
+        lock (SyncRoot)
+        {
+            if (!RecentDeckCardIdentities.TryGetValue(previousKey, out WeakReference<CardModel>? reference)
+                || !reference.TryGetTarget(out CardModel? trackedCard)
+                || !ModelIdMatches(trackedCard, expectedModelId))
+            {
+                return null;
+            }
+
+            int currentIndex = -1;
+            for (int index = 0; index < targetPlayer.Deck.Cards.Count; index++)
+            {
+                if (!ReferenceEquals(targetPlayer.Deck.Cards[index], trackedCard))
+                    continue;
+
+                currentIndex = index;
+                break;
+            }
+            return currentIndex >= 0 && trackedCard.Pile?.Type == PileType.Deck
+                ? new LoadoutOwnedItem<CardModel>(targetPlayer, currentIndex, trackedCard)
+                : null;
+        }
     }
 
     private static void ApplyPermanentStateToLiveCardsFromAction(ModelId cardId, CardModificationState permanentState)
@@ -1145,7 +1182,8 @@ public static class CardModificationStateService
 
     public static bool ReplaceTemporaryStatesForPlayer(
         Player? player,
-        IReadOnlyDictionary<CardModel, CardModificationState>? statesByCard)
+        IReadOnlyDictionary<CardModel, CardModificationState>? statesByCard,
+        bool reapplyCards = true)
     {
         if (player is null)
             return false;
@@ -1187,10 +1225,35 @@ public static class CardModificationStateService
                 SaveRunState();
         }
 
-        foreach (LoadoutOwnedItem<CardModel> item in modifiedCards)
-            ApplyEffectiveStateToOwnedCard(item);
+        if (reapplyCards)
+        {
+            foreach (LoadoutOwnedItem<CardModel> item in modifiedCards)
+                ApplyEffectiveStateToOwnedCard(item);
+        }
 
         return changed;
+    }
+
+    public static IReadOnlyDictionary<CardModel, CardModificationState> CaptureTemporaryStatesForPlayer(Player player)
+    {
+        EnsureLoaded();
+        Dictionary<CardModel, CardModificationState> states = new(ReferenceEqualityComparer.Instance);
+        lock (SyncRoot)
+        {
+            IReadOnlyList<CardModel> cards = player.Deck.Cards;
+            for (int index = 0; index < cards.Count; index++)
+            {
+                CardModel card = cards[index];
+                RecentDeckCardIdentities[GetCopyKey(player.NetId, index, card.Id)] = new WeakReference<CardModel>(card);
+                if (_run.Cards.TryGetValue(GetCopyKey(player.NetId, index, card.Id), out CardModificationState? state)
+                    && !state.IsEmpty)
+                {
+                    states[card] = state.Clone();
+                }
+            }
+        }
+
+        return states;
     }
 
     private static void TryApplyRemoteTemporaryToLiveCard(
@@ -2027,6 +2090,7 @@ public static class CardModificationStateService
             _loadedRunStartTime = null;
             _permanent = new PermanentSaveData();
             _run = new RunSaveData();
+            RecentDeckCardIdentities.Clear();
             _hostPermanentOverlay.Clear();
             _hasHostPermanentOverlay = false;
             InvalidateDisplayCacheLocked();
@@ -2060,6 +2124,7 @@ public static class CardModificationStateService
             _runLoaded = false;
             _loadedRunStartTime = null;
             _run = new RunSaveData();
+            RecentDeckCardIdentities.Clear();
         }
 
         ReloadRunIfNeeded();

@@ -32,6 +32,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
@@ -110,6 +111,9 @@ public static class TildeKeyStateService
     private static readonly MethodInfo? RelicDisplayAmountChangedMethod = AccessTools.Method(typeof(RelicModel), "InvokeDisplayAmountChanged");
     private static readonly FieldInfo? CreatureStateDisplayField = AccessTools.Field(typeof(NCreature), "_stateDisplay");
     private static readonly MethodInfo? CreatureStateDisplayRefreshValuesMethod = AccessTools.Method(typeof(NCreatureStateDisplay), "RefreshValues");
+    private static readonly MethodInfo? EnergyCounterRefreshLabelMethod = AccessTools.Method(typeof(NEnergyCounter), "RefreshLabel");
+    private static readonly MethodInfo? MultiplayerPlayerStateRefreshValuesMethod = AccessTools.Method(typeof(NMultiplayerPlayerState), "RefreshValues");
+    private static readonly MethodInfo? MultiplayerPlayerStateRefreshCombatValuesMethod = AccessTools.Method(typeof(NMultiplayerPlayerState), "RefreshCombatValues");
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         AllowTrailingCommas = true,
@@ -152,7 +156,6 @@ public static class TildeKeyStateService
 
     private static RunSaveData _run = new();
     private static readonly Dictionary<string, Dictionary<string, int>> VirtualStats = new(StringComparer.Ordinal);
-    private static readonly Dictionary<ulong, HpDisplay> GodmodePreviousHpDisplays = new();
     private static bool _registered;
     private static bool _runLoaded;
     private static long? _loadedRunStartTime;
@@ -172,6 +175,7 @@ public static class TildeKeyStateService
         RunManager.Instance.RunStarted += OnRunStarted;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp += OnCombatSetUp;
+        CombatManager.Instance.TurnStarted += OnTurnStarted;
         EnsureLoaded();
     }
 
@@ -183,6 +187,7 @@ public static class TildeKeyStateService
         RunManager.Instance.RunStarted -= OnRunStarted;
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp -= OnCombatSetUp;
+        CombatManager.Instance.TurnStarted -= OnTurnStarted;
         _registered = false;
     }
 
@@ -202,7 +207,6 @@ public static class TildeKeyStateService
                 _loadedRunStartTime = null;
                 _run = new RunSaveData();
                 VirtualStats.Clear();
-                GodmodePreviousHpDisplays.Clear();
             }
             return;
         }
@@ -211,7 +215,6 @@ public static class TildeKeyStateService
             ReloadRunIfNeeded();
 
         ApplyLockedStatsForCurrentRun();
-        ApplyPerFrameTogglesForCurrentRun();
         ApplyLockedRelicCountersForCurrentRun();
         SyncMapDebugTravel(force: false);
     }
@@ -382,6 +385,8 @@ public static class TildeKeyStateService
             SetSavedToggle(player.NetId, payload.ToggleId, payload.Enabled);
             if (string.Equals(payload.ToggleId, GodmodeToggleId, StringComparison.Ordinal))
                 SetGodmodeDisplay(player, payload.Enabled);
+            else if (payload.Enabled && string.Equals(payload.ToggleId, InfiniteEnergyToggleId, StringComparison.Ordinal))
+                ApplyInfiniteEnergy(player);
         }
 
         if (payload.Enabled && string.Equals(payload.ToggleId, DrawTillHandLimitToggleId, StringComparison.Ordinal))
@@ -687,41 +692,15 @@ public static class TildeKeyStateService
             if (player is null || !DefinitionById.TryGetValue(statId, out TildeKeyStatDefinition? definition))
                 continue;
 
+            if (IsPlayerToggleEnabled(netId, InfiniteEnergyToggleId)
+                && (string.Equals(statId, "combat_energy", StringComparison.Ordinal)
+                    || string.Equals(statId, "stars", StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
             ApplyStat(definition, player, value);
         }
-    }
-
-    private static void ApplyPerFrameTogglesForCurrentRun()
-    {
-        RunState? runState = GetCurrentRunStateOrNull();
-        if (runState is null)
-            return;
-
-        List<Player> infiniteEnergyPlayers = [];
-        List<Player> godmodePlayers = [];
-        lock (SyncRoot)
-        {
-            foreach (Player player in runState.Players)
-            {
-                if (!GetPlayerStateLocked(player.NetId, create: false, out TildeKeyPlayerState? state)
-                    || state is null)
-                {
-                    continue;
-                }
-
-                if (state.Toggles.TryGetValue(InfiniteEnergyToggleId, out bool infiniteEnergy) && infiniteEnergy)
-                    infiniteEnergyPlayers.Add(player);
-
-                if (state.Toggles.TryGetValue(GodmodeToggleId, out bool godmode) && godmode)
-                    godmodePlayers.Add(player);
-            }
-        }
-
-        foreach (Player player in infiniteEnergyPlayers)
-            ApplyInfiniteEnergy(player);
-
-        foreach (Player player in godmodePlayers)
-            SetGodmodeDisplay(player, enabled: true);
     }
 
     private static void ApplyLockedRelicCountersForCurrentRun()
@@ -762,26 +741,45 @@ public static class TildeKeyStateService
         if (player.PlayerCombatState is null)
             return;
 
-        int desired = 999;
+        int energyDesired = 999;
         if (TryGetSavedStat(player.NetId, "combat_energy", out TildeKeySavedStat? savedEn)
             && savedEn is not null
             && savedEn.Locked)
         {
-            desired = Math.Max(desired, savedEn.Value);
+            energyDesired = Math.Max(energyDesired, savedEn.Value);
         }
 
-        if (player.PlayerCombatState.Energy != desired)
-            player.PlayerCombatState.Energy = desired;
-        
+        if (player.PlayerCombatState.Energy != energyDesired)
+            player.PlayerCombatState.Energy = energyDesired;
+
+        int starsDesired = 999;
         if (TryGetSavedStat(player.NetId, "stars", out TildeKeySavedStat? savedSt)
             && savedSt is not null
             && savedSt.Locked)
         {
-            desired = Math.Max(desired, savedSt.Value);
+            starsDesired = Math.Max(starsDesired, savedSt.Value);
         }
 
-        if (player.PlayerCombatState.Stars != desired)
-            player.PlayerCombatState.Stars = desired;
+        if (player.PlayerCombatState.Stars != starsDesired)
+            player.PlayerCombatState.Stars = starsDesired;
+    }
+
+    internal static bool IsInfiniteEnergyEnabled(PlayerCombatState combatState)
+    {
+        Player? player = GetCurrentRunStateOrNull()?.Players
+            .FirstOrDefault(candidate => ReferenceEquals(candidate.PlayerCombatState, combatState));
+        return player is not null && IsPlayerToggleEnabled(player.NetId, InfiniteEnergyToggleId);
+    }
+
+    internal static void RestoreInfiniteEnergyAfterReset(PlayerCombatState combatState)
+    {
+        if (!IsInfiniteEnergyEnabled(combatState))
+            return;
+
+        Player? player = GetCurrentRunStateOrNull()?.Players
+            .FirstOrDefault(candidate => ReferenceEquals(candidate.PlayerCombatState, combatState));
+        if (player is not null)
+            ApplyInfiniteEnergy(player);
     }
 
     public static void RequestDrawTillHandLimitForLocalPlayer(Player? player)
@@ -1197,6 +1195,38 @@ public static class TildeKeyStateService
                     RequestDrawTillHandLimitForLocalPlayer(player);
             }
         }
+        else if (string.Equals(statId, "max_energy", StringComparison.Ordinal)
+                 || string.Equals(statId, "combat_energy", StringComparison.Ordinal)
+                 || string.Equals(statId, "stars", StringComparison.Ordinal))
+        {
+            RefreshEnergyDisplays(players);
+        }
+    }
+
+    private static void RefreshEnergyDisplays(IReadOnlyList<Player> players)
+    {
+        try
+        {
+            if (NCombatRoom.Instance?.Ui?.EnergyCounterContainer is { } energyContainer)
+            {
+                foreach (NEnergyCounter counter in energyContainer.GetChildren().OfType<NEnergyCounter>())
+                    EnergyCounterRefreshLabelMethod?.Invoke(counter, null);
+            }
+
+            if (NRun.Instance?.GlobalUi?.MultiplayerPlayerContainer is { } container)
+            {
+                HashSet<ulong> affected = players.Select(player => player.NetId).ToHashSet();
+                foreach (NMultiplayerPlayerState state in container.GetChildren().OfType<NMultiplayerPlayerState>())
+                {
+                    if (affected.Contains(state.Player.NetId))
+                        MultiplayerPlayerStateRefreshCombatValuesMethod?.Invoke(state, null);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"TildeKey: failed refreshing energy display. {exception.Message}");
+        }
     }
 
     private static void RefreshPlayerCombatPreview(Player player)
@@ -1265,18 +1295,9 @@ public static class TildeKeyStateService
     private static void SetGodmodeDisplay(Player player, bool enabled)
     {
         Creature creature = player.Creature;
-        lock (SyncRoot)
-        {
-            if (enabled)
-            {
-                GodmodePreviousHpDisplays.TryAdd(player.NetId, creature.HpDisplay);
-                creature.HpDisplay = HpDisplay.InfiniteWithoutNumbers;
-            }
-            else
-            {
-                creature.HpDisplay = HpDisplay.Normal;
-            }
-        }
+        HpDisplay desired = enabled ? HpDisplay.InfiniteWithoutNumbers : HpDisplay.Normal;
+        if (creature.HpDisplay != desired)
+            creature.HpDisplay = desired;
 
         RefreshCreatureHealthBar(creature);
     }
@@ -1286,12 +1307,22 @@ public static class TildeKeyStateService
         try
         {
             NCreature? creatureNode = NCombatRoom.Instance?.GetCreatureNode(creature);
-            if (creatureNode is null)
-                return;
+            if (creatureNode is not null)
+            {
+                object? stateDisplay = CreatureStateDisplayField?.GetValue(creatureNode);
+                if (stateDisplay is not null)
+                    CreatureStateDisplayRefreshValuesMethod?.Invoke(stateDisplay, null);
+            }
 
-            object? stateDisplay = CreatureStateDisplayField?.GetValue(creatureNode);
-            if (stateDisplay is not null)
-                CreatureStateDisplayRefreshValuesMethod?.Invoke(stateDisplay, null);
+            if (creature.Player is not null
+                && NRun.Instance?.GlobalUi?.MultiplayerPlayerContainer is { } container)
+            {
+                NMultiplayerPlayerState? multiplayerState = container.GetChildren()
+                    .OfType<NMultiplayerPlayerState>()
+                    .FirstOrDefault(state => state.Player.NetId == creature.Player.NetId);
+                if (multiplayerState is not null)
+                    MultiplayerPlayerStateRefreshValuesMethod?.Invoke(multiplayerState, null);
+            }
         }
         catch (Exception exception)
         {
@@ -1598,7 +1629,6 @@ public static class TildeKeyStateService
         lock (SyncRoot)
         {
             VirtualStats.Clear();
-            GodmodePreviousHpDisplays.Clear();
         }
 
         ReloadRun();
@@ -1614,7 +1644,6 @@ public static class TildeKeyStateService
             _loadedRunStartTime = null;
             _run = new RunSaveData();
             VirtualStats.Clear();
-            GodmodePreviousHpDisplays.Clear();
         }
 
         EnsureLoaded();
@@ -1628,6 +1657,20 @@ public static class TildeKeyStateService
 
         ApplySavedGodmodeToPlayers(combatState.Players);
         ApplyLockedStatsForCurrentRun();
+        foreach (Player player in combatState.Players)
+        {
+            if (IsPlayerToggleEnabled(player.NetId, InfiniteEnergyToggleId))
+                ApplyInfiniteEnergy(player);
+        }
+    }
+
+    private static void OnTurnStarted(CombatState combatState)
+    {
+        if (combatState?.CurrentSide != CombatSide.Player)
+            return;
+
+        foreach (Player player in combatState.Players)
+            RequestDrawTillHandLimitForLocalPlayer(player);
     }
 
     private static void ApplySavedGodmodeToPlayers(IEnumerable<Player>? players = null)

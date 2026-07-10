@@ -5,7 +5,10 @@ namespace Loadout.Services.Loadouts;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Serialization;
+using System.Text.Json.Serialization;
 using Godot;
+using Loadout.Services.Saving;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
 using Loadout.Services.Networking;
@@ -17,11 +20,17 @@ using MegaCrit.Sts2.Core.Runs;
 
 public static class LoadoutPanelAccessService
 {
+    private const int CurrentSchemaVersion = 1;
+    private const string RunDirectory = "loadout/services/panel_access";
+    private const string RunFilePrefix = "panel_access_run";
+
     private static readonly HashSet<StartRunLobby> RegisteredLobbies = [];
     private static readonly Dictionary<StartRunLobby, Action<LobbyPlayer>> LobbyConnectedHandlers = new();
 
     private static INetGameService? _runNetService;
+    private static RunLobby? _runLobby;
     private static bool _hostAllowsGuests;
+    private static long? _loadedRunStartTime;
 
     public static event Action? AccessChanged;
 
@@ -33,6 +42,7 @@ public static class LoadoutPanelAccessService
             return;
 
         _hostAllowsGuests = allow;
+        SaveRunAccessIfActiveHost();
         BroadcastAccess();
         NotifyAccessChanged();
     }
@@ -108,7 +118,10 @@ public static class LoadoutPanelAccessService
 
             RegisterRunNetService(netService);
             if (netService.Type == NetGameType.Host)
+            {
+                LoadOrCreateRunAccess();
                 BroadcastAccess();
+            }
             else if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
                 SetHostAllowsGuestsForNewLobby(false);
         }
@@ -120,7 +133,9 @@ public static class LoadoutPanelAccessService
 
     public static void OnRunCleaningUp()
     {
+        UnbindRunLobby();
         UnregisterRunNetService(clearClientAccess: true);
+        _loadedRunStartTime = null;
     }
 
     private static void SetHostAllowsGuestsForNewLobby(bool allow)
@@ -140,6 +155,7 @@ public static class LoadoutPanelAccessService
         UnregisterRunNetService(clearClientAccess: false);
         _runNetService = netService;
         _runNetService.RegisterMessageHandler<LoadoutPanelAccessMessage>(HandleAccessMessage);
+        BindRunLobby(RunManager.Instance.RunLobby);
     }
 
     private static void UnregisterRunNetService(bool clearClientAccess)
@@ -153,6 +169,37 @@ public static class LoadoutPanelAccessService
 
         if (clearClientAccess && type == NetGameType.Client)
             SetHostAllowsGuestsForNewLobby(false);
+    }
+
+    private static void BindRunLobby(RunLobby? runLobby)
+    {
+        if (ReferenceEquals(_runLobby, runLobby))
+            return;
+
+        UnbindRunLobby();
+        _runLobby = runLobby;
+        if (_runLobby is not null)
+            _runLobby.PlayerRejoined += OnPlayerRejoined;
+    }
+
+    private static void UnbindRunLobby()
+    {
+        if (_runLobby is null)
+            return;
+
+        _runLobby.PlayerRejoined -= OnPlayerRejoined;
+        _runLobby = null;
+    }
+
+    private static void OnPlayerRejoined(ulong playerId)
+    {
+        if (_runNetService?.Type != NetGameType.Host || playerId == _runNetService.NetId)
+            return;
+
+        _runNetService.SendMessage(new LoadoutPanelAccessMessage
+        {
+            allowGuests = _hostAllowsGuests
+        }, playerId);
     }
 
     private static void BroadcastAccess()
@@ -270,6 +317,86 @@ public static class LoadoutPanelAccessService
         catch (Exception exception)
         {
             GD.PushWarning($"LoadoutPanelAccess: access changed handler failed. {exception.Message}");
+        }
+    }
+
+    private static void LoadOrCreateRunAccess()
+    {
+        long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+        if (!runStartTime.HasValue)
+            return;
+
+        _loadedRunStartTime = runStartTime.Value;
+        string path = SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, runStartTime.Value);
+        SaveUtility.LoadResult<RunAccessSaveData> loaded = SaveUtility.LoadProfileJson(
+            path,
+            new RunAccessSaveData
+            {
+                SchemaVersion = CurrentSchemaVersion,
+                RunStartTime = runStartTime.Value,
+                AllowGuests = _hostAllowsGuests
+            });
+
+        if (loaded.Loaded && loaded.Value.RunStartTime == runStartTime.Value)
+        {
+            bool changed = _hostAllowsGuests != loaded.Value.AllowGuests;
+            _hostAllowsGuests = loaded.Value.AllowGuests;
+            if (changed)
+                NotifyAccessChanged();
+            return;
+        }
+
+        SaveRunAccess();
+    }
+
+    private static void SaveRunAccessIfActiveHost()
+    {
+        try
+        {
+            if (RunManager.Instance.IsInProgress
+                && RunManager.Instance.NetService.Type == NetGameType.Host)
+            {
+                _loadedRunStartTime ??= SaveUtility.GetCurrentRunStartTime();
+                SaveRunAccess();
+            }
+        }
+        catch
+        {
+            // The host may still be in the start-run lobby.
+        }
+    }
+
+    private static void SaveRunAccess()
+    {
+        if (!_loadedRunStartTime.HasValue)
+            return;
+
+        SaveUtility.SaveProfileJson(
+            SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, _loadedRunStartTime.Value),
+            new RunAccessSaveData
+            {
+                SchemaVersion = CurrentSchemaVersion,
+                RunStartTime = _loadedRunStartTime.Value,
+                AllowGuests = _hostAllowsGuests
+            });
+    }
+
+    private struct RunAccessSaveData : ISerializable
+    {
+        [JsonPropertyName("schemaVersion")]
+        public int SchemaVersion { get; set; }
+
+        [JsonPropertyName("runStartTime")]
+        public long RunStartTime { get; set; }
+
+        [JsonPropertyName("allowGuests")]
+        public bool AllowGuests { get; set; }
+
+        public void GetObjectData(SerializationInfo info, StreamingContext context)
+        {
+            info.AddValue(nameof(SchemaVersion), CurrentSchemaVersion);
+            info.AddValue(nameof(RunStartTime), RunStartTime);
+            info.AddValue(nameof(AllowGuests), AllowGuests);
         }
     }
 }

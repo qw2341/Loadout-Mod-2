@@ -1,5 +1,6 @@
 using Godot;
 using Loadout.UI.Managers;
+using Loadout.Services.Loadouts;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Commands;
 
@@ -24,6 +25,7 @@ public partial class NLoadoutPanelButton : Button
 		_nLoadoutPanel = GetParent<NLoadoutPanel>();
 		BuildVisuals();
 		_nLoadoutPanel.VisibilityStateChanged += RefreshState;
+		LoadoutPanelAccessService.AccessChanged += RefreshState;
 		Pressed += OnPressed;
 		MouseEntered += OnMouseEntered;
 		Resized += OnResized;
@@ -40,6 +42,7 @@ public partial class NLoadoutPanelButton : Button
 		MouseEntered -= OnMouseEntered;
 		Resized -= OnResized;
 		_nLoadoutPanel.VisibilityStateChanged -= RefreshState;
+		LoadoutPanelAccessService.AccessChanged -= RefreshState;
 		_signalsConnected = false;
 	}
 
@@ -111,7 +114,9 @@ public partial class NLoadoutPanelButton : Button
 
 	private void RefreshState()
 	{
-		Disabled = _nLoadoutPanel.Hidden;
+		bool hasAccess = LoadoutPanelAccessService.CanLocalPlayerUsePanel();
+		Visible = hasAccess && !_nLoadoutPanel.Hidden;
+		Disabled = !Visible;
 		Modulate = Disabled ? new Color(1f, 1f, 1f, 0.55f) : Colors.White;
 
 		if (_arrowImage is null || !IsInstanceValid(_arrowImage))

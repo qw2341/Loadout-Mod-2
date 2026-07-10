@@ -23,6 +23,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardLibrary;
+using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
@@ -46,6 +47,41 @@ public static class CombatStateCreateCardPatch
     }
 }
 
+[HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.MutableClone))]
+public static class CardModelMutableCloneModificationStatePatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(AbstractModel __instance, AbstractModel __result)
+    {
+        if (NInspectCardScreenCloneStatePatch.IsActive
+            && __instance is CardModel source
+            && __result is CardModel clone)
+            CardModificationStateService.CarryEffectiveStateToClone(source, clone);
+    }
+}
+
+[HarmonyPatch(typeof(NInspectCardScreen), "UpdateCardDisplay")]
+public static class NInspectCardScreenCloneStatePatch
+{
+    [ThreadStatic]
+    private static int _depth;
+
+    internal static bool IsActive => _depth > 0;
+
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+        _depth++;
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception)
+    {
+        _depth = Math.Max(0, _depth - 1);
+        return __exception;
+    }
+}
+
 [HarmonyPatch(typeof(CardCmd), nameof(CardCmd.Upgrade), typeof(IEnumerable<CardModel>), typeof(CardPreviewStyle))]
 public static class CardCmdUpgradeCardModificationPatch
 {
@@ -61,6 +97,52 @@ public static class CardCmdUpgradeCardModificationPatch
     public static void Postfix(List<CardModel> __state)
     {
         CardModificationStateService.ReapplyEffectiveStateAfterUpgrade(__state);
+    }
+}
+
+[HarmonyPatch(
+    typeof(CardPileCmd),
+    nameof(CardPileCmd.RemoveFromDeck),
+    typeof(IReadOnlyList<CardModel>),
+    typeof(bool))]
+public static class CardPileRemoveTemporaryIdentityPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(
+        IReadOnlyList<CardModel> cards,
+        out Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> __state)
+    {
+        __state = new Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>>();
+        foreach (Player owner in cards
+                     .Where(card => card?.Owner is not null)
+                     .Select(card => card.Owner)
+                     .Distinct())
+        {
+            __state[owner] = CardModificationStateService.CaptureTemporaryStatesForPlayer(owner);
+        }
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(
+        Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> __state,
+        ref Task __result)
+    {
+        __result = ReindexAfterRemovalAsync(__result, __state);
+    }
+
+    private static async Task ReindexAfterRemovalAsync(
+        Task original,
+        IReadOnlyDictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> snapshots)
+    {
+        try
+        {
+            await original;
+        }
+        finally
+        {
+            foreach ((Player player, IReadOnlyDictionary<CardModel, CardModificationState> states) in snapshots)
+                CardModificationStateService.ReplaceTemporaryStatesForPlayer(player, states, reapplyCards: false);
+        }
     }
 }
 

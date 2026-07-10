@@ -6,6 +6,7 @@ using Godot;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Saving;
 using Loadout.Services.Targets;
+using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using System;
 using System.Collections.Generic;
@@ -27,7 +28,7 @@ public static class LastActionService
     public const string AdjustPowerKind = "adjust_power";
     public const string SummonMonsterKind = "summon_monster";
 
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const string SavePath = "loadout/services/last_actions.json";
 
     private static readonly object SyncRoot = new();
@@ -42,7 +43,9 @@ public static class LastActionService
 
         _registered = true;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
+        RunManager.Instance.RunStarted += OnRunStarted;
         EnsureLoaded();
+        SynchronizeRunIdentity();
     }
 
     public static void Unregister()
@@ -51,6 +54,7 @@ public static class LastActionService
             return;
 
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
+        RunManager.Instance.RunStarted -= OnRunStarted;
         _registered = false;
     }
 
@@ -94,6 +98,31 @@ public static class LastActionService
         {
             _loaded = false;
             _save = new SaveData();
+        }
+    }
+
+    private static void OnRunStarted(RunState _)
+    {
+        SynchronizeRunIdentity();
+    }
+
+    private static void SynchronizeRunIdentity()
+    {
+        long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+        if (!runStartTime.HasValue)
+            return;
+
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            if (_save.RunStartTime == runStartTime.Value)
+                return;
+
+            _save = new SaveData
+            {
+                RunStartTime = runStartTime.Value
+            };
+            Save();
         }
     }
 
@@ -168,12 +197,16 @@ public static class LastActionService
         [JsonPropertyName("schemaVersion")]
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
+        [JsonPropertyName("runStartTime")]
+        public long RunStartTime { get; set; }
+
         [JsonPropertyName("actionsByItemKey")]
         public Dictionary<string, List<LastActionEntry>> ActionsByItemKey { get; set; } = new(StringComparer.Ordinal);
 
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             info.AddValue(nameof(SchemaVersion), SchemaVersion);
+            info.AddValue(nameof(RunStartTime), RunStartTime);
             info.AddValue(nameof(ActionsByItemKey), ActionsByItemKey);
         }
     }

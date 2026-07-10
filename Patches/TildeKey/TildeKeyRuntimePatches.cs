@@ -39,6 +39,36 @@ public static class TildeKeyModifyHandDrawPatch
     }
 }
 
+[HarmonyPatch(typeof(PlayerCombatState), nameof(PlayerCombatState.ResetEnergy))]
+public static class TildeKeyInfiniteEnergyResetPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(PlayerCombatState __instance)
+    {
+        TildeKeyStateService.RestoreInfiniteEnergyAfterReset(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(PlayerCombatState), nameof(PlayerCombatState.LoseEnergy))]
+public static class TildeKeyInfiniteEnergyLossPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(PlayerCombatState __instance)
+    {
+        return !TildeKeyStateService.IsInfiniteEnergyEnabled(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(PlayerCombatState), nameof(PlayerCombatState.LoseStars))]
+public static class TildeKeyInfiniteStarsLossPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(PlayerCombatState __instance)
+    {
+        return !TildeKeyStateService.IsInfiniteEnergyEnabled(__instance);
+    }
+}
+
 [HarmonyPatch(typeof(Hook), nameof(Hook.ModifyDamage))]
 public static class TildeKeyModifyDamagePatch
 {
@@ -122,9 +152,9 @@ public static class TildeKeySetupPlayerTurnHandLimitPatch
     }
 
     [HarmonyPostfix]
-    public static void Postfix(IDisposable? __state)
+    public static void Postfix(IDisposable? __state, ref Task __result)
     {
-        __state?.Dispose();
+        __result = TildeKeyHandLimitPatchHelpers.HoldForTaskLifetime(__result, __state);
     }
 
     [HarmonyFinalizer]
@@ -155,9 +185,9 @@ public static class TildeKeyDrawHandLimitPatch
     }
 
     [HarmonyPostfix]
-    public static void Postfix(IDisposable? __state)
+    public static void Postfix(IDisposable? __state, ref Task __result)
     {
-        __state?.Dispose();
+        __result = TildeKeyHandLimitPatchHelpers.HoldForTaskLifetime(__result, __state);
     }
 
     [HarmonyFinalizer]
@@ -186,23 +216,29 @@ public static class TildeKeyDrawHandLimitPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterCardPlayed))]
-public static class TildeKeyDrawTillHandLimitAfterCardPlayedPatch
+[HarmonyPatch(
+    typeof(CardModel),
+    nameof(CardModel.OnPlayWrapper),
+    typeof(PlayerChoiceContext),
+    typeof(Creature),
+    typeof(bool),
+    typeof(ResourceInfo),
+    typeof(bool))]
+public static class TildeKeyDrawTillHandLimitAfterCardSettledPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(PlayerChoiceContext choiceContext, CardPlay cardPlay, ref Task __result)
+    public static void Postfix(CardModel __instance, PlayerChoiceContext choiceContext, ref Task __result)
     {
-        __result = DrawAfterCardPlayedAsync(__result, choiceContext, cardPlay);
+        __result = DrawAfterCardSettledAsync(__result, choiceContext, __instance.Owner);
     }
 
-    private static async Task DrawAfterCardPlayedAsync(
+    private static async Task DrawAfterCardSettledAsync(
         Task original,
         PlayerChoiceContext choiceContext,
-        CardPlay cardPlay)
+        Player owner)
     {
         await original;
-        if (cardPlay.IsLastInSeries)
-            await TildeKeyStateService.DrawTillHandLimitAsync(choiceContext, cardPlay.Card.Owner);
+        await TildeKeyStateService.DrawTillHandLimitAsync(choiceContext, owner);
     }
 }
 
@@ -222,9 +258,9 @@ public static class TildeKeyPlayCardHandLimitPatch
     }
 
     [HarmonyPostfix]
-    public static void Postfix(IDisposable? __state)
+    public static void Postfix(IDisposable? __state, ref Task __result)
     {
-        __state?.Dispose();
+        __result = TildeKeyHandLimitPatchHelpers.HoldForTaskLifetime(__result, __state);
     }
 
     [HarmonyFinalizer]
@@ -268,9 +304,9 @@ public static class TildeKeyAddToHandLimitPatch
     }
 
     [HarmonyPostfix]
-    public static void Postfix(IDisposable? __state)
+    public static void Postfix(IDisposable? __state, ref Task __result)
     {
-        __state?.Dispose();
+        __result = TildeKeyHandLimitPatchHelpers.HoldForTaskLifetime(__result, __state);
     }
 
     [HarmonyFinalizer]
@@ -425,6 +461,23 @@ internal static class TildeKeyHandLimitPatchHelpers
         }
 
         return LoadoutCardAddRules.OverrideHandLimit(effectiveHandLimit);
+    }
+
+    public static Task HoldForTaskLifetime(Task task, IDisposable? scope)
+    {
+        return scope is null ? task : AwaitAndDisposeAsync(task, scope);
+    }
+
+    private static async Task AwaitAndDisposeAsync(Task task, IDisposable scope)
+    {
+        try
+        {
+            await task;
+        }
+        finally
+        {
+            scope.Dispose();
+        }
     }
 
 }
