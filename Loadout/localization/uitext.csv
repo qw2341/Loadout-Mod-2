@@ -200,3 +200,29 @@ ALLOW_GUEST_LOADOUT_PANEL,Allow others to use Loadout panel,允许他人使用Lo
 MONSTER_CATEGORY_BOSS,Boss,Boss
 MONSTER_CATEGORY_ELITE,Elite,精英
 MONSTER_CATEGORY_MONSTER,Monster,普通
+DECK_LOADOUTS_TITLE,Loadouts,卡组预设
+NO_SAVED_LOADOUTS,No saved loadouts,没有已保存的预设方案
+SAVE_CARDS_LOADOUT,Save Cards,保存卡牌预设
+SAVE_RELICS_LOADOUT,Save Relics,保存遗物预设
+SAVE_CARDS_RELICS_LOADOUT,Save Cards + Relics,保存卡牌 + 遗物预设
+APPLY_LOADOUT,Apply,使用该预设
+RENAME_LOADOUT,Rename,重命名
+DELETE_LOADOUT,Delete,删除
+IMPORT_LOADOUT,Import from clipboard,导入剪贴板
+EXPORT_LOADOUT,Export to clipboard,导出剪贴板
+LOADOUT_NAME_PLACEHOLDER,Loadout name,预设名称
+LOADOUT_KIND_RELICS,Relics,遗物
+LOADOUT_KIND_BOTH,Cards + Relics,卡牌 + 遗物
+LOADOUT_KIND_CARDS,Cards,卡牌
+LOADOUT_NO_PLAYER,No run player available.,当前局没有可用的玩家。
+LOADOUT_SAVED,Saved loadout.,已保存预设方案。
+LOADOUT_SELECT_FIRST,Select a loadout first.,请先选择一个预设方案。
+LOADOUT_APPLY_FAILED,Could not apply loadout.,无法应用预设方案。
+LOADOUT_APPLIED,Applied loadout.,已应用预设方案。
+LOADOUT_RENAME_LOCAL_ONLY,Only local loadouts can be renamed.,只能重命名本地预设方案。
+LOADOUT_RENAMED,Renamed loadout.,已重命名预设方案。
+LOADOUT_DELETE_LOCAL_ONLY,Only local loadouts can be deleted.,只能删除本地预设方案。
+LOADOUT_DELETED,Deleted loadout.,已删除预设方案。
+LOADOUT_EXPORTED,Exported loadout.,已导出预设方案。
+LOADOUT_EXPORT_FAILED,Could not export loadout.,无法导出预设方案。
+LOADOUT_IMPORTED,Imported loadout.,已导入预设方案。
