@@ -52,7 +52,7 @@ public sealed class CreatureManipulationMutation
     public CreatureManipulationOperation Operation { get; set; }
 
     [JsonPropertyName("combatId")]
-    public ulong CombatId { get; set; }
+    public uint CombatId { get; set; }
 
     [JsonPropertyName("x")]
     public float X { get; set; }
@@ -118,7 +118,7 @@ public sealed class CreatureManipulationSnapshot
 public sealed class CreatureVisualSnapshot
 {
     [JsonPropertyName("combatId")]
-    public ulong CombatId { get; set; }
+    public uint CombatId { get; set; }
 
     [JsonPropertyName("hasPosition")]
     public bool HasPosition { get; set; }
@@ -136,7 +136,7 @@ public sealed class CreatureVisualSnapshot
 public sealed class CreatureStatLockSnapshot
 {
     [JsonPropertyName("combatId")]
-    public ulong CombatId { get; set; }
+    public uint CombatId { get; set; }
 
     [JsonPropertyName("statId")]
     public string StatId { get; set; } = string.Empty;
@@ -167,8 +167,8 @@ public static class CreatureManipulationStateService
 
     private static readonly object StateLock = new();
     private static readonly SemaphoreSlim MutationGate = new(1, 1);
-    private static readonly Dictionary<ulong, CreatureVisualState> VisualStates = [];
-    private static readonly Dictionary<(ulong CombatId, string StatId), int> StatLocks = [];
+    private static readonly Dictionary<uint, CreatureVisualState> VisualStates = [];
+    private static readonly Dictionary<(uint CombatId, string StatId), int> StatLocks = [];
 
     private static readonly FieldInfo? CurrentHpField = AccessTools.Field(typeof(Creature), "_currentHp");
     private static readonly FieldInfo? MaxHpField = AccessTools.Field(typeof(Creature), "_maxHp");
@@ -193,7 +193,7 @@ public static class CreatureManipulationStateService
     private static CombatState? _activeCombatState;
     private static CreatureManipulationSnapshot? _pendingSnapshot;
 
-    public static event Action<ulong>? CreatureChanged;
+    public static event Action<uint>? CreatureChanged;
 
     public static void OnRunLaunched()
     {
@@ -229,11 +229,11 @@ public static class CreatureManipulationStateService
 
         ApplyPendingSnapshot(combatState);
 
-        List<((ulong CombatId, string StatId) Key, int Value)> locks;
+        List<((uint CombatId, string StatId) Key, int Value)> locks;
         lock (StateLock)
             locks = StatLocks.Select(pair => (pair.Key, pair.Value)).ToList();
 
-        foreach (((ulong combatId, string statId), int value) in locks)
+        foreach (((uint combatId, string statId), int value) in locks)
         {
             Creature? creature = ResolveCreature(combatState, combatId);
             if (creature is null)
@@ -325,7 +325,7 @@ public static class CreatureManipulationStateService
 
     public static bool IsStatLocked(Creature creature, string statId)
     {
-        if (!TryGetCombatId(creature, out ulong combatId))
+        if (!TryGetCombatId(creature, out uint combatId))
             return false;
 
         lock (StateLock)
@@ -334,7 +334,7 @@ public static class CreatureManipulationStateService
 
     public static ModelId GetMorphModelId(Creature creature)
     {
-        if (!TryGetCombatId(creature, out ulong combatId))
+        if (!TryGetCombatId(creature, out uint combatId))
             return ModelId.none;
 
         lock (StateLock)
@@ -413,7 +413,7 @@ public static class CreatureManipulationStateService
 
     public static void BindCreatureNode(NCreature creatureNode)
     {
-        if (!GodotObject.IsInstanceValid(creatureNode) || !TryGetCombatId(creatureNode.Entity, out ulong combatId))
+        if (!GodotObject.IsInstanceValid(creatureNode) || !TryGetCombatId(creatureNode.Entity, out uint combatId))
             return;
 
         EnsureCombatState(GetCombatState());
@@ -438,7 +438,7 @@ public static class CreatureManipulationStateService
     public static bool TryMapMorphAnimation(NCreature creatureNode, ref string trigger)
     {
         EnsureCombatState(GetCombatState());
-        if (!TryGetCombatId(creatureNode.Entity, out ulong combatId))
+        if (!TryGetCombatId(creatureNode.Entity, out uint combatId))
             return true;
 
         lock (StateLock)
@@ -471,7 +471,7 @@ public static class CreatureManipulationStateService
         ModelId modelId,
         Action<CreatureManipulationMutation>? configure = null)
     {
-        if (!CombatManager.Instance.IsInProgress || !TryGetCombatId(creature, out ulong combatId))
+        if (!CombatManager.Instance.IsInProgress || !TryGetCombatId(creature, out uint combatId))
             return false;
 
         CreatureManipulationMutation mutation = new()
@@ -549,7 +549,7 @@ public static class CreatureManipulationStateService
 
     private static void ApplyPosition(Creature target, Vector2 position)
     {
-        if (!TryGetCombatId(target, out ulong combatId))
+        if (!TryGetCombatId(target, out uint combatId))
             return;
 
         lock (StateLock)
@@ -592,7 +592,7 @@ public static class CreatureManipulationStateService
 
     private static void ApplyMorph(Creature target, ModelId morphModelId)
     {
-        if (!TryGetCombatId(target, out ulong combatId))
+        if (!TryGetCombatId(target, out uint combatId))
             return;
 
         lock (StateLock)
@@ -613,7 +613,7 @@ public static class CreatureManipulationStateService
 
     private static void ApplyStatLock(Creature target, string statId, int value, bool locked)
     {
-        if (!TryGetCombatId(target, out ulong combatId))
+        if (!TryGetCombatId(target, out uint combatId))
             return;
 
         lock (StateLock)
@@ -1009,7 +1009,7 @@ public static class CreatureManipulationStateService
         return statId is CurrentHpStatId or MaxHpStatId or BlockStatId;
     }
 
-    private static bool TryGetCombatId(Creature creature, out ulong combatId)
+    private static bool TryGetCombatId(Creature creature, out uint combatId)
     {
         combatId = creature.CombatId ?? 0;
         return combatId != 0;
@@ -1027,14 +1027,14 @@ public static class CreatureManipulationStateService
         }
     }
 
-    private static Creature? ResolveCreature(CombatState combatState, ulong combatId)
+    private static Creature? ResolveCreature(CombatState combatState, uint combatId)
     {
         return combatId == 0
             ? null
             : combatState.Creatures.FirstOrDefault(creature => creature.CombatId == combatId);
     }
 
-    private static CreatureVisualState GetOrCreateVisualState(ulong combatId)
+    private static CreatureVisualState GetOrCreateVisualState(uint combatId)
     {
         if (!VisualStates.TryGetValue(combatId, out CreatureVisualState? state))
         {
@@ -1063,7 +1063,7 @@ public static class CreatureManipulationStateService
         }
     }
 
-    private static void NotifyCreatureChanged(ulong combatId)
+    private static void NotifyCreatureChanged(uint combatId)
     {
         try
         {
@@ -1224,7 +1224,7 @@ public static class CreatureManipulationStateService
 
     private static void ApplySnapshot(CombatState combatState, CreatureManipulationSnapshot snapshot)
     {
-        HashSet<ulong> currentCombatIds = combatState.Creatures
+        HashSet<uint> currentCombatIds = combatState.Creatures
             .Where(creature => creature.CombatId.HasValue && creature.CombatId.Value != 0)
             .Select(creature => creature.CombatId!.Value)
             .ToHashSet();

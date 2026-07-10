@@ -65,7 +65,7 @@ public static class CreatureManipulationScreens
             CommonHelpers.AddModFilters(builder, powers);
         });
 
-        void RefreshChangedCreature(ulong combatId)
+        void RefreshChangedCreature(uint combatId)
         {
             if (target.CombatId != combatId || !GodotObject.IsInstanceValid(screen) || !screen.IsVisibleInTree())
                 return;
@@ -382,7 +382,7 @@ public partial class NCreatureStatEditScreen : Control
         _locks[statId] = toggle;
     }
 
-    private void OnCreatureChanged(ulong combatId)
+    private void OnCreatureChanged(uint combatId)
     {
         if (_target.CombatId != combatId)
             return;
