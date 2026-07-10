@@ -402,15 +402,17 @@ public partial class NGenericSelectScreen : Control
         IEnumerable<TModel> models,
         SelectItemAdapter<TModel> adapter,
         bool animateRelayout = true,
-        bool updateExistingViews = false)
+        bool updateExistingViews = false,
+        string? expectedRemovedItemId = null)
     {
         List<TModel> modelSnapshot = models.ToList();
         HashSet<string> nextIds = modelSnapshot
             .Select(adapter.GetId)
             .ToHashSet(StringComparer.Ordinal);
-        List<IGenericSelectItem> removedItems = _items
-            .Where(item => !nextIds.Contains(item.Id))
-            .ToList();
+        List<IGenericSelectItem> removedItems = string.IsNullOrWhiteSpace(expectedRemovedItemId)
+            ? _items.Where(item => !nextIds.Contains(item.Id)).ToList()
+            : _items.Where(item => string.Equals(item.Id, expectedRemovedItemId, StringComparison.Ordinal)
+                                   && !nextIds.Contains(item.Id)).ToList();
 
         if (removedItems.Count != 1 || modelSnapshot.Count != _items.Count - 1)
             return false;

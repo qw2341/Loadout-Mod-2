@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using Godot;
 using HarmonyLib;
+using Loadout.PanelItems;
 using Loadout.Services.Actions;
 using Loadout.Services.Loadouts;
 using Loadout.UI;
@@ -139,19 +140,37 @@ internal static class DeckViewRefreshService
             if (pile is null || grid is null)
                 return;
 
+            Dictionary<(ulong OwnerNetId, int Index, string ModelId), LoadoutCardVisualRefreshKind> changedByIdentity = new();
+            foreach (LoadoutChangedCard changed in change.ChangedCards)
+            {
+                var key = (changed.OwnerNetId, changed.Index, changed.ModelId.ToString());
+                if (!changedByIdentity.TryGetValue(key, out LoadoutCardVisualRefreshKind existing)
+                    || existing != LoadoutCardVisualRefreshKind.Reload)
+                {
+                    changedByIdentity[key] = changed.RefreshKind;
+                }
+            }
+
             foreach (NGridCardHolder holder in grid.CurrentlyDisplayedCardHolders.ToList())
             {
                 CardModel? card = holder.CardModel;
                 if (card?.Owner is null || !change.AffectsPlayer(card.Owner.NetId))
                     continue;
 
-                if (change.ChangedCards.Count > 0
-                    && !change.ChangedCards.Any(changed => MatchesChangedCard(card, changed)))
+                LoadoutCardVisualRefreshKind refreshKind = LoadoutCardVisualRefreshKind.Lightweight;
+                if (change.ChangedCards.Count > 0)
                 {
-                    continue;
+                    int index = FindCardIndex(card.Owner.Deck.Cards, card);
+                    var key = (card.Owner.NetId, index, card.Id.ToString());
+                    if (index < 0 || !changedByIdentity.TryGetValue(key, out refreshKind))
+                        continue;
                 }
 
-                holder.CardNode?.UpdateVisuals(pile.Type, CardPreviewMode.Normal);
+                if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
+                    CardPrinter.ReloadCardVisuals(holder, card);
+                else
+                    holder.CardNode?.UpdateVisuals(pile.Type, CardPreviewMode.Normal);
+
                 if (grid.IsShowingUpgrades && holder.CardModel.IsUpgradable)
                     holder.SetIsPreviewingUpgrade(true);
             }
@@ -162,15 +181,15 @@ internal static class DeckViewRefreshService
         }
     }
 
-    private static bool MatchesChangedCard(CardModel card, LoadoutChangedCard changed)
+    private static int FindCardIndex(IReadOnlyList<CardModel> cards, CardModel card)
     {
-        if (card.Owner?.NetId != changed.OwnerNetId || !card.Id.Equals(changed.ModelId))
-            return false;
+        for (int index = 0; index < cards.Count; index++)
+        {
+            if (ReferenceEquals(cards[index], card))
+                return index;
+        }
 
-        IReadOnlyList<CardModel> deckCards = card.Owner.Deck.Cards;
-        return changed.Index < 0
-               || changed.Index >= deckCards.Count
-               || ReferenceEquals(deckCards[changed.Index], card);
+        return -1;
     }
 }
 

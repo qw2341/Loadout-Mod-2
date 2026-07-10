@@ -74,6 +74,7 @@ public partial class NCardModificationScreen : Control
     private bool _runContentEventsBound;
     private bool _hasPendingTemporaryCommit;
     private bool _suppressStateRefreshThisFrame;
+    private bool _ignoreNextCommittedStateRefresh;
 
     public static NCardModificationScreen Create()
     {
@@ -171,6 +172,12 @@ public partial class NCardModificationScreen : Control
 
     private void OnCardModificationStateChanged()
     {
+        if (_ignoreNextCommittedStateRefresh)
+        {
+            _ignoreNextCommittedStateRefresh = false;
+            return;
+        }
+
         if (!IsInsideTree() || _item is null || _hasPendingTemporaryCommit)
             return;
 
@@ -186,6 +193,7 @@ public partial class NCardModificationScreen : Control
             || _item is null
             || !change.AffectsPlayer(_item.OwnerNetId)
             || !IsInsideTree()
+            || _suppressStateRefreshThisFrame
             || change.Mode == LoadoutRunContentChangeMode.Add)
         {
             return;
@@ -938,6 +946,7 @@ public partial class NCardModificationScreen : Control
         CardModificationState state = _temporaryState.Clone();
         state.Normalize();
         SuppressStateRefreshThisFrame();
+        _ignoreNextCommittedStateRefresh = true;
         if (LoadoutImmediateMutationService.RequestCardModification(
                 CardModificationOperation.SaveTemporary,
                 _item,
@@ -958,26 +967,8 @@ public partial class NCardModificationScreen : Control
 
     private static bool HasStructuralVisualChange(CardModificationState previousState, CardModificationState nextState)
     {
-        CardModificationState previous = previousState.Clone();
-        CardModificationState next = nextState.Clone();
-        previous.Normalize();
-        next.Normalize();
-
-        return !SameStructuralValue(previous.PoolId, next.PoolId)
-               || !SameStructuralValue(previous.Type, next.Type)
-               || !SameStructuralValue(previous.Rarity, next.Rarity)
-               || !SameStructuralValue(previous.PortraitPath, next.PortraitPath)
-               || !SameStructuralValue(previous.BetaPortraitPath, next.BetaPortraitPath);
-    }
-
-    private static bool SameStructuralValue(string? left, string? right)
-    {
-        return string.Equals(NormalizeStructuralValue(left), NormalizeStructuralValue(right), StringComparison.Ordinal);
-    }
-
-    private static string NormalizeStructuralValue(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        return CardModificationStateService.GetVisualRefreshKind(previousState, nextState)
+               == LoadoutCardVisualRefreshKind.Reload;
     }
 
     private void OpenTextEditor(TextEditTarget target)

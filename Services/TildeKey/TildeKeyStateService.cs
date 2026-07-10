@@ -91,7 +91,7 @@ public static class TildeKeyStateService
     public const string PlayerDamageMultiplierStatId = "player_damage_multiplier";
     public const string EnemyDamageMultiplierStatId = "enemy_damage_multiplier";
 
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private const string RunDirectory = "loadout/services/tilde_key";
     private const string RunFilePrefix = "tilde_key_run";
     private const int DefaultDrawPerTurn = 5;
@@ -300,11 +300,15 @@ public static class TildeKeyStateService
 
         EnsureLoaded();
         IReadOnlyList<Player> players = ResolveTargetPlayers(target, requester);
+        bool savedValueChanged = false;
         foreach (Player player in players)
         {
             ApplyStat(definition, player, value);
-            UpdateSavedValueIfLocked(player.NetId, definition.Id, value);
+            savedValueChanged |= UpdateSavedValueAfterSet(player.NetId, definition.Id, value);
         }
+
+        if (savedValueChanged)
+            SaveRunState();
 
         RefreshCombatPreviewsForStatChange(definition.Id, players);
         RaiseStateChanged();
@@ -330,14 +334,9 @@ public static class TildeKeyStateService
         foreach (Player player in players)
         {
             if (payload.Enabled)
-            {
                 ApplyStat(definition, player, value);
-                SetSavedLock(player.NetId, definition.Id, value);
-            }
-            else
-            {
-                ClearSavedLock(player.NetId, definition.Id);
-            }
+
+            SetSavedLockState(player.NetId, definition.Id, value, payload.Enabled);
         }
 
         RefreshCombatPreviewsForStatChange(definition.Id, players);
@@ -820,8 +819,9 @@ public static class TildeKeyStateService
         CardPile hand = PileType.Hand.GetPile(player);
         CardPile drawPile = PileType.Draw.GetPile(player);
         CardPile discardPile = PileType.Discard.GetPile(player);
+        CardPile playPile = PileType.Play.GetPile(player);
         int handSpace = Math.Max(0, GetEffectiveHandSize(player) - hand.Cards.Count);
-        if (handSpace <= 0 || drawPile.Cards.Count + discardPile.Cards.Count <= 0)
+        if (handSpace <= 0 || drawPile.Cards.Count + discardPile.Cards.Count + playPile.Cards.Count <= 0)
             return;
 
         try
@@ -891,8 +891,7 @@ public static class TildeKeyStateService
         }
 
         if (TryGetSavedStat(netId, statId, out TildeKeySavedStat? saved)
-            && saved is not null
-            && saved.Locked)
+            && saved is not null)
         {
             value = saved.Value;
             return true;
@@ -1275,10 +1274,7 @@ public static class TildeKeyStateService
             }
             else
             {
-                if (GodmodePreviousHpDisplays.Remove(player.NetId, out HpDisplay previousDisplay))
-                    creature.HpDisplay = previousDisplay;
-                else if (creature.HpDisplay == HpDisplay.InfiniteWithoutNumbers)
-                    creature.HpDisplay = HpDisplay.Normal;
+                creature.HpDisplay = HpDisplay.Normal;
             }
         }
 
@@ -1440,47 +1436,62 @@ public static class TildeKeyStateService
         return false;
     }
 
-    private static void UpdateSavedValueIfLocked(ulong netId, string statId, int value)
+    private static bool UpdateSavedValueAfterSet(ulong netId, string statId, int value)
     {
         bool changed = false;
         lock (SyncRoot)
         {
-            if (GetPlayerStateLocked(netId, create: false, out TildeKeyPlayerState? state)
-                && state is not null
-                && state.Stats.TryGetValue(statId, out TildeKeySavedStat? saved)
-                && saved is not null
-                && saved.Locked
-                && saved.Value != value)
+            bool persistUnlocked = IsVirtualStat(statId);
+            if (!GetPlayerStateLocked(netId, create: persistUnlocked, out TildeKeyPlayerState? state)
+                || state is null)
             {
-                saved.Value = value;
+                return false;
+            }
+
+            if (state.Stats.TryGetValue(statId, out TildeKeySavedStat? saved) && saved is not null)
+            {
+                if ((saved.Locked || persistUnlocked) && saved.Value != value)
+                {
+                    saved.Value = value;
+                    changed = true;
+                }
+            }
+            else if (persistUnlocked)
+            {
+                state.Stats[statId] = new TildeKeySavedStat { Value = value, Locked = false };
                 changed = true;
             }
         }
 
-        if (changed)
-            SaveRunState();
+        return changed;
     }
 
-    private static void SetSavedLock(ulong netId, string statId, int value)
+    private static void SetSavedLockState(ulong netId, string statId, int value, bool locked)
     {
         lock (SyncRoot)
         {
-            GetPlayerStateLocked(netId, create: true, out TildeKeyPlayerState? state);
-            state!.Stats[statId] = new TildeKeySavedStat { Value = value, Locked = true };
-        }
-    }
-
-    private static void ClearSavedLock(ulong netId, string statId)
-    {
-        lock (SyncRoot)
-        {
-            if (!GetPlayerStateLocked(netId, create: false, out TildeKeyPlayerState? state)
-                || state is null)
+            if (locked || IsVirtualStat(statId))
+            {
+                GetPlayerStateLocked(netId, create: true, out TildeKeyPlayerState? state);
+                state!.Stats[statId] = new TildeKeySavedStat { Value = value, Locked = locked };
                 return;
+            }
 
-            state.Stats.Remove(statId);
-            RemovePlayerIfEmptyLocked(netId);
+            if (GetPlayerStateLocked(netId, create: false, out TildeKeyPlayerState? existing)
+                && existing is not null)
+            {
+                existing.Stats.Remove(statId);
+                RemovePlayerIfEmptyLocked(netId);
+            }
         }
+    }
+
+    private static bool IsVirtualStat(string statId)
+    {
+        return string.Equals(statId, DrawPerTurnStatId, StringComparison.Ordinal)
+               || string.Equals(statId, HandSizeStatId, StringComparison.Ordinal)
+               || string.Equals(statId, PlayerDamageMultiplierStatId, StringComparison.Ordinal)
+               || string.Equals(statId, EnemyDamageMultiplierStatId, StringComparison.Ordinal);
     }
 
     private static void SetSavedToggle(ulong netId, string toggleId, bool enabled)
@@ -1670,15 +1681,18 @@ public static class TildeKeyStateService
             if (currentRunStartTime is null)
             {
                 _run = NormalizeRun(new RunSaveData(), 0);
+                VirtualStats.Clear();
                 return;
             }
 
             string path = GetRunPath(currentRunStartTime.Value);
             SaveUtility.LoadResult<RunSaveData> loaded =
                 SaveUtility.LoadProfileJson(path, new RunSaveData { RunStartTime = currentRunStartTime.Value });
+            int loadedSchemaVersion = loaded.Value.SchemaVersion;
             _run = NormalizeRun(loaded.Value, currentRunStartTime.Value);
+            HydrateVirtualStatsLocked();
 
-            if (loaded.Loaded && loaded.Value.SchemaVersion != CurrentSchemaVersion)
+            if (loaded.Loaded && loadedSchemaVersion != CurrentSchemaVersion)
                 SaveRunState();
         }
     }
@@ -1709,6 +1723,26 @@ public static class TildeKeyStateService
         save.Players = NormalizePlayers(save.Players);
         save.GlobalToggles = NormalizeToggles(save.GlobalToggles);
         return save;
+    }
+
+    private static void HydrateVirtualStatsLocked()
+    {
+        VirtualStats.Clear();
+        foreach ((string playerKey, TildeKeyPlayerState state) in _run.Players)
+        {
+            Dictionary<string, int>? virtualStats = null;
+            foreach ((string statId, TildeKeySavedStat saved) in state.Stats)
+            {
+                if (!IsVirtualStat(statId))
+                    continue;
+
+                virtualStats ??= new Dictionary<string, int>(StringComparer.Ordinal);
+                virtualStats[statId] = saved.Value;
+            }
+
+            if (virtualStats is not null)
+                VirtualStats[playerKey] = virtualStats;
+        }
     }
 
     private static Dictionary<string, TildeKeyPlayerState> NormalizePlayers(Dictionary<string, TildeKeyPlayerState>? players)

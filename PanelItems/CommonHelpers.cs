@@ -136,7 +136,7 @@ public class CommonHelpers
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool activationInFlight = false;
-		bool dynamicRefreshPending = false;
+		List<LoadoutRunContentChangedEventArgs> pendingRunContentChanges = [];
 		object? configuredRunState = null;
 
 		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
@@ -193,13 +193,30 @@ public class CommonHelpers
 			{
 				if (change.ChangedCards.Count > 0)
 				{
+					Dictionary<(ulong OwnerNetId, int Index, string ModelId), LoadoutCardVisualRefreshKind> changedByIdentity = new();
+					foreach (LoadoutChangedCard changed in change.ChangedCards)
+					{
+						var key = (changed.OwnerNetId, changed.Index, changed.ModelId.ToString());
+						if (!changedByIdentity.TryGetValue(key, out LoadoutCardVisualRefreshKind existing)
+						    || existing != LoadoutCardVisualRefreshKind.Reload)
+						{
+							changedByIdentity[key] = changed.RefreshKind;
+						}
+					}
+
 					foreach (IGenericSelectItem item in target.VisibleItems)
 					{
-						if (item.UntypedModel is LoadoutOwnedItem<CardModel> ownedCard
-						    && change.ChangedCards.Any(changed => MatchesChangedCard(ownedCard, changed)))
-						{
-							target.RefreshItemView(item.Id);
-						}
+						if (item.UntypedModel is not LoadoutOwnedItem<CardModel> ownedCard || item.View is not { } view)
+							continue;
+
+						var key = (ownedCard.OwnerNetId, ownedCard.Index, ownedCard.Model.Id.ToString());
+						if (!changedByIdentity.TryGetValue(key, out LoadoutCardVisualRefreshKind refreshKind))
+							continue;
+
+						if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
+							CardPrinter.ReloadCardVisuals(view, ownedCard.Model);
+						else
+							CardPrinter.RefreshCardVisuals(view, ownedCard.Model);
 					}
 
 					return true;
@@ -221,7 +238,23 @@ public class CommonHelpers
 			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
 			IReadOnlyList<TModel> models = getModels();
 			bool shouldAnimateRelayout = models.Count <= DynamicRelayoutAnimationItemLimit;
-			if (!target.TryApplySingleItemRemoval(models, adapter, shouldAnimateRelayout))
+			string? removedItemId = null;
+			foreach (LoadoutChangedCard changed in change.ChangedCards)
+			{
+				removedItemId = target.VisibleItems
+					.FirstOrDefault(item => item.UntypedModel is LoadoutOwnedItem<CardModel> ownedCard
+					                        && MatchesChangedCard(ownedCard, changed))
+					?.Id;
+				if (removedItemId is not null)
+					break;
+			}
+
+			if (!target.TryApplySingleItemRemoval(
+				    models,
+				    adapter,
+				    shouldAnimateRelayout,
+				    updateExistingViews: false,
+				    expectedRemovedItemId: removedItemId))
 				return false;
 
 			configuredRunState = currentRunState;
@@ -250,11 +283,19 @@ public class CommonHelpers
 		};
 		screen.VisibilityChanged += () =>
 		{
-			if (!screen.Visible || !dynamicRefreshPending)
+			if (!screen.Visible || pendingRunContentChanges.Count == 0)
 				return;
 
-			dynamicRefreshPending = false;
-			RefreshCurrentModels(screen, animateRelayout: true);
+			List<LoadoutRunContentChangedEventArgs> pending = pendingRunContentChanges.ToList();
+			pendingRunContentChanges.Clear();
+			foreach (LoadoutRunContentChangedEventArgs change in pending)
+			{
+				if (!TryHandleTargetedRunContentChange(screen, change))
+				{
+					RefreshCurrentModels(screen, animateRelayout: true, updateExistingViews: false);
+					break;
+				}
+			}
 		};
 		LoadoutRunContentChangeService.Changed += change =>
 		{
@@ -263,7 +304,7 @@ public class CommonHelpers
 
 			if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsVisibleInTree())
 			{
-				dynamicRefreshPending = true;
+				pendingRunContentChanges.Add(change);
 				return;
 			}
 
@@ -289,7 +330,11 @@ public class CommonHelpers
 		};
 
 		item.BoundScreen = screen;
-		item.BeforeOpen = RefreshDynamicScreenForOpen;
+		item.BeforeOpen = target =>
+		{
+			RefreshDynamicScreenForOpen(target);
+			pendingRunContentChanges.Clear();
+		};
 
 		NLoadoutPanel.ItemsContainer.AddChild(item);
 	}

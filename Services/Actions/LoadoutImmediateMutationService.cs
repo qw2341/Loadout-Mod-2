@@ -834,8 +834,13 @@ public static class LoadoutImmediateMutationService
 
         try
         {
+            LoadoutChangedCard removedCard = new(item.OwnerNetId, item.Index, item.Model.Id);
             await CardPileCmd.RemoveFromDeck(item.Model, showPreview: true);
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, item.OwnerNetId, LoadoutRunContentChangeMode.Remove);
+            LoadoutRunContentChangeService.Notify(
+                LoadoutRunContentKind.Cards,
+                [item.OwnerNetId],
+                LoadoutRunContentChangeMode.Remove,
+                [removedCard]);
         }
         catch (Exception exception)
         {
@@ -887,7 +892,8 @@ public static class LoadoutImmediateMutationService
             try
             {
                 int previousUpgradeLevel = card.CurrentUpgradeLevel;
-                CardCmd.Upgrade(card, CardPreviewStyle.None);
+                using (CardModificationStateService.BeginTargetedUpgradeRefresh())
+                    CardCmd.Upgrade(card, CardPreviewStyle.None);
                 if (card.CurrentUpgradeLevel <= previousUpgradeLevel && card.IsUpgradable && !CombatManager.Instance.IsEnding)
                 {
                     card.UpgradeInternal();

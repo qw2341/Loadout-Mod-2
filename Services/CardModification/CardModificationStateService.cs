@@ -88,6 +88,9 @@ public static class CardModificationStateService
     [ThreadStatic]
     private static Stack<CardModel>? _locStringContext;
 
+    [ThreadStatic]
+    private static int _targetedUpgradeDepth;
+
     public static event Action? StateChanged;
     public static event Action<ModelId>? PermanentCardDisplayChanged;
 
@@ -299,6 +302,32 @@ public static class CardModificationStateService
         }
     }
 
+    public static LoadoutCardVisualRefreshKind GetVisualRefreshKind(
+        CardModificationState? previousState,
+        CardModificationState? nextState)
+    {
+        CardModificationState previous = previousState?.Clone() ?? new CardModificationState();
+        CardModificationState next = nextState?.Clone() ?? new CardModificationState();
+        previous.Normalize();
+        next.Normalize();
+
+        return SameStructuralValue(previous.PoolId, next.PoolId)
+               && SameStructuralValue(previous.Type, next.Type)
+               && SameStructuralValue(previous.Rarity, next.Rarity)
+               && SameStructuralValue(previous.PortraitPath, next.PortraitPath)
+               && SameStructuralValue(previous.BetaPortraitPath, next.BetaPortraitPath)
+            ? LoadoutCardVisualRefreshKind.Lightweight
+            : LoadoutCardVisualRefreshKind.Reload;
+    }
+
+    private static bool SameStructuralValue(string? left, string? right)
+    {
+        return string.Equals(
+            string.IsNullOrWhiteSpace(left) ? string.Empty : left.Trim(),
+            string.IsNullOrWhiteSpace(right) ? string.Empty : right.Trim(),
+            StringComparison.Ordinal);
+    }
+
     public static void SaveTemporary(LoadoutOwnedItem<CardModel> item, CardModificationState state)
     {
         EnsureLoaded();
@@ -414,13 +443,17 @@ public static class CardModificationStateService
         ApplyStateToCard(card, state);
     }
 
-    public static void ApplyEffectiveStateToOwnedCard(LoadoutOwnedItem<CardModel> item, CardModificationState? previousState = null)
+    public static void ApplyEffectiveStateToOwnedCard(
+        LoadoutOwnedItem<CardModel> item,
+        CardModificationState? previousState = null,
+        bool refreshLiveVisuals = true)
     {
         ClearPreviewState(item.Model);
         CardModificationState state = GetEffectiveState(item);
         bool hasCardMutation = ApplyStateTransitionToCard(item.Model, state, previousState, includeAffliction: true);
 
-        if (hasCardMutation || HasVisualOverrides(state) || HasVisualOverrides(previousState))
+        if (refreshLiveVisuals
+            && (hasCardMutation || HasVisualOverrides(state) || HasVisualOverrides(previousState)))
             RefreshLiveCardVisuals(item.Model);
     }
 
@@ -471,6 +504,7 @@ public static class CardModificationStateService
         }
 
         bool changed = false;
+        bool refreshVisualsHere = _targetedUpgradeDepth == 0;
         foreach (CardModel card in uniqueCards)
         {
             CardModificationState state = GetEffectiveStateForCard(card);
@@ -485,12 +519,19 @@ public static class CardModificationStateService
                 ApplyStateToCard(card, state);
             }
 
-            RefreshLiveCardVisuals(card);
+            if (refreshVisualsHere)
+                RefreshLiveCardVisuals(card);
             changed = true;
         }
 
-        if (changed)
+        if (changed && refreshVisualsHere)
             RaiseStateChanged();
+    }
+
+    public static IDisposable BeginTargetedUpgradeRefresh()
+    {
+        _targetedUpgradeDepth++;
+        return new TargetedUpgradeRefreshScope();
     }
 
     public static void ApplySynchronizedOperation(
@@ -514,8 +555,10 @@ public static class CardModificationStateService
                 CardModificationState normalized = state?.Clone() ?? new CardModificationState();
                 normalized.Normalize();
                 SaveTemporaryLocal(saveItem, normalized);
-                ApplyEffectiveStateToOwnedCard(saveItem, savePreviousState);
-                LoadoutRunContentChangeService.NotifyCardUpdated(saveItem);
+                ApplyEffectiveStateToOwnedCard(saveItem, savePreviousState, refreshLiveVisuals: false);
+                LoadoutRunContentChangeService.NotifyCardUpdated(
+                    saveItem,
+                    GetVisualRefreshKind(savePreviousState, GetEffectiveState(saveItem)));
                 RaiseStateChanged();
                 break;
 
@@ -525,8 +568,10 @@ public static class CardModificationStateService
 
                 CardModificationState resetPreviousState = GetEffectiveState(resetItem);
                 ResetTemporaryLocal(resetItem);
-                ApplyEffectiveStateToOwnedCard(resetItem, resetPreviousState);
-                LoadoutRunContentChangeService.NotifyCardUpdated(resetItem);
+                ApplyEffectiveStateToOwnedCard(resetItem, resetPreviousState, refreshLiveVisuals: false);
+                LoadoutRunContentChangeService.NotifyCardUpdated(
+                    resetItem,
+                    GetVisualRefreshKind(resetPreviousState, GetEffectiveState(resetItem)));
                 RaiseStateChanged();
                 break;
 
@@ -560,8 +605,10 @@ public static class CardModificationStateService
                 }
                 else
                 {
-                    ApplyEffectiveStateToOwnedCard(resetPermanentItem, resetPermanentPreviousState);
-                    LoadoutRunContentChangeService.NotifyCardUpdated(resetPermanentItem);
+                    ApplyEffectiveStateToOwnedCard(resetPermanentItem, resetPermanentPreviousState, refreshLiveVisuals: false);
+                    LoadoutRunContentChangeService.NotifyCardUpdated(
+                        resetPermanentItem,
+                        GetVisualRefreshKind(resetPermanentPreviousState, GetEffectiveState(resetPermanentItem)));
                     RaiseStateChanged();
                 }
                 break;
@@ -871,13 +918,14 @@ public static class CardModificationStateService
                             effective.MergeFrom(temporary);
                     }
 
-                    bool hasCardMutation = ApplyStateTransitionToCard(card, effective, previousState, includeAffliction: true);
-
-                    if (hasCardMutation || HasVisualOverrides(effective) || HasVisualOverrides(previousState))
-                        RefreshLiveCardVisuals(card);
+                    ApplyStateTransitionToCard(card, effective, previousState, includeAffliction: true);
 
                     changedPlayers.Add(player.NetId);
-                    changedCards.Add(new LoadoutChangedCard(player.NetId, index, card.Id));
+                    changedCards.Add(new LoadoutChangedCard(
+                        player.NetId,
+                        index,
+                        card.Id,
+                        GetVisualRefreshKind(previousState, effective)));
                 }
             }
 
@@ -1176,13 +1224,11 @@ public static class CardModificationStateService
                     effective.MergeFrom(temporary);
             }
 
-            bool hasCardMutation = ApplyStateTransitionToCard(card, effective, previousState, includeAffliction: true);
-
-            if (hasCardMutation || HasVisualOverrides(effective) || HasVisualOverrides(previousState))
-                RefreshLiveCardVisuals(card);
+            ApplyStateTransitionToCard(card, effective, previousState, includeAffliction: true);
 
             LoadoutRunContentChangeService.NotifyCardUpdated(
-                new LoadoutOwnedItem<CardModel>(player, index, card));
+                new LoadoutOwnedItem<CardModel>(player, index, card),
+                GetVisualRefreshKind(previousState, effective));
         }
         catch (Exception exception)
         {
@@ -1520,7 +1566,11 @@ public static class CardModificationStateService
                     continue;
 
                 changedPlayers.Add(player.NetId);
-                changedCards.Add(new LoadoutChangedCard(player.NetId, index, card.Id));
+                changedCards.Add(new LoadoutChangedCard(
+                    player.NetId,
+                    index,
+                    card.Id,
+                    LoadoutCardVisualRefreshKind.Reload));
             }
         }
 
@@ -2157,6 +2207,20 @@ public static class CardModificationStateService
     private sealed class PreviewCardStateHolder(CardModificationState state)
     {
         public CardModificationState State { get; } = state;
+    }
+
+    private sealed class TargetedUpgradeRefreshScope : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            _targetedUpgradeDepth = Math.Max(0, _targetedUpgradeDepth - 1);
+        }
     }
 
     private readonly record struct CachedDisplayCard(int Revision, CardModel Card);

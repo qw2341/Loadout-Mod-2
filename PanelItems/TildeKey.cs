@@ -91,7 +91,13 @@ public static partial class TildeKey
         };
         screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
         screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
-        TildeKeyStateService.StateChanged += () => screen.CallDeferred(nameof(NGenericSelectScreen.RefreshCurrentItemStates));
+        TildeKeyStateService.StateChanged += () =>
+        {
+            if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsVisibleInTree())
+                return;
+
+            screen.CallDeferred(nameof(NGenericSelectScreen.RefreshCurrentItemStates));
+        };
 
         item.BoundScreen = screen;
         item.BeforeOpen = target =>
@@ -412,7 +418,12 @@ public static partial class TildeKey
             return null;
 
         if (TextureCache.TryGetValue(path, out Texture2D? cached))
-            return cached;
+        {
+            if (cached is null || GodotObject.IsInstanceValid(cached))
+                return cached;
+
+            TextureCache.Remove(path);
+        }
 
         Texture2D? texture = null;
         try

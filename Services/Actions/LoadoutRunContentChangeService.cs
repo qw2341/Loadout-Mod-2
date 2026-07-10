@@ -24,7 +24,17 @@ public enum LoadoutRunContentChangeMode
     Replace
 }
 
-public readonly record struct LoadoutChangedCard(ulong OwnerNetId, int Index, ModelId ModelId);
+public enum LoadoutCardVisualRefreshKind
+{
+    Lightweight,
+    Reload
+}
+
+public readonly record struct LoadoutChangedCard(
+    ulong OwnerNetId,
+    int Index,
+    ModelId ModelId,
+    LoadoutCardVisualRefreshKind RefreshKind = LoadoutCardVisualRefreshKind.Lightweight);
 
 public sealed class LoadoutRunContentChangedEventArgs
 {
@@ -93,12 +103,14 @@ public static class LoadoutRunContentChangeService
         }
     }
 
-    public static void NotifyCardUpdated(LoadoutOwnedItem<CardModel> item)
+    public static void NotifyCardUpdated(
+        LoadoutOwnedItem<CardModel> item,
+        LoadoutCardVisualRefreshKind refreshKind = LoadoutCardVisualRefreshKind.Lightweight)
     {
         Notify(
             LoadoutRunContentKind.Cards,
             [item.OwnerNetId],
             LoadoutRunContentChangeMode.Update,
-            [new LoadoutChangedCard(item.OwnerNetId, item.Index, item.Model.Id)]);
+            [new LoadoutChangedCard(item.OwnerNetId, item.Index, item.Model.Id, refreshKind)]);
     }
 }

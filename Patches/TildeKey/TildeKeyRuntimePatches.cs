@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -107,24 +106,19 @@ public static class TildeKeyModifyDamagePatch
 [HarmonyPatch]
 public static class TildeKeySetupPlayerTurnHandLimitPatch
 {
-    private static FieldInfo? _playerField;
-
     public static MethodBase TargetMethod()
     {
-        MethodInfo asyncMethod = AccessTools.Method(
+        return AccessTools.Method(
             typeof(CombatManager),
             "SetupPlayerTurn",
-            [typeof(Player), typeof(HookPlayerChoiceContext)]);
-        MethodInfo moveNext = TildeKeyHandLimitPatchHelpers.GetAsyncMoveNext(asyncMethod);
-        _playerField = TildeKeyHandLimitPatchHelpers.FindCapturedField(moveNext.DeclaringType!, typeof(Player), "player");
-        return moveNext;
+            [typeof(Player), typeof(HookPlayerChoiceContext)])
+            ?? throw new MissingMethodException(typeof(CombatManager).FullName, "SetupPlayerTurn");
     }
 
     [HarmonyPrefix]
-    public static void Prefix(object __instance, out IDisposable? __state)
+    public static void Prefix(Player player, out IDisposable? __state)
     {
-        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(
-            _playerField?.GetValue(__instance) as Player);
+        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(player);
     }
 
     [HarmonyPostfix]
@@ -145,24 +139,19 @@ public static class TildeKeySetupPlayerTurnHandLimitPatch
 [HarmonyPatch]
 public static class TildeKeyDrawHandLimitPatch
 {
-    private static FieldInfo? _playerField;
-
     public static MethodBase TargetMethod()
     {
-        MethodInfo asyncMethod = AccessTools.Method(
+        return AccessTools.Method(
             typeof(CardPileCmd),
             nameof(CardPileCmd.Draw),
-            [typeof(PlayerChoiceContext), typeof(decimal), typeof(Player), typeof(bool)]);
-        MethodInfo moveNext = TildeKeyHandLimitPatchHelpers.GetAsyncMoveNext(asyncMethod);
-        _playerField = TildeKeyHandLimitPatchHelpers.FindCapturedField(moveNext.DeclaringType!, typeof(Player), "player");
-        return moveNext;
+            [typeof(PlayerChoiceContext), typeof(decimal), typeof(Player), typeof(bool)])
+            ?? throw new MissingMethodException(typeof(CardPileCmd).FullName, nameof(CardPileCmd.Draw));
     }
 
     [HarmonyPrefix]
-    public static void Prefix(object __instance, out IDisposable? __state)
+    public static void Prefix(Player player, out IDisposable? __state)
     {
-        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(
-            _playerField?.GetValue(__instance) as Player);
+        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(player);
     }
 
     [HarmonyPostfix]
@@ -220,24 +209,16 @@ public static class TildeKeyDrawTillHandLimitAfterCardPlayedPatch
 [HarmonyPatch]
 public static class TildeKeyPlayCardHandLimitPatch
 {
-    private static FieldInfo? _actionField;
-
     public static MethodBase TargetMethod()
     {
-        MethodInfo asyncMethod = AccessTools.Method(typeof(PlayCardAction), "ExecuteAction");
-        MethodInfo moveNext = TildeKeyHandLimitPatchHelpers.GetAsyncMoveNext(asyncMethod);
-        _actionField = TildeKeyHandLimitPatchHelpers.FindCapturedField(
-            moveNext.DeclaringType!,
-            typeof(PlayCardAction),
-            "<>4__this");
-        return moveNext;
+        return AccessTools.Method(typeof(PlayCardAction), "ExecuteAction")
+               ?? throw new MissingMethodException(typeof(PlayCardAction).FullName, "ExecuteAction");
     }
 
     [HarmonyPrefix]
-    public static void Prefix(object __instance, out IDisposable? __state)
+    public static void Prefix(PlayCardAction __instance, out IDisposable? __state)
     {
-        Player? player = (_actionField?.GetValue(__instance) as PlayCardAction)?.Player;
-        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(player);
+        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(__instance.Player);
     }
 
     [HarmonyPostfix]
@@ -446,26 +427,4 @@ internal static class TildeKeyHandLimitPatchHelpers
         return LoadoutCardAddRules.OverrideHandLimit(effectiveHandLimit);
     }
 
-    public static MethodInfo GetAsyncMoveNext(MethodInfo? asyncMethod)
-    {
-        if (asyncMethod is null)
-            throw new MissingMethodException("Could not resolve async method for hand-limit patch.");
-
-        AsyncStateMachineAttribute? attribute = asyncMethod.GetCustomAttribute<AsyncStateMachineAttribute>();
-        MethodInfo? moveNext = attribute?.StateMachineType.GetMethod(
-            "MoveNext",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        return moveNext
-               ?? throw new MissingMethodException($"Could not resolve async state machine for '{asyncMethod.FullDescription()}'.");
-    }
-
-    public static FieldInfo FindCapturedField(Type stateMachineType, Type fieldType, string preferredName)
-    {
-        FieldInfo[] fields = stateMachineType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        return fields.FirstOrDefault(field => field.FieldType == fieldType && field.Name == preferredName)
-               ?? fields.FirstOrDefault(field => field.FieldType == fieldType)
-               ?? throw new MissingFieldException(
-                   stateMachineType.FullName,
-                   $"captured {fieldType.FullName} field");
-    }
 }
