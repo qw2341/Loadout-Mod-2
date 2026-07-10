@@ -29,8 +29,8 @@ public static class UIAttach
 
         string sessionName = GetSessionName(__instance);
 
-        if (!string.Equals(sessionName, "Common", StringComparison.Ordinal))
-            return;
+        // if (!string.Equals(sessionName, "Common", StringComparison.Ordinal))
+        //     return;
 
         RegisterServicesOnce();
 
