@@ -5,6 +5,8 @@ namespace Loadout.Patches.TildeKey;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -102,46 +104,79 @@ public static class TildeKeyModifyDamagePatch
     }
 }
 
-[HarmonyPatch(typeof(CombatManager), "SetupPlayerTurn")]
+[HarmonyPatch]
 public static class TildeKeySetupPlayerTurnHandLimitPatch
 {
-    [HarmonyPrefix]
-    public static void Prefix(Player player, out IDisposable? __state)
+    private static FieldInfo? _playerField;
+
+    public static MethodBase TargetMethod()
     {
-        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(player);
+        MethodInfo asyncMethod = AccessTools.Method(
+            typeof(CombatManager),
+            "SetupPlayerTurn",
+            [typeof(Player), typeof(HookPlayerChoiceContext)]);
+        MethodInfo moveNext = TildeKeyHandLimitPatchHelpers.GetAsyncMoveNext(asyncMethod);
+        _playerField = TildeKeyHandLimitPatchHelpers.FindCapturedField(moveNext.DeclaringType!, typeof(Player), "player");
+        return moveNext;
+    }
+
+    [HarmonyPrefix]
+    public static void Prefix(object __instance, out IDisposable? __state)
+    {
+        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(
+            _playerField?.GetValue(__instance) as Player);
     }
 
     [HarmonyPostfix]
-    public static void Postfix(ref Task __result, IDisposable? __state)
+    public static void Postfix(IDisposable? __state)
     {
-        if (__state is not null)
-            __result = TildeKeyHandLimitPatchHelpers.DisposeAfter(__result, __state);
+        __state?.Dispose();
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, IDisposable? __state)
+    {
+        if (__exception is not null)
+            __state?.Dispose();
+        return __exception;
     }
 }
 
-[HarmonyPatch(typeof(CardPileCmd), nameof(CardPileCmd.Draw), typeof(PlayerChoiceContext), typeof(decimal), typeof(Player), typeof(bool))]
+[HarmonyPatch]
 public static class TildeKeyDrawHandLimitPatch
 {
-    [HarmonyPrefix]
-    public static bool Prefix(Player player, out IDisposable? __state)
-    {
-        __state = null;
-        if (LoadoutCardAddRules.ShouldIgnoreHandLimit
-            || !TildeKeyStateService.TryGetHandSizeOverride(player, out int handSize)
-            || handSize == CardPile.MaxCardsInHand)
-        {
-            return true;
-        }
+    private static FieldInfo? _playerField;
 
-        __state = LoadoutCardAddRules.OverrideHandLimit(handSize);
-        return true;
+    public static MethodBase TargetMethod()
+    {
+        MethodInfo asyncMethod = AccessTools.Method(
+            typeof(CardPileCmd),
+            nameof(CardPileCmd.Draw),
+            [typeof(PlayerChoiceContext), typeof(decimal), typeof(Player), typeof(bool)]);
+        MethodInfo moveNext = TildeKeyHandLimitPatchHelpers.GetAsyncMoveNext(asyncMethod);
+        _playerField = TildeKeyHandLimitPatchHelpers.FindCapturedField(moveNext.DeclaringType!, typeof(Player), "player");
+        return moveNext;
+    }
+
+    [HarmonyPrefix]
+    public static void Prefix(object __instance, out IDisposable? __state)
+    {
+        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(
+            _playerField?.GetValue(__instance) as Player);
     }
 
     [HarmonyPostfix]
-    public static void Postfix(ref Task<IEnumerable<CardModel>> __result, IDisposable? __state)
+    public static void Postfix(IDisposable? __state)
     {
-        if (__state is not null)
-            __result = TildeKeyHandLimitPatchHelpers.DisposeAfter(__result, __state);
+        __state?.Dispose();
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, IDisposable? __state)
+    {
+        if (__exception is not null)
+            __state?.Dispose();
+        return __exception;
     }
 
     internal static bool CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot(Player player, int handSize)
@@ -182,20 +217,41 @@ public static class TildeKeyDrawTillHandLimitAfterCardPlayedPatch
     }
 }
 
-[HarmonyPatch(typeof(PlayCardAction), "ExecuteAction")]
+[HarmonyPatch]
 public static class TildeKeyPlayCardHandLimitPatch
 {
-    [HarmonyPrefix]
-    public static void Prefix(PlayCardAction __instance, out IDisposable? __state)
+    private static FieldInfo? _actionField;
+
+    public static MethodBase TargetMethod()
     {
-        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(__instance.Player);
+        MethodInfo asyncMethod = AccessTools.Method(typeof(PlayCardAction), "ExecuteAction");
+        MethodInfo moveNext = TildeKeyHandLimitPatchHelpers.GetAsyncMoveNext(asyncMethod);
+        _actionField = TildeKeyHandLimitPatchHelpers.FindCapturedField(
+            moveNext.DeclaringType!,
+            typeof(PlayCardAction),
+            "<>4__this");
+        return moveNext;
+    }
+
+    [HarmonyPrefix]
+    public static void Prefix(object __instance, out IDisposable? __state)
+    {
+        Player? player = (_actionField?.GetValue(__instance) as PlayCardAction)?.Player;
+        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(player);
     }
 
     [HarmonyPostfix]
-    public static void Postfix(ref Task __result, IDisposable? __state)
+    public static void Postfix(IDisposable? __state)
     {
-        if (__state is not null)
-            __result = TildeKeyHandLimitPatchHelpers.DisposeAfter(__result, __state);
+        __state?.Dispose();
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, IDisposable? __state)
+    {
+        if (__exception is not null)
+            __state?.Dispose();
+        return __exception;
     }
 }
 
@@ -231,10 +287,17 @@ public static class TildeKeyAddToHandLimitPatch
     }
 
     [HarmonyPostfix]
-    public static void Postfix(ref Task<IReadOnlyList<CardPileAddResult>> __result, IDisposable? __state)
+    public static void Postfix(IDisposable? __state)
     {
-        if (__state is not null)
-            __result = TildeKeyHandLimitPatchHelpers.DisposeAfter(__result, __state);
+        __state?.Dispose();
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, IDisposable? __state)
+    {
+        if (__exception is not null)
+            __state?.Dispose();
+        return __exception;
     }
 }
 
@@ -365,37 +428,44 @@ public static class TildeKeyGodmodeKillPatch
 
 internal static class TildeKeyHandLimitPatchHelpers
 {
-    public static IDisposable? BeginHandLimitOverride(Player player)
+    private const int NativeHandLimit = 10;
+
+    public static IDisposable? BeginHandLimitOverride(Player? player)
     {
-        if (LoadoutCardAddRules.ShouldIgnoreHandLimit)
+        if (player is null || LoadoutCardAddRules.ShouldIgnoreHandLimit)
             return null;
 
-        return TildeKeyStateService.TryGetHandSizeOverride(player, out int handSize)
-            ? LoadoutCardAddRules.OverrideHandLimit(handSize)
-            : null;
+        int effectiveHandLimit = TildeKeyStateService.GetEffectiveHandSize(player);
+        int? currentHandLimit = LoadoutCardAddRules.CurrentHandLimitOverride;
+        if (currentHandLimit == effectiveHandLimit
+            || (currentHandLimit is null && effectiveHandLimit == NativeHandLimit))
+        {
+            return null;
+        }
+
+        return LoadoutCardAddRules.OverrideHandLimit(effectiveHandLimit);
     }
 
-    public static async Task DisposeAfter(Task task, IDisposable scope)
+    public static MethodInfo GetAsyncMoveNext(MethodInfo? asyncMethod)
     {
-        try
-        {
-            await task;
-        }
-        finally
-        {
-            scope.Dispose();
-        }
+        if (asyncMethod is null)
+            throw new MissingMethodException("Could not resolve async method for hand-limit patch.");
+
+        AsyncStateMachineAttribute? attribute = asyncMethod.GetCustomAttribute<AsyncStateMachineAttribute>();
+        MethodInfo? moveNext = attribute?.StateMachineType.GetMethod(
+            "MoveNext",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        return moveNext
+               ?? throw new MissingMethodException($"Could not resolve async state machine for '{asyncMethod.FullDescription()}'.");
     }
 
-    public static async Task<T> DisposeAfter<T>(Task<T> task, IDisposable scope)
+    public static FieldInfo FindCapturedField(Type stateMachineType, Type fieldType, string preferredName)
     {
-        try
-        {
-            return await task;
-        }
-        finally
-        {
-            scope.Dispose();
-        }
+        FieldInfo[] fields = stateMachineType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        return fields.FirstOrDefault(field => field.FieldType == fieldType && field.Name == preferredName)
+               ?? fields.FirstOrDefault(field => field.FieldType == fieldType)
+               ?? throw new MissingFieldException(
+                   stateMachineType.FullName,
+                   $"captured {fieldType.FullName} field");
     }
 }

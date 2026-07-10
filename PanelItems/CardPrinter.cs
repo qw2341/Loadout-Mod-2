@@ -173,15 +173,17 @@ public class CardPrinter
 		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 	    int multiplier = screen.GetCurrentActivationMultiplier();
+	    int upgradeCount = screen.IsToggleEnabled(ViewUpgradesToggleId) && canonicalCard.IsUpgradable ? 1 : 0;
 	    LoadoutTargetSelection target = LoadoutTargetService.GetSelected(LastActionService.CardPrinterKey, LoadoutTargetMode.AllPlayersAndPlayers);
-	    if (!LoadoutImmediateMutationService.RequestAddCard(canonicalCard.Id, multiplier, target))
+	    if (!LoadoutImmediateMutationService.RequestAddCard(canonicalCard.Id, multiplier, target, upgradeCount))
 		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 	    LastActionEntry entry = new()
 	    {
 		    Kind = LastActionService.AddCardKind,
 		    ContentId = canonicalCard.Id.ToString(),
-		    Amount = multiplier
+		    Amount = multiplier,
+		    UpgradeCount = upgradeCount
 	    };
 	    entry.SetTargetSelection(target);
 	    return Task.FromResult<IReadOnlyList<LastActionEntry>>(new[] { entry });
@@ -205,7 +207,8 @@ public class CardPrinter
 		    if (!LoadoutImmediateMutationService.RequestAddCard(
 			        card.Id,
 			        entry.Amount,
-			        entry.GetTargetSelection(fallbackTarget)))
+			        entry.GetTargetSelection(fallbackTarget),
+			        entry.UpgradeCount))
 		    {
 			    GD.PushWarning($"LoadoutPanel: could not replay card action for '{entry.ContentId}'.");
 		    }

@@ -89,22 +89,28 @@ public static class BottledMonster
 
     private static Task ReplayBottleMonsterLastActionAsync()
     {
-        LastActionEntry? entry = LastActionService.GetAction(LastActionService.BottleMonsterKey)
-            .LastOrDefault(action => action.Kind == LastActionService.SummonMonsterKind && action.Amount > 0);
-        if (entry is null)
+        IReadOnlyList<LastActionEntry> entries = LastActionService.GetAction(LastActionService.BottleMonsterKey)
+            .Where(action => action.Kind == LastActionService.SummonMonsterKind && action.Amount > 0)
+            .ToList();
+        if (entries.Count == 0)
         {
             DuplicateCurrentMonsters();
             return Task.CompletedTask;
         }
 
-        MonsterModel? monster = ResolveMonster(entry.ContentId);
-        if (monster is null)
+        foreach (LastActionEntry entry in entries)
         {
-            GD.PushWarning($"LoadoutPanel: cannot replay monster summon for unknown monster '{entry.ContentId}'.");
-            return Task.CompletedTask;
+            MonsterModel? monster = ResolveMonster(entry.ContentId);
+            if (monster is null)
+            {
+                GD.PushWarning($"LoadoutPanel: cannot replay monster summon for unknown monster '{entry.ContentId}'.");
+                continue;
+            }
+
+            for (int i = 0; i < entry.Amount; i++)
+                SummonMonster(monster, entry.ContentId);
         }
 
-        SummonMonster(monster, entry.ContentId);
         return Task.CompletedTask;
     }
 

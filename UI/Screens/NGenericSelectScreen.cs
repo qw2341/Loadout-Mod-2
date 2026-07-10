@@ -638,6 +638,11 @@ public partial class NGenericSelectScreen : Control
         return GetCurrentInputMultiplier();
     }
 
+    public bool IsToggleEnabled(string toggleId)
+    {
+        return _toggleStates.TryGetValue(toggleId, out bool enabled) && enabled;
+    }
+
     public static int GetCurrentInputMultiplier()
     {
         bool shift = Input.IsKeyPressed(Key.Shift);
@@ -3540,38 +3545,39 @@ public partial class NGenericSelectScreen : Control
 
     private void UpdateConfirmButtonState()
     {
+        bool isActive = IsVisibleInTree();
         bool usesSelection = _options.SelectionMode != SelectSelectionMode.None;
         int selectedCount = _selectedAmounts.Values.Sum();
 
         if (_selectedCountLabel is Label selectedCountLabel)
         {
-            selectedCountLabel.Visible = usesSelection;
+            selectedCountLabel.Visible = isActive && usesSelection;
             selectedCountLabel.Text = SelectScreenLoc.Text("SELECTED_COUNT", "Selected: {0}", selectedCount);
         }
         else if (_selectedCountLabel is not null)
         {
-            _selectedCountLabel.Visible = usesSelection;
+            _selectedCountLabel.Visible = isActive && usesSelection;
         }
 
         if (_confirmButton is not null)
         {
-            _confirmButton.Visible = usesSelection;
-            _confirmButton.Disabled = !usesSelection || !IsConfirmAllowed();
+            _confirmButton.Visible = isActive && usesSelection;
+            _confirmButton.Disabled = !isActive || !usesSelection || !IsConfirmAllowed();
         }
 
         if (_confirmClickable is not null)
         {
-            _confirmClickable.Visible = usesSelection;
-            _confirmClickable.SetEnabled(usesSelection && IsConfirmAllowed());
+            _confirmClickable.Visible = isActive && usesSelection;
+            _confirmClickable.SetEnabled(isActive && usesSelection && IsConfirmAllowed());
         }
 
         if (_cancelButton is not null)
-            _cancelButton.Visible = true;
+            _cancelButton.Visible = isActive;
 
         if (_cancelClickable is not null)
         {
-            _cancelClickable.Visible = true;
-            _cancelClickable.SetEnabled(true);
+            _cancelClickable.Visible = isActive;
+            _cancelClickable.SetEnabled(isActive);
             ResetActionButtonVisualState(_cancelClickable);
         }
     }

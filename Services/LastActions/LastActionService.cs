@@ -152,6 +152,7 @@ public static class LastActionService
             Kind = entry.Kind,
             ContentId = entry.ContentId,
             Amount = entry.Amount,
+            UpgradeCount = Math.Max(0, entry.UpgradeCount),
             Target = entry.Target,
             TargetScope = entry.TargetScope,
             TargetPlayerNetId = entry.TargetPlayerNetId
@@ -188,6 +189,9 @@ public sealed class LastActionEntry
 
     [JsonPropertyName("amount")]
     public int Amount { get; set; }
+
+    [JsonPropertyName("upgradeCount")]
+    public int UpgradeCount { get; set; }
 
     [JsonPropertyName("target")]
     public PowerGiverTarget? Target { get; set; }

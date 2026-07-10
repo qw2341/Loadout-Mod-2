@@ -95,14 +95,19 @@ public static class LoadoutImmediateMutationService
         _lastAppliedHostSequence = 0;
     }
 
-    public static bool RequestAddCard(ModelId modelId, int amount, LoadoutTargetSelection target)
+    public static bool RequestAddCard(
+        ModelId modelId,
+        int amount,
+        LoadoutTargetSelection target,
+        int cardUpgradeCount = 0)
     {
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.AddCard,
             ModelId = modelId,
             Amount = amount,
-            Target = target
+            Target = target,
+            CardUpgradeCount = Math.Max(0, cardUpgradeCount)
         });
     }
 
@@ -638,10 +643,18 @@ public static class LoadoutImmediateMutationService
 
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            IReadOnlyList<CardModel> addedDeckCards = await AddDeckCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount);
+            IReadOnlyList<CardModel> addedDeckCards = await AddDeckCardCopiesAsync(
+                targetPlayer,
+                canonicalCard,
+                payload.Amount,
+                payload.CardUpgradeCount);
             bool deckChanged = addedDeckCards.Count > 0;
             bool combatChanged = CombatManager.Instance.IsInProgress
-                                  && await AddCombatHandCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount);
+                                  && await AddCombatHandCardCopiesAsync(
+                                      targetPlayer,
+                                      canonicalCard,
+                                      payload.Amount,
+                                      payload.CardUpgradeCount);
 
             if (deckChanged || combatChanged)
             {
@@ -654,7 +667,11 @@ public static class LoadoutImmediateMutationService
         }
     }
 
-    private static async Task<IReadOnlyList<CardModel>> AddDeckCardCopiesAsync(Player targetPlayer, CardModel canonicalCard, int amount)
+    private static async Task<IReadOnlyList<CardModel>> AddDeckCardCopiesAsync(
+        Player targetPlayer,
+        CardModel canonicalCard,
+        int amount,
+        int upgradeCount)
     {
         List<CardPileAddResult> addedCards = [];
         List<CardModel> changedCards = [];
@@ -663,6 +680,9 @@ public static class LoadoutImmediateMutationService
             try
             {
                 CardModel card = targetPlayer.RunState.CreateCard(canonicalCard, targetPlayer);
+                if (upgradeCount > 0)
+                    UpgradeCardWithCommand(card, upgradeCount);
+
                 CardPileAddResult result = await CardPileCmd.Add(card, targetPlayer.Deck);
                 if (result.success)
                 {
@@ -703,7 +723,11 @@ public static class LoadoutImmediateMutationService
         return -1;
     }
 
-    private static async Task<bool> AddCombatHandCardCopiesAsync(Player targetPlayer, CardModel canonicalCard, int amount)
+    private static async Task<bool> AddCombatHandCardCopiesAsync(
+        Player targetPlayer,
+        CardModel canonicalCard,
+        int amount,
+        int upgradeCount)
     {
         ICombatState? combatState = targetPlayer.Creature.CombatState;
         if (combatState is null)
@@ -716,6 +740,9 @@ public static class LoadoutImmediateMutationService
             try
             {
                 CardModel card = combatState.CreateCard(canonicalCard, targetPlayer);
+                if (upgradeCount > 0)
+                    UpgradeCardWithCommand(card, upgradeCount);
+
                 CardPileAddResult result;
                 using (LoadoutCardAddRules.IgnoreHandLimit())
                     result = await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Hand, targetPlayer);
@@ -1161,6 +1188,7 @@ public struct LoadoutImmediateMutationPayload
     public LoadoutKind LoadoutKind;
     public string LoadoutPayload;
     public string TildePayloadJson;
+    public int CardUpgradeCount;
 
     public void Serialize(PacketWriter writer)
     {
@@ -1182,6 +1210,7 @@ public struct LoadoutImmediateMutationPayload
         writer.WriteInt((int)LoadoutKind, 4);
         writer.WriteString(LoadoutPayload ?? string.Empty);
         writer.WriteString(TildePayloadJson ?? string.Empty);
+        writer.WriteInt(CardUpgradeCount);
     }
 
     public void Deserialize(PacketReader reader)
@@ -1201,6 +1230,7 @@ public struct LoadoutImmediateMutationPayload
         LoadoutKind = (LoadoutKind)reader.ReadInt(4);
         LoadoutPayload = reader.ReadString();
         TildePayloadJson = reader.ReadString();
+        CardUpgradeCount = reader.ReadInt();
         NormalizeDefaults();
     }
 
@@ -1211,11 +1241,12 @@ public struct LoadoutImmediateMutationPayload
         CardModificationStateJson ??= string.Empty;
         LoadoutPayload ??= string.Empty;
         TildePayloadJson ??= string.Empty;
+        CardUpgradeCount = Math.Max(0, CardUpgradeCount);
     }
 
     public override readonly string ToString()
     {
-        return $"LoadoutImmediateMutationPayload {Kind} seq {Sequence} requester {RequesterNetId} model {LoadoutModelIdSafety.ToLogString(ModelId)} amount {Amount} target {Target}";
+        return $"LoadoutImmediateMutationPayload {Kind} seq {Sequence} requester {RequesterNetId} model {LoadoutModelIdSafety.ToLogString(ModelId)} amount {Amount} upgrades {CardUpgradeCount} target {Target}";
     }
 
     private static void WriteModelIdString(PacketWriter writer, ModelId id)

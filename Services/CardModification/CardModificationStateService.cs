@@ -2119,14 +2119,18 @@ public static class CardModificationStateService
 
         try
         {
-            Player? owner = card.Owner;
+            CardModel deckCard = card.DeckVersion ?? card;
+            if (!deckCard.Id.Equals(card.Id))
+                return false;
+
+            Player? owner = deckCard.Owner ?? card.Owner;
             if (owner is null)
                 return false;
 
             IReadOnlyList<CardModel> deckCards = owner.Deck.Cards;
             for (int index = 0; index < deckCards.Count; index++)
             {
-                if (!ReferenceEquals(deckCards[index], card))
+                if (!ReferenceEquals(deckCards[index], deckCard))
                     continue;
 
                 copyKey = GetCopyKey(owner.NetId, index, card.Id);
