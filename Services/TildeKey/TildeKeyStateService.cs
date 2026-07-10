@@ -793,6 +793,24 @@ public static class TildeKeyStateService
         TryRequestDrawTillHandLimit(player);
     }
 
+    internal static async Task DrawTillHandLimitAsync(PlayerChoiceContext choiceContext, Player player)
+    {
+        if (!IsPlayerToggleEnabled(player.NetId, DrawTillHandLimitToggleId)
+            || player.PlayerCombatState?.Phase != PlayerTurnPhase.Play)
+        {
+            return;
+        }
+
+        CardPile hand = PileType.Hand.GetPile(player);
+        CardPile drawPile = PileType.Draw.GetPile(player);
+        CardPile discardPile = PileType.Discard.GetPile(player);
+        int handSpace = Math.Max(0, GetEffectiveHandSize(player) - hand.Cards.Count);
+        if (handSpace <= 0 || drawPile.Cards.Count + discardPile.Cards.Count <= 0)
+            return;
+
+        await CardPileCmd.Draw(choiceContext, handSpace, player);
+    }
+
     private static void TryRequestDrawTillHandLimit(Player player)
     {
         PlayerCombatState? combatState = player.PlayerCombatState;

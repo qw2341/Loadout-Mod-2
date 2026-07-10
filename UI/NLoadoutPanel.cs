@@ -647,15 +647,15 @@ public partial class NLoadoutPanel : Panel
 
 	private static bool BindRelicActivation(Control view, Action activate)
 	{
-		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicCollectionEntry? collectionEntry))
+		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicCollectionEntry collectionEntry))
 		{
-			collectionEntry!.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicCollectionEntry>(_ => activate()));
+			collectionEntry.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicCollectionEntry>(_ => activate()));
 			return true;
 		}
 
-		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder? basicHolder))
+		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder basicHolder))
 		{
-			basicHolder!.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicBasicHolder>(_ => activate()));
+			basicHolder.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicBasicHolder>(_ => activate()));
 			return true;
 		}
 

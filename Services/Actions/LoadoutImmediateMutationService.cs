@@ -18,6 +18,7 @@ using Loadout.UI;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -58,7 +59,8 @@ public enum LoadoutImmediateMutationKind
     TildeKillEnemies,
     TildeSpareEnemies,
     TildeRelicCounterDelta,
-    TildeRelicCounterLock
+    TildeRelicCounterLock,
+    SummonMonster
 }
 
 public static class LoadoutImmediateMutationService
@@ -66,6 +68,7 @@ public static class LoadoutImmediateMutationService
     private static INetGameService? _runNetService;
     private static int _nextRequestId;
     private static int _nextHostSequence;
+    private static int _lastAppliedHostSequence;
 
     public static void OnRunLaunched()
     {
@@ -78,6 +81,7 @@ public static class LoadoutImmediateMutationService
             RegisterRunNetService(netService);
             _nextRequestId = 0;
             _nextHostSequence = 0;
+            _lastAppliedHostSequence = 0;
         }
         catch (Exception exception)
         {
@@ -88,6 +92,7 @@ public static class LoadoutImmediateMutationService
     public static void OnRunCleaningUp()
     {
         UnregisterRunNetService();
+        _lastAppliedHostSequence = 0;
     }
 
     public static bool RequestAddCard(ModelId modelId, int amount, LoadoutTargetSelection target)
@@ -231,27 +236,46 @@ public static class LoadoutImmediateMutationService
 
     public static bool RequestSummonMonster(ModelId monsterId)
     {
-        return LoadoutSummonMonsterService.RequestSummonMonster(monsterId);
-    }
-
-    public static bool RequestEnterEvent(ModelId eventId)
-    {
         return Request(new LoadoutImmediateMutationPayload
         {
-            Kind = LoadoutImmediateMutationKind.EnterEvent,
-            ModelId = eventId,
+            Kind = LoadoutImmediateMutationKind.SummonMonster,
+            ModelId = monsterId,
             Amount = 1
         });
     }
 
+    public static bool RequestEnterEvent(ModelId eventId)
+    {
+        if (LoadoutModelIdSafety.IsNoneOrEmpty(eventId))
+            return false;
+
+        return RequestNetworkedConsoleCommand($"event {eventId.Entry}");
+    }
+
     public static bool RequestGoToRoom(RoomType roomType)
     {
-        return Request(new LoadoutImmediateMutationPayload
+        return roomType != RoomType.Unassigned
+               && RequestNetworkedConsoleCommand($"room {roomType}");
+    }
+
+    private static bool RequestNetworkedConsoleCommand(string command)
+    {
+        Player? localPlayer = GetLocalRunPlayer();
+        if (localPlayer is null || !LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+            return false;
+
+        try
         {
-            Kind = LoadoutImmediateMutationKind.GoToRoom,
-            ModelId = ModelId.none,
-            Amount = (int)roomType
-        });
+            CloseRunNavigationScreens();
+            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+                new ConsoleCmdGameAction(localPlayer, command, CombatManager.Instance.IsInProgress));
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: failed requesting networked command '{command}'. {exception.Message}");
+            return false;
+        }
     }
 
     public static bool RequestTildeSetStat(string statId, int value, LoadoutTargetSelection target)
@@ -482,7 +506,19 @@ public static class LoadoutImmediateMutationService
             if (IsHostSession())
                 return;
 
+            if (!LoadoutNetworkBroadcast.IsExpectedHostSender(
+                    senderId,
+                    _runNetService ?? RunManager.Instance.NetService))
+            {
+                GD.PushWarning($"LoadoutImmediateMutation: ignored mutation {message.sequence} from non-host peer {senderId}.");
+                return;
+            }
+
+            if (message.sequence <= _lastAppliedHostSequence)
+                return;
+
             Apply(message.payload);
+            _lastAppliedHostSequence = message.sequence;
         }
         catch (Exception exception)
         {
@@ -553,10 +589,8 @@ public static class LoadoutImmediateMutationService
                 TaskHelper.RunSafely(ApplyClearCurrentPowersAsync(payload));
                 break;
             case LoadoutImmediateMutationKind.EnterEvent:
-                ApplyEnterEvent(payload, requester);
-                break;
             case LoadoutImmediateMutationKind.GoToRoom:
-                ApplyGoToRoom(payload);
+                GD.PushWarning($"LoadoutImmediateMutation: ignored obsolete navigation mutation '{payload.Kind}'.");
                 break;
             case LoadoutImmediateMutationKind.TildeStatSet:
                 TildeKeyStateService.ApplySynchronizedStatSet(payload.TildePayloadJson, payload.Amount, payload.Target, requester);
@@ -590,6 +624,9 @@ public static class LoadoutImmediateMutationService
                     payload.OwnedItemIndex,
                     payload.ExpectedModelId,
                     requester);
+                break;
+            case LoadoutImmediateMutationKind.SummonMonster:
+                TaskHelper.RunSafely(LoadoutSummonMonsterService.SummonMonsterNowAsync(payload.ModelId));
                 break;
         }
     }
@@ -933,57 +970,6 @@ public static class LoadoutImmediateMutationService
         };
     }
 
-    private static void ApplyEnterEvent(LoadoutImmediateMutationPayload payload, Player requester)
-    {
-        EventModel? eventModel = ResolveEvent(payload.ModelId);
-        if (eventModel is null)
-        {
-            GD.PushWarning($"LoadoutImmediateMutation: unknown event '{payload.ModelId}'.");
-            return;
-        }
-
-        TaskHelper.RunSafely(EnterEventAsync(eventModel, requester));
-    }
-
-    private static async Task EnterEventAsync(EventModel eventModel, Player requester)
-    {
-        try
-        {
-            CloseRunNavigationScreens();
-            MapPointType mapPointType = eventModel is AncientEventModel
-                ? MapPointType.Ancient
-                : MapPointType.Unknown;
-            requester.RunState.AppendToMapPointHistory(mapPointType, RoomType.Event, eventModel.Id);
-            await RunManager.Instance.EnterRoom(new EventRoom(eventModel));
-        }
-        catch (Exception exception)
-        {
-            GD.PushError($"LoadoutImmediateMutation: failed to enter event '{eventModel.Id}'. {exception}");
-        }
-    }
-
-    private static void ApplyGoToRoom(LoadoutImmediateMutationPayload payload)
-    {
-        RoomType roomType = (RoomType)payload.Amount;
-        if (roomType == RoomType.Unassigned)
-            return;
-
-        TaskHelper.RunSafely(GoToRoomAsync(roomType));
-    }
-
-    private static async Task GoToRoomAsync(RoomType roomType)
-    {
-        try
-        {
-            CloseRunNavigationScreens();
-            await RunManager.Instance.EnterRoomDebug(roomType, MapPointType.Unknown, null, false);
-        }
-        catch (Exception exception)
-        {
-            GD.PushError($"LoadoutImmediateMutation: failed to go to room '{roomType}'. {exception}");
-        }
-    }
-
     private static void CloseRunNavigationScreens()
     {
         NLoadoutPanelRoot.CloseBlockingRunScreens();
@@ -1158,17 +1144,6 @@ public static class LoadoutImmediateMutationService
         return ModelDb.AllPotions.FirstOrDefault(potion => IdMatches(potion, id));
     }
 
-    private static EventModel? ResolveEvent(ModelId id)
-    {
-        if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
-            return null;
-
-        return ModelDb.AllEvents
-            .Concat(ModelDb.AllAncients)
-            .Distinct()
-            .FirstOrDefault(eventModel => IdMatches(eventModel, id));
-    }
-
 }
 
 public struct LoadoutImmediateMutationPayload
@@ -1277,6 +1252,8 @@ public struct LoadoutImmediateMutationPayload
         foreach (EventModel model in ModelDb.AllEvents)
             yield return model;
         foreach (AncientEventModel model in ModelDb.AllAncients)
+            yield return model;
+        foreach (MonsterModel model in ModelDb.Monsters)
             yield return model;
     }
 

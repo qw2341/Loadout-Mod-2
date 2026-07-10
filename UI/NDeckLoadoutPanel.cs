@@ -497,10 +497,7 @@ public partial class NDeckLoadoutPanel : Control
         _selectedOptionId = $"local:{loadout.Id}";
         SavedLoadout saved = LoadoutStorageService.Upsert(loadout);
         _selectedOptionId = $"local:{saved.Id}";
-        RefreshAll();
-        RefreshAllDeferred();
         SetStatus(LocMan.Loc("LOADOUT_SAVED", "Saved loadout."));
-        LoadoutHostSharingService.BroadcastHostCatalog();
     }
 
     private void ApplySelected()
@@ -530,10 +527,7 @@ public partial class NDeckLoadoutPanel : Control
 
         if (LoadoutStorageService.Rename(entry.Loadout.Id, GetRequestedName(entry.Loadout.Name)))
         {
-            RefreshAll();
-            RefreshAllDeferred();
             SetStatus(LocMan.Loc("LOADOUT_RENAMED", "Renamed loadout."));
-            LoadoutHostSharingService.BroadcastHostCatalog();
         }
     }
 
@@ -545,13 +539,15 @@ public partial class NDeckLoadoutPanel : Control
             return;
         }
 
+        string previousSelection = _selectedOptionId;
+        _selectedOptionId = NoSelectionId;
         if (LoadoutStorageService.Delete(entry.Loadout.Id))
         {
-            _selectedOptionId = NoSelectionId;
-            RefreshAll();
-            RefreshAllDeferred();
             SetStatus(LocMan.Loc("LOADOUT_DELETED", "Deleted loadout."));
-            LoadoutHostSharingService.BroadcastHostCatalog();
+        }
+        else
+        {
+            _selectedOptionId = previousSelection;
         }
     }
 
@@ -578,10 +574,9 @@ public partial class NDeckLoadoutPanel : Control
 
         SavedLoadout imported = LoadoutStorageService.Import(loadout);
         _selectedOptionId = $"local:{imported.Id}";
-        RefreshAll();
-        RefreshAllDeferred();
+        RefreshLoadoutOptions();
+        RefreshSelectedName();
         SetStatus(LocMan.Loc("LOADOUT_IMPORTED", "Imported loadout."));
-        LoadoutHostSharingService.BroadcastHostCatalog();
     }
 
     private bool TryGetSelected(out LoadoutCatalogEntry entry)
@@ -667,10 +662,6 @@ public partial class NDeckLoadoutPanel : Control
         }));
     }
 
-    private void RefreshAllDeferred()
-    {
-        Callable.From(RefreshAll).CallDeferred();
-    }
 }
 
 public partial class NDeckLoadoutTextAction : NButton

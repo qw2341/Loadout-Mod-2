@@ -49,7 +49,7 @@ public static class BottledMonster
             builder =>
             {
                 builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-                builder.Materialization(SelectMaterializationMode.Eager);
+                builder.Materialization(SelectMaterializationMode.Lazy);
                 builder.Layout(4, MonsterButtonSize, 24, 24, fixedSlots: false);
                 AddActFilters(builder);
                 AddMonsterCategoryFilters(builder, roomTypesByMonsterId);
@@ -118,7 +118,7 @@ public static class BottledMonster
 
         try
         {
-            return LoadoutSummonMonsterService.RequestSummonMonster(monster.Id);
+            return LoadoutImmediateMutationService.RequestSummonMonster(monster.Id);
         }
         catch (Exception exception)
         {
@@ -141,7 +141,7 @@ public static class BottledMonster
                      .Select(creature => creature.Monster!.Id)
                      .ToList())
         {
-            LoadoutSummonMonsterService.RequestSummonMonster(monsterId);
+            LoadoutImmediateMutationService.RequestSummonMonster(monsterId);
         }
     }
 

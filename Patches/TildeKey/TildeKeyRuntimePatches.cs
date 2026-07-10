@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Localization;
@@ -165,16 +166,36 @@ public static class TildeKeyDrawHandLimitPatch
 public static class TildeKeyDrawTillHandLimitAfterCardPlayedPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(CardPlay cardPlay, ref Task __result)
+    public static void Postfix(PlayerChoiceContext choiceContext, CardPlay cardPlay, ref Task __result)
     {
-        __result = RequestDrawAfterCardPlayedAsync(__result, cardPlay);
+        __result = DrawAfterCardPlayedAsync(__result, choiceContext, cardPlay);
     }
 
-    private static async Task RequestDrawAfterCardPlayedAsync(Task original, CardPlay cardPlay)
+    private static async Task DrawAfterCardPlayedAsync(
+        Task original,
+        PlayerChoiceContext choiceContext,
+        CardPlay cardPlay)
     {
         await original;
         if (cardPlay.IsLastInSeries)
-            TildeKeyStateService.RequestDrawTillHandLimitForLocalPlayer(cardPlay.Card.Owner);
+            await TildeKeyStateService.DrawTillHandLimitAsync(choiceContext, cardPlay.Card.Owner);
+    }
+}
+
+[HarmonyPatch(typeof(PlayCardAction), "ExecuteAction")]
+public static class TildeKeyPlayCardHandLimitPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(PlayCardAction __instance, out IDisposable? __state)
+    {
+        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(__instance.Player);
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(ref Task __result, IDisposable? __state)
+    {
+        if (__state is not null)
+            __result = TildeKeyHandLimitPatchHelpers.DisposeAfter(__result, __state);
     }
 }
 

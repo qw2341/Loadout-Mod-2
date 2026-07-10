@@ -231,7 +231,7 @@ public static class LoadoutHostSharingService
 
     private static void HandleHostCatalog(LoadoutHostCatalogMessage message, ulong senderId)
     {
-        if (IsHostSession())
+        if (IsHostSession() || !IsExpectedHostSender(senderId))
             return;
 
         try
@@ -290,6 +290,14 @@ public static class LoadoutHostSharingService
         {
             return false;
         }
+    }
+
+    private static bool IsExpectedHostSender(ulong senderId)
+    {
+        return LoadoutNetworkBroadcast.IsExpectedHostSender(
+            senderId,
+            _runNetService,
+            RegisteredLobbies.Select(lobby => lobby.NetService));
     }
 }
 

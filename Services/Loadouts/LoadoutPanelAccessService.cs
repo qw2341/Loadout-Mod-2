@@ -204,7 +204,7 @@ public static class LoadoutPanelAccessService
 
     private static void HandleAccessMessage(LoadoutPanelAccessMessage message, ulong senderId)
     {
-        if (IsHostSession())
+        if (IsHostSession() || !IsExpectedHostSender(senderId))
             return;
 
         if (_hostAllowsGuests == message.allowGuests)
@@ -233,6 +233,14 @@ public static class LoadoutPanelAccessService
         {
             return false;
         }
+    }
+
+    private static bool IsExpectedHostSender(ulong senderId)
+    {
+        return LoadoutNetworkBroadcast.IsExpectedHostSender(
+            senderId,
+            _runNetService,
+            RegisteredLobbies.Select(lobby => lobby.NetService));
     }
 
     private static NetGameType TryGetActiveNetType()

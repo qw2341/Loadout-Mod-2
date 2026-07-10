@@ -389,13 +389,7 @@ public partial class NCardModificationScreen : Control
         _item = item;
         _workingState = CardModificationStateService.GetEffectiveState(item);
         _temporaryState = CardModificationStateService.GetTemporaryState(item);
-        if (IsClientSession())
-            _previewDisplayModel = CardModificationStateService.CreatePreviewCard(item.Model, _workingState);
-        else
-        {
-            _previewDisplayModel = null;
-            CardModificationStateService.ApplyEffectiveStateToOwnedCard(item);
-        }
+        _previewDisplayModel = CardModificationStateService.CreatePreviewCard(item.Model, _workingState);
         _lastAppliedState = _workingState.Clone();
         _hasPendingTemporaryCommit = false;
     }
@@ -853,7 +847,6 @@ public partial class NCardModificationScreen : Control
         CardModificationState permanentState = _workingState.Clone();
         _hasPendingTemporaryCommit = false;
         SuppressStateRefreshThisFrame();
-        CardModificationStateService.SavePermanent(_item.Model.Id, permanentState);
         bool requestedPermanent = LoadoutImmediateMutationService.RequestCardModification(
             CardModificationOperation.ApplyPermanent,
             _item,
@@ -866,10 +859,16 @@ public partial class NCardModificationScreen : Control
         if (!requestedTemporaryReset)
             CardModificationStateService.ResetTemporary(_item);
 
-        _workingState = CardModificationStateService.GetEffectiveState(_item);
-        _previewDisplayModel = null;
         if (!requestedPermanent)
+        {
+            CardModificationStateService.SavePermanent(_item.Model.Id, permanentState);
             CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
+        }
+
+        _workingState = requestedPermanent
+            ? permanentState.Clone()
+            : CardModificationStateService.GetEffectiveState(_item);
+        _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, _workingState);
         _lastAppliedState = _workingState.Clone();
         RefreshParentView(forceReload: true);
         RebuildControls();
@@ -888,9 +887,7 @@ public partial class NCardModificationScreen : Control
             CardModificationStateService.ResetTemporaryToBasic(_item);
         _temporaryState = new CardModificationState();
         _workingState = CardModificationStateService.GetEffectivePermanentState(_item.Model.Id);
-        _previewDisplayModel = IsClientSession()
-            ? CardModificationStateService.CreatePreviewCard(_item.Model, _workingState)
-            : null;
+        _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, _workingState);
         _lastAppliedState = _workingState.Clone();
         RefreshParentView(forceReload: true);
         RebuildControls();
@@ -904,11 +901,12 @@ public partial class NCardModificationScreen : Control
 
         _hasPendingTemporaryCommit = false;
         SuppressStateRefreshThisFrame();
-        CardModificationStateService.ResetPermanentToBasic(_item);
-        LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);
-        _workingState = CardModificationStateService.GetEffectiveState(_item);
-        _temporaryState = CardModificationStateService.GetTemporaryState(_item);
-        _previewDisplayModel = null;
+        bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);
+        if (!requested)
+            CardModificationStateService.ResetPermanentToBasic(_item);
+        _workingState = new CardModificationState();
+        _temporaryState = new CardModificationState();
+        _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, _workingState);
         _lastAppliedState = _workingState.Clone();
         RefreshParentView(forceReload: true);
         RebuildControls();
@@ -924,21 +922,10 @@ public partial class NCardModificationScreen : Control
         CardModificationState previewState = _workingState.Clone();
         previewState.Normalize();
         bool forceReload = HasStructuralVisualChange(previousState, previewState);
-        if (IsClientSession())
-        {
-            _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, previewState);
-            forceReload = true;
-        }
-        else
-        {
-            _previewDisplayModel = null;
-            CardModificationStateService.ApplyPreviewStateToOwnedCard(_item, previewState, previousState);
-        }
+        _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, previewState);
 
         _lastAppliedState = previewState.Clone();
         _hasPendingTemporaryCommit = true;
-        if (!IsClientSession())
-            RefreshParentView(forceReload);
         RefreshPreview(forceReload);
     }
 
@@ -1421,26 +1408,7 @@ public partial class NCardModificationScreen : Control
 
     private static bool CanSavePermanent()
     {
-        try
-        {
-            return !RunManager.Instance.IsInProgress || RunManager.Instance.NetService.Type != NetGameType.Client;
-        }
-        catch
-        {
-            return true;
-        }
-    }
-
-    private static bool IsClientSession()
-    {
-        try
-        {
-            return RunManager.Instance.IsInProgress && RunManager.Instance.NetService.Type == NetGameType.Client;
-        }
-        catch
-        {
-            return false;
-        }
+        return true;
     }
 
     private static void ConfigureActionButtonSize(Control button)

@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
 using HarmonyLib;
+using Loadout.Services.Actions;
 using Loadout.Services.Saving;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Combat;
@@ -20,6 +21,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
@@ -339,10 +341,12 @@ public static class CardModificationStateService
             }
         }
 
-        CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
         if (changed)
+        {
+            CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
             RaisePermanentCardDisplayChanged(cardId);
-        RaiseStateChanged();
+            RaiseStateChanged();
+        }
     }
 
     public static void ResetTemporary(LoadoutOwnedItem<CardModel> item)
@@ -414,12 +418,7 @@ public static class CardModificationStateService
     {
         ClearPreviewState(item.Model);
         CardModificationState state = GetEffectiveState(item);
-        bool hasCardMutation = HasCardMutations(state) || HasCardMutations(previousState);
-        if (hasCardMutation)
-        {
-            PrepareCardForState(item.Model, state, includeAffliction: true, previousState);
-            ApplyStateToCard(item.Model, state);
-        }
+        bool hasCardMutation = ApplyStateTransitionToCard(item.Model, state, previousState, includeAffliction: true);
 
         if (hasCardMutation || HasVisualOverrides(state) || HasVisualOverrides(previousState))
             RefreshLiveCardVisuals(item.Model);
@@ -433,12 +432,7 @@ public static class CardModificationStateService
         CardModificationState normalized = state.Clone();
         normalized.Normalize();
         SetPreviewState(item.Model, normalized);
-        bool hasCardMutation = HasCardMutations(normalized) || HasCardMutations(previousState);
-        if (hasCardMutation)
-        {
-            PrepareCardForState(item.Model, normalized, includeAffliction: true, previousState);
-            ApplyStateToCard(item.Model, normalized);
-        }
+        bool hasCardMutation = ApplyStateTransitionToCard(item.Model, normalized, previousState, includeAffliction: true);
 
         if (hasCardMutation || HasVisualOverrides(normalized) || HasVisualOverrides(previousState))
             RefreshLiveCardVisuals(item.Model);
@@ -521,6 +515,7 @@ public static class CardModificationStateService
                 normalized.Normalize();
                 SaveTemporaryLocal(saveItem, normalized);
                 ApplyEffectiveStateToOwnedCard(saveItem, savePreviousState);
+                LoadoutRunContentChangeService.NotifyCardUpdated(saveItem);
                 RaiseStateChanged();
                 break;
 
@@ -531,6 +526,7 @@ public static class CardModificationStateService
                 CardModificationState resetPreviousState = GetEffectiveState(resetItem);
                 ResetTemporaryLocal(resetItem);
                 ApplyEffectiveStateToOwnedCard(resetItem, resetPreviousState);
+                LoadoutRunContentChangeService.NotifyCardUpdated(resetItem);
                 RaiseStateChanged();
                 break;
 
@@ -542,18 +538,46 @@ public static class CardModificationStateService
                 break;
 
             case CardModificationOperation.ApplyPermanent:
+                if (!IsPermanentModificationAuthority())
+                    return;
+
                 CardModificationState permanentState = state?.Clone() ?? new CardModificationState();
                 permanentState.Normalize();
                 ApplyPermanentStateToLiveCardsFromAction(modelId, permanentState);
-                RaiseStateChanged();
+                SavePermanent(modelId, permanentState);
                 break;
 
             case CardModificationOperation.ResetPermanentToBasic:
                 if (TryResolveOwnedDeckCard(target, ownedItemIndex, expectedModelId, actionPlayer) is not { } resetPermanentItem)
                     return;
 
-                ResetPermanentToBasic(resetPermanentItem);
+                CardModificationState resetPermanentPreviousState = GetEffectiveState(resetPermanentItem);
+                ResetTemporaryLocal(resetPermanentItem);
+                if (IsPermanentModificationAuthority())
+                {
+                    ApplyPermanentStateToLiveCardsFromAction(modelId, new CardModificationState());
+                    ResetPermanent(modelId);
+                }
+                else
+                {
+                    ApplyEffectiveStateToOwnedCard(resetPermanentItem, resetPermanentPreviousState);
+                    LoadoutRunContentChangeService.NotifyCardUpdated(resetPermanentItem);
+                    RaiseStateChanged();
+                }
                 break;
+        }
+    }
+
+    private static bool IsPermanentModificationAuthority()
+    {
+        try
+        {
+            return !RunManager.Instance.IsInProgress
+                   || RunManager.Instance.NetService.Type != NetGameType.Client;
+        }
+        catch
+        {
+            return true;
         }
     }
 
@@ -609,6 +633,47 @@ public static class CardModificationStateService
     public static CardModel CreatePermanentPreviewCard(CardModel card)
     {
         return GetEffectivePermanentCardForDisplay(card);
+    }
+
+    public static CardModel CreatePreviewCard(CardModel card, CardModificationState state)
+    {
+        CardModificationState normalized = state.Clone();
+        normalized.Normalize();
+
+        try
+        {
+            CardModel? canonical = ModelDb.AllCards.FirstOrDefault(candidate => candidate.Id.Equals(card.Id));
+            if (canonical is null)
+                return card;
+
+            CardModel preview = CreateCanonicalBaselineForCurrentUpgrade(card, canonical);
+
+            if (normalized.Enchantment is null
+                && card.Enchantment is not null
+                && TryResolveModel(card.Enchantment.Id.ToString(), ModelDb.DebugEnchantments, out EnchantmentModel? canonicalEnchantment)
+                && canonicalEnchantment is not null)
+            {
+                ForceApplyEnchantment(preview, canonicalEnchantment, Math.Max(1, card.Enchantment.Amount));
+            }
+
+            if (normalized.Affliction is null
+                && card.Affliction is not null
+                && TryResolveModel(card.Affliction.Id.ToString(), ModelDb.DebugAfflictions, out AfflictionModel? canonicalAffliction)
+                && canonicalAffliction is not null)
+            {
+                ForceApplyAffliction(preview, canonicalAffliction, Math.Max(1, card.Affliction.Amount));
+            }
+
+            PrepareCardForState(preview, normalized, includeAffliction: true);
+            ApplyStateToCard(preview, normalized);
+            SetPreviewState(preview, normalized);
+            return preview;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to create card modification preview for '{card.Id}'. {exception.Message}");
+            return card;
+        }
     }
 
     public static CardModel GetEffectivePermanentCardForDisplay(CardModel card)
@@ -688,12 +753,7 @@ public static class CardModificationStateService
                 }
             }
 
-            bool hasCardMutation = HasCardMutations(state) || HasCardMutations(previousState);
-            if (hasCardMutation)
-            {
-                PrepareCardForState(card, state, includeAffliction: true, previousState);
-                ApplyStateToCard(card, state);
-            }
+            bool hasCardMutation = ApplyStateTransitionToCard(card, state, previousState, includeAffliction: true);
 
             if (hasCardMutation || HasVisualOverrides(state) || HasVisualOverrides(previousState))
                 RefreshLiveCardVisuals(card);
@@ -722,11 +782,15 @@ public static class CardModificationStateService
                 changed = _run.Cards.Remove(key);
             else
             {
-                _run.Cards[key] = normalized.Clone();
-                changed = true;
+                changed = !_run.Cards.TryGetValue(key, out CardModificationState? existing)
+                          || !PermanentStatesEquivalent(existing, normalized);
+                if (changed)
+                    _run.Cards[key] = normalized.Clone();
             }
 
-            SaveRunState();
+            if (changed)
+                SaveRunState();
+
             return changed;
         }
     }
@@ -788,6 +852,8 @@ public static class CardModificationStateService
             if (runState is null)
                 return;
 
+            List<LoadoutChangedCard> changedCards = [];
+            HashSet<ulong> changedPlayers = [];
             foreach (Player player in runState.Players)
             {
                 IReadOnlyList<CardModel> cards = player.Deck.Cards;
@@ -805,16 +871,23 @@ public static class CardModificationStateService
                             effective.MergeFrom(temporary);
                     }
 
-                    bool hasCardMutation = HasCardMutations(effective) || HasCardMutations(previousState);
-                    if (hasCardMutation)
-                    {
-                        PrepareCardForState(card, effective, includeAffliction: true, previousState);
-                        ApplyStateToCard(card, effective);
-                    }
+                    bool hasCardMutation = ApplyStateTransitionToCard(card, effective, previousState, includeAffliction: true);
 
                     if (hasCardMutation || HasVisualOverrides(effective) || HasVisualOverrides(previousState))
                         RefreshLiveCardVisuals(card);
+
+                    changedPlayers.Add(player.NetId);
+                    changedCards.Add(new LoadoutChangedCard(player.NetId, index, card.Id));
                 }
+            }
+
+            if (changedCards.Count > 0)
+            {
+                LoadoutRunContentChangeService.Notify(
+                    LoadoutRunContentKind.Cards,
+                    changedPlayers,
+                    LoadoutRunContentChangeMode.Update,
+                    changedCards);
             }
         }
         catch (Exception exception)
@@ -984,12 +1057,19 @@ public static class CardModificationStateService
         {
             if (_loadedRunStartTime is not null)
             {
+                bool changed;
                 if (normalized.IsEmpty)
-                    _run.Cards.Remove(key);
+                    changed = _run.Cards.Remove(key);
                 else
-                    _run.Cards[key] = normalized;
+                {
+                    changed = !_run.Cards.TryGetValue(key, out CardModificationState? existing)
+                              || !PermanentStatesEquivalent(existing, normalized);
+                    if (changed)
+                        _run.Cards[key] = normalized;
+                }
 
-                SaveRunState();
+                if (changed)
+                    SaveRunState();
             }
         }
 
@@ -1096,15 +1176,13 @@ public static class CardModificationStateService
                     effective.MergeFrom(temporary);
             }
 
-            bool hasCardMutation = HasCardMutations(effective) || HasCardMutations(previousState);
-            if (hasCardMutation)
-            {
-                PrepareCardForState(card, effective, includeAffliction: true, previousState);
-                ApplyStateToCard(card, effective);
-            }
+            bool hasCardMutation = ApplyStateTransitionToCard(card, effective, previousState, includeAffliction: true);
 
             if (hasCardMutation || HasVisualOverrides(effective) || HasVisualOverrides(previousState))
                 RefreshLiveCardVisuals(card);
+
+            LoadoutRunContentChangeService.NotifyCardUpdated(
+                new LoadoutOwnedItem<CardModel>(player, index, card));
         }
         catch (Exception exception)
         {
@@ -1175,6 +1253,28 @@ public static class CardModificationStateService
             CardCmd.ClearAffliction(card);
 
         ResetCardToCanonicalBaseline(card, resetAttachments: false);
+    }
+
+    private static bool ApplyStateTransitionToCard(
+        CardModel card,
+        CardModificationState state,
+        CardModificationState? previousState,
+        bool includeAffliction)
+    {
+        bool hasCardMutation = HasCardMutations(state) || HasCardMutations(previousState);
+        if (!hasCardMutation)
+            return false;
+
+        if (HasCardMutations(previousState))
+        {
+            bool resetAttachments = previousState!.Enchantment is not null
+                                    || previousState.Affliction is not null;
+            ResetCardToCanonicalBaseline(card, resetAttachments, resetUpgrade: false);
+        }
+
+        PrepareCardForState(card, state, includeAffliction, previousState);
+        ApplyStateToCard(card, state, includeAffliction);
+        return true;
     }
 
     private static bool ShouldClearAttachment(AbstractModel? current, CardAttachmentSpec? next, CardAttachmentSpec? previous)
@@ -1393,6 +1493,9 @@ public static class CardModificationStateService
             foreach (Player player in runState.Players)
                 ApplySavedRunStateToPlayerDeck(player, previousPermanentStates, changedPermanentKeys);
 
+            if (changedPermanentKeys is not null && changedPermanentKeys.Count > 0)
+                NotifyChangedPermanentCards(runState, changedPermanentKeys);
+
             if (raiseStateChanged)
                 RaiseStateChanged();
         }
@@ -1400,6 +1503,35 @@ public static class CardModificationStateService
         {
             GD.PushWarning($"CardModification: failed to refresh live decks after permanent overlay update. {exception.Message}");
         }
+    }
+
+    private static void NotifyChangedPermanentCards(RunState runState, IReadOnlySet<string> changedPermanentKeys)
+    {
+        List<LoadoutChangedCard> changedCards = [];
+        HashSet<ulong> changedPlayers = [];
+
+        foreach (Player player in runState.Players)
+        {
+            IReadOnlyList<CardModel> cards = player.Deck.Cards;
+            for (int index = 0; index < cards.Count; index++)
+            {
+                CardModel card = cards[index];
+                if (!changedPermanentKeys.Contains(ToCardKey(card.Id)))
+                    continue;
+
+                changedPlayers.Add(player.NetId);
+                changedCards.Add(new LoadoutChangedCard(player.NetId, index, card.Id));
+            }
+        }
+
+        if (changedCards.Count == 0)
+            return;
+
+        LoadoutRunContentChangeService.Notify(
+            LoadoutRunContentKind.Cards,
+            changedPlayers,
+            LoadoutRunContentChangeMode.Update,
+            changedCards);
     }
 
     private static void RefreshLiveCardVisuals(CardModel card)

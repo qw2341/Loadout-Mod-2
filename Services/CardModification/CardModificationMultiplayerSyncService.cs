@@ -4,6 +4,7 @@ namespace Loadout.Services.CardModification;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -217,18 +218,21 @@ public static class CardModificationMultiplayerSyncService
 
     private static void HandlePermanentSync(LoadoutCardModificationPermanentSyncMessage message, ulong senderId)
     {
-        if (IsHostSession())
+        if (IsHostSession() || !IsExpectedHostSender(senderId))
             return;
 
         StorePendingHostPermanentSnapshot(message.payload);
+        HostPermanentSnapshotApplyMode applyMode = RunManager.Instance.IsInProgress
+            ? HostPermanentSnapshotApplyMode.LiveDecks
+            : HostPermanentSnapshotApplyMode.CatalogOnly;
         CardModificationStateService.ApplyHostPermanentSnapshotJson(
             message.payload,
-            HostPermanentSnapshotApplyMode.CatalogOnly);
+            applyMode);
     }
 
     private static void HandleTemporarySync(LoadoutCardModificationTemporarySyncMessage message, ulong senderId)
     {
-        if (IsHostSession())
+        if (IsHostSession() || !IsExpectedHostSender(senderId))
             return;
 
         CardModificationState? state = null;
@@ -270,6 +274,14 @@ public static class CardModificationMultiplayerSyncService
         {
             return false;
         }
+    }
+
+    private static bool IsExpectedHostSender(ulong senderId)
+    {
+        return LoadoutNetworkBroadcast.IsExpectedHostSender(
+            senderId,
+            _runNetService,
+            RegisteredLobbies.Select(lobby => lobby.NetService));
     }
 
     public static IReadOnlyList<ModelId> ApplyPendingHostPermanentSnapshot(CardModificationPermanentImportMode mode)

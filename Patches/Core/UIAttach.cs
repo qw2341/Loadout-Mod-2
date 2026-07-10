@@ -95,9 +95,8 @@ public static class UIAttach
 
     private static string GetSessionName(AssetLoadingSession session)
     {
-        object value = AccessTools
-            .Field(typeof(AssetLoadingSession), "_name")
-            .GetValue(session);
+        var nameField = AccessTools.Field(typeof(AssetLoadingSession), "_name");
+        object value = nameField?.GetValue(session);
 
         return value as string ?? string.Empty;
     }

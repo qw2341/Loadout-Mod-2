@@ -2726,6 +2726,9 @@ public partial class NGenericSelectScreen : Control
     private Control CreateLayoutView(IGenericSelectItem item, SelectItemState state)
     {
         Control content = item.CreateView(state);
+        if (content is null || !GodotObject.IsInstanceValid(content))
+            throw new InvalidOperationException($"Item '{item.Id}' returned an invalid view.");
+
         if (!_layout.FixedSlots || content is NSelectItemSlot)
         {
             NotifyItemViewReady(item, content);

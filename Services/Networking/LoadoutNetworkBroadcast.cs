@@ -12,6 +12,29 @@ using MegaCrit.Sts2.Core.Runs;
 
 public static class LoadoutNetworkBroadcast
 {
+    public static bool IsExpectedHostSender(ulong senderId, INetGameService? netService)
+    {
+        return netService is INetClientGameService clientService
+               && senderId == clientService.NetClient?.HostNetId;
+    }
+
+    public static bool IsExpectedHostSender(
+        ulong senderId,
+        INetGameService? primaryNetService,
+        IEnumerable<INetGameService?> fallbackNetServices)
+    {
+        if (primaryNetService is INetClientGameService)
+            return IsExpectedHostSender(senderId, primaryNetService);
+
+        foreach (INetGameService? netService in fallbackNetServices)
+        {
+            if (netService is INetClientGameService)
+                return IsExpectedHostSender(senderId, netService);
+        }
+
+        return false;
+    }
+
     public static IReadOnlyList<ulong> GetRunClientRecipients(INetGameService? netService)
     {
         if (netService is null || netService.Type != NetGameType.Host)
