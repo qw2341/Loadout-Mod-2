@@ -63,7 +63,11 @@ public static class LoadoutApplyService
             if (!loadout.HasCards)
                 continue;
 
-            if (ReplaceCardsDirect(targetPlayer, loadout.Cards))
+            bool isStartingDeck = loadout.SpecialPreset == LoadoutSpecialPreset.StartingDeck;
+            IReadOnlyList<SavedCardLoadoutEntry> cardEntries = isStartingDeck
+                ? CreateStartingDeckEntries(targetPlayer)
+                : loadout.Cards;
+            if (ReplaceCardsDirect(targetPlayer, cardEntries, isStartingDeck))
                 changedCardPlayers.Add(targetPlayer.NetId);
         }
 
@@ -88,7 +92,10 @@ public static class LoadoutApplyService
         }
     }
 
-    private static bool ReplaceCardsDirect(Player targetPlayer, IReadOnlyList<SavedCardLoadoutEntry> entries)
+    private static bool ReplaceCardsDirect(
+        Player targetPlayer,
+        IReadOnlyList<SavedCardLoadoutEntry> entries,
+        bool isStartingDeck = false)
     {
         if (!TryGetDeckBackingList(targetPlayer, out List<CardModel> deckCards))
         {
@@ -112,7 +119,7 @@ public static class LoadoutApplyService
             int count = Math.Max(1, entry.Count);
             for (int i = 0; i < count; i++)
             {
-                CardModel? card = CreateDeckCardForLoadout(targetPlayer, canonical, entry.UpgradeLevel);
+                CardModel? card = CreateDeckCardForLoadout(targetPlayer, canonical, entry.UpgradeLevel, isStartingDeck);
                 if (card is null)
                     continue;
 
@@ -136,6 +143,18 @@ public static class LoadoutApplyService
                 new Dictionary<CardModel, CardModificationState>(ReferenceEqualityComparer.Instance));
             return oldCards.Count > 0;
         }
+    }
+
+    private static IReadOnlyList<SavedCardLoadoutEntry> CreateStartingDeckEntries(Player targetPlayer)
+    {
+        return targetPlayer.Character.StartingDeck
+            .Select(card => new SavedCardLoadoutEntry
+            {
+                ModelId = card.Id.ToString(),
+                UpgradeLevel = 0,
+                Count = 1
+            })
+            .ToList();
     }
 
     private static void ReplacePlayerDeckDirect(
@@ -164,11 +183,17 @@ public static class LoadoutApplyService
         targetPlayer.Deck.InvokeCardAddFinished();
     }
 
-    private static CardModel? CreateDeckCardForLoadout(Player targetPlayer, CardModel canonical, int upgradeLevel)
+    private static CardModel? CreateDeckCardForLoadout(
+        Player targetPlayer,
+        CardModel canonical,
+        int upgradeLevel,
+        bool isStartingDeck)
     {
         try
         {
             CardModel card = targetPlayer.RunState.CreateCard(canonical, targetPlayer);
+            if (isStartingDeck)
+                card.FloorAddedToDeck = 1;
             ApplyLoadoutUpgradeLevelDirect(card, upgradeLevel);
             CardModificationStateService.ApplyPermanentToCard(card);
             return card;

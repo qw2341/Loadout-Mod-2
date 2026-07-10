@@ -107,6 +107,17 @@ public static class LoadoutSerializationService
 
     public static SavedLoadout Normalize(SavedLoadout loadout)
     {
+        if (!Enum.IsDefined(loadout.SpecialPreset))
+            loadout.SpecialPreset = LoadoutSpecialPreset.None;
+
+        if (loadout.SpecialPreset == LoadoutSpecialPreset.StartingDeck)
+        {
+            loadout.Name = "Starting Deck";
+            loadout.Kind = LoadoutKind.Cards;
+            loadout.Cards.Clear();
+            loadout.Relics.Clear();
+        }
+
         loadout.Id = string.IsNullOrWhiteSpace(loadout.Id)
             ? Guid.NewGuid().ToString("N")
             : loadout.Id.Trim();

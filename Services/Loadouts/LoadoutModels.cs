@@ -15,6 +15,12 @@ public enum LoadoutKind
     CardsAndRelics
 }
 
+public enum LoadoutSpecialPreset
+{
+    None,
+    StartingDeck
+}
+
 public sealed class SavedLoadout
 {
     [JsonPropertyName("id")]
@@ -25,6 +31,10 @@ public sealed class SavedLoadout
 
     [JsonPropertyName("kind")]
     public LoadoutKind Kind { get; set; }
+
+    [JsonPropertyName("specialPreset")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public LoadoutSpecialPreset SpecialPreset { get; set; }
 
     [JsonPropertyName("createdAt")]
     public long CreatedAtUnixSeconds { get; set; }
@@ -57,6 +67,7 @@ public sealed class SavedLoadout
             Id = Id,
             Name = Name,
             Kind = Kind,
+            SpecialPreset = SpecialPreset,
             CreatedAtUnixSeconds = CreatedAtUnixSeconds,
             UpdatedAtUnixSeconds = UpdatedAtUnixSeconds,
             Cards = Cards.ConvertAll(card => card.Clone()),

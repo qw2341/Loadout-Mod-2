@@ -26,6 +26,7 @@ public partial class NDeckLoadoutPanel : Control
 {
     private const string NodeName = "LoadoutDeckLoadoutPanel";
     private const string NoSelectionId = "__none__";
+    private const string StartingDeckOptionId = "special:starting_deck";
     private const string TargetKey = "deck_loadout_apply";
     private const float PanelWidth = 245f;
     private const float PanelHeight = 340f;
@@ -393,6 +394,21 @@ public partial class NDeckLoadoutPanel : Control
         _entriesByOptionId.Clear();
         List<LoadoutDropdownOption> options = [];
 
+        SavedLoadout startingDeckPreset = new()
+        {
+            Id = StartingDeckOptionId,
+            Name = "Starting Deck",
+            Kind = LoadoutKind.Cards,
+            SpecialPreset = LoadoutSpecialPreset.StartingDeck
+        };
+        _entriesByOptionId[StartingDeckOptionId] = new LoadoutCatalogEntry(
+            StartingDeckOptionId,
+            startingDeckPreset,
+            Editable: false);
+        options.Add(new LoadoutDropdownOption(
+            StartingDeckOptionId,
+            LocMan.Loc("STARTING_DECK_PRESET", "Starting Deck")));
+
         foreach (SavedLoadout loadout in LoadoutStorageService.GetLoadouts())
         {
             string optionId = $"local:{loadout.Id}";
@@ -463,7 +479,10 @@ public partial class NDeckLoadoutPanel : Control
         if (_nameInput is null)
             return;
 
-        _nameInput.Text = TryGetSelected(out LoadoutCatalogEntry entry) ? entry.Loadout.Name : string.Empty;
+        _nameInput.Text = TryGetSelected(out LoadoutCatalogEntry entry)
+                          && entry.Loadout.SpecialPreset == LoadoutSpecialPreset.None
+            ? entry.Loadout.Name
+            : string.Empty;
     }
 
     private void OnLoadoutSelected(string optionId)
