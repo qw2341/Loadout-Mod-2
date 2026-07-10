@@ -6,22 +6,21 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using Loadout.Services.Actions;
 using Loadout.Services.TildeKey;
-using MegaCrit.Sts2.Core.Audio.Debug;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
-using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
@@ -133,88 +132,6 @@ public static class TildeKeyModifyDamagePatch
     }
 }
 
-[HarmonyPatch]
-public static class TildeKeySetupPlayerTurnHandLimitPatch
-{
-    public static MethodBase TargetMethod()
-    {
-        return AccessTools.Method(
-            typeof(CombatManager),
-            "SetupPlayerTurn",
-            [typeof(Player), typeof(HookPlayerChoiceContext)])
-            ?? throw new MissingMethodException(typeof(CombatManager).FullName, "SetupPlayerTurn");
-    }
-
-    [HarmonyPrefix]
-    public static void Prefix(Player player, out IDisposable? __state)
-    {
-        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(player);
-    }
-
-    [HarmonyPostfix]
-    public static void Postfix(IDisposable? __state, ref Task __result)
-    {
-        __result = TildeKeyHandLimitPatchHelpers.HoldForTaskLifetime(__result, __state);
-    }
-
-    [HarmonyFinalizer]
-    public static Exception? Finalizer(Exception? __exception, IDisposable? __state)
-    {
-        if (__exception is not null)
-            __state?.Dispose();
-        return __exception;
-    }
-}
-
-[HarmonyPatch]
-public static class TildeKeyDrawHandLimitPatch
-{
-    public static MethodBase TargetMethod()
-    {
-        return AccessTools.Method(
-            typeof(CardPileCmd),
-            nameof(CardPileCmd.Draw),
-            [typeof(PlayerChoiceContext), typeof(decimal), typeof(Player), typeof(bool)])
-            ?? throw new MissingMethodException(typeof(CardPileCmd).FullName, nameof(CardPileCmd.Draw));
-    }
-
-    [HarmonyPrefix]
-    public static void Prefix(Player player, out IDisposable? __state)
-    {
-        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(player);
-    }
-
-    [HarmonyPostfix]
-    public static void Postfix(IDisposable? __state, ref Task __result)
-    {
-        __result = TildeKeyHandLimitPatchHelpers.HoldForTaskLifetime(__result, __state);
-    }
-
-    [HarmonyFinalizer]
-    public static Exception? Finalizer(Exception? __exception, IDisposable? __state)
-    {
-        if (__exception is not null)
-            __state?.Dispose();
-        return __exception;
-    }
-
-    internal static bool CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot(Player player, int handSize)
-    {
-        if (PileType.Draw.GetPile(player).Cards.Count + PileType.Discard.GetPile(player).Cards.Count == 0)
-        {
-            ThinkCmd.Play(new LocString("combat_messages", "NO_DRAW"), player.Creature, 2.0);
-            return false;
-        }
-
-        if (PileType.Hand.GetPile(player).Cards.Count >= handSize)
-        {
-            ThinkCmd.Play(new LocString("combat_messages", "HAND_FULL"), player.Creature, 2.0);
-            return false;
-        }
-
-        return true;
-    }
-}
 
 [HarmonyPatch(
     typeof(CardModel),
@@ -242,81 +159,6 @@ public static class TildeKeyDrawTillHandLimitAfterCardSettledPatch
     }
 }
 
-[HarmonyPatch]
-public static class TildeKeyPlayCardHandLimitPatch
-{
-    public static MethodBase TargetMethod()
-    {
-        return AccessTools.Method(typeof(PlayCardAction), "ExecuteAction")
-               ?? throw new MissingMethodException(typeof(PlayCardAction).FullName, "ExecuteAction");
-    }
-
-    [HarmonyPrefix]
-    public static void Prefix(PlayCardAction __instance, out IDisposable? __state)
-    {
-        __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(__instance.Player);
-    }
-
-    [HarmonyPostfix]
-    public static void Postfix(IDisposable? __state, ref Task __result)
-    {
-        __result = TildeKeyHandLimitPatchHelpers.HoldForTaskLifetime(__result, __state);
-    }
-
-    [HarmonyFinalizer]
-    public static Exception? Finalizer(Exception? __exception, IDisposable? __state)
-    {
-        if (__exception is not null)
-            __state?.Dispose();
-        return __exception;
-    }
-}
-
-[HarmonyPatch(typeof(CardPileCmd), "CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot")]
-public static class TildeKeyDrawPossibleHandLimitPatch
-{
-    [HarmonyPrefix]
-    public static bool Prefix(Player player, ref bool __result)
-    {
-        if (LoadoutCardAddRules.ShouldIgnoreHandLimit
-            || !TildeKeyStateService.TryGetHandSizeOverride(player, out int handSize)
-            || handSize == CardPile.MaxCardsInHand)
-            return true;
-
-        __result = TildeKeyDrawHandLimitPatch.CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot(player, handSize);
-        return false;
-    }
-}
-
-[HarmonyPatch(typeof(CardPileCmd), nameof(CardPileCmd.Add), typeof(IEnumerable<CardModel>), typeof(CardPile), typeof(CardPilePosition), typeof(AbstractModel), typeof(bool))]
-public static class TildeKeyAddToHandLimitPatch
-{
-    [HarmonyPrefix]
-    public static void Prefix(IEnumerable<CardModel> cards, CardPile newPile, out IDisposable? __state)
-    {
-        __state = null;
-        if (newPile.Type != PileType.Hand)
-            return;
-
-        CardModel? firstCard = cards.FirstOrDefault();
-        if (firstCard?.Owner is not null)
-            __state = TildeKeyHandLimitPatchHelpers.BeginHandLimitOverride(firstCard.Owner);
-    }
-
-    [HarmonyPostfix]
-    public static void Postfix(IDisposable? __state, ref Task __result)
-    {
-        __result = TildeKeyHandLimitPatchHelpers.HoldForTaskLifetime(__result, __state);
-    }
-
-    [HarmonyFinalizer]
-    public static Exception? Finalizer(Exception? __exception, IDisposable? __state)
-    {
-        if (__exception is not null)
-            __state?.Dispose();
-        return __exception;
-    }
-}
 
 [HarmonyPatch(typeof(NClickableControl), nameof(NClickableControl._GuiInput))]
 public static class TildeKeyRelicCounterInputPatch
@@ -443,41 +285,367 @@ public static class TildeKeyGodmodeKillPatch
     }
 }
 
-internal static class TildeKeyHandLimitPatchHelpers
+/// <summary>
+/// Replaces the game's hard-coded CardPile.MaxCardsInHand reads with the
+/// hand-size override for the player currently executing the patched method.
+///
+/// The context is resolved from the synchronized method's arguments or from
+/// fields on its async state machine. It never assumes the local player, so
+/// host and guest may safely have different hand limits.
+/// </summary>
+[HarmonyPatch]
+public static class TildeKeyStaticHandLimitPatches
 {
-    private const int NativeHandLimit = 10;
-
-    public static IDisposable? BeginHandLimitOverride(Player? player)
+    public static IEnumerable<MethodBase> TargetMethods()
     {
-        if (player is null || LoadoutCardAddRules.ShouldIgnoreHandLimit)
-            return null;
+        return TildeKeyHandLimitPatchRuntime.GetTargets(isStatic: true);
+    }
 
-        int effectiveHandLimit = TildeKeyStateService.GetEffectiveHandSize(player);
-        int? currentHandLimit = LoadoutCardAddRules.CurrentHandLimitOverride;
-        if (currentHandLimit == effectiveHandLimit
-            || (currentHandLimit is null && effectiveHandLimit == NativeHandLimit))
+    [HarmonyPrefix]
+    public static void Prefix(object[] __args, out Player? __state)
+    {
+        TildeKeyHandLimitPatchRuntime.EnterContext(null, __args, out __state);
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(Player? __state)
+    {
+        TildeKeyHandLimitPatchRuntime.RestoreContext(__state);
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, Player? __state)
+    {
+        TildeKeyHandLimitPatchRuntime.RestoreContext(__state);
+        return __exception;
+    }
+
+    [HarmonyTranspiler]
+    public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        return TildeKeyHandLimitPatchRuntime.ReplaceMaxCardsInHandCalls(instructions);
+    }
+}
+
+/// <summary>
+/// Instance targets include compiler-generated async MoveNext methods. Their
+/// captured Player/CardModel/CardPile fields identify the correct player.
+/// </summary>
+[HarmonyPatch]
+public static class TildeKeyInstanceHandLimitPatches
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        return TildeKeyHandLimitPatchRuntime.GetTargets(isStatic: false);
+    }
+
+    [HarmonyPrefix]
+    public static void Prefix(object __instance, object[] __args, out Player? __state)
+    {
+        TildeKeyHandLimitPatchRuntime.EnterContext(__instance, __args, out __state);
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(Player? __state)
+    {
+        TildeKeyHandLimitPatchRuntime.RestoreContext(__state);
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, Player? __state)
+    {
+        TildeKeyHandLimitPatchRuntime.RestoreContext(__state);
+        return __exception;
+    }
+
+    [HarmonyTranspiler]
+    public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        return TildeKeyHandLimitPatchRuntime.ReplaceMaxCardsInHandCalls(instructions);
+    }
+}
+
+internal static class TildeKeyHandLimitPatchRuntime
+{
+    private static readonly object SyncRoot = new();
+    private static readonly Dictionary<Type, FieldInfo[]> ContextFieldCache = new();
+    private static readonly Lazy<IReadOnlyList<MethodInfo>> Targets = new(FindTargets);
+
+    [ThreadStatic]
+    private static Player? _contextPlayer;
+
+    public static IEnumerable<MethodBase> GetTargets(bool isStatic)
+    {
+        return Targets.Value.Where(method => method.IsStatic == isStatic);
+    }
+
+    public static void EnterContext(
+        object? instance,
+        object[]? arguments,
+        out Player? previousPlayer)
+    {
+        previousPlayer = _contextPlayer;
+        _contextPlayer = ResolvePlayer(instance, arguments) ?? previousPlayer;
+    }
+
+    public static void RestoreContext(Player? previousPlayer)
+    {
+        _contextPlayer = previousPlayer;
+    }
+
+    public static IEnumerable<CodeInstruction> ReplaceMaxCardsInHandCalls(
+        IEnumerable<CodeInstruction> instructions)
+    {
+        MethodInfo? original = AccessTools.PropertyGetter(
+            typeof(CardPile),
+            nameof(CardPile.MaxCardsInHand));
+        MethodInfo? replacement = AccessTools.Method(
+            typeof(TildeKeyHandLimitPatchRuntime),
+            nameof(GetContextualMaxCardsInHand));
+
+        foreach (CodeInstruction instruction in instructions)
         {
-            return null;
+            if (original is not null
+                && replacement is not null
+                && (instruction.opcode == OpCodes.Call || instruction.opcode == OpCodes.Callvirt)
+                && Equals(instruction.operand, original))
+            {
+                instruction.opcode = OpCodes.Call;
+                instruction.operand = replacement;
+            }
+
+            yield return instruction;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int GetContextualMaxCardsInHand()
+    {
+        return _contextPlayer is { } player
+            ? TildeKeyStateService.GetEffectiveHandSize(player)
+            : CardPile.MaxCardsInHand;
+    }
+
+    private static IReadOnlyList<MethodInfo> FindTargets()
+    {
+        MethodInfo? maxCardsGetter = AccessTools.PropertyGetter(
+            typeof(CardPile),
+            nameof(CardPile.MaxCardsInHand));
+        if (maxCardsGetter is null)
+        {
+            GD.PushWarning("TildeKey: could not resolve CardPile.MaxCardsInHand.");
+            return [];
         }
 
-        return LoadoutCardAddRules.OverrideHandLimit(effectiveHandLimit);
+        List<(Type? Type, string MethodName)> candidates =
+        [
+            (typeof(CardPileCmd), nameof(CardPileCmd.Add)),
+            (typeof(CardPileCmd), nameof(CardPileCmd.Draw)),
+            (typeof(CardPileCmd), "CheckIfDrawIsPossibleAndShowThoughtBubbleIfNot"),
+            (typeof(CombatManager), "SetupPlayerTurn"),
+            (AccessTools.TypeByName("MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.CardConsoleCmd"), "Process"),
+            (AccessTools.TypeByName("MegaCrit.Sts2.Core.Models.Cards.Anointed"), "OnPlay"),
+            (AccessTools.TypeByName("MegaCrit.Sts2.Core.Models.Cards.CrashLanding"), "OnPlay"),
+            (AccessTools.TypeByName("MegaCrit.Sts2.Core.Models.Cards.Dredge"), "OnPlay"),
+            (AccessTools.TypeByName("MegaCrit.Sts2.Core.Models.Cards.NeowsFury"), "OnPlay"),
+            (AccessTools.TypeByName("MegaCrit.Sts2.Core.Models.Cards.Pillage"), "OnPlay"),
+            (AccessTools.TypeByName("MegaCrit.Sts2.Core.Models.Cards.Scrawl"), "OnPlay")
+        ];
+
+        HashSet<MethodInfo> targets = [];
+        foreach ((Type? type, string methodName) in candidates)
+        {
+            if (type is null)
+                continue;
+
+            MethodInfo[] methods;
+            try
+            {
+                methods = type.GetMethods(
+                    BindingFlags.Instance
+                    | BindingFlags.Static
+                    | BindingFlags.Public
+                    | BindingFlags.NonPublic
+                    | BindingFlags.DeclaredOnly);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning(
+                    $"TildeKey: failed inspecting hand-limit target type '{type.FullName}'. " +
+                    exception.Message);
+                continue;
+            }
+
+            foreach (MethodInfo method in methods.Where(candidate =>
+                         string.Equals(candidate.Name, methodName, StringComparison.Ordinal)))
+            {
+                if (CallsMethod(method, maxCardsGetter.MetadataToken))
+                    targets.Add(method);
+
+                AsyncStateMachineAttribute? stateMachine =
+                    method.GetCustomAttribute<AsyncStateMachineAttribute>();
+                MethodInfo? moveNext = stateMachine?.StateMachineType.GetMethod(
+                    nameof(IAsyncStateMachine.MoveNext),
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (moveNext is not null
+                    && CallsMethod(moveNext, maxCardsGetter.MetadataToken))
+                {
+                    targets.Add(moveNext);
+                }
+            }
+        }
+
+        if (targets.Count == 0)
+        {
+            GD.PushWarning(
+                "TildeKey: no current CardPile.MaxCardsInHand call sites were found. " +
+                "The game may have changed its hand-limit implementation.");
+        }
+
+        return targets.ToList();
     }
 
-    public static Task HoldForTaskLifetime(Task task, IDisposable? scope)
+    private static bool CallsMethod(MethodInfo method, int metadataToken)
     {
-        return scope is null ? task : AwaitAndDisposeAsync(task, scope);
-    }
-
-    private static async Task AwaitAndDisposeAsync(Task task, IDisposable scope)
-    {
+        byte[]? il;
         try
         {
-            await task;
+            il = method.GetMethodBody()?.GetILAsByteArray();
         }
-        finally
+        catch
         {
-            scope.Dispose();
+            return false;
         }
+
+        if (il is null || il.Length < 5)
+            return false;
+
+        for (int i = 0; i <= il.Length - 5; i++)
+        {
+            if (il[i] is not 0x28 and not 0x6F)
+                continue;
+
+            if (BitConverter.ToInt32(il, i + 1) == metadataToken)
+                return true;
+        }
+
+        return false;
     }
 
+    private static Player? ResolvePlayer(object? instance, object[]? arguments)
+    {
+        if (arguments is not null)
+        {
+            foreach (object? argument in arguments)
+            {
+                if (TryResolvePlayer(argument, out Player? player))
+                    return player;
+            }
+        }
+
+        if (TryResolvePlayer(instance, out Player? directPlayer))
+            return directPlayer;
+
+        if (instance is null)
+            return null;
+
+        foreach (FieldInfo field in GetContextFields(instance.GetType()))
+        {
+            object? value;
+            try
+            {
+                value = field.GetValue(instance);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (TryResolvePlayer(value, out Player? player))
+                return player;
+        }
+
+        return null;
+    }
+
+    private static bool TryResolvePlayer(object? value, out Player? player)
+    {
+        switch (value)
+        {
+            case Player directPlayer:
+                player = directPlayer;
+                return true;
+
+            case CardModel card:
+                try
+                {
+                    player = card.Owner;
+                    return player is not null;
+                }
+                catch
+                {
+                    break;
+                }
+
+            case CardPile pile:
+                player = ResolvePlayerOwningHandPile(pile);
+                return player is not null;
+        }
+
+        player = null;
+        return false;
+    }
+
+    private static Player? ResolvePlayerOwningHandPile(CardPile pile)
+    {
+        RunState? runState;
+        try
+        {
+            runState = RunManager.Instance.IsInProgress
+                ? RunManager.Instance.DebugOnlyGetState()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (runState is null)
+            return null;
+
+        foreach (Player player in runState.Players)
+        {
+            try
+            {
+                if (ReferenceEquals(PileType.Hand.GetPile(player), pile))
+                    return player;
+            }
+            catch
+            {
+                // Combat piles may not be initialized for every player yet.
+            }
+        }
+
+        return null;
+    }
+
+    private static FieldInfo[] GetContextFields(Type type)
+    {
+        lock (SyncRoot)
+        {
+            if (ContextFieldCache.TryGetValue(type, out FieldInfo[]? cached))
+                return cached;
+
+            FieldInfo[] fields = type
+                .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(field =>
+                    typeof(Player).IsAssignableFrom(field.FieldType)
+                    || typeof(CardModel).IsAssignableFrom(field.FieldType)
+                    || typeof(CardPile).IsAssignableFrom(field.FieldType))
+                .ToArray();
+
+            ContextFieldCache[type] = fields;
+            return fields;
+        }
+    }
 }

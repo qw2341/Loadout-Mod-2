@@ -411,7 +411,9 @@ public static class TildeKeyStateService
 
     public static int GetEffectiveHandSize(Player player)
     {
-        return TryGetHandSizeOverride(player, out int value) ? value : DefaultHandSize;
+        return TryGetHandSizeOverride(player, out int value)
+            ? Math.Max(0, value)
+            : CardPile.MaxCardsInHand;
     }
 
     public static bool TryGetPlayerDamageMultiplier(Player player, out int value)
@@ -1805,10 +1807,14 @@ public static class TildeKeyStateService
                     .Where(pair => !string.IsNullOrWhiteSpace(pair.Key)
                                    && DefinitionById.ContainsKey(pair.Key)
                                    && pair.Value is not null
-                                   && pair.Value.Locked)
+                                   && (pair.Value.Locked || IsVirtualStat(pair.Key)))
                     .ToDictionary(
                         pair => pair.Key,
-                        pair => new TildeKeySavedStat { Value = pair.Value.Value, Locked = true },
+                        pair => new TildeKeySavedStat
+                        {
+                            Value = pair.Value.Value,
+                            Locked = pair.Value.Locked
+                        },
                         StringComparer.Ordinal) ?? new Dictionary<string, TildeKeySavedStat>(StringComparer.Ordinal),
                 Toggles = NormalizeToggles(value.Toggles),
                 RelicCounterLocks = NormalizeRelicCounterLocks(value.RelicCounterLocks)
