@@ -6,10 +6,10 @@ uid="uid://byhlfs8h2nuyb"
 
 [deps]
 
-files=["res://Loadout/localization/uitext.en.translation", "res://Loadout/localization/uitext.zh_CN.translation"]
+files=["res://Loadout/localization/uitext.en.translation", "res://Loadout/localization/uitext.zh_CN.translation", "res://Loadout/localization/uitext.fr.translation", "res://Loadout/localization/uitext.ja.translation", "res://Loadout/localization/uitext.ko.translation", "res://Loadout/localization/uitext.es.translation"]
 
 source_file="res://Loadout/localization/uitext.csv"
-dest_files=["res://Loadout/localization/uitext.en.translation", "res://Loadout/localization/uitext.zh_CN.translation"]
+dest_files=["res://Loadout/localization/uitext.en.translation", "res://Loadout/localization/uitext.zh_CN.translation", "res://Loadout/localization/uitext.fr.translation", "res://Loadout/localization/uitext.ja.translation", "res://Loadout/localization/uitext.ko.translation", "res://Loadout/localization/uitext.es.translation"]
 
 [params]
 

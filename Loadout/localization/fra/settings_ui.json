@@ -1,0 +1,21 @@
+{
+  "LOADOUT.mod_title": "Équipement",
+  "LOADOUT-LOADOUT_PANEL_SECTION.title": "Panneau d’équipement",
+  "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "Activer l’écran des équipements de deck",
+  "LOADOUT-PANEL_SKIN.title": "Apparence du panneau d’équipement",
+  "LOADOUT-PANEL_SKIN.Default": "Par défaut",
+  "LOADOUT-PANEL_SKIN.Isaac": "Isaac",
+  "LOADOUT-PANEL_SKIN.Legacy": "Classique",
+  "LOADOUT-PANEL_SKIN.STS1": "Slay the Spire 1",
+  "LOADOUT-PANEL_SKIN.XGGG": "Isaac",
+  "LOADOUT-PANEL_ANIMATION.title": "Animation du panneau d’équipement",
+  "LOADOUT-PANEL_ANIMATION.YellowGlowPulse": "Pulsation lumineuse jaune",
+  "LOADOUT-PANEL_ANIMATION.DockMagnify": "Agrandissement du dock",
+  "LOADOUT-CARD_MODIFICATIONS_SECTION.title": "Modifications des cartes",
+  "LOADOUT-PERMANENT_CARD_MODIFICATIONS.title": "Modifications permanentes des cartes",
+  "LOADOUT-RESET_ALL_PERMANENT_CARD_MODIFICATIONS.title": "Réinitialiser toutes les modifications permanentes des cartes",
+  "LOADOUT-RESET_STATUS_READY.title": "",
+  "LOADOUT-RESET_STATUS_SUCCEEDED.title": "Statut : les modifications permanentes des cartes ont été réinitialisées",
+  "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "Statut : aucune modification permanente de carte à réinitialiser",
+  "LOADOUT-RESET_STATUS_FAILED.title": "Statut : échec de la réinitialisation ; consultez le journal pour plus de détails"
+}

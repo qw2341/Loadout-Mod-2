@@ -1,230 +1,230 @@
-keys,en,zh_CN
-ui.text_placeholder,Enter text here,请输入文本
-TITLE_SELECT,Select,选择
-SEARCH,Search,搜索
-SORT,Sort,排序
-FILTERS,Filters,筛选
-ALL,All,全部
-ADD,Add,添加
-REMOVE,Remove,移除
-SAVE,Save,保存
-CANCEL,Cancel,取消
-LOADOUT_PANEL_ITEM_TITLE,{Title},{Title}
-SELECTED_COUNT,Selected: {0},已选择: {0}
-FILTER_GROUP_CLASS,Class,职业
-FILTER_GROUP_TYPE,Type,类型
-FILTER_GROUP_RARITY,Rarity,稀有度
-FILTER_GROUP_LAYOUT,Layout,布局
-FILTER_GROUP_SCOPE,Scope,范围
-FILTER_GROUP_STACK,Stack,叠加
-FILTER_GROUP_FAVORITES,Favorites,收藏
-FILTER_GROUP_KEYWORD,Keyword,关键词
-FILTER_GROUP_TAG,Tag,标签
-FILTER_GROUP_COST,Cost,费用
-FILTER_GROUP_ACT,Act,章节
-FILTER_GROUP_MONSTER_CATEGORY,Category,怪物类型
-LOADOUT_TARGET,Target,目标
-LOADOUT_TARGET_ALL_PLAYERS,All Players,所有玩家
-LOADOUT_TARGET_ALL_MONSTERS,All Monsters,所有怪物
-LOADOUT_TARGET_PLAYER_FALLBACK,Player {0},玩家 {0}
-SORT_NAME,Name,名称
-SORT_ID,ID,ID
-SAVE_PERMANENT,Save Permanent,永久保存
-RESET_TEMPORARY,Reset Temporary,重置临时修改
-RESET_PERMANENT,Reset Permanent,重置永久修改
-CARD_MOD_NUMERIC_STATS,Numeric Stats,数值属性
-CARD_MOD_ENERGY_COST,Energy Cost,费用
-CARD_MOD_REPLAY_COUNT,Replay Count,重放
-CARD_MOD_STAR_COST,Star Cost,辉星
-CARD_MOD_CARD_FIELDS,Card Fields,卡牌字段
-CARD_MOD_ATTACHMENTS,Attachments,附加效果
-CARD_MOD_ENCHANTMENT,Enchantment,附魔
-CARD_MOD_AFFLICTION,Affliction,负面附加
-CARD_MOD_AMOUNT,Amount,数量
-CARD_MOD_MODIFY_NAME,Modify Name,修改名称
-CARD_MOD_MODIFY_DESCRIPTION,Modify Description,修改描述
-CARD_MOD_NO_VALID_ATTACHMENTS,No valid attachments available,没有可用的附加效果
-CARD_MOD_HOVER_TIPS,Hover Tips,提示
-SORT_COST,Cost,费用
-SORT_LIBRARY,Library,图鉴
-VIEW_UPGRADES,View Upgrades,查看升级
-UPGRADE_ALL,Upgrade All,升级全部
-SORT_RARITY,Rarity,稀有度
-SORT_TYPE,Type,类型
-CARD_TYPE_ATTACK,Attack,攻击
-CARD_TYPE_SKILL,Skill,技能
-CARD_TYPE_POWER,Power,能力
-RARITY_BASIC,Basic,基础
-RARITY_COMMON,Common,普通
-RARITY_UNCOMMON,Uncommon,罕见
-RARITY_RARE,Rare,稀有
-LAYOUT_DEFAULT,Default,默认
-LAYOUT_COMBAT,Combat,战斗
-LAYOUT_ANCIENT,Ancient,远古
-SCOPE_SHARED,Shared,共享
-SCOPE_SOLO,Solo,单人
-CATEGORY_EVENT,Event,事件
-CATEGORY_POTION,Potion,药水
-CATEGORY_RELIC,Relic,遗物
-POWER_TYPE_BUFF,Buff,增益
-POWER_TYPE_DEBUFF,Debuff,减益
-POWER_STACK_COUNTER,Counter,计数
-POWER_STACK_SINGLE,Single,单层
-FAVORITES_ONLY,Favorites,收藏
-POWER_GIVER_FAVORITES_MODE,Powers,能力
-POWER_GIVER_ALL_POWERS,All Powers,全部能力
-POWER_GIVER_CLEAR_CURRENT_BUFFS,Clear Current Buffs,清除当前增益
-POWER_GIVER_CLEAR_CURRENT_DEBUFFS,Clear Current Debuffs,清除当前减益
-POWER_GIVER_TARGET,Target,目标
-POWER_GIVER_TARGET_PLAYER,Player,玩家
-POWER_GIVER_TARGET_PLAYERS,Players,玩家
-POWER_GIVER_TARGET_MONSTERS,Monsters,怪物
-SHARED,Shared,共享
-COLORLESS,Colorless,无色
-EVENT,Event,事件
-NONE,None,无
-OTHER,Other,其他
-ENUM_POTIONRARITY_COMMON,Common,普通
-ENUM_POTIONRARITY_UNCOMMON,Uncommon,罕见
-ENUM_POTIONRARITY_RARE,Rare,稀有
-ENUM_POTIONRARITY_EVENT,Event,事件
-ENUM_POTIONRARITY_TOKEN,Token,令牌
-ENUM_RELICRARITY_STARTER,Starter,初始
-ENUM_RELICRARITY_COMMON,Common,普通
-ENUM_RELICRARITY_UNCOMMON,Uncommon,罕见
-ENUM_RELICRARITY_RARE,Rare,稀有
-ENUM_RELICRARITY_SHOP,Shop,商店
-ENUM_RELICRARITY_ANCIENT,Ancient,远古
-ENUM_RELICRARITY_EVENT,Event,事件
-HOST_PERMAMODS_TITLE,Host Modifications,主机的永久修改
-ROOM,Room,房间
-GO_TO_ROOM,Go to, 前往
-LOADOUTBAG_TITLE,Loadout Bag,装备箱
-LOADOUTBAG_DESC,"Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action.",右键此遗物来获取任何你想要的遗物。左键获取。Ctrl x5，Shift x10。Ctrl + 右键来重复上一次操作。
-LOADOUTBAGALT_TITLE,Death Certificate,死亡证明
-LOADOUTBAGALT_DESC,"Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action.",右键此遗物来获取任何你想要的遗物。左键获取。Ctrl x5，Shift x10。Ctrl + 右键来重复上一次操作。
-THEBIN_TITLE,The Bin,回收桶
-THEBIN_DESC,Right-click this relic to obliterate any relic you want.,右键此遗物来移除任何你不想要的遗物。
-THEBINALT_TITLE,The Void,虚空
-THEBINALT_DESC,Right-click this relic to void any relic you want.,右键此遗物来吸入任何你不想要的遗物。
-LOADOUTCAULDRON_TITLE,The Cauldron,炼药大锅
-LOADOUTCAULDRON_DESC,Right-click this relic to obtain any potion you want. Ctrl + right click to repeat the last action.,右键此遗物来获取任何你想要的药水。Ctrl + 右键来重复上一次操作。
-LOADOUTCAULDRONALT_TITLE,Mom's Bottle of Pills,妈妈的药瓶
-LOADOUTCAULDRONALT_DESC,Right-click this relic to obtain any potion you want. Ctrl + right click to repeat the last action.,右键此遗物来获取任何你想要的药水。Ctrl + 右键来重复上一次操作。
-CARDPRINTER_TITLE,Card Printer,印卡机
-CARDPRINTER_DESC,Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action.,右键此遗物来添加卡牌进入牌组；战斗中使用也会同时添加进手牌。Ctrl + 右键来重复上一次操作。
-CARDSHREDDER_TITLE,Card Shredder,删卡机
-CARDSHREDDER_DESC,Right-click this relic to obliterate any card you want; use during combat will also remove it from combat.,右键此遗物来从牌组删除卡牌; 战斗中使用也会同时将其从战斗中删除。
-CARDMODIFIER_TITLE,Card Modifier,改卡机
-CARDMODIFIER_DESC,Right-click this relic to modify any card you want; right-click cards to modify them.,右键此遗物来升级卡牌从牌组；右键卡牌来修改它。
-CARDPRINTERALT_TITLE,Deck of Cards,卡牌盒
-CARDPRINTERALT_DESC,Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action.,右键此遗物来添加卡牌进入牌组；战斗中使用也会同时添加进手牌。按住Shift为x10张，Ctrl为x5张。Ctrl + 右键来重复上一次操作。
-CARDSHREDDERALT_TITLE,Torn Card,扑克牌残片
-CARDSHREDDERALT_DESC,Right-click this relic to obliterate any card you want; use during combat will also remove it from combat.,右键此遗物来从牌组删除卡牌; 战斗中使用也会同时将其从战斗中删除。
-CARDMODIFIERALT_TITLE,Blank Card,空白卡牌
-CARDMODIFIERALT_DESC,Right-click this relic to modify any card you want; right-click cards to modify them.,右键此遗物来升级卡牌从牌组；右键卡牌来修改它。
-EVENTFULCOMPASS_TITLE,Eventful Compass,事件指南针
-EVENTFULCOMPASS_DESC,Right-click this relic to select the event you want. Ctrl + right click to repeat the last action.,右键此遗物来选择你想去的事件。Ctrl + 右键来重复上一次操作。
-EVENTFULCOMPASSALT_TITLE,The Compass,指南针
-EVENTFULCOMPASSALT_DESC,Right-click this relic to select the event you want. Ctrl + right click to repeat the last action.,右键此遗物来选择你想去的事件。Ctrl + 右键来重复上一次操作。
-POWERGIVER_TITLE,Potion of Powers,能力药水
-POWERGIVER_DESC,"Right-click this relic to select the power for you/monsters at the start/middle of combat. Left-click to increase, right-click to decrease. Ctrl x5, Shift x10. Alt + left-click to favorite. Ctrl + right click to repeat the last action.","右键此遗物来选择你或怪物在战斗开始时/中获得的能力。 左键增加，右键减少。Ctrl x5, Shift x10。 Alt+左键收藏。Ctrl + 右键来重复上一次操作。"
-POWERGIVERALT_TITLE,Lemegeton,所罗门魔典
-POWERGIVERALT_DESC,"Right-click this relic to select the power for you/monsters at the start/middle of combat. Left-click to increase, right-click to decrease. Ctrl x5, Shift x10. Alt + left-click to favorite. Ctrl + right click to repeat the last action.","右键此遗物来选择你或怪物在战斗开始时/中获得的能力。 左键增加，右键减少。Ctrl x5, Shift x10。 Alt+左键收藏。Ctrl + 右键来重复上一次操作。"
-TILDEKEY_TITLE,Reality Manipulator,现实操纵仪
-TILDEKEY_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。
-TILDEKEY_GODMODE,Godmode,上帝模式
-TILDEKEY_GO_TO_ANY_ROOM,Go To Any Room,前往任意房间
-TILDEKEY_LOCK,Lock,锁定
-TILDEKEY_STAT_CURRENT_HP,Current HP,当前生命值
-TILDEKEY_STAT_MAX_HP,Max HP,最大生命值
-TILDEKEY_STAT_MAX_ENERGY,Max Energy,最大能量
-TILDEKEY_STAT_COMBAT_ENERGY,Combat Energy,战斗能量
-TILDEKEY_STAT_BASE_ORB_SLOTS,Base Orb Slots,基础充能球栏位
-TILDEKEY_STAT_MAX_POTION_SLOTS,Max Potion Slots,最大药水栏位
-TILDEKEY_STAT_DRAW_PER_TURN,Draw Per Turn,每回合抽牌
-TILDEKEY_STAT_HAND_SIZE,Max Hand Size,手牌上限
-TILDEKEY_STAT_PLAYER_DAMAGE_MULTIPLIER,Player Damage Multiplier(%),玩家伤害倍数（%）
-TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER,Enemy Damage Multiplier(%),敌人伤害倍数（%）
-TILDEKEY_INFINITE_ENERGY,Infinite Energy,无限能量
-TILDEKEY_DRAW_TILL_HAND_LIMIT,Draw Till Hand Limit,抽牌至手牌上限
-TILDEKEY_SCROLL_RELIC_COUNTER,Scroll Edit Relic Counter,滚轮编辑遗物计数
-TILDEKEY_STAT_TURN_NUMBER,Turn Number,回合数
-TILDEKEY_STAT_CARD_SHOP_REMOVALS_USED,Card Shop Removals Used,商店删卡次数
-TILDEKEY_STAT_WONGO_POINTS,Wongo Points,旺购点数
-TILDEKEY_STAT_DAMAGE_DEALT,Damage Dealt,已造成伤害
-TILDEKEY_STAT_DEBUFFS_APPLIED,Debuffs Applied,已施加减益
-TILDEKEYALT_TITLE,Tilde Key,波浪键
-TILDEKEYALT_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。
-BOTTLEDMONSTER_TITLE,Bottled Monster,瓶装怪物
-BOTTLEDMONSTER_DESC,"Right-click this relic to spawn any monster you want. Ctrl + right click to resummon the last summon. If none, dupe monsters instead.",右键此遗物来生成任意怪物。Ctrl + 右键来重复生成上一个。如没有则复制房间怪物。
-BOTTLEDMONSTERALT_TITLE,Friendly Ball,友好球
-BOTTLEDMONSTERALT_DESC,"Right-click this relic to spawn any monster you want. Ctrl + right click to resummon the last summon. If none, dupe monsters instead.",右键此遗物来生成任意怪物。Ctrl + 右键来重复生成上一个。如没有则复制房间怪物。
-ORBBOX_TITLE,Box of Orbs,球盒
-ORBBOX_DESC,Right-click this relic to spawn any orb you want.,右键获得任何你想要的球。
-ORBBOXALT_TITLE,Book of Virtues,美德之书
-ORBBOXALT_DESC,Right-click this relic to spawn any wisp you want.,右键获得任何你想要的魂火跟班。
-ALLINONEBAG_TITLE,Everything Bag,装备箱2.0
-ALLINONEBAG_DESC,Right-click this relic to toggle other loadout relics.,右键此遗物来显示/隐藏其他 loadout 遗物。
-ALLINONEBAGALT_TITLE,Death Certificate 2.0,死亡证明2.0
-ALLINONEBAGALT_DESC,Right-click this relic to toggle other loadout relics.,右键此遗物来显示/隐藏其他 loadout 遗物。
-BLIGHTCHEST_TITLE,Tiny Blight Chest,小荒疫箱
-BLIGHTCHEST_DESC,"Right-click this relic to obtain any blights. Left-click to obtain, right-click to remove. Ctrl x5, Shift x10.",右键获得任何你想要的荒疫。左键获取，右键移除。Ctrl x5，Shift x10。
-BLIGHTCHESTALT_TITLE,Tiny Blight Chest,小荒疫箱
-BLIGHTCHESTALT_DESC,"Right-click this relic to obtain any blights. Left-click to obtain, right-click to remove. Ctrl x5, Shift x10.",右键获得任何你想要的荒疫。左键获取，右键移除。Ctrl x5，Shift x10。
-ALLINONEBAGUP_TITLE,Ultimate Bag,终极装备箱
-ALLINONEBAGUP_DESC,Right-click this relic to win the game.,右键此遗物来获取胜利。
-HOST_PERMAMODS_DOWNLOAD_TITLE, Download Host Permamod,下载主机永久修改
-DAMAGE,Damage,伤害
-DYNAMIC_VAR_DAMAGEBACK,Damage Back,伤害返还
-DYNAMIC_VAR_CALCULATED_BLOCK,Calculated Block,计算格挡
-DYNAMIC_VAR_CALCULATED_DAMAGE,Calculated Damage,计算伤害
-DYNAMIC_VAR_CALCULATION_BASE,Base Value,基础数值
-DYNAMIC_VAR_CALCULATION_EXTRA,Extra Value,额外数值
-DYNAMIC_VAR_CARDS,Cards,卡牌
-DYNAMIC_VAR_DAMAGE,Damage,伤害
-DYNAMIC_VAR_EXTRA_DAMAGE,Extra Damage,额外伤害
-DYNAMIC_VAR_HEAL,Heal,治疗
-DYNAMIC_VAR_HP_LOSS,HP Loss,生命流失
-DYNAMIC_VAR_IF_UPGRADED,If Upgraded,升级时
-DYNAMIC_VAR_MAX_HP,Max HP,最大生命值
-DYNAMIC_VAR_OSTY_DAMAGE,Osty Damage,奥斯蒂伤害
-DYNAMIC_VAR_STRENGTHLOSS,Strength Loss,力量失去
-DYNAMIC_VAR_POWER,Power,效力
-DYNAMIC_VAR_INCREASE,Increase,增加
-CURSE,Curse,诅咒
-QUEST,Quest,任务
-STATUS,Status,状态
-TOKEN,Token,衍生
-ALLOW_GUEST_LOADOUT_PANEL,Allow others to use Loadout panel,允许他人使用Loadout
-MONSTER_CATEGORY_BOSS,Boss,Boss
-MONSTER_CATEGORY_ELITE,Elite,精英
-MONSTER_CATEGORY_MONSTER,Monster,普通
-DECK_LOADOUTS_TITLE,Loadouts,卡组预设
-NO_SAVED_LOADOUTS,No saved loadouts,没有已保存的预设方案
-SAVE_CARDS_LOADOUT,Save Cards,保存卡牌预设
-SAVE_RELICS_LOADOUT,Save Relics,保存遗物预设
-SAVE_CARDS_RELICS_LOADOUT,Save Cards + Relics,保存卡牌 + 遗物预设
-APPLY_LOADOUT,Apply,使用该预设
-RENAME_LOADOUT,Rename,重命名
-DELETE_LOADOUT,Delete,删除
-IMPORT_LOADOUT,Import from clipboard,导入剪贴板
-EXPORT_LOADOUT,Export to clipboard,导出剪贴板
-LOADOUT_NAME_PLACEHOLDER,Loadout name,预设名称
-LOADOUT_KIND_RELICS,Relics,遗物
-LOADOUT_KIND_BOTH,Cards + Relics,卡牌 + 遗物
-LOADOUT_KIND_CARDS,Cards,卡牌
-LOADOUT_NO_PLAYER,No run player available.,当前局没有可用的玩家。
-LOADOUT_SAVED,Saved loadout.,已保存预设方案。
-LOADOUT_SELECT_FIRST,Select a loadout first.,请先选择一个预设方案。
-LOADOUT_APPLY_FAILED,Could not apply loadout.,无法应用预设方案。
-LOADOUT_APPLIED,Applied loadout.,已应用预设方案。
-LOADOUT_RENAME_LOCAL_ONLY,Only local loadouts can be renamed.,只能重命名本地预设方案。
-LOADOUT_RENAMED,Renamed loadout.,已重命名预设方案。
-LOADOUT_DELETE_LOCAL_ONLY,Only local loadouts can be deleted.,只能删除本地预设方案。
-LOADOUT_DELETED,Deleted loadout.,已删除预设方案。
-LOADOUT_EXPORTED,Exported loadout.,已导出预设方案。
-LOADOUT_EXPORT_FAILED,Could not export loadout.,无法导出预设方案。
-LOADOUT_IMPORTED,Imported loadout.,已导入预设方案。
-CONFIG_RESET_ALL_PERMA_MOD,Reset all permanent card modifications,重置所有永久卡牌修改
-CONFIG_PERMANENT_CARD_MODIFICATIONS_RESET,Permanent card modifications reset,已重置永久卡牌修改
+﻿keys,en,zh_CN,fr,ja,ko,es
+ui.text_placeholder,Enter text here,请输入文本,Saisissez du texte ici,ここにテキストを入力,여기에 텍스트를 입력하세요,Introduce texto aquí
+TITLE_SELECT,Select,选择,Sélectionner,選択,선택,Seleccionar
+SEARCH,Search,搜索,Rechercher,検索,검색,Buscar
+SORT,Sort,排序,Trier,並べ替え,정렬,Ordenar
+FILTERS,Filters,筛选,Filtres,フィルター,필터,Filtros
+ALL,All,全部,Tout,すべて,전체,Todo
+ADD,Add,添加,Ajouter,追加,추가,Añadir
+REMOVE,Remove,移除,Retirer,削除,제거,Quitar
+SAVE,Save,保存,Enregistrer,保存,저장,Guardar
+CANCEL,Cancel,取消,Annuler,キャンセル,취소,Cancelar
+LOADOUT_PANEL_ITEM_TITLE,{Title},{Title},{Title},{Title},{Title},{Title}
+SELECTED_COUNT,Selected: {0},已选择: {0},Sélectionné : {0},選択中: {0},선택됨: {0},Seleccionado: {0}
+FILTER_GROUP_CLASS,Class,职业,Classe,クラス,직업,Clase
+FILTER_GROUP_TYPE,Type,类型,Type,タイプ,유형,Tipo
+FILTER_GROUP_RARITY,Rarity,稀有度,Rareté,レア度,희귀도,Rareza
+FILTER_GROUP_LAYOUT,Layout,布局,Disposition,レイアウト,레이아웃,Diseño
+FILTER_GROUP_SCOPE,Scope,范围,Portée,範囲,범위,Ámbito
+FILTER_GROUP_STACK,Stack,叠加,Cumul,スタック,중첩,Acumulación
+FILTER_GROUP_FAVORITES,Favorites,收藏,Favoris,お気に入り,즐겨찾기,Favoritos
+FILTER_GROUP_KEYWORD,Keyword,关键词,Mot-clé,キーワード,키워드,Palabra clave
+FILTER_GROUP_TAG,Tag,标签,Étiquette,タグ,태그,Etiqueta
+FILTER_GROUP_COST,Cost,费用,Coût,コスト,비용,Coste
+FILTER_GROUP_ACT,Act,章节,Acte,幕,막,Acto
+FILTER_GROUP_MONSTER_CATEGORY,Category,怪物类型,Catégorie,カテゴリー,분류,Categoría
+LOADOUT_TARGET,Target,目标,Cible,対象,대상,Objetivo
+LOADOUT_TARGET_ALL_PLAYERS,All Players,所有玩家,Tous les joueurs,すべてのプレイヤー,모든 플레이어,Todos los jugadores
+LOADOUT_TARGET_ALL_MONSTERS,All Monsters,所有怪物,Tous les monstres,すべてのモンスター,모든 몬스터,Todos los monstruos
+LOADOUT_TARGET_PLAYER_FALLBACK,Player {0},玩家 {0},Joueur {0},プレイヤー {0},플레이어 {0},Jugador {0}
+SORT_NAME,Name,名称,Nom,名前,이름,Nombre
+SORT_ID,ID,ID,ID,ID,ID,ID
+SAVE_PERMANENT,Save Permanent,永久保存,Enregistrer définitivement,恒久的に保存,영구 저장,Guardar permanentemente
+RESET_TEMPORARY,Reset Temporary,重置临时修改,Réinitialiser les modifications temporaires,一時変更をリセット,임시 변경 초기화,Restablecer cambios temporales
+RESET_PERMANENT,Reset Permanent,重置永久修改,Réinitialiser les modifications permanentes,恒久変更をリセット,영구 변경 초기화,Restablecer cambios permanentes
+CARD_MOD_NUMERIC_STATS,Numeric Stats,数值属性,Statistiques numériques,数値ステータス,수치 능력치,Estadísticas numéricas
+CARD_MOD_ENERGY_COST,Energy Cost,费用,Coût d'énergie,エナジーコスト,에너지 비용,Coste de energía
+CARD_MOD_REPLAY_COUNT,Replay Count,重放,Nombre de répétitions,再使用回数,재사용 횟수,Número de repeticiones
+CARD_MOD_STAR_COST,Star Cost,辉星,Coût d'étoiles,スターコスト,별 비용,Coste de estrellas
+CARD_MOD_CARD_FIELDS,Card Fields,卡牌字段,Champs de la carte,カード項目,카드 필드,Campos de la carta
+CARD_MOD_ATTACHMENTS,Attachments,附加效果,Effets attachés,付加効果,부가 효과,Efectos adjuntos
+CARD_MOD_ENCHANTMENT,Enchantment,附魔,Enchantement,エンチャント,마법 부여,Encantamiento
+CARD_MOD_AFFLICTION,Affliction,负面附加,Affliction,災厄,고통,Aflicción
+CARD_MOD_AMOUNT,Amount,数量,Quantité,数量,수량,Cantidad
+CARD_MOD_MODIFY_NAME,Modify Name,修改名称,Modifier le nom,名前を変更,이름 변경,Modificar nombre
+CARD_MOD_MODIFY_DESCRIPTION,Modify Description,修改描述,Modifier la description,説明を変更,설명 변경,Modificar descripción
+CARD_MOD_NO_VALID_ATTACHMENTS,No valid attachments available,没有可用的附加效果,Aucun effet attaché valide disponible,利用可能な有効な付加効果がありません,사용 가능한 유효한 부가 효과가 없습니다,No hay efectos adjuntos válidos disponibles
+CARD_MOD_HOVER_TIPS,Hover Tips,提示,Infobulles au survol,ホバーのヒント,마우스 오버 도움말,Consejos al pasar el cursor
+SORT_COST,Cost,费用,Coût,コスト,비용,Coste
+SORT_LIBRARY,Library,图鉴,Bibliothèque,図鑑,도감,Biblioteca
+VIEW_UPGRADES,View Upgrades,查看升级,Voir les améliorations,アップグレードを表示,업그레이드 보기,Ver mejoras
+UPGRADE_ALL,Upgrade All,升级全部,Tout améliorer,すべてアップグレード,모두 업그레이드,Mejorar todo
+SORT_RARITY,Rarity,稀有度,Rareté,レア度,희귀도,Rareza
+SORT_TYPE,Type,类型,Type,タイプ,유형,Tipo
+CARD_TYPE_ATTACK,Attack,攻击,Attaque,アタック,공격,Ataque
+CARD_TYPE_SKILL,Skill,技能,Compétence,スキル,스킬,Habilidad
+CARD_TYPE_POWER,Power,能力,Pouvoir,パワー,파워,Poder
+RARITY_BASIC,Basic,基础,Basique,ベーシック,기본,Básica
+RARITY_COMMON,Common,普通,Commune,コモン,일반,Común
+RARITY_UNCOMMON,Uncommon,罕见,Peu commune,アンコモン,고급,Poco común
+RARITY_RARE,Rare,稀有,Rare,レア,희귀,Rara
+LAYOUT_DEFAULT,Default,默认,Par défaut,デフォルト,기본,Predeterminado
+LAYOUT_COMBAT,Combat,战斗,Combat,戦闘,전투,Combate
+LAYOUT_ANCIENT,Ancient,远古,Ancien,古代,고대,Antiguo
+SCOPE_SHARED,Shared,共享,Partagé,共有,공유,Compartido
+SCOPE_SOLO,Solo,单人,Solo,ソロ,솔로,En solitario
+CATEGORY_EVENT,Event,事件,Événement,イベント,이벤트,Evento
+CATEGORY_POTION,Potion,药水,Potion,ポーション,포션,Poción
+CATEGORY_RELIC,Relic,遗物,Relique,レリック,유물,Reliquia
+POWER_TYPE_BUFF,Buff,增益,Bonus,バフ,버프,Mejora
+POWER_TYPE_DEBUFF,Debuff,减益,Malus,デバフ,디버프,Perjuicio
+POWER_STACK_COUNTER,Counter,计数,Compteur,カウンター,카운터,Contador
+POWER_STACK_SINGLE,Single,单层,Unique,単一,단일,Único
+FAVORITES_ONLY,Favorites,收藏,Favoris,お気に入り,즐겨찾기,Favoritos
+POWER_GIVER_FAVORITES_MODE,Powers,能力,Pouvoirs,パワー,파워,Poderes
+POWER_GIVER_ALL_POWERS,All Powers,全部能力,Tous les pouvoirs,すべてのパワー,모든 파워,Todos los poderes
+POWER_GIVER_CLEAR_CURRENT_BUFFS,Clear Current Buffs,清除当前增益,Supprimer les bonus actuels,現在のバフを消去,현재 버프 제거,Eliminar mejoras actuales
+POWER_GIVER_CLEAR_CURRENT_DEBUFFS,Clear Current Debuffs,清除当前减益,Supprimer les malus actuels,現在のデバフを消去,현재 디버프 제거,Eliminar perjuicios actuales
+POWER_GIVER_TARGET,Target,目标,Cible,対象,대상,Objetivo
+POWER_GIVER_TARGET_PLAYER,Player,玩家,Joueur,プレイヤー,플레이어,Jugador
+POWER_GIVER_TARGET_PLAYERS,Players,玩家,Joueurs,プレイヤー,플레이어,Jugadores
+POWER_GIVER_TARGET_MONSTERS,Monsters,怪物,Monstres,モンスター,몬스터,Monstruos
+SHARED,Shared,共享,Partagé,共有,공유,Compartido
+COLORLESS,Colorless,无色,Incolore,無色,무색,Incolora
+EVENT,Event,事件,Événement,イベント,이벤트,Evento
+NONE,None,无,Aucun,なし,없음,Ninguno
+OTHER,Other,其他,Autre,その他,기타,Otro
+ENUM_POTIONRARITY_COMMON,Common,普通,Commune,コモン,일반,Común
+ENUM_POTIONRARITY_UNCOMMON,Uncommon,罕见,Peu commune,アンコモン,고급,Poco común
+ENUM_POTIONRARITY_RARE,Rare,稀有,Rare,レア,희귀,Rara
+ENUM_POTIONRARITY_EVENT,Event,事件,Événement,イベント,이벤트,Evento
+ENUM_POTIONRARITY_TOKEN,Token,令牌,Jeton,トークン,토큰,Ficha
+ENUM_RELICRARITY_STARTER,Starter,初始,De départ,スターター,시작,Inicial
+ENUM_RELICRARITY_COMMON,Common,普通,Commune,コモン,일반,Común
+ENUM_RELICRARITY_UNCOMMON,Uncommon,罕见,Peu commune,アンコモン,고급,Poco común
+ENUM_RELICRARITY_RARE,Rare,稀有,Rare,レア,희귀,Rara
+ENUM_RELICRARITY_SHOP,Shop,商店,Boutique,ショップ,상점,Tienda
+ENUM_RELICRARITY_ANCIENT,Ancient,远古,Ancien,古代,고대,Antiguo
+ENUM_RELICRARITY_EVENT,Event,事件,Événement,イベント,이벤트,Evento
+HOST_PERMAMODS_TITLE,Host Modifications,主机的永久修改,Modifications de l'hôte,ホストの変更,호스트 변경 사항,Modificaciones del anfitrión
+ROOM,Room,房间,Salle,部屋,방,Sala
+GO_TO_ROOM,Go to, 前往,Aller à,移動,이동,Ir a
+LOADOUTBAG_TITLE,Loadout Bag,装备箱,Sac d'équipement,ロードアウトバッグ,로드아웃 가방,Bolsa de equipamiento
+LOADOUTBAG_DESC,"Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action.",右键此遗物来获取任何你想要的遗物。左键获取。Ctrl x5，Shift x10。Ctrl + 右键来重复上一次操作。,"Faites un clic droit sur cette relique pour obtenir la relique de votre choix. Ctrl x5, Maj x10. Ctrl + clic droit pour répéter la dernière action.",このレリックを右クリックすると、好きなレリックを入手できます。Ctrlで5倍、Shiftで10倍。Ctrl + 右クリックで直前の操作を繰り返します。,"이 유물을 우클릭하면 원하는 유물을 얻을 수 있습니다. Ctrl x5, Shift x10. Ctrl + 우클릭으로 마지막 작업을 반복합니다.","Haz clic derecho en esta reliquia para obtener cualquier reliquia. Ctrl x5, Mayús x10. Ctrl + clic derecho para repetir la última acción."
+LOADOUTBAGALT_TITLE,Death Certificate,死亡证明,Certificat de décès,死亡証明書,사망 증명서,Certificado de defunción
+LOADOUTBAGALT_DESC,"Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action.",右键此遗物来获取任何你想要的遗物。左键获取。Ctrl x5，Shift x10。Ctrl + 右键来重复上一次操作。,"Faites un clic droit sur cette relique pour obtenir la relique de votre choix. Ctrl x5, Maj x10. Ctrl + clic droit pour répéter la dernière action.",このレリックを右クリックすると、好きなレリックを入手できます。Ctrlで5倍、Shiftで10倍。Ctrl + 右クリックで直前の操作を繰り返します。,"이 유물을 우클릭하면 원하는 유물을 얻을 수 있습니다. Ctrl x5, Shift x10. Ctrl + 우클릭으로 마지막 작업을 반복합니다.","Haz clic derecho en esta reliquia para obtener cualquier reliquia. Ctrl x5, Mayús x10. Ctrl + clic derecho para repetir la última acción."
+THEBIN_TITLE,The Bin,回收桶,La Poubelle,ゴミ箱,쓰레기통,La Papelera
+THEBIN_DESC,Right-click this relic to obliterate any relic you want.,右键此遗物来移除任何你不想要的遗物。,Faites un clic droit sur cette relique pour anéantir la relique de votre choix.,このレリックを右クリックすると、好きなレリックを消滅させられます。,이 유물을 우클릭하면 원하는 유물을 소멸시킬 수 있습니다.,Haz clic derecho en esta reliquia para destruir cualquier reliquia.
+THEBINALT_TITLE,The Void,虚空,Le Néant,虚無,공허,El Vacío
+THEBINALT_DESC,Right-click this relic to void any relic you want.,右键此遗物来吸入任何你不想要的遗物。,Faites un clic droit sur cette relique pour envoyer dans le Néant la relique de votre choix.,このレリックを右クリックすると、好きなレリックを虚無へ送れます。,이 유물을 우클릭하면 원하는 유물을 공허로 보낼 수 있습니다.,Haz clic derecho en esta reliquia para enviar cualquier reliquia al Vacío.
+LOADOUTCAULDRON_TITLE,The Cauldron,炼药大锅,Le Chaudron,大釜,가마솥,El Caldero
+LOADOUTCAULDRON_DESC,Right-click this relic to obtain any potion you want. Ctrl + right click to repeat the last action.,右键此遗物来获取任何你想要的药水。Ctrl + 右键来重复上一次操作。,Faites un clic droit sur cette relique pour obtenir la potion de votre choix. Ctrl + clic droit pour répéter la dernière action.,このレリックを右クリックすると、好きなポーションを入手できます。Ctrl + 右クリックで直前の操作を繰り返します。,이 유물을 우클릭하면 원하는 포션을 얻을 수 있습니다. Ctrl + 우클릭으로 마지막 작업을 반복합니다.,Haz clic derecho en esta reliquia para obtener cualquier poción. Ctrl + clic derecho para repetir la última acción.
+LOADOUTCAULDRONALT_TITLE,Mom's Bottle of Pills,妈妈的药瓶,Flacon de pilules de Maman,ママの薬瓶,엄마의 약병,Frasco de pastillas de Mamá
+LOADOUTCAULDRONALT_DESC,Right-click this relic to obtain any potion you want. Ctrl + right click to repeat the last action.,右键此遗物来获取任何你想要的药水。Ctrl + 右键来重复上一次操作。,Faites un clic droit sur cette relique pour obtenir la potion de votre choix. Ctrl + clic droit pour répéter la dernière action.,このレリックを右クリックすると、好きなポーションを入手できます。Ctrl + 右クリックで直前の操作を繰り返します。,이 유물을 우클릭하면 원하는 포션을 얻을 수 있습니다. Ctrl + 우클릭으로 마지막 작업을 반복합니다.,Haz clic derecho en esta reliquia para obtener cualquier poción. Ctrl + clic derecho para repetir la última acción.
+CARDPRINTER_TITLE,Card Printer,印卡机,Imprimante à cartes,カードプリンター,카드 프린터,Impresora de cartas
+CARDPRINTER_DESC,Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action.,右键此遗物来添加卡牌进入牌组；战斗中使用也会同时添加进手牌。Ctrl + 右键来重复上一次操作。,"Faites un clic droit sur cette relique pour obtenir la carte de votre choix ; en combat, elle sera aussi ajoutée à votre main. Ctrl + clic droit pour répéter la dernière action.",このレリックを右クリックすると、好きなカードを入手できます。戦闘中に使うと手札にも加わります。Ctrl + 右クリックで直前の操作を繰り返します。,이 유물을 우클릭하면 원하는 카드를 얻을 수 있습니다. 전투 중 사용하면 손패에도 추가됩니다. Ctrl + 우클릭으로 마지막 작업을 반복합니다.,Haz clic derecho en esta reliquia para obtener cualquier carta; durante el combate también se añadirá a tu mano. Ctrl + clic derecho para repetir la última acción.
+CARDSHREDDER_TITLE,Card Shredder,删卡机,Destructeur de cartes,カードシュレッダー,카드 분쇄기,Trituradora de cartas
+CARDSHREDDER_DESC,Right-click this relic to obliterate any card you want; use during combat will also remove it from combat.,右键此遗物来从牌组删除卡牌; 战斗中使用也会同时将其从战斗中删除。,"Faites un clic droit sur cette relique pour anéantir la carte de votre choix ; en combat, elle sera aussi retirée du combat.",このレリックを右クリックすると、好きなカードを消滅させられます。戦闘中に使うと、そのカードは戦闘からも削除されます。,이 유물을 우클릭하면 원하는 카드를 소멸시킬 수 있습니다. 전투 중 사용하면 해당 카드가 전투에서도 제거됩니다.,Haz clic derecho en esta reliquia para destruir cualquier carta; durante el combate también se retirará del combate.
+CARDMODIFIER_TITLE,Card Modifier,改卡机,Modificateur de cartes,カード改造機,카드 수정기,Modificador de cartas
+CARDMODIFIER_DESC,Right-click this relic to modify any card you want; right-click cards to modify them.,右键此遗物来升级卡牌从牌组；右键卡牌来修改它。,Faites un clic droit sur cette relique pour modifier la carte de votre choix ; faites un clic droit sur une carte pour la modifier.,このレリックを右クリックすると、好きなカードを変更できます。カードを右クリックして変更します。,이 유물을 우클릭하면 원하는 카드를 수정할 수 있습니다. 카드를 우클릭하여 수정합니다.,Haz clic derecho en esta reliquia para modificar cualquier carta; haz clic derecho en una carta para modificarla.
+CARDPRINTERALT_TITLE,Deck of Cards,卡牌盒,Jeu de cartes,カードデッキ,카드 덱,Baraja de cartas
+CARDPRINTERALT_DESC,Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action.,右键此遗物来添加卡牌进入牌组；战斗中使用也会同时添加进手牌。按住Shift为x10张，Ctrl为x5张。Ctrl + 右键来重复上一次操作。,"Faites un clic droit sur cette relique pour obtenir la carte de votre choix ; en combat, elle sera aussi ajoutée à votre main. Ctrl + clic droit pour répéter la dernière action.",このレリックを右クリックすると、好きなカードを入手できます。戦闘中に使うと手札にも加わります。Ctrl + 右クリックで直前の操作を繰り返します。,이 유물을 우클릭하면 원하는 카드를 얻을 수 있습니다. 전투 중 사용하면 손패에도 추가됩니다. Ctrl + 우클릭으로 마지막 작업을 반복합니다.,Haz clic derecho en esta reliquia para obtener cualquier carta; durante el combate también se añadirá a tu mano. Ctrl + clic derecho para repetir la última acción.
+CARDSHREDDERALT_TITLE,Torn Card,扑克牌残片,Carte déchirée,破れたカード,찢어진 카드,Carta rota
+CARDSHREDDERALT_DESC,Right-click this relic to obliterate any card you want; use during combat will also remove it from combat.,右键此遗物来从牌组删除卡牌; 战斗中使用也会同时将其从战斗中删除。,"Faites un clic droit sur cette relique pour anéantir la carte de votre choix ; en combat, elle sera aussi retirée du combat.",このレリックを右クリックすると、好きなカードを消滅させられます。戦闘中に使うと、そのカードは戦闘からも削除されます。,이 유물을 우클릭하면 원하는 카드를 소멸시킬 수 있습니다. 전투 중 사용하면 해당 카드가 전투에서도 제거됩니다.,Haz clic derecho en esta reliquia para destruir cualquier carta; durante el combate también se retirará del combate.
+CARDMODIFIERALT_TITLE,Blank Card,空白卡牌,Carte vierge,白紙のカード,빈 카드,Carta en blanco
+CARDMODIFIERALT_DESC,Right-click this relic to modify any card you want; right-click cards to modify them.,右键此遗物来升级卡牌从牌组；右键卡牌来修改它。,Faites un clic droit sur cette relique pour modifier la carte de votre choix ; faites un clic droit sur une carte pour la modifier.,このレリックを右クリックすると、好きなカードを変更できます。カードを右クリックして変更します。,이 유물을 우클릭하면 원하는 카드를 수정할 수 있습니다. 카드를 우클릭하여 수정합니다.,Haz clic derecho en esta reliquia para modificar cualquier carta; haz clic derecho en una carta para modificarla.
+EVENTFULCOMPASS_TITLE,Eventful Compass,事件指南针,Boussole événementielle,イベントコンパス,이벤트 나침반,Brújula de eventos
+EVENTFULCOMPASS_DESC,Right-click this relic to select the event you want. Ctrl + right click to repeat the last action.,右键此遗物来选择你想去的事件。Ctrl + 右键来重复上一次操作。,Faites un clic droit sur cette relique pour choisir l'événement de votre choix. Ctrl + clic droit pour répéter la dernière action.,このレリックを右クリックすると、好きなイベントを選択できます。Ctrl + 右クリックで直前の操作を繰り返します。,이 유물을 우클릭하면 원하는 이벤트를 선택할 수 있습니다. Ctrl + 우클릭으로 마지막 작업을 반복합니다.,Haz clic derecho en esta reliquia para seleccionar el evento que quieras. Ctrl + clic derecho para repetir la última acción.
+EVENTFULCOMPASSALT_TITLE,The Compass,指南针,La Boussole,コンパス,나침반,La Brújula
+EVENTFULCOMPASSALT_DESC,Right-click this relic to select the event you want. Ctrl + right click to repeat the last action.,右键此遗物来选择你想去的事件。Ctrl + 右键来重复上一次操作。,Faites un clic droit sur cette relique pour choisir l'événement de votre choix. Ctrl + clic droit pour répéter la dernière action.,このレリックを右クリックすると、好きなイベントを選択できます。Ctrl + 右クリックで直前の操作を繰り返します。,이 유물을 우클릭하면 원하는 이벤트를 선택할 수 있습니다. Ctrl + 우클릭으로 마지막 작업을 반복합니다.,Haz clic derecho en esta reliquia para seleccionar el evento que quieras. Ctrl + clic derecho para repetir la última acción.
+POWERGIVER_TITLE,Potion of Powers,能力药水,Potion de pouvoirs,パワーのポーション,파워의 포션,Poción de poderes
+POWERGIVER_DESC,"Right-click this relic to select the power for you/monsters at the start/middle of combat. Left-click to increase, right-click to decrease. Ctrl x5, Shift x10. Alt + left-click to favorite. Ctrl + right click to repeat the last action.","右键此遗物来选择你或怪物在战斗开始时/中获得的能力。 左键增加，右键减少。Ctrl x5, Shift x10。 Alt+左键收藏。Ctrl + 右键来重复上一次操作。","Faites un clic droit sur cette relique pour choisir un pouvoir pour vous ou les monstres au début ou pendant le combat. Clic gauche pour augmenter, clic droit pour diminuer. Ctrl x5, Maj x10. Alt + clic gauche pour ajouter aux favoris. Ctrl + clic droit pour répéter la dernière action.",このレリックを右クリックすると、戦闘開始時または戦闘中に自分やモンスターへ付与するパワーを選べます。左クリックで増加、右クリックで減少。Ctrlで5倍、Shiftで10倍。Alt + 左クリックでお気に入り登録。Ctrl + 右クリックで直前の操作を繰り返します。,"이 유물을 우클릭하면 전투 시작 시 또는 전투 중 자신이나 몬스터에게 부여할 파워를 선택할 수 있습니다. 좌클릭으로 증가, 우클릭으로 감소합니다. Ctrl x5, Shift x10. Alt + 좌클릭으로 즐겨찾기에 추가합니다. Ctrl + 우클릭으로 마지막 작업을 반복합니다.","Haz clic derecho en esta reliquia para elegir un poder para ti o los monstruos al inicio o durante el combate. Clic izquierdo para aumentar y clic derecho para reducir. Ctrl x5, Mayús x10. Alt + clic izquierdo para marcar como favorito. Ctrl + clic derecho para repetir la última acción."
+POWERGIVERALT_TITLE,Lemegeton,所罗门魔典,Lemegeton,レメゲトン,레메게톤,Lemegeton
+POWERGIVERALT_DESC,"Right-click this relic to select the power for you/monsters at the start/middle of combat. Left-click to increase, right-click to decrease. Ctrl x5, Shift x10. Alt + left-click to favorite. Ctrl + right click to repeat the last action.","右键此遗物来选择你或怪物在战斗开始时/中获得的能力。 左键增加，右键减少。Ctrl x5, Shift x10。 Alt+左键收藏。Ctrl + 右键来重复上一次操作。","Faites un clic droit sur cette relique pour choisir un pouvoir pour vous ou les monstres au début ou pendant le combat. Clic gauche pour augmenter, clic droit pour diminuer. Ctrl x5, Maj x10. Alt + clic gauche pour ajouter aux favoris. Ctrl + clic droit pour répéter la dernière action.",このレリックを右クリックすると、戦闘開始時または戦闘中に自分やモンスターへ付与するパワーを選べます。左クリックで増加、右クリックで減少。Ctrlで5倍、Shiftで10倍。Alt + 左クリックでお気に入り登録。Ctrl + 右クリックで直前の操作を繰り返します。,"이 유물을 우클릭하면 전투 시작 시 또는 전투 중 자신이나 몬스터에게 부여할 파워를 선택할 수 있습니다. 좌클릭으로 증가, 우클릭으로 감소합니다. Ctrl x5, Shift x10. Alt + 좌클릭으로 즐겨찾기에 추가합니다. Ctrl + 우클릭으로 마지막 작업을 반복합니다.","Haz clic derecho en esta reliquia para elegir un poder para ti o los monstruos al inicio o durante el combate. Clic izquierdo para aumentar y clic derecho para reducir. Ctrl x5, Mayús x10. Alt + clic izquierdo para marcar como favorito. Ctrl + clic derecho para repetir la última acción."
+TILDEKEY_TITLE,Reality Manipulator,现实操纵仪,Manipulateur de réalité,現実操作装置,현실 조작기,Manipulador de la realidad
+TILDEKEY_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。,Faites un clic droit sur cette relique pour choisir les options de débogage. Cliquez sur les champs pour les modifier. Ctrl + clic droit pour tuer tous les monstres. Maj + clic droit pour épargner tous les monstres.,このレリックを右クリックすると、デバッグ機能を選択できます。項目を左クリックして編集します。Ctrl + 右クリックですべてのモンスターを倒し、Shift + 右クリックですべてのモンスターを見逃します。,"이 유물을 우클릭하면 원하는 디버그 기능을 선택할 수 있습니다. 필드를 좌클릭하여 편집합니다. Ctrl + 우클릭으로 모든 몬스터를 처치하고, Shift + 우클릭으로 모든 몬스터를 살려 둡니다.",Haz clic derecho en esta reliquia para elegir las funciones de depuración. Haz clic izquierdo en los campos para editarlos. Ctrl + clic derecho para matar a todos los monstruos. Mayús + clic derecho para perdonarlos.
+TILDEKEY_GODMODE,Godmode,上帝模式,Mode Dieu,無敵モード,무적 모드,Modo dios
+TILDEKEY_GO_TO_ANY_ROOM,Go To Any Room,前往任意房间,Aller dans n'importe quelle salle,任意の部屋へ移動,아무 방으로 이동,Ir a cualquier sala
+TILDEKEY_LOCK,Lock,锁定,Verrouiller,ロック,잠금,Bloquear
+TILDEKEY_STAT_CURRENT_HP,Current HP,当前生命值,PV actuels,現在HP,현재 HP,PV actuales
+TILDEKEY_STAT_MAX_HP,Max HP,最大生命值,PV max,最大HP,최대 HP,PV máximos
+TILDEKEY_STAT_MAX_ENERGY,Max Energy,最大能量,Énergie max,最大エナジー,최대 에너지,Energía máxima
+TILDEKEY_STAT_COMBAT_ENERGY,Combat Energy,战斗能量,Énergie de combat,戦闘エナジー,전투 에너지,Energía de combate
+TILDEKEY_STAT_BASE_ORB_SLOTS,Base Orb Slots,基础充能球栏位,Emplacements d'orbe de base,基本オーブスロット,기본 구체 슬롯,Ranuras de orbe base
+TILDEKEY_STAT_MAX_POTION_SLOTS,Max Potion Slots,最大药水栏位,Emplacements de potion max,最大ポーションスロット,최대 포션 슬롯,Ranuras de poción máximas
+TILDEKEY_STAT_DRAW_PER_TURN,Draw Per Turn,每回合抽牌,Pioche par tour,ターンごとのドロー,턴당 드로우,Robo por turno
+TILDEKEY_STAT_HAND_SIZE,Max Hand Size,手牌上限,Taille de main maximale,手札上限,최대 손패 크기,Tamaño máximo de mano
+TILDEKEY_STAT_PLAYER_DAMAGE_MULTIPLIER,Player Damage Multiplier(%),玩家伤害倍数（%）,Multiplicateur de dégâts du joueur (%),プレイヤーダメージ倍率（%）,플레이어 피해 배율(%),Multiplicador de daño del jugador (%)
+TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER,Enemy Damage Multiplier(%),敌人伤害倍数（%）,Multiplicateur de dégâts des ennemis (%),敵ダメージ倍率（%）,적 피해 배율(%),Multiplicador de daño enemigo (%)
+TILDEKEY_INFINITE_ENERGY,Infinite Energy,无限能量,Énergie infinie,無限エナジー,무한 에너지,Energía infinita
+TILDEKEY_DRAW_TILL_HAND_LIMIT,Draw Till Hand Limit,抽牌至手牌上限,Piocher jusqu'à la limite de main,手札上限まで引く,손패 한도까지 드로우,Robar hasta el límite de mano
+TILDEKEY_SCROLL_RELIC_COUNTER,Scroll Edit Relic Counter,滚轮编辑遗物计数,Modifier le compteur de relique avec la molette,スクロールでレリックカウンターを編集,스크롤로 유물 카운터 편집,Editar contador de reliquia con la rueda
+TILDEKEY_STAT_TURN_NUMBER,Turn Number,回合数,Numéro du tour,ターン数,턴 번호,Número de turno
+TILDEKEY_STAT_CARD_SHOP_REMOVALS_USED,Card Shop Removals Used,商店删卡次数,Suppressions de carte utilisées en boutique,ショップで使用したカード削除回数,상점 카드 제거 사용 횟수,Eliminaciones de carta usadas en tienda
+TILDEKEY_STAT_WONGO_POINTS,Wongo Points,旺购点数,Points Wongo,ウォンゴポイント,웡고 포인트,Puntos Wongo
+TILDEKEY_STAT_DAMAGE_DEALT,Damage Dealt,已造成伤害,Dégâts infligés,与えたダメージ,가한 피해,Daño infligido
+TILDEKEY_STAT_DEBUFFS_APPLIED,Debuffs Applied,已施加减益,Malus appliqués,付与したデバフ,적용한 디버프,Perjuicios aplicados
+TILDEKEYALT_TITLE,Tilde Key,波浪键,Touche tilde,チルダキー,물결표 키,Tecla de tilde
+TILDEKEYALT_DESC,Right-click this relic to select debug powers you want. Left Click fields to edit them. Ctrl + right click to kill all monsters. Shift + right click to spare all monsters.,右键此遗物来进行调试。 左键数值来修改它。 Ctrl + 右键来杀死房间所有怪物。 Shift + 右键来饶恕所有房间所有怪物。,Faites un clic droit sur cette relique pour choisir les options de débogage. Cliquez sur les champs pour les modifier. Ctrl + clic droit pour tuer tous les monstres. Maj + clic droit pour épargner tous les monstres.,このレリックを右クリックすると、デバッグ機能を選択できます。項目を左クリックして編集します。Ctrl + 右クリックですべてのモンスターを倒し、Shift + 右クリックですべてのモンスターを見逃します。,"이 유물을 우클릭하면 원하는 디버그 기능을 선택할 수 있습니다. 필드를 좌클릭하여 편집합니다. Ctrl + 우클릭으로 모든 몬스터를 처치하고, Shift + 우클릭으로 모든 몬스터를 살려 둡니다.",Haz clic derecho en esta reliquia para elegir las funciones de depuración. Haz clic izquierdo en los campos para editarlos. Ctrl + clic derecho para matar a todos los monstruos. Mayús + clic derecho para perdonarlos.
+BOTTLEDMONSTER_TITLE,Bottled Monster,瓶装怪物,Monstre en bouteille,瓶詰めモンスター,병 속의 몬스터,Monstruo embotellado
+BOTTLEDMONSTER_DESC,"Right-click this relic to spawn any monster you want. Ctrl + right click to resummon the last summon. If none, dupe monsters instead.",右键此遗物来生成任意怪物。Ctrl + 右键来重复生成上一个。如没有则复制房间怪物。,"Faites un clic droit sur cette relique pour faire apparaître le monstre de votre choix. Ctrl + clic droit pour invoquer à nouveau le dernier monstre. Si aucun monstre précédent n’existe, duplique les monstres présents.",このレリックを右クリックすると、好きなモンスターを出現させられます。Ctrl + 右クリックで直前に召喚したモンスターを再召喚します。履歴がない場合は、現在のモンスターを複製します。,이 유물을 우클릭하면 원하는 몬스터를 소환할 수 있습니다. Ctrl + 우클릭으로 마지막 소환을 다시 실행합니다. 이전 소환이 없으면 현재 몬스터를 복제합니다.,"Haz clic derecho en esta reliquia para invocar cualquier monstruo. Ctrl + clic derecho para volver a invocar el último. Si no hay ninguno, duplica los monstruos presentes."
+BOTTLEDMONSTERALT_TITLE,Friendly Ball,友好球,Balle amicale,フレンドリーボール,친근한 볼,Bola amistosa
+BOTTLEDMONSTERALT_DESC,"Right-click this relic to spawn any monster you want. Ctrl + right click to resummon the last summon. If none, dupe monsters instead.",右键此遗物来生成任意怪物。Ctrl + 右键来重复生成上一个。如没有则复制房间怪物。,"Faites un clic droit sur cette relique pour faire apparaître le monstre de votre choix. Ctrl + clic droit pour invoquer à nouveau le dernier monstre. Si aucun monstre précédent n’existe, duplique les monstres présents.",このレリックを右クリックすると、好きなモンスターを出現させられます。Ctrl + 右クリックで直前に召喚したモンスターを再召喚します。履歴がない場合は、現在のモンスターを複製します。,이 유물을 우클릭하면 원하는 몬스터를 소환할 수 있습니다. Ctrl + 우클릭으로 마지막 소환을 다시 실행합니다. 이전 소환이 없으면 현재 몬스터를 복제합니다.,"Haz clic derecho en esta reliquia para invocar cualquier monstruo. Ctrl + clic derecho para volver a invocar el último. Si no hay ninguno, duplica los monstruos presentes."
+ORBBOX_TITLE,Box of Orbs,球盒,Boîte d'orbes,オーブの箱,구체 상자,Caja de orbes
+ORBBOX_DESC,Right-click this relic to spawn any orb you want.,右键获得任何你想要的球。,Faites un clic droit sur cette relique pour faire apparaître l'orbe de votre choix.,このレリックを右クリックすると、好きなオーブを生成できます。,이 유물을 우클릭하면 원하는 구체를 생성할 수 있습니다.,Haz clic derecho en esta reliquia para generar cualquier orbe.
+ORBBOXALT_TITLE,Book of Virtues,美德之书,Livre des Vertus,美徳の書,미덕의 책,Libro de las Virtudes
+ORBBOXALT_DESC,Right-click this relic to spawn any wisp you want.,右键获得任何你想要的魂火跟班。,Faites un clic droit sur cette relique pour faire apparaître le feu follet de votre choix.,このレリックを右クリックすると、好きなウィスプを生成できます。,이 유물을 우클릭하면 원하는 위습을 생성할 수 있습니다.,Haz clic derecho en esta reliquia para generar cualquier fuego fatuo.
+ALLINONEBAG_TITLE,Everything Bag,装备箱2.0,Sac universel,なんでもバッグ,만능 가방,Bolsa de todo
+ALLINONEBAG_DESC,Right-click this relic to toggle other loadout relics.,右键此遗物来显示/隐藏其他 loadout 遗物。,Faites un clic droit sur cette relique pour afficher ou masquer les autres reliques d'équipement.,このレリックを右クリックすると、ほかのロードアウト用レリックの表示を切り替えます。,이 유물을 우클릭하면 다른 로드아웃 유물의 표시 여부를 전환합니다.,Haz clic derecho en esta reliquia para mostrar u ocultar las demás reliquias de equipamiento.
+ALLINONEBAGALT_TITLE,Death Certificate 2.0,死亡证明2.0,Certificat de décès 2.0,死亡証明書 2.0,사망 증명서 2.0,Certificado de defunción 2.0
+ALLINONEBAGALT_DESC,Right-click this relic to toggle other loadout relics.,右键此遗物来显示/隐藏其他 loadout 遗物。,Faites un clic droit sur cette relique pour afficher ou masquer les autres reliques d'équipement.,このレリックを右クリックすると、ほかのロードアウト用レリックの表示を切り替えます。,이 유물을 우클릭하면 다른 로드아웃 유물의 표시 여부를 전환합니다.,Haz clic derecho en esta reliquia para mostrar u ocultar las demás reliquias de equipamiento.
+BLIGHTCHEST_TITLE,Tiny Blight Chest,小荒疫箱,Petit coffre de Fléaux,小さなブライトチェスト,작은 블라이트 상자,Cofre pequeño de Plagas
+BLIGHTCHEST_DESC,"Right-click this relic to obtain any blights. Left-click to obtain, right-click to remove. Ctrl x5, Shift x10.",右键获得任何你想要的荒疫。左键获取，右键移除。Ctrl x5，Shift x10。,"Faites un clic droit sur cette relique pour choisir un Fléau. Clic gauche pour obtenir, clic droit pour retirer. Ctrl x5, Maj x10.",このレリックを右クリックすると、好きなブライトを選べます。左クリックで入手、右クリックで削除。Ctrlで5倍、Shiftで10倍。,"이 유물을 우클릭하면 원하는 블라이트를 선택할 수 있습니다. 좌클릭으로 획득, 우클릭으로 제거합니다. Ctrl x5, Shift x10.","Haz clic derecho en esta reliquia para elegir cualquier Plaga. Clic izquierdo para obtener y clic derecho para quitar. Ctrl x5, Mayús x10."
+BLIGHTCHESTALT_TITLE,Tiny Blight Chest,小荒疫箱,Petit coffre de Fléaux,小さなブライトチェスト,작은 블라이트 상자,Cofre pequeño de Plagas
+BLIGHTCHESTALT_DESC,"Right-click this relic to obtain any blights. Left-click to obtain, right-click to remove. Ctrl x5, Shift x10.",右键获得任何你想要的荒疫。左键获取，右键移除。Ctrl x5，Shift x10。,"Faites un clic droit sur cette relique pour choisir un Fléau. Clic gauche pour obtenir, clic droit pour retirer. Ctrl x5, Maj x10.",このレリックを右クリックすると、好きなブライトを選べます。左クリックで入手、右クリックで削除。Ctrlで5倍、Shiftで10倍。,"이 유물을 우클릭하면 원하는 블라이트를 선택할 수 있습니다. 좌클릭으로 획득, 우클릭으로 제거합니다. Ctrl x5, Shift x10.","Haz clic derecho en esta reliquia para elegir cualquier Plaga. Clic izquierdo para obtener y clic derecho para quitar. Ctrl x5, Mayús x10."
+ALLINONEBAGUP_TITLE,Ultimate Bag,终极装备箱,Sac ultime,究極のバッグ,궁극의 가방,Bolsa definitiva
+ALLINONEBAGUP_DESC,Right-click this relic to win the game.,右键此遗物来获取胜利。,Faites un clic droit sur cette relique pour gagner la partie.,このレリックを右クリックすると、ゲームに勝利します。,이 유물을 우클릭하면 게임에서 승리합니다.,Haz clic derecho en esta reliquia para ganar la partida.
+HOST_PERMAMODS_DOWNLOAD_TITLE, Download Host Permamod,下载主机永久修改, Télécharger les modifications permanentes de l'hôte, ホストの恒久変更をダウンロード, 호스트 영구 변경 다운로드, Descargar modificaciones permanentes del anfitrión
+DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
+DYNAMIC_VAR_DAMAGEBACK,Damage Back,伤害返还,Dégâts de riposte,反撃ダメージ,반격 피해,Daño de respuesta
+DYNAMIC_VAR_CALCULATED_BLOCK,Calculated Block,计算格挡,Bloc calculé,計算ブロック,계산된 방어도,Bloqueo calculado
+DYNAMIC_VAR_CALCULATED_DAMAGE,Calculated Damage,计算伤害,Dégâts calculés,計算ダメージ,계산된 피해,Daño calculado
+DYNAMIC_VAR_CALCULATION_BASE,Base Value,基础数值,Valeur de base,基本値,기본값,Valor base
+DYNAMIC_VAR_CALCULATION_EXTRA,Extra Value,额外数值,Valeur supplémentaire,追加値,추가값,Valor adicional
+DYNAMIC_VAR_CARDS,Cards,卡牌,Cartes,カード,카드,Cartas
+DYNAMIC_VAR_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
+DYNAMIC_VAR_EXTRA_DAMAGE,Extra Damage,额外伤害,Dégâts supplémentaires,追加ダメージ,추가 피해,Daño adicional
+DYNAMIC_VAR_HEAL,Heal,治疗,Soins,回復,회복,Curación
+DYNAMIC_VAR_HP_LOSS,HP Loss,生命流失,Perte de PV,HP減少,HP 손실,Pérdida de PV
+DYNAMIC_VAR_IF_UPGRADED,If Upgraded,升级时,Si améliorée,アップグレード時,업그레이드 시,Si está mejorada
+DYNAMIC_VAR_MAX_HP,Max HP,最大生命值,PV max,最大HP,최대 HP,PV máximos
+DYNAMIC_VAR_OSTY_DAMAGE,Osty Damage,奥斯蒂伤害,Dégâts Osty,オスティダメージ,오스티 피해,Daño Osty
+DYNAMIC_VAR_STRENGTHLOSS,Strength Loss,力量失去,Perte de Force,筋力低下,힘 감소,Pérdida de Fuerza
+DYNAMIC_VAR_POWER,Power,效力,Pouvoir,パワー,파워,Poder
+DYNAMIC_VAR_INCREASE,Increase,增加,Augmenter,増加,증가,Aumentar
+CURSE,Curse,诅咒,Malédiction,呪い,저주,Maldición
+QUEST,Quest,任务,Quête,クエスト,퀘스트,Misión
+STATUS,Status,状态,Statut,状態,상태,Estado
+TOKEN,Token,衍生,Jeton,トークン,토큰,Ficha
+ALLOW_GUEST_LOADOUT_PANEL,Allow others to use Loadout panel,允许他人使用Loadout,Autoriser les autres à utiliser le panneau d'équipement,他のプレイヤーによるロードアウトパネルの使用を許可,다른 플레이어의 로드아웃 패널 사용 허용,Permitir que otros usen el panel de equipamiento
+MONSTER_CATEGORY_BOSS,Boss,Boss,Boss,ボス,보스,Jefe
+MONSTER_CATEGORY_ELITE,Elite,精英,Élite,エリート,엘리트,Élite
+MONSTER_CATEGORY_MONSTER,Monster,普通,Monstre,モンスター,몬스터,Monstruo
+DECK_LOADOUTS_TITLE,Loadouts,卡组预设,Équipements,ロードアウト,로드아웃,Equipamientos
+NO_SAVED_LOADOUTS,No saved loadouts,没有已保存的预设方案,Aucun équipement enregistré,保存済みロードアウトはありません,저장된 로드아웃이 없습니다,No hay equipamientos guardados
+SAVE_CARDS_LOADOUT,Save Cards,保存卡牌预设,Enregistrer les cartes,カードを保存,카드 저장,Guardar cartas
+SAVE_RELICS_LOADOUT,Save Relics,保存遗物预设,Enregistrer les reliques,レリックを保存,유물 저장,Guardar reliquias
+SAVE_CARDS_RELICS_LOADOUT,Save Cards + Relics,保存卡牌 + 遗物预设,Enregistrer cartes + reliques,カード + レリックを保存,카드 + 유물 저장,Guardar cartas + reliquias
+APPLY_LOADOUT,Apply,使用该预设,Appliquer,適用,적용,Aplicar
+RENAME_LOADOUT,Rename,重命名,Renommer,名前を変更,이름 변경,Renombrar
+DELETE_LOADOUT,Delete,删除,Supprimer,削除,삭제,Eliminar
+IMPORT_LOADOUT,Import from clipboard,导入剪贴板,Importer depuis le presse-papiers,クリップボードからインポート,클립보드에서 가져오기,Importar desde el portapapeles
+EXPORT_LOADOUT,Export to clipboard,导出剪贴板,Exporter vers le presse-papiers,クリップボードへエクスポート,클립보드로 내보내기,Exportar al portapapeles
+LOADOUT_NAME_PLACEHOLDER,Loadout name,预设名称,Nom de l'équipement,ロードアウト名,로드아웃 이름,Nombre del equipamiento
+LOADOUT_KIND_RELICS,Relics,遗物,Reliques,レリック,유물,Reliquias
+LOADOUT_KIND_BOTH,Cards + Relics,卡牌 + 遗物,Cartes + reliques,カード + レリック,카드 + 유물,Cartas + reliquias
+LOADOUT_KIND_CARDS,Cards,卡牌,Cartes,カード,카드,Cartas
+LOADOUT_NO_PLAYER,No run player available.,当前局没有可用的玩家。,Aucun joueur de partie disponible.,現在のランに利用可能なプレイヤーがいません。,현재 런에 사용 가능한 플레이어가 없습니다.,No hay ningún jugador disponible en la partida.
+LOADOUT_SAVED,Saved loadout.,已保存预设方案。,Équipement enregistré.,ロードアウトを保存しました。,로드아웃을 저장했습니다.,Equipamiento guardado.
+LOADOUT_SELECT_FIRST,Select a loadout first.,请先选择一个预设方案。,Sélectionnez d'abord un équipement.,先にロードアウトを選択してください。,먼저 로드아웃을 선택하세요.,Selecciona primero un equipamiento.
+LOADOUT_APPLY_FAILED,Could not apply loadout.,无法应用预设方案。,Impossible d'appliquer l'équipement.,ロードアウトを適用できませんでした。,로드아웃을 적용할 수 없습니다.,No se pudo aplicar el equipamiento.
+LOADOUT_APPLIED,Applied loadout.,已应用预设方案。,Équipement appliqué.,ロードアウトを適用しました。,로드아웃을 적용했습니다.,Equipamiento aplicado.
+LOADOUT_RENAME_LOCAL_ONLY,Only local loadouts can be renamed.,只能重命名本地预设方案。,Seuls les équipements locaux peuvent être renommés.,名前を変更できるのはローカルのロードアウトのみです。,로컬 로드아웃만 이름을 변경할 수 있습니다.,Solo se pueden renombrar los equipamientos locales.
+LOADOUT_RENAMED,Renamed loadout.,已重命名预设方案。,Équipement renommé.,ロードアウト名を変更しました。,로드아웃 이름을 변경했습니다.,Equipamiento renombrado.
+LOADOUT_DELETE_LOCAL_ONLY,Only local loadouts can be deleted.,只能删除本地预设方案。,Seuls les équipements locaux peuvent être supprimés.,削除できるのはローカルのロードアウトのみです。,로컬 로드아웃만 삭제할 수 있습니다.,Solo se pueden eliminar los equipamientos locales.
+LOADOUT_DELETED,Deleted loadout.,已删除预设方案。,Équipement supprimé.,ロードアウトを削除しました。,로드아웃을 삭제했습니다.,Equipamiento eliminado.
+LOADOUT_EXPORTED,Exported loadout.,已导出预设方案。,Équipement exporté.,ロードアウトをエクスポートしました。,로드아웃을 내보냈습니다.,Equipamiento exportado.
+LOADOUT_EXPORT_FAILED,Could not export loadout.,无法导出预设方案。,Impossible d'exporter l'équipement.,ロードアウトをエクスポートできませんでした。,로드아웃을 내보낼 수 없습니다.,No se pudo exportar el equipamiento.
+LOADOUT_IMPORTED,Imported loadout.,已导入预设方案。,Équipement importé.,ロードアウトをインポートしました。,로드아웃을 가져왔습니다.,Equipamiento importado.
+CONFIG_RESET_ALL_PERMA_MOD,Reset all permanent card modifications,重置所有永久卡牌修改,Réinitialiser toutes les modifications permanentes des cartes,すべての恒久的なカード変更をリセット,모든 영구 카드 변경 초기화,Restablecer todas las modificaciones permanentes de cartas
+CONFIG_PERMANENT_CARD_MODIFICATIONS_RESET,Permanent card modifications reset,已重置永久卡牌修改,Modifications permanentes des cartes réinitialisées,恒久的なカード変更をリセットしました,영구 카드 변경을 초기화했습니다,Modificaciones permanentes de cartas restablecidas

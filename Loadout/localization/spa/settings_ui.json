@@ -1,0 +1,21 @@
+{
+  "LOADOUT.mod_title": "Equipamiento",
+  "LOADOUT-LOADOUT_PANEL_SECTION.title": "Panel de equipamiento",
+  "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "Activar la pantalla de equipamientos de mazo",
+  "LOADOUT-PANEL_SKIN.title": "Apariencia del panel de equipamiento",
+  "LOADOUT-PANEL_SKIN.Default": "Predeterminado",
+  "LOADOUT-PANEL_SKIN.Isaac": "Isaac",
+  "LOADOUT-PANEL_SKIN.Legacy": "Clásico",
+  "LOADOUT-PANEL_SKIN.STS1": "Slay the Spire 1",
+  "LOADOUT-PANEL_SKIN.XGGG": "Isaac",
+  "LOADOUT-PANEL_ANIMATION.title": "Animación del panel de equipamiento",
+  "LOADOUT-PANEL_ANIMATION.YellowGlowPulse": "Pulso de brillo amarillo",
+  "LOADOUT-PANEL_ANIMATION.DockMagnify": "Ampliación del dock",
+  "LOADOUT-CARD_MODIFICATIONS_SECTION.title": "Modificaciones de cartas",
+  "LOADOUT-PERMANENT_CARD_MODIFICATIONS.title": "Modificaciones permanentes de cartas",
+  "LOADOUT-RESET_ALL_PERMANENT_CARD_MODIFICATIONS.title": "Restablecer todas las modificaciones permanentes de cartas",
+  "LOADOUT-RESET_STATUS_READY.title": "",
+  "LOADOUT-RESET_STATUS_SUCCEEDED.title": "Estado: las modificaciones permanentes de cartas se restablecieron correctamente",
+  "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "Estado: no hay modificaciones permanentes de cartas que restablecer",
+  "LOADOUT-RESET_STATUS_FAILED.title": "Estado: no se pudo restablecer; consulta el registro para obtener más detalles"
+}

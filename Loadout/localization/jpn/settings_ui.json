@@ -1,0 +1,21 @@
+{
+  "LOADOUT.mod_title": "ロードアウト",
+  "LOADOUT-LOADOUT_PANEL_SECTION.title": "ロードアウトパネル",
+  "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "デッキロードアウト画面を有効化",
+  "LOADOUT-PANEL_SKIN.title": "ロードアウトパネルのスキン",
+  "LOADOUT-PANEL_SKIN.Default": "デフォルト",
+  "LOADOUT-PANEL_SKIN.Isaac": "Isaac",
+  "LOADOUT-PANEL_SKIN.Legacy": "レガシー",
+  "LOADOUT-PANEL_SKIN.STS1": "Slay the Spire 1",
+  "LOADOUT-PANEL_SKIN.XGGG": "Isaac",
+  "LOADOUT-PANEL_ANIMATION.title": "ロードアウトパネルのアニメーション",
+  "LOADOUT-PANEL_ANIMATION.YellowGlowPulse": "黄色の発光パルス",
+  "LOADOUT-PANEL_ANIMATION.DockMagnify": "ドック拡大",
+  "LOADOUT-CARD_MODIFICATIONS_SECTION.title": "カード変更",
+  "LOADOUT-PERMANENT_CARD_MODIFICATIONS.title": "恒久的なカード変更",
+  "LOADOUT-RESET_ALL_PERMANENT_CARD_MODIFICATIONS.title": "すべての恒久的なカード変更をリセット",
+  "LOADOUT-RESET_STATUS_READY.title": "",
+  "LOADOUT-RESET_STATUS_SUCCEEDED.title": "状態：恒久的なカード変更をリセットしました",
+  "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "状態：リセットする恒久的なカード変更はありません",
+  "LOADOUT-RESET_STATUS_FAILED.title": "状態：リセットに失敗しました。詳細はログを確認してください"
+}

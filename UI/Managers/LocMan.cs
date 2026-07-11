@@ -11,7 +11,7 @@ namespace Loadout.UI.Managers;
 
 public static class LocMan
 {
-    private const string DefaultLocale = "en";
+    private const string DefaultLocale = "eng";
     private static bool _loaded;
 
     public static void Load()
@@ -21,6 +21,11 @@ public static class LocMan
 
         LoadTranslation("res://Loadout/localization/uitext.en.translation");
         LoadTranslation("res://Loadout/localization/uitext.zh_CN.translation");
+        LoadTranslation("res://Loadout/localization/uitext.fr.translation");
+        LoadTranslation("res://Loadout/localization/uitext.ja.translation");
+        LoadTranslation("res://Loadout/localization/uitext.ko.translation");
+        LoadTranslation("res://Loadout/localization/uitext.es.translation");
+        
 
         _loaded = true;
     }
