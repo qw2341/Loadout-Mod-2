@@ -98,34 +98,33 @@ public static class CardCmdUpgradeCardModificationPatch
     public static void Postfix(List<CardModel> __state)
     {
         CardModificationStateService.ReapplyEffectiveStateAfterUpgrade(__state);
+        if (__state.Count == 0)
+            return;
 
         HashSet<ulong> changedPlayers = [];
         List<LoadoutChangedCard> changedCards = [];
-        foreach (CardModel card in __state)
+        foreach (IGrouping<Player, CardModel> group in __state
+                     .Where(card => card.Owner is not null && card.Pile?.Type == PileType.Deck)
+                     .GroupBy(card => card.Owner!))
         {
-            Player? owner = card.Owner;
-            if (owner is null || card.Pile?.Type != PileType.Deck)
-                continue;
+            Player owner = group.Key;
+            Dictionary<CardModel, int> deckIndices = new(ReferenceEqualityComparer.Instance);
+            IReadOnlyList<CardModel> deck = owner.Deck.Cards;
+            for (int index = 0; index < deck.Count; index++)
+                deckIndices[deck[index]] = index;
 
-            int index = -1;
-            for (int i = 0; i < owner.Deck.Cards.Count; i++)
+            foreach (CardModel card in group)
             {
-                if (!ReferenceEquals(owner.Deck.Cards[i], card))
+                if (!deckIndices.TryGetValue(card, out int index))
                     continue;
 
-                index = i;
-                break;
+                CardModificationState state = CardModificationStateService.GetEffectiveStateForCard(card);
+                LoadoutCardVisualRefreshKind refreshKind = CardModificationStateService.GetVisualRefreshKind(
+                    new CardModificationState(),
+                    state);
+                changedPlayers.Add(owner.NetId);
+                changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, refreshKind));
             }
-
-            if (index < 0)
-                continue;
-
-            CardModificationState state = CardModificationStateService.GetEffectiveStateForCard(card);
-            LoadoutCardVisualRefreshKind refreshKind = CardModificationStateService.GetVisualRefreshKind(
-                new CardModificationState(),
-                state);
-            changedPlayers.Add(owner.NetId);
-            changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, refreshKind));
         }
 
         if (changedCards.Count > 0)
@@ -144,12 +143,11 @@ public static class CardCmdUpgradeCardModificationPatch
     nameof(CardPileCmd.RemoveFromDeck),
     typeof(IReadOnlyList<CardModel>),
     typeof(bool))]
-public static class CardPileRemoveTemporaryIdentityPatch
+public static class CardPileRemoveCardModificationPatch
 {
     public sealed record RemovedCardState(CardModel Card, LoadoutChangedCard Change);
 
     public sealed record RemovalState(
-        Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> TemporaryStates,
         IReadOnlyList<CardModel> InevitableCards,
         IReadOnlyList<RemovedCardState> RemovedCards);
 
@@ -158,30 +156,25 @@ public static class CardPileRemoveTemporaryIdentityPatch
         IReadOnlyList<CardModel> cards,
         out RemovalState __state)
     {
-        Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> temporaryStates = new();
+        Dictionary<Player, Dictionary<CardModel, int>> indexMaps = new();
         foreach (Player owner in cards
                      .Where(card => card?.Owner is not null)
                      .Select(card => card.Owner)
                      .Distinct())
         {
-            temporaryStates[owner] = CardModificationStateService.CaptureTemporaryStatesForPlayer(owner);
+            Dictionary<CardModel, int> map = new(ReferenceEqualityComparer.Instance);
+            IReadOnlyList<CardModel> deck = owner.Deck.Cards;
+            for (int index = 0; index < deck.Count; index++)
+                map[deck[index]] = index;
+            indexMaps[owner] = map;
         }
 
         List<RemovedCardState> removedCards = [];
         foreach (CardModel card in cards.Where(card => card?.Owner is not null))
         {
             Player owner = card.Owner;
-            int index = -1;
-            for (int i = 0; i < owner.Deck.Cards.Count; i++)
-            {
-                if (!ReferenceEquals(owner.Deck.Cards[i], card))
-                    continue;
-
-                index = i;
-                break;
-            }
-
-            if (index >= 0)
+            if (indexMaps.TryGetValue(owner, out Dictionary<CardModel, int>? map)
+                && map.TryGetValue(card, out int index))
             {
                 removedCards.Add(new RemovedCardState(
                     card,
@@ -190,7 +183,6 @@ public static class CardPileRemoveTemporaryIdentityPatch
         }
 
         __state = new RemovalState(
-            temporaryStates,
             cards.Where(card => LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable)).ToList(),
             removedCards);
     }
@@ -200,47 +192,39 @@ public static class CardPileRemoveTemporaryIdentityPatch
         RemovalState __state,
         ref Task __result)
     {
-        __result = ReindexAfterRemovalAsync(__result, __state);
+        __result = FinishRemovalAsync(__result, __state);
     }
 
-    private static async Task ReindexAfterRemovalAsync(
-        Task original,
-        RemovalState state)
+    private static async Task FinishRemovalAsync(Task original, RemovalState state)
     {
-        try
+        await original;
+
+        // The temporary modification is attached to the CardModel itself. Re-adding
+        // an Inevitable card keeps the state without any deck snapshot or reindex pass.
+        foreach (CardModel card in state.InevitableCards)
         {
-            await original;
+            if (!card.HasBeenRemovedFromState)
+                continue;
 
-            foreach (CardModel card in state.InevitableCards)
-            {
-                if (!card.HasBeenRemovedFromState)
-                    continue;
-
-                Player owner = card.Owner;
-                owner.RunState.AddCard(card, owner);
-                CardPileAddResult result = await CardPileCmd.Add(card, owner.Deck);
-                CardCmd.PreviewCardPileAdd(result);
-            }
+            Player owner = card.Owner;
+            owner.RunState.AddCard(card, owner);
+            CardPileAddResult result = await CardPileCmd.Add(card, owner.Deck);
+            CardCmd.PreviewCardPileAdd(result);
         }
-        finally
-        {
-            foreach ((Player player, IReadOnlyDictionary<CardModel, CardModificationState> states) in state.TemporaryStates)
-                CardModificationStateService.ReplaceTemporaryStatesForPlayer(player, states, reapplyCards: false);
 
-            List<LoadoutChangedCard> removed = state.RemovedCards
-                .Where(entry => entry.Card.Owner is null
-                                || entry.Card.Pile?.Type != PileType.Deck
-                                || !entry.Card.Owner.Deck.Cards.Any(card => ReferenceEquals(card, entry.Card)))
-                .Select(entry => entry.Change)
-                .ToList();
-            if (removed.Count > 0)
-            {
-                LoadoutRunContentChangeService.Queue(
-                    LoadoutRunContentKind.Cards,
-                    removed.Select(entry => entry.OwnerNetId),
-                    LoadoutRunContentChangeMode.Remove,
-                    removed);
-            }
+        List<LoadoutChangedCard> removed = state.RemovedCards
+            .Where(entry => entry.Card.Owner is null
+                            || entry.Card.Pile?.Type != PileType.Deck
+                            || !entry.Card.Owner.Deck.Cards.Any(card => ReferenceEquals(card, entry.Card)))
+            .Select(entry => entry.Change)
+            .ToList();
+        if (removed.Count > 0)
+        {
+            LoadoutRunContentChangeService.Queue(
+                LoadoutRunContentKind.Cards,
+                removed.Select(entry => entry.OwnerNetId),
+                LoadoutRunContentChangeMode.Remove,
+                removed);
         }
     }
 }

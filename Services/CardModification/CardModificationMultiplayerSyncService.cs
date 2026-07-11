@@ -109,7 +109,9 @@ public static class CardModificationMultiplayerSyncService
             if (netService is null)
                 return;
 
-            RegisterRunNetService(netService);
+            // Reset before registering the run handler. Buffered snapshot messages can be
+            // delivered as part of registration; resetting afterward would erase the
+            // sequence baseline supplied by the host.
             lock (OperationSequenceGate)
             {
                 _nextOperationSequence = 0;
@@ -117,6 +119,8 @@ public static class CardModificationMultiplayerSyncService
                 _operationApplyQueued = false;
                 PendingOperationApplies.Clear();
             }
+
+            RegisterRunNetService(netService);
 
             if (netService.Type == NetGameType.Host)
                 BroadcastPermanentSnapshot();
@@ -156,6 +160,20 @@ public static class CardModificationMultiplayerSyncService
             Player? localPlayer = GetRunPlayer(netService.NetId) ?? GetLocalRunPlayer();
             if (localPlayer is null)
                 return false;
+
+            if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
+            {
+                CardModificationStateService.ApplySynchronizedOperation(
+                    operation,
+                    item.Model.Id,
+                    LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+                    item.Index,
+                    item.Model.Id,
+                    state,
+                    localPlayer,
+                    authoritativeRemote: false);
+                return true;
+            }
 
             LoadoutCardModificationOperationPayload payload = new()
             {
@@ -284,7 +302,9 @@ public static class CardModificationMultiplayerSyncService
         if (!IsValidOperationPayload(payload))
             return;
 
-        payload.Sequence = ++_nextOperationSequence;
+        lock (OperationSequenceGate)
+            payload.Sequence = ++_nextOperationSequence;
+
         LoadoutMutationSerialExecutor.Enqueue(() =>
         {
             ApplyOperation(payload, authoritativeRemote: false);
@@ -315,22 +335,30 @@ public static class CardModificationMultiplayerSyncService
             if (_operationApplyQueued)
                 return;
 
-            if (PendingOperationApplies.Count == 0)
+            int expectedSequence = _lastAppliedOperationSequence + 1;
+            if (!PendingOperationApplies.TryGetValue(expectedSequence, out payload))
                 return;
 
-            KeyValuePair<int, LoadoutCardModificationOperationPayload> next = PendingOperationApplies.First();
-            sequence = next.Key;
-            payload = next.Value;
+            sequence = expectedSequence;
             PendingOperationApplies.Remove(sequence);
             _operationApplyQueued = true;
         }
 
         LoadoutMutationSerialExecutor.Enqueue(() =>
         {
-            ApplyOperation(payload, authoritativeRemote: true);
+            bool shouldApply;
+            lock (OperationSequenceGate)
+                shouldApply = sequence > _lastAppliedOperationSequence;
+
+            // A buffered snapshot can establish a newer baseline while this item is
+            // waiting in the shared executor. Never replay an operation already
+            // represented by that snapshot.
+            if (shouldApply)
+                ApplyOperation(payload, authoritativeRemote: true);
+
             lock (OperationSequenceGate)
             {
-                _lastAppliedOperationSequence = sequence;
+                _lastAppliedOperationSequence = Math.Max(_lastAppliedOperationSequence, sequence);
                 _operationApplyQueued = false;
             }
 
@@ -442,10 +470,7 @@ public static class CardModificationMultiplayerSyncService
     public static void BroadcastPermanentSnapshot()
     {
         string payload = CardModificationStateService.ExportPermanentSnapshotJson();
-        LoadoutCardModificationPermanentSyncMessage message = new()
-        {
-            payload = payload
-        };
+        LoadoutCardModificationPermanentSyncMessage message = CreatePermanentSnapshotMessage(payload);
 
         foreach (StartRunLobby lobby in RegisteredLobbies)
         {
@@ -530,15 +555,52 @@ public static class CardModificationMultiplayerSyncService
         }
     }
 
+    private static LoadoutCardModificationPermanentSyncMessage CreatePermanentSnapshotMessage(string payload)
+    {
+        int operationSequence;
+        lock (OperationSequenceGate)
+            operationSequence = _nextOperationSequence;
+
+        return new LoadoutCardModificationPermanentSyncMessage
+        {
+            payload = payload,
+            operationSequence = operationSequence
+        };
+    }
+
+    private static void EstablishClientOperationSequenceBaseline(int sequence)
+    {
+        if (sequence < 0)
+            return;
+
+        lock (OperationSequenceGate)
+        {
+            if (sequence <= _lastAppliedOperationSequence)
+                return;
+
+            _lastAppliedOperationSequence = sequence;
+            foreach (int staleSequence in PendingOperationApplies.Keys
+                         .Where(pendingSequence => pendingSequence <= sequence)
+                         .ToList())
+            {
+                PendingOperationApplies.Remove(staleSequence);
+            }
+        }
+
+        // An apply packet may have arrived before the reliable buffered snapshot.
+        // The snapshot supplies the exact baseline, allowing the next queued delta
+        // to proceed without waiting for operations that predate this client.
+        TryScheduleNextOperationApply();
+    }
+
     private static void SendPermanentSnapshotToLobbyPlayer(StartRunLobby lobby, ulong playerId)
     {
         if (lobby.NetService.Type != NetGameType.Host || playerId == lobby.NetService.NetId)
             return;
 
-        lobby.NetService.SendMessage(new LoadoutCardModificationPermanentSyncMessage
-        {
-            payload = CardModificationStateService.ExportPermanentSnapshotJson()
-        }, playerId);
+        lobby.NetService.SendMessage(
+            CreatePermanentSnapshotMessage(CardModificationStateService.ExportPermanentSnapshotJson()),
+            playerId);
     }
 
     private static void HandlePermanentSync(LoadoutCardModificationPermanentSyncMessage message, ulong senderId)
@@ -546,6 +608,7 @@ public static class CardModificationMultiplayerSyncService
         if (IsHostSession() || !IsExpectedHostSender(senderId))
             return;
 
+        EstablishClientOperationSequenceBaseline(message.operationSequence);
         StorePendingHostPermanentSnapshot(message.payload);
         HostPermanentSnapshotApplyMode applyMode = RunManager.Instance.IsInProgress
             ? HostPermanentSnapshotApplyMode.LiveDecks
@@ -739,6 +802,7 @@ public struct LoadoutCardModificationPermanentDeltaMessage : ICustomMessage
 public struct LoadoutCardModificationPermanentSyncMessage : INetMessage, IPacketSerializable
 {
     public string payload;
+    public int operationSequence;
 
     public bool ShouldBroadcast => false;
     public NetTransferMode Mode => NetTransferMode.Reliable;
@@ -748,11 +812,13 @@ public struct LoadoutCardModificationPermanentSyncMessage : INetMessage, IPacket
     public void Serialize(PacketWriter writer)
     {
         writer.WriteString(payload ?? string.Empty);
+        writer.WriteInt(operationSequence);
     }
 
     public void Deserialize(PacketReader reader)
     {
         payload = reader.ReadString();
+        operationSequence = reader.ReadInt();
     }
 }
 

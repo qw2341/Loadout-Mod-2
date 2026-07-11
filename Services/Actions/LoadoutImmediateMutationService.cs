@@ -813,22 +813,7 @@ public static class LoadoutImmediateMutationService
         CardPreviewStyle style = addedCards.Count > 5
             ? CardPreviewStyle.GridLayout
             : CardPreviewStyle.HorizontalLayout;
-
-        try
-        {
-            CardCmd.PreviewCardPileAdd(addedCards, 1.2f, style);
-        }
-        catch (Exception exception)
-        {
-            // PreviewCardPileAdd is local-only presentation. A large batch that
-            // deliberately overfills the hand can make its preview nodes reject
-            // their state after every card has already been added successfully.
-            // Do not abort ApplyAddCardAsync here: the host must still broadcast
-            // the mutation so every peer registers the generated combat-card IDs.
-            // GD.PushWarning(
-            //     $"LoadoutImmediateMutation: card-add preview failed after adding {addedCards.Count} card(s). " +
-            //     $"The synchronized mutation will continue. {exception.Message}");
-        }
+        CardCmd.PreviewCardPileAdd(addedCards, 1.2f, style);
     }
 
     private static async Task ApplyAddRelicAsync(LoadoutImmediateMutationPayload payload, Player requester)
@@ -906,8 +891,20 @@ public static class LoadoutImmediateMutationService
         int upgrades = Math.Max(1, payload.Amount);
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            foreach (CardModel card in targetPlayer.Deck.Cards.ToList())
-                UpgradeCardWithCommand(card, upgrades);
+            for (int pass = 0; pass < upgrades; pass++)
+            {
+                List<CardModel> upgradableCards = targetPlayer.Deck.Cards
+                    .Where(card => card.IsUpgradable)
+                    .ToList();
+                if (upgradableCards.Count == 0)
+                    break;
+
+                // One native command lets the card-modification postfix process the
+                // entire batch with one materialization, one owner index map, and one
+                // coalesced UI update instead of N separate command/event chains.
+                using (CardModificationStateService.BeginTargetedUpgradeRefresh())
+                    CardCmd.Upgrade(upgradableCards, CardPreviewStyle.None);
+            }
         }
     }
 
@@ -919,7 +916,8 @@ public static class LoadoutImmediateMutationService
             try
             {
                 int previousUpgradeLevel = card.CurrentUpgradeLevel;
-                CardCmd.Upgrade(card, CardPreviewStyle.None);
+                using (CardModificationStateService.BeginTargetedUpgradeRefresh())
+                    CardCmd.Upgrade(card, CardPreviewStyle.None);
                 if (card.CurrentUpgradeLevel <= previousUpgradeLevel && card.IsUpgradable && !CombatManager.Instance.IsEnding)
                 {
                     card.UpgradeInternal();
