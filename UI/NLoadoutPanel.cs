@@ -86,6 +86,7 @@ public partial class NLoadoutPanel : Panel
 	public static Control ItemsContainer = null!;
 
 	private static NLoadoutPanel? _instance;
+	private static bool _configPreviewVisible;
 
 	private int _loadoutItemInitAttempts;
 	private bool _loadoutItemsAdded;
@@ -132,7 +133,7 @@ public partial class NLoadoutPanel : Panel
 
 	public void ToggleShown()
 	{
-		if (Hidden || !LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+		if (Hidden || (!_configPreviewVisible && !LoadoutPanelAccessService.CanLocalPlayerUsePanel()))
 			return;
 
 		SetPanelState(Hidden, !Shown);
@@ -145,6 +146,12 @@ public partial class NLoadoutPanel : Panel
 	
 	private void InitializePanelState()
 	{
+		if (_configPreviewVisible)
+		{
+			SetPanelState(hidden: false, shown: true, notify: false);
+			return;
+		}
+
 		if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
 		{
 			SetPanelState(hidden: true, shown: false, notify: false);
@@ -196,6 +203,13 @@ public partial class NLoadoutPanel : Panel
 
 	private void OnLoadoutPanelAccessChanged()
 	{
+		if (_configPreviewVisible)
+		{
+			InitializePanelState();
+			SnapToTargetPosition();
+			return;
+		}
+
 		if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
 		{
 			SetPanelState(hidden: true, shown: false);
@@ -209,7 +223,7 @@ public partial class NLoadoutPanel : Panel
 
 	private void OnRunCleanedUp()
 	{
-		if (DebugForceShownExpanded)
+		if (DebugForceShownExpanded || _configPreviewVisible)
 			return;
 
 		SetPanelState(hidden: true, shown: false);
@@ -222,6 +236,16 @@ public partial class NLoadoutPanel : Panel
 			return;
 
 		_instance.OnRunCleanedUp();
+	}
+
+	public static void SetConfigPreviewVisible(bool visible)
+	{
+		_configPreviewVisible = visible;
+		if (_instance is null || !IsInstanceValid(_instance))
+			return;
+
+		_instance.InitializePanelState();
+		_instance.SnapToTargetPosition();
 	}
 
 	private void SetPanelState(bool hidden, bool shown, bool notify = true)

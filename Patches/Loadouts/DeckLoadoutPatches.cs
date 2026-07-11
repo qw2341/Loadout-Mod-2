@@ -10,6 +10,7 @@ using Godot;
 using HarmonyLib;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
+using Loadout.Services.Configuration;
 using Loadout.Services.Loadouts;
 using Loadout.UI;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -31,7 +32,7 @@ public static class DeckViewScreenLoadoutPanelReadyPatch
     {
         Player? player = PlayerField?.GetValue(__instance) as Player;
         DeckViewRefreshService.Register(__instance);
-        if (LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+        if (LoadoutConfigService.EnableDeckLoadoutScreen && LoadoutPanelAccessService.CanLocalPlayerUsePanel())
             NDeckLoadoutPanel.AttachTo(__instance, player);
     }
 }
@@ -59,6 +60,7 @@ internal static class DeckViewRefreshService
     {
         LoadoutRunContentChangeService.Changed += OnRunContentChanged;
         LoadoutPanelAccessService.AccessChanged += OnLoadoutPanelAccessChanged;
+        LoadoutConfigService.DeckLoadoutScreenVisibilityChanged += OnLoadoutPanelAccessChanged;
     }
 
     public static void Register(NDeckViewScreen screen)
@@ -105,7 +107,7 @@ internal static class DeckViewRefreshService
                 continue;
             }
 
-            if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+            if (!LoadoutConfigService.EnableDeckLoadoutScreen || !LoadoutPanelAccessService.CanLocalPlayerUsePanel())
             {
                 NDeckLoadoutPanel.DetachFrom(screen);
                 continue;

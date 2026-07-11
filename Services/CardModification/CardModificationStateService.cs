@@ -416,6 +416,44 @@ public static class CardModificationStateService
         RaiseStateChanged();
     }
 
+    public static IReadOnlyList<ModelId> ResetAllPermanent()
+    {
+        EnsureLoaded();
+
+        Dictionary<string, CardModificationState> previousPermanentStates;
+        List<string> changedPermanentKeys;
+        lock (SyncRoot)
+        {
+            if (_permanent.Cards.Count == 0)
+                return [];
+
+            previousPermanentStates = CloneStateDictionary(_permanent.Cards);
+            changedPermanentKeys = _permanent.Cards.Keys.ToList();
+            _permanent.Cards.Clear();
+            InvalidateDisplayCacheLocked();
+            SavePermanentState();
+        }
+
+        HashSet<string> changedPermanentKeySet = new(changedPermanentKeys, StringComparer.Ordinal);
+        ApplySavedRunStateToLiveDecks(
+            previousPermanentStates,
+            raiseStateChanged: false,
+            changedPermanentKeys: changedPermanentKeySet);
+
+        CardModificationMultiplayerSyncService.BroadcastPermanentSnapshot();
+        IReadOnlyList<ModelId> changedCardIds = ResolvePermanentCardIds(changedPermanentKeys);
+        RaisePermanentCardDisplayChanged(changedCardIds);
+        RaiseStateChanged();
+        return changedCardIds;
+    }
+
+    public static int GetPermanentModificationCount()
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+            return _permanent.Cards.Count;
+    }
+
     public static void ResetPermanentToBasic(LoadoutOwnedItem<CardModel> item)
     {
         EnsureLoaded();

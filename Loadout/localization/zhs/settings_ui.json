@@ -1,0 +1,21 @@
+{
+  "LOADOUT.mod_title": "Loadout",
+  "LOADOUT-LOADOUT_PANEL_SECTION.title": "Loadout 侧边栏",
+  "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "在牌组界面显示 Loadout",
+  "LOADOUT-PANEL_SKIN.title": "Loadout 侧边栏皮肤",
+  "LOADOUT-PANEL_SKIN.Default": "默认",
+  "LOADOUT-PANEL_SKIN.Isaac": "以撒",
+  "LOADOUT-PANEL_SKIN.Legacy": "经典",
+  "LOADOUT-PANEL_SKIN.STS1": "杀戮尖塔 1",
+  "LOADOUT-PANEL_SKIN.XGGG": "XGGG",
+  "LOADOUT-PANEL_ANIMATION.title": "Loadout 侧边栏动画",
+  "LOADOUT-PANEL_ANIMATION.YellowGlowPulse": "黄色光晕脉冲",
+  "LOADOUT-PANEL_ANIMATION.DockMagnify": "悬停放大",
+  "LOADOUT-CARD_MODIFICATIONS_SECTION.title": "卡牌修改",
+  "LOADOUT-PERMANENT_CARD_MODIFICATIONS.title": "永久卡牌修改",
+  "LOADOUT-RESET_ALL_PERMANENT_CARD_MODIFICATIONS.title": "重置所有永久卡牌修改",
+  "LOADOUT-RESET_STATUS_READY.title": "",
+  "LOADOUT-RESET_STATUS_SUCCEEDED.title": "状态：已成功重置永久卡牌修改",
+  "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "状态：没有需要重置的永久卡牌修改",
+  "LOADOUT-RESET_STATUS_FAILED.title": "状态：重置失败；请查看日志了解详情"
+}

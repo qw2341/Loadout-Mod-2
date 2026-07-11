@@ -226,3 +226,5 @@ LOADOUT_DELETED,Deleted loadout.,已删除预设方案。
 LOADOUT_EXPORTED,Exported loadout.,已导出预设方案。
 LOADOUT_EXPORT_FAILED,Could not export loadout.,无法导出预设方案。
 LOADOUT_IMPORTED,Imported loadout.,已导入预设方案。
+CONFIG_RESET_ALL_PERMA_MOD,Reset all permanent card modifications,重置所有永久卡牌修改
+CONFIG_PERMANENT_CARD_MODIFICATIONS_RESET,Permanent card modifications reset,已重置永久卡牌修改

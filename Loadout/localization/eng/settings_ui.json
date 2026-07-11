@@ -1,0 +1,21 @@
+{
+  "LOADOUT.mod_title": "Loadout",
+  "LOADOUT-LOADOUT_PANEL_SECTION.title": "Loadout Panel",
+  "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "Enable deck loadout screen",
+  "LOADOUT-PANEL_SKIN.title": "Loadout panel skin",
+  "LOADOUT-PANEL_SKIN.Default": "Default",
+  "LOADOUT-PANEL_SKIN.Isaac": "Isaac",
+  "LOADOUT-PANEL_SKIN.Legacy": "Legacy",
+  "LOADOUT-PANEL_SKIN.STS1": "Slay the Spire 1",
+  "LOADOUT-PANEL_SKIN.XGGG": "XGGG",
+  "LOADOUT-PANEL_ANIMATION.title": "Loadout panel animation",
+  "LOADOUT-PANEL_ANIMATION.YellowGlowPulse": "Yellow glow pulse",
+  "LOADOUT-PANEL_ANIMATION.DockMagnify": "Dock magnify",
+  "LOADOUT-CARD_MODIFICATIONS_SECTION.title": "Card Modifications",
+  "LOADOUT-PERMANENT_CARD_MODIFICATIONS.title": "Permanent card modifications",
+  "LOADOUT-RESET_ALL_PERMANENT_CARD_MODIFICATIONS.title": "Reset all permanent card modifications",
+  "LOADOUT-RESET_STATUS_READY.title": "",
+  "LOADOUT-RESET_STATUS_SUCCEEDED.title": "Status: permanent card modifications reset successfully",
+  "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "Status: no permanent card modifications to reset",
+  "LOADOUT-RESET_STATUS_FAILED.title": "Status: reset failed; check the log for details"
+}

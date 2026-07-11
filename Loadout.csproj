@@ -35,6 +35,7 @@
         <!-- Diasble architecture mismatch warning; mods are ideally built for all platforms (MSIL)
              while your local StS2 version will be for your specific platform. -->
         <NoWarn>$(NoWarn);MSB3270</NoWarn>
+        <BaseLibReferencePath Condition="'$(BaseLibReferencePath)' == ''">$(SteamLibraryPath)/workshop/content/2868840/3737335127/BaseLib/BaseLib.dll</BaseLibReferencePath>
     </PropertyGroup>
     
   <ItemGroup>
@@ -52,10 +53,12 @@
 
     <ItemGroup>
         <Compile Remove="Loadout/**"/>
+        <Compile Remove="OptionalBaseLibIntegration/**"/>
         <Compile Remove="materials/**"/>
         <Compile Remove="shaders/**"/>
         <Compile Remove="images/**"/>
         <EmbeddedResource Remove="Loadout/**"/>
+        <EmbeddedResource Remove="OptionalBaseLibIntegration/**"/>
         <EmbeddedResource Remove="materials/**"/>
         <EmbeddedResource Remove="shaders/**"/>
         <EmbeddedResource Remove="images/**"/>
@@ -75,10 +78,19 @@
         <Copy SourceFiles="Loadout.json" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"/>
     </Target>
 
+    <Target Name="BuildOptionalBaseLibIntegration" AfterTargets="Build" Condition="Exists('$(BaseLibReferencePath)')">
+        <Message Text="Building optional BaseLib config integration." Importance="high"/>
+        <MSBuild Projects="OptionalBaseLibIntegration/Loadout.BaseLibIntegration.csproj"
+                 Targets="Restore;Build"
+                 Properties="Configuration=$(Configuration);BaseLibPath=$(BaseLibReferencePath);Sts2DataDir=$(Sts2DataDir)"/>
+        <Copy SourceFiles="OptionalBaseLibIntegration/bin/$(Configuration)/net9.0/Loadout.BaseLibIntegration.dll"
+              DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"/>
+    </Target>
+
     <Target Name="GodotPublish" AfterTargets="Publish" Condition="'$(GodotPath)' != '' and Exists('$(GodotPath)') and '$(IsInnerGodotExport)' != 'true'">
         <Message Text="Exporting Godot .pck to mods folder" Importance="high"/>
         <Exec Command="&quot;$(GodotPath)&quot; --headless --export-pack &quot;BasicExport&quot; &quot;$(ModsPath)$(MSBuildProjectName)/$(MSBuildProjectName).pck&quot;"
-              EnvironmentVariables="IsInnerGodotExport=true;MSBUILDDISABLENODEREUSE=1"
+              EnvironmentVariables="IsInnerGodotExport=true;MSBUILDDISABLENODEREUSE=1;ModsPath=$(ModsPath)"
               ContinueOnError="WarnAndContinue"/>
     </Target>
 
