@@ -9,7 +9,6 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.CardModification;
-using Loadout.Services.CreatureManipulation;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Networking;
 using Loadout.Services.PowerGiver;
@@ -61,8 +60,7 @@ public enum LoadoutImmediateMutationKind
     TildeSpareEnemies,
     TildeRelicCounterDelta,
     TildeRelicCounterLock,
-    SummonMonster,
-    CreatureManipulation
+    SummonMonster
 }
 
 public static class LoadoutImmediateMutationService
@@ -248,20 +246,6 @@ public static class LoadoutImmediateMutationService
             Kind = LoadoutImmediateMutationKind.SummonMonster,
             ModelId = monsterId,
             Amount = 1
-        });
-    }
-
-    public static bool RequestCreatureManipulation(ModelId modelId, string mutationJson)
-    {
-        if (string.IsNullOrWhiteSpace(mutationJson))
-            return false;
-
-        return Request(new LoadoutImmediateMutationPayload
-        {
-            Kind = LoadoutImmediateMutationKind.CreatureManipulation,
-            ModelId = modelId,
-            Amount = 1,
-            TildePayloadJson = mutationJson
         });
     }
 
@@ -550,12 +534,6 @@ public static class LoadoutImmediateMutationService
     private static void PublishHostApply(LoadoutImmediateMutationPayload payload, INetGameService? netService)
     {
         payload.NormalizeDefaults();
-        if (payload.Kind == LoadoutImmediateMutationKind.CreatureManipulation
-            && !CreatureManipulationStateService.TryPrepareHostPayload(ref payload))
-        {
-            return;
-        }
-
         payload.Sequence = ++_nextHostSequence;
         Apply(payload);
 
@@ -654,9 +632,6 @@ public static class LoadoutImmediateMutationService
                 break;
             case LoadoutImmediateMutationKind.SummonMonster:
                 TaskHelper.RunSafely(LoadoutSummonMonsterService.SummonMonsterNowAsync(payload.ModelId));
-                break;
-            case LoadoutImmediateMutationKind.CreatureManipulation:
-                CreatureManipulationStateService.ApplySynchronizedMutation(payload);
                 break;
         }
     }
@@ -1316,8 +1291,6 @@ public struct LoadoutImmediateMutationPayload
         foreach (AncientEventModel model in ModelDb.AllAncients)
             yield return model;
         foreach (MonsterModel model in ModelDb.Monsters)
-            yield return model;
-        foreach (CharacterModel model in ModelDb.AllCharacters)
             yield return model;
     }
 
