@@ -230,5 +230,3 @@ LOADOUT_DELETED,Deleted loadout.,已删除预设方案。,Équipement supprimé.
 LOADOUT_EXPORTED,Exported loadout.,已导出预设方案。,Équipement exporté.,ロードアウトをエクスポートしました。,로드아웃을 내보냈습니다.,Equipamiento exportado.
 LOADOUT_EXPORT_FAILED,Could not export loadout.,无法导出预设方案。,Impossible d'exporter l'équipement.,ロードアウトをエクスポートできませんでした。,로드아웃을 내보낼 수 없습니다.,No se pudo exportar el equipamiento.
 LOADOUT_IMPORTED,Imported loadout.,已导入预设方案。,Équipement importé.,ロードアウトをインポートしました。,로드아웃을 가져왔습니다.,Equipamiento importado.
-CONFIG_RESET_ALL_PERMA_MOD,Reset all permanent card modifications,重置所有永久卡牌修改,Réinitialiser toutes les modifications permanentes des cartes,すべての恒久的なカード変更をリセット,모든 영구 카드 변경 초기화,Restablecer todas las modificaciones permanentes de cartas
-CONFIG_PERMANENT_CARD_MODIFICATIONS_RESET,Permanent card modifications reset,已重置永久卡牌修改,Modifications permanentes des cartes réinitialisées,恒久的なカード変更をリセットしました,영구 카드 변경을 초기화했습니다,Modificaciones permanentes de cartas restablecidas

@@ -1,8 +1,9 @@
 using System.Reflection;
+using BaseLib.Config;
 using Godot;
 using HarmonyLib;
+using Loadout.Config;
 using Loadout.Patches;
-using Loadout.Services.Configuration;
 using Loadout.Services.Input;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Modding;
@@ -40,7 +41,7 @@ public partial class MainFile : Node
         Logger.Info("[Loadout] Harmony PatchAll complete.");
 
         LocMan.Load();
-        OptionalBaseLibIntegrationService.TryInitialize();
+        ModConfigRegistry.Register(ModId, new LoadoutModConfig());
 
         Logger.Info("[Loadout] Initialize complete.");
     }
