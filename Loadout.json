@@ -3,7 +3,7 @@
   "name": "Loadout",
   "author": "Jasonwqq",
   "description": "A mod for getting stuff.",
-  "version": "v0.0.8",
+  "version": "v0.0.9",
   "min_game_version": "0.107.0",
   "has_pck": true,
   "has_dll": true,

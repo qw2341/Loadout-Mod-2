@@ -23,7 +23,7 @@ public partial class MainFile : Node
     {
         Logger.Info("[Loadout] Intercepting Sentry to prevent crashing when launching from workshop.");
         SentryStartupCrashInterceptor.Install(Harmony);
-        Logger.Info("[Loadout] Build marker DLL: 2026-07-04-card-printer-native-batch-v5");
+        // Logger.Info("[Loadout] Build marker DLL: 2026-07-04-card-printer-native-batch-v5");
 
         var assembly = Assembly.GetExecutingAssembly();
         Logger.Info($"[Loadout] Assembly location: {assembly.Location}");
