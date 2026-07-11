@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -90,7 +91,7 @@ public partial class NLoadoutPanel : Panel
 
 	private int _loadoutItemInitAttempts;
 	private bool _loadoutItemsAdded;
-	private bool _loadoutItemRetryScheduled;
+	private string? _lastLoadoutItemInitError;
 	private bool _runStartedConnected;
 	
 	public event Action? VisibilityStateChanged;
@@ -115,8 +116,6 @@ public partial class NLoadoutPanel : Panel
 		LoadoutPanelAccessService.AccessChanged += OnLoadoutPanelAccessChanged;
 		SnapToTargetPosition();
 		
-		TryAddLoadoutItems();
-
 		// Recompute whenever the VBox minimum size changes
 		// _marginContainer.MinimumSizeChanged += UpdatePanelHeight;
 		// _itemsContainer.MinimumSizeChanged += UpdatePanelHeight;
@@ -460,45 +459,117 @@ public partial class NLoadoutPanel : Panel
 		BottledMonster.Initialize();
 	}
 
-	private void TryAddLoadoutItems()
+	public bool TryInitializeLoadoutItems()
 	{
 		if (_loadoutItemsAdded)
-			return;
+			return true;
+
+		if (_loadoutItemInitAttempts >= MaxLoadoutItemInitAttempts)
+			return false;
+
+		_loadoutItemInitAttempts++;
 
 		try
 		{
+			VerifyStaticModelCollectionsAreReady();
 			AddLoadoutItems();
 			_loadoutItemsAdded = true;
+			_lastLoadoutItemInitError = null;
 			UpdatePanelHeight();
+			return true;
 		}
 		catch (KeyNotFoundException exception)
 		{
-			ScheduleLoadoutItemRetry(exception);
+			_lastLoadoutItemInitError = exception.Message;
+
+			if (_loadoutItemInitAttempts == 1)
+			{
+				GD.PushWarning(
+					$"LoadoutPanel: ModelDb is not ready yet; startup preloader will retry. Missing key: {exception.Message}");
+			}
+
+			if (_loadoutItemInitAttempts >= MaxLoadoutItemInitAttempts)
+			{
+				GD.PushError(
+					$"LoadoutPanel: failed to initialize loadout items after {_loadoutItemInitAttempts} frames. " +
+					$"Last missing key: {exception.Message}");
+			}
+
+			return false;
 		}
 	}
 
-	private async void ScheduleLoadoutItemRetry(KeyNotFoundException exception)
-	{
-		if (_loadoutItemRetryScheduled)
-			return;
+	public bool LoadoutItemsInitialized => _loadoutItemsAdded;
+	public int LoadoutItemInitAttempts => _loadoutItemInitAttempts;
+	public bool LoadoutItemInitializationExhausted => _loadoutItemInitAttempts >= MaxLoadoutItemInitAttempts;
+	public string? LastLoadoutItemInitError => _lastLoadoutItemInitError;
 
-		if (_loadoutItemInitAttempts >= MaxLoadoutItemInitAttempts)
+	public IReadOnlyList<SelectScreenPreloadEntry> GetSelectScreensForPreload()
+	{
+		if (!_loadoutItemsAdded || !IsInstanceValid(_itemsContainer))
+			return Array.Empty<SelectScreenPreloadEntry>();
+
+		List<SelectScreenPreloadEntry> screens = [];
+		int itemIndex = 0;
+
+		foreach (Node child in _itemsContainer.GetChildren())
 		{
-			GD.PushError($"LoadoutPanel: failed to initialize loadout items after {_loadoutItemInitAttempts} frames. Last missing key: {exception.Message}");
-			return;
+			if (child is not NLoadoutPanelItem item)
+				continue;
+
+			string fileName = Path.GetFileNameWithoutExtension(item.TextureFileName);
+			string safeName = CommonHelpers.MakeSafeNodeName(
+				string.IsNullOrWhiteSpace(fileName) ? $"Item{itemIndex}" : fileName);
+
+			AddSelectScreenPreloadEntry(
+				screens,
+				item.BoundScreen,
+				$"Loadout_{itemIndex:D2}_{safeName}_Primary");
+			AddSelectScreenPreloadEntry(
+				screens,
+				item.AlternateBoundScreen,
+				$"Loadout_{itemIndex:D2}_{safeName}_Alternate");
+
+			itemIndex++;
 		}
 
-		_loadoutItemInitAttempts++;
-		_loadoutItemRetryScheduled = true;
+		return screens;
+	}
 
-		if (_loadoutItemInitAttempts == 1)
-			GD.PushWarning($"LoadoutPanel: ModelDb is not ready yet; retrying loadout item initialization. Missing key: {exception.Message}");
+	private static void AddSelectScreenPreloadEntry(
+		ICollection<SelectScreenPreloadEntry> screens,
+		NGenericSelectScreen? screen,
+		string screenName)
+	{
+		if (screen is null || !GodotObject.IsInstanceValid(screen))
+			return;
 
-		await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+		screen.Name = new StringName(screenName);
+		screens.Add(new SelectScreenPreloadEntry(screen.Name, screen));
+	}
 
-		_loadoutItemRetryScheduled = false;
-		if (IsInsideTree())
-			TryAddLoadoutItems();
+	private static void VerifyStaticModelCollectionsAreReady()
+	{
+		_ = ModelDb.AllRelics;
+		_ = ModelDb.AllPotions;
+		_ = ModelDb.AllCards;
+		_ = ModelDb.AllEvents;
+		_ = ModelDb.AllAncients;
+		_ = ModelDb.AllPowers;
+		_ = ModelDb.Monsters;
+		_ = ModelDb.AllCharacters;
+	}
+
+	public readonly struct SelectScreenPreloadEntry
+	{
+		public SelectScreenPreloadEntry(StringName name, NGenericSelectScreen screen)
+		{
+			Name = name;
+			Screen = screen;
+		}
+
+		public StringName Name { get; }
+		public NGenericSelectScreen Screen { get; }
 	}
 
 	private static IReadOnlyList<LoadoutOwnedItem<RelicModel>> GetSelectedTargetRelics()

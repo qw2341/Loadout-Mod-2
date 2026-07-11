@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using Loadout.Services.CardModification;
@@ -6,6 +8,7 @@ using Loadout.Services.LastActions;
 using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.TildeKey;
+using Loadout.UI;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Logging;
 
@@ -17,26 +20,42 @@ public static class UIAttach
     private static bool _servicesRegistered;
     private static bool _attachScheduled;
     private static bool _attached;
+    private static bool _preloadScheduled;
+    private static bool _preloaded;
 
     [HarmonyPostfix]
     private static void Postfix(AssetLoadingSession __instance)
     {
-        if (_attached || _attachScheduled)
+        if (_attachScheduled)
             return;
 
         if (__instance == null || !__instance.IsCompleted)
             return;
 
+        if (_attached)
+        {
+            NLoadoutPanelRoot existingRoot = NLoadoutPanelRoot.Instance;
+            if (IsValid(existingRoot))
+            {
+                ScheduleSelectScreenPreload(existingRoot);
+                return;
+            }
+
+            // The overlay root was removed. Allow a later completed asset session
+            // to recreate it and warm a fresh set of screen instances.
+            _attached = false;
+            _preloaded = false;
+        }
+
         string sessionName = GetSessionName(__instance);
 
-        // if (!string.Equals(sessionName, "Common", StringComparison.Ordinal))
-        //     return;
-
+        // Keep accepting the first completed asset session. Some game versions/mod
+        // combinations do not expose the Common session name consistently.
         RegisterServicesOnce();
 
         _attachScheduled = true;
 
-        Log.Info("[Loadout] Common preload complete. Scheduling UI attach.");
+        Log.Info($"[Loadout] Asset preload session '{sessionName}' complete. Scheduling UI attach and select-screen preload.");
 
         Callable.From(AttachUiDeferred).CallDeferred();
     }
@@ -54,7 +73,7 @@ public static class UIAttach
                 return;
             }
 
-            var root = Loadout.UI.NLoadoutPanelRoot.GetOrAttach(tree);
+            NLoadoutPanelRoot root = NLoadoutPanelRoot.GetOrAttach(tree);
 
             if (root == null || !GodotObject.IsInstanceValid(root))
             {
@@ -66,14 +85,114 @@ public static class UIAttach
             _attached = true;
             _attachScheduled = false;
 
-            Log.Info("[Loadout] Attached UI root after Common preload complete.");
+            Log.Info("[Loadout] Attached UI root after asset preload completed.");
+            ScheduleSelectScreenPreload(root);
         }
         catch (Exception e)
         {
             _attached = false;
             _attachScheduled = false;
-            Log.Error($"[Loadout] Failed to attach UI after Common preload: {e}");
+            Log.Error($"[Loadout] Failed to attach UI after asset preload: {e}");
         }
+    }
+
+    private static void ScheduleSelectScreenPreload(NLoadoutPanelRoot root)
+    {
+        if (_preloaded || _preloadScheduled)
+            return;
+
+        _preloadScheduled = true;
+        _ = PreloadSelectScreensAsync(root);
+    }
+
+    private static async Task PreloadSelectScreensAsync(NLoadoutPanelRoot root)
+    {
+        try
+        {
+            if (!IsValid(root))
+                throw new InvalidOperationException("LoadoutPanelRoot became invalid before select-screen preload started.");
+
+            NLoadoutPanel panel = root.GetNodeOrNull<NLoadoutPanel>("LoadoutPanel");
+            if (!IsValid(panel))
+                throw new InvalidOperationException("LoadoutPanel was not found under LoadoutPanelRoot.");
+
+            // Let the newly attached root and panel complete their first layout frame
+            // before touching ModelDb-backed panel items.
+            if (!await WaitForNextFrame(root))
+                return;
+
+            while (!panel.TryInitializeLoadoutItems())
+            {
+                if (panel.LoadoutItemInitializationExhausted)
+                {
+                    Log.Error(
+                        $"[Loadout] Select-screen preload stopped after {panel.LoadoutItemInitAttempts} initialization attempts. " +
+                        $"Last error: {panel.LastLoadoutItemInitError}");
+                    return;
+                }
+
+                if (!await WaitForNextFrame(root))
+                    return;
+            }
+
+            // Give the panel-item nodes their own frame before materializing the
+            // first catalog screen, avoiding a combined initialization spike.
+            if (!await WaitForNextFrame(root))
+                return;
+
+            IReadOnlyList<NLoadoutPanel.SelectScreenPreloadEntry> screens = panel.GetSelectScreensForPreload();
+            int attachedScreens = 0;
+
+            foreach (NLoadoutPanel.SelectScreenPreloadEntry entry in screens)
+            {
+                if (!IsValid(root) || !IsValid(entry.Screen))
+                    continue;
+
+                entry.Screen.Name = entry.Name;
+                root.RegisterScreen(entry.Screen);
+                attachedScreens++;
+
+                // Register one catalog per frame. Each AddChild invokes the screen's
+                // _Ready path and shifts its first-open construction cost into startup
+                // without combining every catalog into one long main-thread stall.
+                if (!await WaitForNextFrame(root))
+                    return;
+            }
+
+            if (!IsValid(root))
+                return;
+
+            root.CloseAllScreens();
+            _preloaded = true;
+
+            Log.Info($"[Loadout] Preloaded {attachedScreens} generic select screens before first use.");
+        }
+        catch (Exception e)
+        {
+            Log.Error($"[Loadout] Failed to preload generic select screens: {e}");
+        }
+        finally
+        {
+            _preloadScheduled = false;
+        }
+    }
+
+    private static async Task<bool> WaitForNextFrame(NLoadoutPanelRoot root)
+    {
+        if (!IsValid(root) || !root.IsInsideTree())
+            return false;
+
+        SceneTree tree = root.GetTree();
+        if (tree == null)
+            return false;
+
+        await root.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return IsValid(root) && root.IsInsideTree();
+    }
+
+    private static bool IsValid(GodotObject instance)
+    {
+        return instance != null && GodotObject.IsInstanceValid(instance);
     }
 
     private static void RegisterServicesOnce()

@@ -251,12 +251,20 @@ public partial class NLoadoutPanelRoot : Control
 		if (screen == null || !IsInstanceValid(_screenContainer))
 			return;
 
-		if (screen.GetParent() != _screenContainer)
+		bool newlyAttached = screen.GetParent() != _screenContainer;
+		if (newlyAttached)
+		{
+			screen.Visible = false;
+			ApplyFullRectLayout(screen);
 			_screenContainer.AddChild(screen);
+		}
 
 		ApplyFullRectLayout(screen);
 		TrackScreen(screen);
-		SetScreenActive(screen, false);
+
+		if (newlyAttached)
+			SetScreenActive(screen, false);
+
 		UpdateModalInputState();
 	}
 
