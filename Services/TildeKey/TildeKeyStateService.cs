@@ -2,6 +2,8 @@
 
 namespace Loadout.Services.TildeKey;
 
+using BaseLib.Hooks;
+using BaseLib.Patches.Hooks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
+using Loadout.Services.Actions;
 using Loadout.Services.Saving;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Assets;
@@ -28,6 +31,7 @@ using MegaCrit.Sts2.Core.Extensions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Combat;
@@ -77,6 +81,27 @@ public sealed class TildeKeyStatDefinition
 
     internal Func<Player, int?> GetValue { get; }
     internal Action<Player, int> SetValue { get; }
+}
+
+/// <summary>
+/// Makes the Tilde Key's per-player hand-size setting part of BaseLib's
+/// canonical maximum-hand-size calculation. The same hook also carries the
+/// Card Printer's narrowly scoped hand-limit bypass through BaseLib's patched
+/// draw/add paths.
+/// </summary>
+public sealed class LoadoutMaxHandSizeModifier : AbstractModel, IMaxHandSizeModifier
+{
+    public override bool ShouldReceiveCombatHooks => true;
+
+    public int ModifyMaxHandSizeLate(Player player, int currentMaxHandSize)
+    {
+        if (LoadoutCardAddRules.ShouldIgnoreHandLimit)
+            return int.MaxValue;
+
+        return TildeKeyStateService.TryGetHandSizeOverride(player, out int value)
+            ? Math.Max(0, value)
+            : currentMaxHandSize;
+    }
 }
 
 public static class TildeKeyStateService
@@ -172,6 +197,7 @@ public static class TildeKeyStateService
             return;
 
         _registered = true;
+        RegisterMaxHandSizeModifier();
         RunManager.Instance.RunStarted += OnRunStarted;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp += OnCombatSetUp;
@@ -411,9 +437,17 @@ public static class TildeKeyStateService
 
     public static int GetEffectiveHandSize(Player player)
     {
-        return TryGetHandSizeOverride(player, out int value)
-            ? Math.Max(0, value)
-            : CardPile.MaxCardsInHand;
+        return MaxHandSizePatch.GetMaxHandSize(player, CardPile.MaxCardsInHand);
+    }
+
+    private static void RegisterMaxHandSizeModifier()
+    {
+        LoadoutMaxHandSizeModifier modifier = ModelDb.GetById<LoadoutMaxHandSizeModifier>(
+            ModelDb.GetId<LoadoutMaxHandSizeModifier>());
+
+        ModHelper.SubscribeForRunStateHooks(
+            "Loadout.TildeKey.MaxHandSize",
+            _ => [modifier]);
     }
 
     public static bool TryGetPlayerDamageMultiplier(Player player, out int value)
