@@ -1,5 +1,8 @@
 #nullable enable
 
+using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Players;
+
 namespace Loadout.Keywords;
 
 using System;
@@ -262,6 +265,66 @@ public static class StickyHandMovementPatch
         {
             newPile = PileType.Hand.GetPile(card.Owner);
         }
+    }
+}
+
+[HarmonyPatch]
+public static class StickyFlushPlayerHandPatch
+{
+    public static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(
+                   typeof(CombatManager),
+                   "FlushPlayerHand",
+                   [
+                       typeof(Player),
+                       typeof(HookPlayerChoiceContext)
+                   ])
+               ?? throw new MissingMethodException(
+                   typeof(CombatManager).FullName,
+                   "FlushPlayerHand(Player, HookPlayerChoiceContext)");
+    }
+
+    [HarmonyPrefix]
+    public static void Prefix(
+        Player player,
+        out List<CardModel> __state)
+    {
+        __state = PileType.Hand
+            .GetPile(player)
+            .Cards
+            .Where(card =>
+                LoadoutKeywords.Has(card, LoadoutKeywords.Sticky))
+            .ToList();
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(
+        ref Task __result,
+        List<CardModel> __state)
+    {
+        if (__state.Count == 0)
+            return;
+        __result = ReturnStickyCardsAfterFlush(__result, __state);
+    }
+
+    private static async Task ReturnStickyCardsAfterFlush(
+        Task originalFlush,
+        IReadOnlyList<CardModel> stickyCards)
+    {
+        await originalFlush;
+
+        List<CardModel> cardsToReturn = stickyCards
+            .Where(card => card.Pile?.Type == PileType.Discard)
+            .ToList();
+
+        if (cardsToReturn.Count == 0)
+            return;
+        
+        await CardPileCmd.Add(
+            cardsToReturn,
+            PileType.Hand,
+            CardPilePosition.Bottom);
     }
 }
 
