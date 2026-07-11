@@ -1,0 +1,10 @@
+{
+  "LOADOUT-INEVITABLE.title": "Inevitable",
+  "LOADOUT-INEVITABLE.description": "Returns to your [gold]Hand[/gold] when [gold]Exhausted[/gold], returns to your [gold]Deck[/gold] when removed, and transforms into a copy of itself.",
+  "LOADOUT-STICKY.title": "Sticky",
+  "LOADOUT-STICKY.description": "Returns to your [gold]Hand[/gold] after being played and cannot otherwise be moved out of your [gold]Hand[/gold].",
+  "LOADOUT-X_COST.title": "X Cost",
+  "LOADOUT-X_COST.description": "Costs X. This card's plays are repeated X times.",
+  "LOADOUT-INFINITE_UPGRADE.title": "Infinite Upgrade",
+  "LOADOUT-INFINITE_UPGRADE.description": "Can be upgraded indefinitely."
+}

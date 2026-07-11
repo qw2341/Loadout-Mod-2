@@ -9,6 +9,7 @@ using Godot;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Keywords;
 using Loadout.Services.Targets;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
@@ -671,7 +672,7 @@ public partial class NCardModificationScreen : Control
         foreach (CardKeyword keyword in GetAvailableKeywords(_item.Model))
         {
             CardKeyword localKeyword = keyword;
-            string key = localKeyword.ToString();
+            string key = LoadoutKeywords.GetStorageKey(localKeyword);
             bool isChecked = _workingState.KeywordOverrides.TryGetValue(key, out bool saved)
                 ? saved
                 : localKeywords.Contains(localKeyword);
@@ -1515,6 +1516,12 @@ public partial class NCardModificationScreen : Control
         HashSet<CardKeyword> keywords = Enum.GetValues<CardKeyword>()
             .Where(keyword => keyword != CardKeyword.None)
             .ToHashSet();
+
+        foreach (CardKeyword keyword in LoadoutKeywords.All)
+        {
+            if (keyword != CardKeyword.None)
+                keywords.Add(keyword);
+        }
 
         foreach (CardKeyword keyword in GetKeywordsSafely(card))
             keywords.Add(keyword);

@@ -1,0 +1,10 @@
+{
+  "LOADOUT-INEVITABLE.title": "Inevitable",
+  "LOADOUT-INEVITABLE.description": "Vuelve a tu [gold]Mano[/gold] al [gold]Agotarse[/gold], vuelve a tu [gold]Mazo[/gold] al ser eliminada y se transforma en una copia de sí misma.",
+  "LOADOUT-STICKY.title": "Pegajosa",
+  "LOADOUT-STICKY.description": "Vuelve a tu [gold]Mano[/gold] después de jugarse y no puede salir de ella de ninguna otra forma.",
+  "LOADOUT-X_COST.title": "Coste X",
+  "LOADOUT-X_COST.description": "Cuesta X. Las jugadas de esta carta se repiten X veces.",
+  "LOADOUT-INFINITE_UPGRADE.title": "Mejora infinita",
+  "LOADOUT-INFINITE_UPGRADE.description": "Puede mejorarse indefinidamente."
+}

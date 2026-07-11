@@ -1,0 +1,10 @@
+{
+  "LOADOUT-INEVITABLE.title": "Inévitable",
+  "LOADOUT-INEVITABLE.description": "Revient dans votre [gold]Main[/gold] lorsqu'elle est [gold]Épuisée[/gold], revient dans votre [gold]Deck[/gold] lorsqu'elle est retirée et se transforme en une copie d'elle-même.",
+  "LOADOUT-STICKY.title": "Collante",
+  "LOADOUT-STICKY.description": "Revient dans votre [gold]Main[/gold] après avoir été jouée et ne peut pas en être déplacée autrement.",
+  "LOADOUT-X_COST.title": "Coût X",
+  "LOADOUT-X_COST.description": "Coûte X. Les utilisations de cette carte sont répétées X fois.",
+  "LOADOUT-INFINITE_UPGRADE.title": "Amélioration infinie",
+  "LOADOUT-INFINITE_UPGRADE.description": "Peut être améliorée indéfiniment."
+}

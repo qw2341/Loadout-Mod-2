@@ -1,0 +1,10 @@
+{
+  "LOADOUT-INEVITABLE.title": "不可避",
+  "LOADOUT-INEVITABLE.description": "[gold]廃棄[/gold]されると[gold]手札[/gold]に、[gold]デッキ[/gold]から削除されるとデッキに戻り、変化すると自身のコピーになる。",
+  "LOADOUT-STICKY.title": "粘着",
+  "LOADOUT-STICKY.description": "プレイ後に[gold]手札[/gold]へ戻り、それ以外の方法でも手札から移動しない。",
+  "LOADOUT-X_COST.title": "Xコスト",
+  "LOADOUT-X_COST.description": "コストX。このカードのプレイ回数をX倍にする。",
+  "LOADOUT-INFINITE_UPGRADE.title": "無限アップグレード",
+  "LOADOUT-INFINITE_UPGRADE.description": "何度でもアップグレードできる。"
+}

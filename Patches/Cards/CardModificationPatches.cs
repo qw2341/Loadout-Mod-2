@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
+using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using MegaCrit.Sts2.Core.Commands;
@@ -107,24 +108,32 @@ public static class CardCmdUpgradeCardModificationPatch
     typeof(bool))]
 public static class CardPileRemoveTemporaryIdentityPatch
 {
+    public sealed record RemovalState(
+        Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> TemporaryStates,
+        IReadOnlyList<CardModel> InevitableCards);
+
     [HarmonyPrefix]
     public static void Prefix(
         IReadOnlyList<CardModel> cards,
-        out Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> __state)
+        out RemovalState __state)
     {
-        __state = new Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>>();
+        Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> temporaryStates = new();
         foreach (Player owner in cards
                      .Where(card => card?.Owner is not null)
                      .Select(card => card.Owner)
                      .Distinct())
         {
-            __state[owner] = CardModificationStateService.CaptureTemporaryStatesForPlayer(owner);
+            temporaryStates[owner] = CardModificationStateService.CaptureTemporaryStatesForPlayer(owner);
         }
+
+        __state = new RemovalState(
+            temporaryStates,
+            cards.Where(card => LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable)).ToList());
     }
 
     [HarmonyPostfix]
     public static void Postfix(
-        Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> __state,
+        RemovalState __state,
         ref Task __result)
     {
         __result = ReindexAfterRemovalAsync(__result, __state);
@@ -132,15 +141,26 @@ public static class CardPileRemoveTemporaryIdentityPatch
 
     private static async Task ReindexAfterRemovalAsync(
         Task original,
-        IReadOnlyDictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> snapshots)
+        RemovalState state)
     {
         try
         {
             await original;
+
+            foreach (CardModel card in state.InevitableCards)
+            {
+                if (!card.HasBeenRemovedFromState)
+                    continue;
+
+                Player owner = card.Owner;
+                owner.RunState.AddCard(card, owner);
+                CardPileAddResult result = await CardPileCmd.Add(card, owner.Deck);
+                CardCmd.PreviewCardPileAdd(result);
+            }
         }
         finally
         {
-            foreach ((Player player, IReadOnlyDictionary<CardModel, CardModificationState> states) in snapshots)
+            foreach ((Player player, IReadOnlyDictionary<CardModel, CardModificationState> states) in state.TemporaryStates)
                 CardModificationStateService.ReplaceTemporaryStatesForPlayer(player, states, reapplyCards: false);
         }
     }

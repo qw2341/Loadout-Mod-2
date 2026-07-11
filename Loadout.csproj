@@ -39,6 +39,7 @@
     </PropertyGroup>
     
   <ItemGroup>
+    <PackageReference Include="Alchyr.Sts2.BaseLib" Version="*" />
     <Reference Include="0Harmony">
       <HintPath>E:\SteamLibrary\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64\0Harmony.dll</HintPath>
     </Reference>

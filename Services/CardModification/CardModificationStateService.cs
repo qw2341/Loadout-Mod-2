@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
 using HarmonyLib;
+using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.Saving;
 using Loadout.Services.Targets;
@@ -705,6 +706,7 @@ public static class CardModificationStateService
                 CardRarityField?.SetValue(card, rarity);
 
             ApplyKeywordOverrides(card, state.KeywordOverrides);
+            LoadoutKeywordMechanics.SynchronizeEnergyCost(card, state.KeywordOverrides, state.EnergyCost);
             ApplyEnchantmentSpec(card, state.Enchantment);
 
             if (includeAffliction)
@@ -1511,6 +1513,11 @@ public static class CardModificationStateService
                 card.FinalizeUpgradeInternal();
             }
 
+            LoadoutKeywordMechanics.SynchronizeEnergyCost(
+                card,
+                new Dictionary<string, bool>(StringComparer.Ordinal),
+                baseline.EnergyCost.Canonical);
+
             if (!card.EnergyCost.CostsX)
                 SetEnergyCost(card, baseline.EnergyCost.Canonical);
 
@@ -1918,7 +1925,7 @@ public static class CardModificationStateService
     {
         foreach ((string rawKeyword, bool enabled) in keywordOverrides)
         {
-            if (!TryParseEnum(rawKeyword, out CardKeyword keyword) || keyword == CardKeyword.None)
+            if (!LoadoutKeywords.TryResolve(rawKeyword, out CardKeyword keyword) || keyword == CardKeyword.None)
                 continue;
 
             if (enabled)
