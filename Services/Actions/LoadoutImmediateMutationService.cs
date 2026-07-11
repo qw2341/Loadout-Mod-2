@@ -67,10 +67,13 @@ public enum LoadoutImmediateMutationKind
 
 public static class LoadoutImmediateMutationService
 {
+    private static readonly object SequenceGate = new();
+    private static readonly SortedDictionary<int, LoadoutImmediateMutationPayload> PendingHostApplies = new();
     private static INetGameService? _runNetService;
     private static int _nextRequestId;
     private static int _nextHostSequence;
     private static int _lastAppliedHostSequence;
+    private static bool _clientApplyQueued;
 
     public static void OnRunLaunched()
     {
@@ -81,9 +84,17 @@ public static class LoadoutImmediateMutationService
                 return;
 
             RegisterRunNetService(netService);
+            LoadoutRunContentChangeService.ResetQueuedChanges();
+            LoadoutMutationSerialExecutor.Reset();
+            LoadoutModelRegistry.WarmUp();
             _nextRequestId = 0;
             _nextHostSequence = 0;
-            _lastAppliedHostSequence = 0;
+            lock (SequenceGate)
+            {
+                _lastAppliedHostSequence = 0;
+                _clientApplyQueued = false;
+                PendingHostApplies.Clear();
+            }
         }
         catch (Exception exception)
         {
@@ -94,7 +105,14 @@ public static class LoadoutImmediateMutationService
     public static void OnRunCleaningUp()
     {
         UnregisterRunNetService();
-        _lastAppliedHostSequence = 0;
+        LoadoutRunContentChangeService.ResetQueuedChanges();
+        LoadoutMutationSerialExecutor.Reset();
+        lock (SequenceGate)
+        {
+            _lastAppliedHostSequence = 0;
+            _clientApplyQueued = false;
+            PendingHostApplies.Clear();
+        }
     }
 
     public static bool RequestAddCard(
@@ -190,17 +208,10 @@ public static class LoadoutImmediateMutationService
         LoadoutOwnedItem<CardModel> item,
         CardModificationState? state = null)
     {
-        return Request(new LoadoutImmediateMutationPayload
-        {
-            Kind = LoadoutImmediateMutationKind.CardModification,
-            ModelId = item.Model.Id,
-            Amount = 1,
-            Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
-            OwnedItemIndex = item.Index,
-            ExpectedModelId = item.Model.Id,
-            CardModificationOperation = operation,
-            CardModificationStateJson = state is null ? string.Empty : JsonSerializer.Serialize(state)
-        });
+        // Card modifications have their own compact delta protocol. Keeping them out
+        // of the generic mutation payload avoids serializing unrelated fields and
+        // prevents the old global refresh/snapshot cascade.
+        return CardModificationMultiplayerSyncService.RequestOperation(operation, item, state);
     }
 
     public static bool RequestApplyLoadout(LoadoutKind kind, string encodedPayload, LoadoutTargetSelection target)
@@ -531,40 +542,81 @@ public static class LoadoutImmediateMutationService
                 return;
             }
 
-            if (message.sequence <= _lastAppliedHostSequence)
-                return;
+            lock (SequenceGate)
+            {
+                if (message.sequence <= _lastAppliedHostSequence)
+                    return;
 
-            Apply(message.payload);
-            _lastAppliedHostSequence = message.sequence;
+                PendingHostApplies[message.sequence] = message.payload;
+            }
+
+            TryScheduleNextClientApply();
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"LoadoutImmediateMutation: failed to apply host mutation {message.sequence}. {exception.Message}");
+            GD.PushWarning($"LoadoutImmediateMutation: failed to queue host mutation {message.sequence}. {exception.Message}");
         }
+    }
+
+    private static void TryScheduleNextClientApply()
+    {
+        int sequence;
+        LoadoutImmediateMutationPayload payload;
+        lock (SequenceGate)
+        {
+            if (_clientApplyQueued)
+                return;
+
+            if (PendingHostApplies.Count == 0)
+                return;
+
+            KeyValuePair<int, LoadoutImmediateMutationPayload> next = PendingHostApplies.First();
+            sequence = next.Key;
+            payload = next.Value;
+            PendingHostApplies.Remove(sequence);
+            _clientApplyQueued = true;
+        }
+
+        LoadoutMutationSerialExecutor.Enqueue(async () =>
+        {
+            await ApplyAsync(payload);
+
+            lock (SequenceGate)
+            {
+                _lastAppliedHostSequence = sequence;
+                _clientApplyQueued = false;
+            }
+
+            TryScheduleNextClientApply();
+        }, $"host mutation {payload.Kind} #{sequence}");
     }
 
     private static void PublishHostApply(LoadoutImmediateMutationPayload payload, INetGameService? netService)
     {
         payload.NormalizeDefaults();
         payload.Sequence = ++_nextHostSequence;
-        Apply(payload);
 
-        if (netService is not null && netService.Type == NetGameType.Host)
+        LoadoutMutationSerialExecutor.Enqueue(async () =>
         {
-            LoadoutImmediateMutationApplyMessage message = new()
-            {
-                sequence = payload.Sequence,
-                payload = payload
-            };
+            await ApplyAsync(payload);
 
-            LoadoutNetworkBroadcast.SendToRunClients(
-                netService,
-                recipient => netService.SendMessage(message, recipient),
-                $"immediate mutation {payload.Kind} #{payload.Sequence}");
-        }
+            if (netService is not null && netService.Type == NetGameType.Host)
+            {
+                LoadoutImmediateMutationApplyMessage message = new()
+                {
+                    sequence = payload.Sequence,
+                    payload = payload
+                };
+
+                LoadoutNetworkBroadcast.SendToRunClients(
+                    netService,
+                    recipient => netService.SendMessage(message, recipient),
+                    $"immediate mutation {payload.Kind} #{payload.Sequence}");
+            }
+        }, $"local mutation {payload.Kind} #{payload.Sequence}");
     }
 
-    private static void Apply(LoadoutImmediateMutationPayload payload)
+    private static async Task ApplyAsync(LoadoutImmediateMutationPayload payload)
     {
         Player? requester = GetRunPlayer(payload.RequesterNetId) ?? GetLocalRunPlayer();
         if (requester is null)
@@ -573,16 +625,16 @@ public static class LoadoutImmediateMutationService
         switch (payload.Kind)
         {
             case LoadoutImmediateMutationKind.AddCard:
-                TaskHelper.RunSafely(ApplyAddCardAsync(payload, requester));
+                await ApplyAddCardAsync(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.AddRelic:
-                TaskHelper.RunSafely(ApplyAddRelicAsync(payload, requester));
+                await ApplyAddRelicAsync(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.AddPotion:
-                TaskHelper.RunSafely(ApplyAddPotionAsync(payload, requester));
+                await ApplyAddPotionAsync(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.RemoveCard:
-                TaskHelper.RunSafely(ApplyRemoveCardAsync(payload, requester));
+                await ApplyRemoveCardAsync(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.UpgradeCard:
                 ApplyUpgradeCard(payload, requester);
@@ -591,9 +643,10 @@ public static class LoadoutImmediateMutationService
                 ApplyUpgradeAllDeckCards(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.RemoveRelic:
-                ApplyRemoveRelic(payload, requester);
+                await ApplyRemoveRelicAsync(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.CardModification:
+                // Compatibility for buffered messages created by older builds.
                 ApplyCardModification(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.ApplyLoadout:
@@ -603,7 +656,7 @@ public static class LoadoutImmediateMutationService
                 ApplyAdjustPower(payload, requester);
                 break;
             case LoadoutImmediateMutationKind.ClearCurrentPowers:
-                TaskHelper.RunSafely(ApplyClearCurrentPowersAsync(payload));
+                await ApplyClearCurrentPowersAsync(payload);
                 break;
             case LoadoutImmediateMutationKind.EnterEvent:
             case LoadoutImmediateMutationKind.GoToRoom:
@@ -619,10 +672,10 @@ public static class LoadoutImmediateMutationService
                 TildeKeyStateService.ApplySynchronizedToggle(payload.TildePayloadJson, payload.Target, requester);
                 break;
             case LoadoutImmediateMutationKind.TildeKillEnemies:
-                TaskHelper.RunSafely(TildeKeyStateService.KillCurrentEnemiesAsync());
+                await TildeKeyStateService.KillCurrentEnemiesAsync();
                 break;
             case LoadoutImmediateMutationKind.TildeSpareEnemies:
-                TaskHelper.RunSafely(TildeKeyStateService.SpareCurrentEnemiesAsync());
+                await TildeKeyStateService.SpareCurrentEnemiesAsync();
                 break;
             case LoadoutImmediateMutationKind.TildeRelicCounterDelta:
                 TildeKeyStateService.ApplySynchronizedRelicCounterDelta(
@@ -643,7 +696,7 @@ public static class LoadoutImmediateMutationService
                     requester);
                 break;
             case LoadoutImmediateMutationKind.SummonMonster:
-                TaskHelper.RunSafely(LoadoutSummonMonsterService.SummonMonsterNowAsync(payload.ModelId));
+                await LoadoutSummonMonsterService.SummonMonsterNowAsync(payload.ModelId);
                 break;
             case LoadoutImmediateMutationKind.MorphPlayer:
                 BottledMonsterMorphService.ApplySynchronizedMorph(payload.ModelId, payload.Target);
@@ -658,26 +711,19 @@ public static class LoadoutImmediateMutationService
 
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            IReadOnlyList<CardModel> addedDeckCards = await AddDeckCardCopiesAsync(
+            await AddDeckCardCopiesAsync(
                 targetPlayer,
                 canonicalCard,
                 payload.Amount,
                 payload.CardUpgradeCount);
-            bool deckChanged = addedDeckCards.Count > 0;
-            bool combatChanged = CombatManager.Instance.IsInProgress
-                                  && await AddCombatHandCardCopiesAsync(
-                                      targetPlayer,
-                                      canonicalCard,
-                                      payload.Amount,
-                                      payload.CardUpgradeCount);
 
-            if (deckChanged || combatChanged)
+            if (CombatManager.Instance.IsInProgress)
             {
-                LoadoutRunContentChangeService.Notify(
-                    LoadoutRunContentKind.Cards,
-                    [targetPlayer.NetId],
-                    LoadoutRunContentChangeMode.Add,
-                    BuildChangedCards(targetPlayer, addedDeckCards));
+                await AddCombatHandCardCopiesAsync(
+                    targetPlayer,
+                    canonicalCard,
+                    payload.Amount,
+                    payload.CardUpgradeCount);
             }
         }
     }
@@ -715,27 +761,6 @@ public static class LoadoutImmediateMutationService
         if (IsLocalPlayer(targetPlayer))
             PreviewAddedCards(addedCards);
         return changedCards;
-    }
-
-    private static IEnumerable<LoadoutChangedCard> BuildChangedCards(Player owner, IReadOnlyList<CardModel> cards)
-    {
-        foreach (CardModel card in cards)
-        {
-            int index = FindCardIndex(owner.Deck.Cards, card);
-            if (index >= 0)
-                yield return new LoadoutChangedCard(owner.NetId, index, card.Id);
-        }
-    }
-
-    private static int FindCardIndex(IReadOnlyList<CardModel> cards, CardModel card)
-    {
-        for (int i = 0; i < cards.Count; i++)
-        {
-            if (ReferenceEquals(cards[i], card))
-                return i;
-        }
-
-        return -1;
     }
 
     private static async Task<bool> AddCombatHandCardCopiesAsync(
@@ -798,13 +823,11 @@ public static class LoadoutImmediateMutationService
 
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            bool changed = false;
             for (int i = 0; i < payload.Amount; i++)
             {
                 try
                 {
                     await RelicCmd.Obtain(canonicalRelic.ToMutable(), targetPlayer);
-                    changed = true;
                 }
                 catch (Exception exception)
                 {
@@ -812,9 +835,6 @@ public static class LoadoutImmediateMutationService
                     break;
                 }
             }
-
-            if (changed)
-                LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Relics, targetPlayer.NetId);
         }
     }
 
@@ -849,13 +869,8 @@ public static class LoadoutImmediateMutationService
 
         try
         {
-            LoadoutChangedCard removedCard = new(item.OwnerNetId, item.Index, item.Model.Id);
+            // The CardPileCmd postfix publishes the precise structural delta.
             await CardPileCmd.RemoveFromDeck(item.Model, showPreview: true);
-            LoadoutRunContentChangeService.Notify(
-                LoadoutRunContentKind.Cards,
-                [item.OwnerNetId],
-                LoadoutRunContentChangeMode.Remove,
-                [removedCard]);
         }
         catch (Exception exception)
         {
@@ -868,35 +883,17 @@ public static class LoadoutImmediateMutationService
         if (TryGetOwnedDeckCard(payload, requester) is not { } item)
             return;
 
-        if (UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount)))
-        {
-            LoadoutRunContentChangeService.NotifyCardUpdated(item);
-        }
+        UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount));
     }
 
     private static void ApplyUpgradeAllDeckCards(LoadoutImmediateMutationPayload payload, Player requester)
     {
-        HashSet<ulong> changedPlayers = [];
-        List<LoadoutChangedCard> changedCards = [];
         int upgrades = Math.Max(1, payload.Amount);
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            List<CardModel> upgradedCards = [];
             foreach (CardModel card in targetPlayer.Deck.Cards.ToList())
-            {
-                if (UpgradeCardWithCommand(card, upgrades))
-                    upgradedCards.Add(card);
-            }
-
-            if (upgradedCards.Count == 0)
-                continue;
-
-            changedPlayers.Add(targetPlayer.NetId);
-            changedCards.AddRange(BuildChangedCards(targetPlayer, upgradedCards));
+                UpgradeCardWithCommand(card, upgrades);
         }
-
-        if (changedPlayers.Count > 0)
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedPlayers, LoadoutRunContentChangeMode.Update, changedCards);
     }
 
     private static bool UpgradeCardWithCommand(CardModel card, int upgrades)
@@ -907,8 +904,7 @@ public static class LoadoutImmediateMutationService
             try
             {
                 int previousUpgradeLevel = card.CurrentUpgradeLevel;
-                using (CardModificationStateService.BeginTargetedUpgradeRefresh())
-                    CardCmd.Upgrade(card, CardPreviewStyle.None);
+                CardCmd.Upgrade(card, CardPreviewStyle.None);
                 if (card.CurrentUpgradeLevel <= previousUpgradeLevel && card.IsUpgradable && !CombatManager.Instance.IsEnding)
                 {
                     card.UpgradeInternal();
@@ -927,15 +923,14 @@ public static class LoadoutImmediateMutationService
         return changed;
     }
 
-    private static void ApplyRemoveRelic(LoadoutImmediateMutationPayload payload, Player requester)
+    private static async Task ApplyRemoveRelicAsync(LoadoutImmediateMutationPayload payload, Player requester)
     {
         if (TryGetOwnedRelic(payload, requester) is not { } item)
             return;
 
         try
         {
-            item.Owner.RemoveRelicInternal(item.Model, silent: false);
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Relics, item.OwnerNetId);
+            await RelicCmd.Remove(item.Model);
         }
         catch (Exception exception)
         {
@@ -1174,7 +1169,7 @@ public static class LoadoutImmediateMutationService
         if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
             return null;
 
-        return ModelDb.AllCards.FirstOrDefault(card => IdMatches(card, id));
+        return LoadoutModelRegistry.ResolveCard(id);
     }
 
     private static RelicModel? ResolveCanonicalRelic(ModelId id)
@@ -1182,7 +1177,7 @@ public static class LoadoutImmediateMutationService
         if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
             return null;
 
-        return ModelDb.AllRelics.FirstOrDefault(relic => IdMatches(relic, id));
+        return LoadoutModelRegistry.ResolveRelic(id);
     }
 
     private static PotionModel? ResolveCanonicalPotion(ModelId id)
@@ -1190,7 +1185,7 @@ public static class LoadoutImmediateMutationService
         if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
             return null;
 
-        return ModelDb.AllPotions.FirstOrDefault(potion => IdMatches(potion, id));
+        return LoadoutModelRegistry.ResolvePotion(id);
     }
 
 }
@@ -1279,44 +1274,13 @@ public struct LoadoutImmediateMutationPayload
     private static ModelId ReadModelIdString(PacketReader reader)
     {
         string rawId = reader.ReadString();
-        if (string.IsNullOrWhiteSpace(rawId))
-            return ModelId.none;
-
-        foreach (AbstractModel model in EnumerateKnownModels())
-        {
-            if (ModelIdStringMatches(model, rawId))
-                return model.Id;
-        }
+        if (LoadoutModelRegistry.TryResolveWireId(rawId, out ModelId id))
+            return id;
 
         GD.PushWarning($"LoadoutImmediateMutation: received unknown model id '{rawId}'.");
         return ModelId.none;
     }
 
-    private static IEnumerable<AbstractModel> EnumerateKnownModels()
-    {
-        foreach (CardModel model in ModelDb.AllCards)
-            yield return model;
-        foreach (RelicModel model in ModelDb.AllRelics)
-            yield return model;
-        foreach (PotionModel model in ModelDb.AllPotions)
-            yield return model;
-        foreach (PowerModel model in ModelDb.AllPowers)
-            yield return model;
-        foreach (EventModel model in ModelDb.AllEvents)
-            yield return model;
-        foreach (AncientEventModel model in ModelDb.AllAncients)
-            yield return model;
-        foreach (MonsterModel model in ModelDb.Monsters)
-            yield return model;
-        foreach (CharacterModel model in ModelDb.AllCharacters.Where(character => character.IsPlayable))
-            yield return model;
-    }
-
-    private static bool ModelIdStringMatches(AbstractModel model, string rawId)
-    {
-        return string.Equals(model.Id.ToString(), rawId, StringComparison.Ordinal)
-               || string.Equals(model.Id.Entry, rawId, StringComparison.OrdinalIgnoreCase);
-    }
 }
 
 internal static class LoadoutModelIdSafety

@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
+using BaseLib.Abstracts;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
@@ -15,16 +17,27 @@ using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Runs;
 using Loadout.Services.Targets;
+using Loadout.Services.Actions;
+using Loadout.Services.Loadouts;
 using Loadout.Services.Networking;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Players;
 
 public static class CardModificationMultiplayerSyncService
 {
+    private const int MaxStateJsonLength = 256 * 1024;
+
     private static readonly HashSet<StartRunLobby> RegisteredLobbies = [];
     private static readonly Dictionary<StartRunLobby, Action<LobbyPlayer>> LobbyConnectedHandlers = new();
+    private static readonly object OperationSequenceGate = new();
+    private static readonly SortedDictionary<int, LoadoutCardModificationOperationPayload> PendingOperationApplies = new();
     private static INetGameService? _runNetService;
     private static bool _registered;
     private static string? _pendingHostPermanentSnapshotJson;
+    private static int _nextOperationSequence;
+    private static int _lastAppliedOperationSequence;
+    private static bool _operationApplyQueued;
 
     public static event Action? HostPermanentSnapshotAvailable;
 
@@ -97,6 +110,13 @@ public static class CardModificationMultiplayerSyncService
                 return;
 
             RegisterRunNetService(netService);
+            lock (OperationSequenceGate)
+            {
+                _nextOperationSequence = 0;
+                _lastAppliedOperationSequence = 0;
+                _operationApplyQueued = false;
+                PendingOperationApplies.Clear();
+            }
 
             if (netService.Type == NetGameType.Host)
                 BroadcastPermanentSnapshot();
@@ -111,7 +131,312 @@ public static class CardModificationMultiplayerSyncService
 
     public static void OnRunCleaningUp()
     {
+        CardModificationStateService.FlushPendingSaves();
         UnregisterRunNetService(clearClientOverlay: true);
+        lock (OperationSequenceGate)
+        {
+            _nextOperationSequence = 0;
+            _lastAppliedOperationSequence = 0;
+            _operationApplyQueued = false;
+            PendingOperationApplies.Clear();
+        }
+    }
+
+    public static bool RequestOperation(
+        CardModificationOperation operation,
+        LoadoutOwnedItem<CardModel> item,
+        CardModificationState? state = null)
+    {
+        if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+            return false;
+
+        try
+        {
+            INetGameService netService = RunManager.Instance.NetService;
+            Player? localPlayer = GetRunPlayer(netService.NetId) ?? GetLocalRunPlayer();
+            if (localPlayer is null)
+                return false;
+
+            LoadoutCardModificationOperationPayload payload = new()
+            {
+                Operation = operation,
+                RequesterNetId = localPlayer.NetId,
+                OwnerNetId = item.OwnerNetId,
+                DeckIndex = item.Index,
+                CardId = item.Model.Id.ToString(),
+                StateJson = state is null ? string.Empty : JsonSerializer.Serialize(state)
+            };
+            if (!IsValidOperationPayload(payload))
+                return false;
+
+            if (netService.Type == NetGameType.Client)
+            {
+                CustomMessageWrapper.Send(new LoadoutCardModificationOperationRequestMessage
+                {
+                    Payload = payload
+                }, netService);
+                return true;
+            }
+
+            PublishOperation(payload, netService);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to request {operation}. {exception.Message}");
+            return false;
+        }
+    }
+
+    internal static void HandleOperationRequest(
+        LoadoutCardModificationOperationRequestMessage message,
+        ulong senderId)
+    {
+        try
+        {
+            INetGameService? netService = _runNetService ?? RunManager.Instance.NetService;
+            if (netService?.Type != NetGameType.Host
+                || !LoadoutPanelAccessService.CanRequesterUsePanel(senderId))
+            {
+                return;
+            }
+
+            LoadoutCardModificationOperationPayload payload = message.Payload;
+            payload.RequesterNetId = senderId;
+            if (!IsValidOperationPayload(payload))
+            {
+                GD.PushWarning($"CardModification: rejected malformed {payload.Operation} request from peer {senderId}.");
+                return;
+            }
+
+            PublishOperation(payload, netService);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to handle operation request. {exception.Message}");
+        }
+    }
+
+    internal static void HandleOperationApply(
+        LoadoutCardModificationOperationApplyMessage message,
+        ulong senderId)
+    {
+        if (IsHostSession() || !IsExpectedHostSender(senderId))
+            return;
+
+        lock (OperationSequenceGate)
+        {
+            if (message.Sequence <= _lastAppliedOperationSequence)
+                return;
+
+            PendingOperationApplies[message.Sequence] = message.Payload;
+        }
+
+        TryScheduleNextOperationApply();
+    }
+
+    internal static void HandlePermanentDelta(
+        LoadoutCardModificationPermanentDeltaMessage message,
+        ulong senderId)
+    {
+        if (IsHostSession() || !IsExpectedHostSender(senderId))
+            return;
+
+        if (string.IsNullOrWhiteSpace(message.CardId)
+            || message.StateJson?.Length > MaxStateJsonLength
+            || !TryDeserializeState(message.StateJson, out CardModificationState? state))
+        {
+            GD.PushWarning("CardModification: ignored malformed permanent delta from host.");
+            return;
+        }
+
+        CardModificationStateService.ApplyHostPermanentDelta(message.CardId, state);
+    }
+
+    public static void BroadcastPermanentDelta(ModelId cardId, CardModificationState state)
+    {
+        try
+        {
+            if (!RunManager.Instance.IsInProgress || RunManager.Instance.NetService.Type != NetGameType.Host)
+                return;
+
+            LoadoutCardModificationPermanentDeltaMessage message = new()
+            {
+                CardId = cardId.ToString(),
+                StateJson = state.IsEmpty ? string.Empty : JsonSerializer.Serialize(state)
+            };
+            INetGameService netService = RunManager.Instance.NetService;
+            LoadoutNetworkBroadcast.SendToRunClients(
+                netService,
+                recipient => netService.SendMessage(new CustomMessageWrapper { Message = message }, recipient),
+                $"card modification permanent delta {cardId}");
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to broadcast permanent delta. {exception.Message}");
+        }
+    }
+
+    private static void PublishOperation(
+        LoadoutCardModificationOperationPayload payload,
+        INetGameService netService)
+    {
+        if (!IsValidOperationPayload(payload))
+            return;
+
+        payload.Sequence = ++_nextOperationSequence;
+        LoadoutMutationSerialExecutor.Enqueue(() =>
+        {
+            ApplyOperation(payload, authoritativeRemote: false);
+
+            if (netService.Type == NetGameType.Host)
+            {
+                LoadoutCardModificationOperationApplyMessage message = new()
+                {
+                    Sequence = payload.Sequence,
+                    Payload = payload
+                };
+                LoadoutNetworkBroadcast.SendToRunClients(
+                    netService,
+                    recipient => netService.SendMessage(new CustomMessageWrapper { Message = message }, recipient),
+                    $"card modification {payload.Operation} #{payload.Sequence}");
+            }
+
+            return Task.CompletedTask;
+        }, $"card modification {payload.Operation} #{payload.Sequence}");
+    }
+
+    private static void TryScheduleNextOperationApply()
+    {
+        int sequence;
+        LoadoutCardModificationOperationPayload payload;
+        lock (OperationSequenceGate)
+        {
+            if (_operationApplyQueued)
+                return;
+
+            if (PendingOperationApplies.Count == 0)
+                return;
+
+            KeyValuePair<int, LoadoutCardModificationOperationPayload> next = PendingOperationApplies.First();
+            sequence = next.Key;
+            payload = next.Value;
+            PendingOperationApplies.Remove(sequence);
+            _operationApplyQueued = true;
+        }
+
+        LoadoutMutationSerialExecutor.Enqueue(() =>
+        {
+            ApplyOperation(payload, authoritativeRemote: true);
+            lock (OperationSequenceGate)
+            {
+                _lastAppliedOperationSequence = sequence;
+                _operationApplyQueued = false;
+            }
+
+            TryScheduleNextOperationApply();
+            return Task.CompletedTask;
+        }, $"remote card modification {payload.Operation} #{sequence}");
+    }
+
+    private static void ApplyOperation(
+        LoadoutCardModificationOperationPayload payload,
+        bool authoritativeRemote)
+    {
+        if (!IsValidOperationPayload(payload))
+        {
+            GD.PushWarning($"CardModification: ignored malformed {payload.Operation} payload.");
+            return;
+        }
+
+        if (!LoadoutModelRegistry.TryResolveWireId(payload.CardId, out ModelId cardId))
+        {
+            GD.PushWarning($"CardModification: ignored unknown card id '{payload.CardId}'.");
+            return;
+        }
+
+        Player? actionPlayer = GetRunPlayer(payload.RequesterNetId) ?? GetLocalRunPlayer();
+        if (actionPlayer is null)
+            return;
+
+        if (!TryDeserializeState(payload.StateJson, out CardModificationState? state))
+        {
+            GD.PushWarning($"CardModification: ignored invalid state JSON for {payload.Operation}.");
+            return;
+        }
+
+        CardModificationStateService.ApplySynchronizedOperation(
+            payload.Operation,
+            cardId,
+            LoadoutTargetSelection.ForPlayer(payload.OwnerNetId),
+            payload.DeckIndex,
+            cardId,
+            state,
+            actionPlayer,
+            authoritativeRemote);
+    }
+
+    private static bool IsValidOperationPayload(LoadoutCardModificationOperationPayload payload)
+    {
+        return (payload.Operation is CardModificationOperation.SaveTemporary
+                    or CardModificationOperation.ResetTemporary
+                    or CardModificationOperation.ResetTemporaryToBasic
+                    or CardModificationOperation.ApplyPermanent
+                    or CardModificationOperation.ResetPermanentToBasic)
+               && payload.RequesterNetId != 0
+               && payload.OwnerNetId != 0
+               && payload.DeckIndex >= 0
+               && !string.IsNullOrWhiteSpace(payload.CardId)
+               && (payload.StateJson?.Length ?? 0) <= MaxStateJsonLength;
+    }
+
+    private static bool TryDeserializeState(string? stateJson, out CardModificationState? state)
+    {
+        state = null;
+        if (string.IsNullOrWhiteSpace(stateJson))
+            return true;
+
+        if (stateJson.Length > MaxStateJsonLength)
+            return false;
+
+        try
+        {
+            state = JsonSerializer.Deserialize<CardModificationState>(stateJson);
+            return state is not null;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to deserialize state delta. {exception.Message}");
+            return false;
+        }
+    }
+
+    private static Player? GetLocalRunPlayer()
+    {
+        try
+        {
+            return RunManager.Instance.IsInProgress
+                ? LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState())
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static Player? GetRunPlayer(ulong netId)
+    {
+        try
+        {
+            return RunManager.Instance.IsInProgress
+                ? RunManager.Instance.DebugOnlyGetState()?.GetPlayer(netId)
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static void BroadcastPermanentSnapshot()
@@ -300,6 +625,114 @@ public static class CardModificationMultiplayerSyncService
     {
         _pendingHostPermanentSnapshotJson = payload;
         HostPermanentSnapshotAvailable?.Invoke();
+    }
+}
+
+public struct LoadoutCardModificationOperationPayload
+{
+    public int Sequence;
+    public CardModificationOperation Operation;
+    public ulong RequesterNetId;
+    public ulong OwnerNetId;
+    public int DeckIndex;
+    public string CardId;
+    public string StateJson;
+
+    public void Serialize(PacketWriter writer)
+    {
+        writer.WriteInt(Sequence);
+        writer.WriteInt((int)Operation, 8);
+        writer.WriteULong(RequesterNetId);
+        writer.WriteULong(OwnerNetId);
+        writer.WriteInt(DeckIndex);
+        writer.WriteString(CardId ?? string.Empty);
+        writer.WriteString(StateJson ?? string.Empty);
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+        Sequence = reader.ReadInt();
+        Operation = (CardModificationOperation)reader.ReadInt(8);
+        RequesterNetId = reader.ReadULong();
+        OwnerNetId = reader.ReadULong();
+        DeckIndex = reader.ReadInt();
+        CardId = reader.ReadString();
+        StateJson = reader.ReadString();
+    }
+}
+
+public struct LoadoutCardModificationOperationRequestMessage : ICustomMessage
+{
+    public LoadoutCardModificationOperationPayload Payload;
+
+    public bool ShouldBroadcast => false;
+
+    public void HandleMessage(ulong senderId)
+    {
+        CardModificationMultiplayerSyncService.HandleOperationRequest(this, senderId);
+    }
+
+    public void Serialize(PacketWriter writer)
+    {
+        Payload.Serialize(writer);
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+        Payload = new LoadoutCardModificationOperationPayload();
+        Payload.Deserialize(reader);
+    }
+}
+
+public struct LoadoutCardModificationOperationApplyMessage : ICustomMessage
+{
+    public int Sequence;
+    public LoadoutCardModificationOperationPayload Payload;
+
+    public bool ShouldBroadcast => false;
+
+    public void HandleMessage(ulong senderId)
+    {
+        CardModificationMultiplayerSyncService.HandleOperationApply(this, senderId);
+    }
+
+    public void Serialize(PacketWriter writer)
+    {
+        writer.WriteInt(Sequence);
+        Payload.Serialize(writer);
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+        Sequence = reader.ReadInt();
+        Payload = new LoadoutCardModificationOperationPayload();
+        Payload.Deserialize(reader);
+        Payload.Sequence = Sequence;
+    }
+}
+
+public struct LoadoutCardModificationPermanentDeltaMessage : ICustomMessage
+{
+    public string CardId;
+    public string StateJson;
+
+    public bool ShouldBroadcast => false;
+
+    public void HandleMessage(ulong senderId)
+    {
+        CardModificationMultiplayerSyncService.HandlePermanentDelta(this, senderId);
+    }
+
+    public void Serialize(PacketWriter writer)
+    {
+        writer.WriteString(CardId ?? string.Empty);
+        writer.WriteString(StateJson ?? string.Empty);
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+        CardId = reader.ReadString();
+        StateJson = reader.ReadString();
     }
 }
 

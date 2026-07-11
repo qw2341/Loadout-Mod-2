@@ -71,11 +71,9 @@ public partial class NCardModificationScreen : Control
     private MegaLabel? _titleLabel;
     private Control? _textEditorOverlay;
     private bool _signalsBound;
-    private bool _stateEventsBound;
     private bool _runContentEventsBound;
     private bool _hasPendingTemporaryCommit;
     private bool _suppressStateRefreshThisFrame;
-    private bool _ignoreNextCommittedStateRefresh;
 
     public static NCardModificationScreen Create()
     {
@@ -110,7 +108,7 @@ public partial class NCardModificationScreen : Control
         MouseFilter = MouseFilterEnum.Stop;
         ZIndex = 120;
         BindSceneNodes();
-        BindStateEvents();
+        BindRunContentEvents();
         RebuildScreen();
     }
 
@@ -136,30 +134,18 @@ public partial class NCardModificationScreen : Control
     public override void _ExitTree()
     {
         CommitPendingTemporaryModification();
-        UnbindStateEvents();
         UnbindRunContentEvents();
         CloseTextEditor();
         ClearHoverTips();
     }
 
-    private void BindStateEvents()
+    private void BindRunContentEvents()
     {
-        if (_stateEventsBound)
+        if (_runContentEventsBound)
             return;
 
-        CardModificationStateService.StateChanged += OnCardModificationStateChanged;
         LoadoutRunContentChangeService.Changed += OnRunContentChanged;
-        _stateEventsBound = true;
         _runContentEventsBound = true;
-    }
-
-    private void UnbindStateEvents()
-    {
-        if (!_stateEventsBound)
-            return;
-
-        CardModificationStateService.StateChanged -= OnCardModificationStateChanged;
-        _stateEventsBound = false;
     }
 
     private void UnbindRunContentEvents()
@@ -169,23 +155,6 @@ public partial class NCardModificationScreen : Control
 
         LoadoutRunContentChangeService.Changed -= OnRunContentChanged;
         _runContentEventsBound = false;
-    }
-
-    private void OnCardModificationStateChanged()
-    {
-        if (_ignoreNextCommittedStateRefresh)
-        {
-            _ignoreNextCommittedStateRefresh = false;
-            return;
-        }
-
-        if (!IsInsideTree() || _item is null || _hasPendingTemporaryCommit)
-            return;
-
-        if (_suppressStateRefreshThisFrame)
-            return;
-
-        Callable.From(RefreshFromAppliedState).CallDeferred();
     }
 
     private void OnRunContentChanged(LoadoutRunContentChangedEventArgs change)
@@ -200,25 +169,55 @@ public partial class NCardModificationScreen : Control
             return;
         }
 
-        if (change.Mode == LoadoutRunContentChangeMode.Update
-            && change.ChangedCards.Count > 0
-            && !change.ChangedCards.Any(changed => MatchesChangedCard(_item, changed)))
+        if (change.Mode == LoadoutRunContentChangeMode.Update)
         {
+            foreach (LoadoutChangedCard changed in change.ChangedCards)
+            {
+                if (!MatchesChangedCard(_item, changed))
+                    continue;
+
+                LoadoutCardVisualRefreshKind refreshKind = changed.RefreshKind;
+                Callable.From(() => RefreshTargetedCardUpdate(refreshKind)).CallDeferred();
+                return;
+            }
+
             return;
         }
 
+        // Add/remove/replace can change deck indices, so only structural changes
+        // rebuild the owned-item list.
         Callable.From(RefreshAfterDeckMutation).CallDeferred();
     }
 
-    private void RefreshFromAppliedState()
+    private void RefreshTargetedCardUpdate(LoadoutCardVisualRefreshKind refreshKind)
     {
         if (_item is null || !IsInsideTree())
             return;
 
-        LoadItem(_item);
-        RefreshParentView(forceReload: true);
+        IReadOnlyList<CardModel> deck = _item.Owner.Deck.Cards;
+        if (_item.Index < 0 || _item.Index >= deck.Count)
+        {
+            RefreshAfterDeckMutation();
+            return;
+        }
+
+        CardModel card = deck[_item.Index];
+        if (!card.Id.Equals(_item.Model.Id) && !ReferenceEquals(card, _item.Model))
+        {
+            RefreshAfterDeckMutation();
+            return;
+        }
+
+        LoadoutOwnedItem<CardModel> refreshed = new(_item.Owner, _item.Index, card);
+        _item = refreshed;
+        if (_itemIndex >= 0 && _itemIndex < _items.Count)
+            _items[_itemIndex] = refreshed;
+
+        LoadItem(refreshed);
+        bool forceReload = refreshKind == LoadoutCardVisualRefreshKind.Reload;
+        RefreshParentView(forceReload);
         RebuildControls();
-        RefreshPreview(forceReload: true);
+        RefreshPreview(forceReload);
     }
 
     private void RefreshAfterDeckMutation()
@@ -856,20 +855,17 @@ public partial class NCardModificationScreen : Control
         CardModificationState permanentState = _workingState.Clone();
         _hasPendingTemporaryCommit = false;
         SuppressStateRefreshThisFrame();
+        // ApplyPermanent now atomically commits the permanent state and clears
+        // the selected copy's temporary override in one authoritative delta.
         bool requestedPermanent = LoadoutImmediateMutationService.RequestCardModification(
             CardModificationOperation.ApplyPermanent,
             _item,
             permanentState);
-        bool requestedTemporaryReset = LoadoutImmediateMutationService.RequestCardModification(
-            CardModificationOperation.ResetTemporary,
-            _item);
 
         _temporaryState = new CardModificationState();
-        if (!requestedTemporaryReset)
-            CardModificationStateService.ResetTemporary(_item);
-
         if (!requestedPermanent)
         {
+            CardModificationStateService.ResetTemporary(_item);
             CardModificationStateService.SavePermanent(_item.Model.Id, permanentState);
             CardModificationStateService.ApplyEffectiveStateToOwnedCard(_item, previousState);
         }
@@ -879,9 +875,10 @@ public partial class NCardModificationScreen : Control
             : CardModificationStateService.GetEffectiveState(_item);
         _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, _workingState);
         _lastAppliedState = _workingState.Clone();
-        RefreshParentView(forceReload: true);
+        bool forceReload = HasStructuralVisualChange(previousState, permanentState);
+        RefreshParentView(forceReload);
         RebuildControls();
-        RefreshPreview(forceReload: true);
+        RefreshPreview(forceReload);
     }
 
     private void ResetTemporary()
@@ -947,7 +944,6 @@ public partial class NCardModificationScreen : Control
         CardModificationState state = _temporaryState.Clone();
         state.Normalize();
         SuppressStateRefreshThisFrame();
-        _ignoreNextCommittedStateRefresh = true;
         if (LoadoutImmediateMutationService.RequestCardModification(
                 CardModificationOperation.SaveTemporary,
                 _item,

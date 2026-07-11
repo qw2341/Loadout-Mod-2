@@ -69,6 +69,10 @@ public sealed class LoadoutRunContentChangedEventArgs
 
 public static class LoadoutRunContentChangeService
 {
+    private static readonly object QueueGate = new();
+    private static readonly List<LoadoutRunContentChangedEventArgs> QueuedChanges = [];
+    private static bool _queueFlushScheduled;
+
     public static event Action<LoadoutRunContentChangedEventArgs>? Changed;
 
     public static void Notify(
@@ -100,6 +104,88 @@ public static class LoadoutRunContentChangeService
             {
                 GD.PushWarning($"LoadoutPanel: run content changed handler failed. {exception.Message}");
             }
+        }
+    }
+
+
+    /// <summary>
+    /// Coalesces native command postfixes that may fire many times in one frame
+    /// (for example, adding or upgrading an entire deck). Structural changes
+    /// collapse to one parent-view rebuild; pure updates remain item-targeted.
+    /// </summary>
+    public static void Queue(
+        LoadoutRunContentKind kind,
+        IEnumerable<ulong> playerNetIds,
+        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown,
+        IEnumerable<LoadoutChangedCard>? changedCards = null)
+    {
+        lock (QueueGate)
+        {
+            QueuedChanges.Add(new LoadoutRunContentChangedEventArgs(kind, playerNetIds, mode, changedCards));
+            if (_queueFlushScheduled)
+                return;
+
+            _queueFlushScheduled = true;
+        }
+
+        Callable.From(FlushQueued).CallDeferred();
+    }
+
+    public static void Queue(
+        LoadoutRunContentKind kind,
+        ulong playerNetId,
+        LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown)
+    {
+        Queue(kind, [playerNetId], mode);
+    }
+
+    public static void ResetQueuedChanges()
+    {
+        lock (QueueGate)
+        {
+            QueuedChanges.Clear();
+            _queueFlushScheduled = false;
+        }
+    }
+
+    private static void FlushQueued()
+    {
+        List<LoadoutRunContentChangedEventArgs> pending;
+        lock (QueueGate)
+        {
+            _queueFlushScheduled = false;
+            if (QueuedChanges.Count == 0)
+                return;
+
+            pending = QueuedChanges.ToList();
+            QueuedChanges.Clear();
+        }
+
+        foreach (IGrouping<LoadoutRunContentKind, LoadoutRunContentChangedEventArgs> group in pending.GroupBy(change => change.Kind))
+        {
+            HashSet<ulong> players = group.SelectMany(change => change.PlayerNetIds).ToHashSet();
+            List<LoadoutRunContentChangeMode> modes = group.Select(change => change.Mode).Distinct().ToList();
+            bool hasStructuralChange = modes.Any(mode => mode != LoadoutRunContentChangeMode.Update);
+            LoadoutRunContentChangeMode mergedMode = modes.Count == 1
+                ? modes[0]
+                : hasStructuralChange
+                    ? LoadoutRunContentChangeMode.Replace
+                    : LoadoutRunContentChangeMode.Update;
+
+            List<LoadoutChangedCard> cards = group
+                .SelectMany(change => change.ChangedCards)
+                .GroupBy(card => (card.OwnerNetId, card.Index, Id: card.ModelId.ToString()))
+                .Select(cardGroup =>
+                {
+                    LoadoutChangedCard first = cardGroup.First();
+                    LoadoutCardVisualRefreshKind refreshKind = cardGroup.Any(card => card.RefreshKind == LoadoutCardVisualRefreshKind.Reload)
+                        ? LoadoutCardVisualRefreshKind.Reload
+                        : LoadoutCardVisualRefreshKind.Lightweight;
+                    return first with { RefreshKind = refreshKind };
+                })
+                .ToList();
+
+            Notify(group.Key, players, mergedMode, cards);
         }
     }
 

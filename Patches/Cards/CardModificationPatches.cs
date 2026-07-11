@@ -98,6 +98,44 @@ public static class CardCmdUpgradeCardModificationPatch
     public static void Postfix(List<CardModel> __state)
     {
         CardModificationStateService.ReapplyEffectiveStateAfterUpgrade(__state);
+
+        HashSet<ulong> changedPlayers = [];
+        List<LoadoutChangedCard> changedCards = [];
+        foreach (CardModel card in __state)
+        {
+            Player? owner = card.Owner;
+            if (owner is null || card.Pile?.Type != PileType.Deck)
+                continue;
+
+            int index = -1;
+            for (int i = 0; i < owner.Deck.Cards.Count; i++)
+            {
+                if (!ReferenceEquals(owner.Deck.Cards[i], card))
+                    continue;
+
+                index = i;
+                break;
+            }
+
+            if (index < 0)
+                continue;
+
+            CardModificationState state = CardModificationStateService.GetEffectiveStateForCard(card);
+            LoadoutCardVisualRefreshKind refreshKind = CardModificationStateService.GetVisualRefreshKind(
+                new CardModificationState(),
+                state);
+            changedPlayers.Add(owner.NetId);
+            changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, refreshKind));
+        }
+
+        if (changedCards.Count > 0)
+        {
+            LoadoutRunContentChangeService.Queue(
+                LoadoutRunContentKind.Cards,
+                changedPlayers,
+                LoadoutRunContentChangeMode.Update,
+                changedCards);
+        }
     }
 }
 
@@ -108,9 +146,12 @@ public static class CardCmdUpgradeCardModificationPatch
     typeof(bool))]
 public static class CardPileRemoveTemporaryIdentityPatch
 {
+    public sealed record RemovedCardState(CardModel Card, LoadoutChangedCard Change);
+
     public sealed record RemovalState(
         Dictionary<Player, IReadOnlyDictionary<CardModel, CardModificationState>> TemporaryStates,
-        IReadOnlyList<CardModel> InevitableCards);
+        IReadOnlyList<CardModel> InevitableCards,
+        IReadOnlyList<RemovedCardState> RemovedCards);
 
     [HarmonyPrefix]
     public static void Prefix(
@@ -126,9 +167,32 @@ public static class CardPileRemoveTemporaryIdentityPatch
             temporaryStates[owner] = CardModificationStateService.CaptureTemporaryStatesForPlayer(owner);
         }
 
+        List<RemovedCardState> removedCards = [];
+        foreach (CardModel card in cards.Where(card => card?.Owner is not null))
+        {
+            Player owner = card.Owner;
+            int index = -1;
+            for (int i = 0; i < owner.Deck.Cards.Count; i++)
+            {
+                if (!ReferenceEquals(owner.Deck.Cards[i], card))
+                    continue;
+
+                index = i;
+                break;
+            }
+
+            if (index >= 0)
+            {
+                removedCards.Add(new RemovedCardState(
+                    card,
+                    new LoadoutChangedCard(owner.NetId, index, card.Id)));
+            }
+        }
+
         __state = new RemovalState(
             temporaryStates,
-            cards.Where(card => LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable)).ToList());
+            cards.Where(card => LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable)).ToList(),
+            removedCards);
     }
 
     [HarmonyPostfix]
@@ -162,6 +226,21 @@ public static class CardPileRemoveTemporaryIdentityPatch
         {
             foreach ((Player player, IReadOnlyDictionary<CardModel, CardModificationState> states) in state.TemporaryStates)
                 CardModificationStateService.ReplaceTemporaryStatesForPlayer(player, states, reapplyCards: false);
+
+            List<LoadoutChangedCard> removed = state.RemovedCards
+                .Where(entry => entry.Card.Owner is null
+                                || entry.Card.Pile?.Type != PileType.Deck
+                                || !entry.Card.Owner.Deck.Cards.Any(card => ReferenceEquals(card, entry.Card)))
+                .Select(entry => entry.Change)
+                .ToList();
+            if (removed.Count > 0)
+            {
+                LoadoutRunContentChangeService.Queue(
+                    LoadoutRunContentKind.Cards,
+                    removed.Select(entry => entry.OwnerNetId),
+                    LoadoutRunContentChangeMode.Remove,
+                    removed);
+            }
         }
     }
 }
