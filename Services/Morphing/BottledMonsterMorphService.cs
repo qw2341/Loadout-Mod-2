@@ -18,6 +18,8 @@ using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
+using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
@@ -160,10 +162,19 @@ public static class BottledMonsterMorphService
         }
 
         string? mappedTrigger = MapTrigger(runtime.Triggers, trigger);
-        if (!string.IsNullOrWhiteSpace(mappedTrigger))
+        if (!string.IsNullOrWhiteSpace(mappedTrigger) && !runtime.FailedTriggers.Contains(mappedTrigger))
         {
-            runtime.Animator.SetTrigger(mappedTrigger);
-            return true;
+            try
+            {
+                runtime.Animator.SetTrigger(mappedTrigger);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                runtime.FailedTriggers.Add(mappedTrigger);
+                GD.PushWarning(
+                    $"BottledMonsterMorph: disabled unsafe trigger '{mappedTrigger}' for '{runtime.ModelId}' and fell back to idle. {exception.Message}");
+            }
         }
 
         SetIdle(runtime);
@@ -231,6 +242,8 @@ public static class BottledMonsterMorphService
             newVisuals.Position = Vector2.Zero;
             newVisuals.Modulate = oldModulate;
             newVisuals.UpdatePhobiaMode(visualModel as MonsterModel);
+            if (visualModel is MonsterModel)
+                FlipMonsterVisuals(newVisuals);
 
             CreatureAnimator? animator = CreateAnimator(visualModel, newVisuals);
             VisualsField.SetValue(creatureNode, newVisuals);
@@ -248,7 +261,9 @@ public static class BottledMonsterMorphService
                     creatureNode,
                     animator,
                     newVisuals.SpineBody,
-                    ReadAvailableTriggers(animator));
+                    ReadAvailableTriggers(animator),
+                    visualModel.Id.ToString(),
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase));
                 SetIdle(ActiveVisuals[nodeId]);
             }
             else
@@ -306,14 +321,38 @@ public static class BottledMonsterMorphService
 
         if (model is MonsterModel monster)
         {
-            CreatureAnimator animator = monster.GenerateAnimator(visuals.SpineBody);
-            visuals.SetUpSkin(monster);
+            // Some monster animators (for example Tunneler) evaluate predicates through
+            // MonsterModel.Creature. Give the visual-only animator an isolated, valid
+            // creature instead of letting it touch the real player or a canonical model.
+            MonsterModel animatorModel = monster.ToMutable();
+            animatorModel.SetUpForCombat();
+            _ = new Creature(animatorModel, CombatSide.Enemy, null)
+            {
+                CombatState = new NullCombatState()
+            };
+
+            CreatureAnimator animator = animatorModel.GenerateAnimator(visuals.SpineBody);
+            visuals.SetUpSkin(animatorModel);
             return animator;
         }
 
         return model is CharacterModel character
             ? character.GenerateAnimator(visuals.SpineBody)
             : null;
+    }
+
+    private static void FlipMonsterVisuals(NCreatureVisuals visuals)
+    {
+        FlipBody(visuals.GetNodeOrNull<Node2D>("%Visuals"));
+        FlipBody(visuals.GetNodeOrNull<Node2D>("%PhobiaModeVisuals"));
+    }
+
+    private static void FlipBody(Node2D? body)
+    {
+        if (body is null)
+            return;
+
+        body.Scale = new Vector2(-body.Scale.X, body.Scale.Y);
     }
 
     private static async Task EnsureVisualAssetLoadedAsync(AbstractModel model)
@@ -438,8 +477,15 @@ public static class BottledMonsterMorphService
         string? idleTrigger = FindExact(runtime.Triggers, "Idle");
         if (idleTrigger is not null)
         {
-            runtime.Animator.SetTrigger(idleTrigger);
-            return;
+            try
+            {
+                runtime.Animator.SetTrigger(idleTrigger);
+                return;
+            }
+            catch
+            {
+                runtime.FailedTriggers.Add(idleTrigger);
+            }
         }
 
         foreach (string animation in new[] { "idle_loop", "idle", "relaxed_loop" })
@@ -700,7 +746,9 @@ public static class BottledMonsterMorphService
         NCreature Node,
         CreatureAnimator Animator,
         MegaSprite Spine,
-        HashSet<string> Triggers);
+        HashSet<string> Triggers,
+        string ModelId,
+        HashSet<string> FailedTriggers);
 
     public sealed class MorphRunSaveData : ISerializable
     {
