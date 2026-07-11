@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Random;
@@ -86,6 +87,88 @@ public static class InfiniteUpgradeMaxLevelPatch
             __result = int.MaxValue;
         else
             __result = Math.Max(__result, Math.Max(__instance.CurrentUpgradeLevel, _deserializingMaxLevel));
+    }
+}
+
+public readonly struct InfiniteUpgradeContextState
+{
+    public InfiniteUpgradeContextState(CardModel? activeCard, bool isApplyingNativeUpgrade)
+    {
+        ActiveCard = activeCard;
+        IsApplyingNativeUpgrade = isApplyingNativeUpgrade;
+    }
+
+    public CardModel? ActiveCard { get; }
+    public bool IsApplyingNativeUpgrade { get; }
+}
+
+[HarmonyPatch(typeof(CardModel), "UpgradeInternal")]
+public static class InfiniteUpgradeContextPatch
+{
+    [ThreadStatic]
+    internal static CardModel? ActiveCard;
+
+    [ThreadStatic]
+    internal static bool IsApplyingNativeUpgrade;
+
+    [HarmonyPrefix]
+    public static void Prefix(CardModel __instance, out InfiniteUpgradeContextState __state)
+    {
+        __state = new InfiniteUpgradeContextState(ActiveCard, IsApplyingNativeUpgrade);
+        ActiveCard = LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade)
+            ? __instance
+            : null;
+        IsApplyingNativeUpgrade = ActiveCard is not null;
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(InfiniteUpgradeContextState __state, Exception? __exception)
+    {
+        ActiveCard = __state.ActiveCard;
+        IsApplyingNativeUpgrade = __state.IsApplyingNativeUpgrade;
+        return __exception;
+    }
+}
+
+[HarmonyPatch(typeof(DynamicVarSet), nameof(DynamicVarSet.RecalculateForUpgradeOrEnchant))]
+public static class InfiniteUpgradeRecalculationBoundaryPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(DynamicVarSet __instance)
+    {
+        CardModel? activeCard = InfiniteUpgradeContextPatch.ActiveCard;
+        if (InfiniteUpgradeContextPatch.IsApplyingNativeUpgrade
+            && activeCard is not null
+            && ReferenceEquals(activeCard.DynamicVars, __instance))
+        {
+            // UpgradeInternal has finished OnUpgrade at this point. Do not scale
+            // recalculation, enchantment, or Upgraded-event mutations.
+            InfiniteUpgradeContextPatch.IsApplyingNativeUpgrade = false;
+        }
+    }
+}
+
+[HarmonyPatch(typeof(DynamicVar), nameof(DynamicVar.UpgradeValueBy))]
+public static class InfiniteUpgradeDynamicValuePatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(DynamicVar __instance, ref decimal addend)
+    {
+        if (!InfiniteUpgradeContextPatch.IsApplyingNativeUpgrade)
+            return;
+
+        CardModel? card = InfiniteUpgradeContextPatch.ActiveCard;
+        if (card is null
+            || !card.DynamicVars.Any(pair => ReferenceEquals(pair.Value, __instance)))
+        {
+            return;
+        }
+
+        // UpgradeInternal increments CurrentUpgradeLevel before OnUpgrade.
+        // +1: native amount; +2: native + 1; +3: native + 2; etc.
+        int extraValue = card.CurrentUpgradeLevel - 1;
+        if (extraValue > 0)
+            addend += extraValue;
     }
 }
 

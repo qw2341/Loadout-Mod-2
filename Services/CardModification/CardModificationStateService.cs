@@ -734,7 +734,10 @@ public static class CardModificationStateService
             if (canonical is null)
                 return card;
 
-            CardModel preview = CreateCanonicalBaselineForCurrentUpgrade(card, canonical);
+            CardModel preview = CreateCanonicalBaselineForCurrentUpgrade(
+                card,
+                canonical,
+                IsKeywordEnabledAfterState(card, normalized, LoadoutKeywords.InfiniteUpgrade));
 
             if (normalized.Enchantment is null
                 && card.Enchantment is not null
@@ -1401,7 +1404,14 @@ public static class CardModificationStateService
         if (clearAffliction && card.Affliction is not null)
             CardCmd.ClearAffliction(card);
 
-        ResetCardToCanonicalBaseline(card, resetAttachments: false);
+        bool replayInfiniteUpgrade = IsKeywordEnabledAfterState(
+            card,
+            state,
+            LoadoutKeywords.InfiniteUpgrade);
+        ResetCardToCanonicalBaseline(
+            card,
+            resetAttachments: false,
+            infiniteUpgradeOverride: replayInfiniteUpgrade);
     }
 
     private static bool ApplyStateTransitionToCard(
@@ -1493,7 +1503,28 @@ public static class CardModificationStateService
         }
     }
 
-    private static void ResetCardToCanonicalBaseline(CardModel card, bool resetAttachments, bool resetUpgrade = false)
+    private static bool IsKeywordEnabledAfterState(
+        CardModel card,
+        CardModificationState state,
+        CardKeyword keyword)
+    {
+        foreach ((string rawKeyword, bool enabled) in state.KeywordOverrides)
+        {
+            if (LoadoutKeywords.TryResolve(rawKeyword, out CardKeyword resolved)
+                && resolved.Equals(keyword))
+            {
+                return enabled;
+            }
+        }
+
+        return LoadoutKeywords.Has(card, keyword);
+    }
+
+    private static void ResetCardToCanonicalBaseline(
+        CardModel card,
+        bool resetAttachments,
+        bool resetUpgrade = false,
+        bool? infiniteUpgradeOverride = null)
     {
         if (card.IsCanonical)
             return;
@@ -1504,7 +1535,7 @@ public static class CardModificationStateService
 
         CardModel baseline = resetUpgrade
             ? canonical.ToMutable()
-            : CreateCanonicalBaselineForCurrentUpgrade(card, canonical);
+            : CreateCanonicalBaselineForCurrentUpgrade(card, canonical, infiniteUpgradeOverride);
         try
         {
             if (resetUpgrade && card.CurrentUpgradeLevel > 0)
@@ -1571,10 +1602,30 @@ public static class CardModificationStateService
         }
     }
 
-    private static CardModel CreateCanonicalBaselineForCurrentUpgrade(CardModel card, CardModel canonical)
+    private static CardModel CreateCanonicalBaselineForCurrentUpgrade(
+        CardModel card,
+        CardModel canonical,
+        bool? infiniteUpgradeOverride = null)
     {
         CardModel baseline = canonical.ToMutable();
-        int upgradeLevel = Math.Max(0, Math.Min(card.CurrentUpgradeLevel, baseline.MaxUpgradeLevel));
+        bool replayInfiniteUpgrade = infiniteUpgradeOverride
+                                     ?? LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
+
+        // The modifier refresh rebuilds a card from its canonical model. The canonical
+        // model normally caps at +1 and does not contain the custom keyword, so a +2
+        // card used to be silently rebuilt as +1 here. Give the temporary baseline the
+        // keyword before replaying upgrades so it follows the same deterministic path
+        // as the live card.
+        if (replayInfiniteUpgrade
+            && !LoadoutKeywords.Has(baseline, LoadoutKeywords.InfiniteUpgrade))
+        {
+            baseline.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
+        }
+
+        int upgradeLevel = Math.Max(0, card.CurrentUpgradeLevel);
+        if (!replayInfiniteUpgrade)
+            upgradeLevel = Math.Min(upgradeLevel, baseline.MaxUpgradeLevel);
+
         for (int i = 0; i < upgradeLevel; i++)
         {
             if (!baseline.IsUpgradable)
