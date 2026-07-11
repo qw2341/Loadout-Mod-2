@@ -47,7 +47,7 @@ public class CommonHelpers
     private static Dictionary<Assembly, string> _modIdsByAssembly;
     private static Dictionary<string, string> _modNamesById;
 
-    public static void CreateAndAddLoadoutItem<TModel>(
+    public static NLoadoutPanelItem CreateAndAddLoadoutItem<TModel>(
         IEnumerable<TModel> models,
         SelectItemAdapter<TModel> adapter,
         Action<SelectScreenBuilder<TModel>> builder,
@@ -119,6 +119,7 @@ public class CommonHelpers
         };
 
         NLoadoutPanel.ItemsContainer.AddChild(item);
+        return item;
     }
     
 	public static void CreateAndAddDynamicLoadoutItem<TModel>(

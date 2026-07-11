@@ -1,0 +1,48 @@
+#nullable enable
+
+namespace Loadout.Patches.Morphing;
+
+using HarmonyLib;
+using Loadout.Services.Morphing;
+using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Runs;
+
+[HarmonyPatch(typeof(NCreature), nameof(NCreature._Ready))]
+public static class BottledMonsterMorphCreatureReadyPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(NCreature __instance)
+    {
+        BottledMonsterMorphService.OnCreatureReady(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NCreature), nameof(NCreature.SetAnimationTrigger))]
+public static class BottledMonsterMorphAnimationPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(NCreature __instance, string trigger)
+    {
+        return !BottledMonsterMorphService.TryHandleAnimation(__instance, trigger);
+    }
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
+public static class BottledMonsterMorphRunLaunchPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix()
+    {
+        BottledMonsterMorphService.OnRunLaunched();
+    }
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.CleanUp))]
+public static class BottledMonsterMorphRunCleanupPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+        BottledMonsterMorphService.OnRunCleaningUp();
+    }
+}

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.CardModification;
 using Loadout.Services.Loadouts;
+using Loadout.Services.Morphing;
 using Loadout.Services.Networking;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Targets;
@@ -60,7 +61,8 @@ public enum LoadoutImmediateMutationKind
     TildeSpareEnemies,
     TildeRelicCounterDelta,
     TildeRelicCounterLock,
-    SummonMonster
+    SummonMonster,
+    MorphPlayer
 }
 
 public static class LoadoutImmediateMutationService
@@ -246,6 +248,16 @@ public static class LoadoutImmediateMutationService
             Kind = LoadoutImmediateMutationKind.SummonMonster,
             ModelId = monsterId,
             Amount = 1
+        });
+    }
+
+    public static bool RequestMorphPlayer(ModelId modelId, LoadoutTargetSelection target)
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.MorphPlayer,
+            ModelId = modelId,
+            Target = target
         });
     }
 
@@ -632,6 +644,9 @@ public static class LoadoutImmediateMutationService
                 break;
             case LoadoutImmediateMutationKind.SummonMonster:
                 TaskHelper.RunSafely(LoadoutSummonMonsterService.SummonMonsterNowAsync(payload.ModelId));
+                break;
+            case LoadoutImmediateMutationKind.MorphPlayer:
+                BottledMonsterMorphService.ApplySynchronizedMorph(payload.ModelId, payload.Target);
                 break;
         }
     }
@@ -1133,7 +1148,8 @@ public static class LoadoutImmediateMutationService
             or LoadoutImmediateMutationKind.TildeStatLock
             or LoadoutImmediateMutationKind.TildeToggleSet
             or LoadoutImmediateMutationKind.TildeRelicCounterDelta
-            or LoadoutImmediateMutationKind.TildeRelicCounterLock;
+            or LoadoutImmediateMutationKind.TildeRelicCounterLock
+            or LoadoutImmediateMutationKind.MorphPlayer;
     }
 
     private static bool IsHostSession()
@@ -1291,6 +1307,8 @@ public struct LoadoutImmediateMutationPayload
         foreach (AncientEventModel model in ModelDb.AllAncients)
             yield return model;
         foreach (MonsterModel model in ModelDb.Monsters)
+            yield return model;
+        foreach (CharacterModel model in ModelDb.AllCharacters.Where(character => character.IsPlayable))
             yield return model;
     }
 

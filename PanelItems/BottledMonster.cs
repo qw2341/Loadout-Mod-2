@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
 using Loadout.Services.LastActions;
+using Loadout.Services.Morphing;
+using Loadout.Services.Targets;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
@@ -23,6 +25,8 @@ namespace Loadout.PanelItems;
 
 public static class BottledMonster
 {
+    private const string MorphTargetKey = "bottled_monster_morph";
+    private const string MorphTargetDropdownName = "BottledMonsterMorphTargetDropdown";
     private static readonly Vector2 MonsterButtonSize = new(242f, 168f);
     private static readonly Vector2 PreviewSize = new(242f, 110f);
 
@@ -36,7 +40,10 @@ public static class BottledMonster
         Dictionary<string, IReadOnlyList<string>> actNamesByMonsterId = BuildActNamesByMonsterId();
         Dictionary<string, HashSet<RoomType>> roomTypesByMonsterId = BuildRoomTypesByMonsterId();
 
-        CommonHelpers.CreateAndAddLoadoutItem(
+        IReadOnlyList<MorphOption> morphOptions = BuildMorphOptions();
+        NGenericSelectScreen morphScreen = CreateMorphScreen(morphOptions);
+
+        NLoadoutPanelItem panelItem = CommonHelpers.CreateAndAddLoadoutItem(
             allMonsters,
             new SelectItemAdapter<MonsterModel>
             {
@@ -61,10 +68,227 @@ public static class BottledMonster
             _ => { },
             "BottledMonster.png",
             LocMan.Loc("BOTTLEDMONSTER_TITLE", "Bottled Monster"),
-            LocMan.Loc("BOTTLEDMONSTER_DESC", "Right-click this relic to summon any monster into the current combat. Ctrl + right click repeats the last summoned monster; if none exists, duplicate the current enemies."),
+            LocMan.Loc("BOTTLEDMONSTER_DESC", "Right-click to summon a monster. Alt + either click opens morph mode. Ctrl + right-click repeats the last summon."),
             HandleSummonMonsterActivatedAsync,
             LastActionService.BottleMonsterKey,
             ReplayBottleMonsterLastActionAsync);
+
+        panelItem.AlternateBoundScreen = morphScreen;
+        panelItem.AlternateBeforeOpen = screen => LoadoutTargetService.UpsertTargetDropdown(
+            screen,
+            MorphTargetDropdownName,
+            MorphTargetKey,
+            LoadoutTargetMode.PlayersOnly);
+    }
+
+    private static IReadOnlyList<MorphOption> BuildMorphOptions()
+    {
+        List<MorphOption> options =
+        [
+            new MorphOption("original_form", null, MorphOptionKind.Original)
+        ];
+
+        options.AddRange(ModelDb.AllCharacters
+            .Where(character => character.IsPlayable)
+            .GroupBy(character => character.Id.ToString(), StringComparer.Ordinal)
+            .Select(group => group.First())
+            .Select(character => new MorphOption($"character:{character.Id}", character, MorphOptionKind.Character)));
+        options.AddRange(ModelDb.Monsters
+            .GroupBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
+            .Select(group => group.First())
+            .Select(monster => new MorphOption($"monster:{monster.Id}", monster, MorphOptionKind.Monster)));
+        return options;
+    }
+
+    private static NGenericSelectScreen CreateMorphScreen(IReadOnlyList<MorphOption> options)
+    {
+        PackedScene scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+        NGenericSelectScreen screen = scene.Instantiate<NGenericSelectScreen>();
+        SelectItemAdapter<MorphOption> adapter = new()
+        {
+            GetId = option => option.Id,
+            GetName = FormatMorphOptionTitle,
+            GetSearchText = option => option.Model is null
+                ? $"{FormatMorphOptionTitle(option)} reset original"
+                : $"{option.Model.Id} {FormatMorphOptionTitle(option)} {CommonHelpers.GetModName(CommonHelpers.GetModelModId(option.Model))}",
+            CreateView = (option, _) => CreateMorphGridItem(option),
+            BindActivation = (_, view, activate) => CommonHelpers.BindGuiReleaseActivation(view, activate)
+        };
+
+        void Configure(NGenericSelectScreen target)
+        {
+            target.Configure(options, adapter, builder => BuildMorphScreen(builder, options));
+            target.RequestDeferredVisibleRefresh();
+        }
+
+        Configure(screen);
+        screen.LocaleChanged += () =>
+        {
+            SelectScreenUiState state = screen.CaptureUiState();
+            Configure(screen);
+            screen.RestoreUiState(state);
+        };
+        screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
+        screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
+        screen.ItemActivated += (item, _) =>
+        {
+            if (item.UntypedModel is MorphOption option)
+                RequestMorph(option);
+        };
+        return screen;
+    }
+
+    private static void BuildMorphScreen(SelectScreenBuilder<MorphOption> builder, IReadOnlyList<MorphOption> options)
+    {
+        builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+        builder.Materialization(SelectMaterializationMode.Lazy);
+        builder.Layout(4, MonsterButtonSize, 24, 24, fixedSlots: false);
+        builder.FilterGroup("morph_type", LocMan.Loc("BOTTLEDMONSTER_MORPH_TYPE", "Morph Type"));
+        builder.Filter(
+            "morph_characters",
+            LocMan.Loc("BOTTLEDMONSTER_MORPH_CHARACTERS", "Characters"),
+            option => option.Kind == MorphOptionKind.Character,
+            "morph_type");
+        builder.Filter(
+            "morph_monsters",
+            LocMan.Loc("BOTTLEDMONSTER_MORPH_MONSTERS", "Monsters"),
+            option => option.Kind == MorphOptionKind.Monster,
+            "morph_type");
+
+        IReadOnlyList<string> modIds = options
+            .Where(option => option.Model is not null)
+            .Select(option => CommonHelpers.GetModelModId(option.Model!))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(CommonHelpers.GetModName, StringComparer.Ordinal)
+            .ToList();
+        if (modIds.Count > 1)
+        {
+            builder.FilterGroup("morph_mods", LocMan.Loc("FILTER_GROUP_MODS", "Mods"));
+            foreach (string modId in modIds)
+            {
+                string capturedModId = modId;
+                builder.Filter(
+                    $"morph_mod_{FilterId("mod", capturedModId)}",
+                    CommonHelpers.GetModName(capturedModId),
+                    option => option.Model is not null
+                              && string.Equals(CommonHelpers.GetModelModId(option.Model), capturedModId, StringComparison.Ordinal),
+                    "morph_mods");
+            }
+        }
+
+        builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), CompareMorphOptionName, activeByDefault: true);
+        builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (left, right) => CompareMorphOptions(left, right, option => option.Model?.Id.ToString() ?? string.Empty));
+        builder.Sorter("mod", LocMan.Loc("FILTER_GROUP_MODS", "Mods"), (left, right) => CompareMorphOptions(left, right, option => option.Model is null ? string.Empty : CommonHelpers.GetModName(CommonHelpers.GetModelModId(option.Model))));
+    }
+
+    private static int CompareMorphOptionName(MorphOption left, MorphOption right)
+    {
+        return CompareMorphOptions(left, right, FormatMorphOptionTitle);
+    }
+
+    private static int CompareMorphOptions(MorphOption left, MorphOption right, Func<MorphOption, string> selector)
+    {
+        if (left.Kind == MorphOptionKind.Original || right.Kind == MorphOptionKind.Original)
+            return left.Kind == right.Kind ? 0 : left.Kind == MorphOptionKind.Original ? -1 : 1;
+
+        int compared = string.Compare(selector(left), selector(right), StringComparison.OrdinalIgnoreCase);
+        return compared != 0
+            ? compared
+            : string.Compare(FormatMorphOptionTitle(left), FormatMorphOptionTitle(right), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void RequestMorph(MorphOption option)
+    {
+        LoadoutTargetSelection target = LoadoutTargetService.GetSelected(MorphTargetKey, LoadoutTargetMode.PlayersOnly);
+        ModelId modelId = option.Model?.Id ?? ModelId.none;
+        LoadoutImmediateMutationService.RequestMorphPlayer(modelId, target);
+    }
+
+    private static Control CreateMorphGridItem(MorphOption option)
+    {
+        if (option.Model is MonsterModel monster)
+            return CreateMonsterGridItem(monster);
+
+        Button button = CommonHelpers.CreateModelButton(MonsterButtonSize);
+        button.ClipContents = true;
+        ColorRect shade = new()
+        {
+            Color = new Color(0.02f, 0.018f, 0.015f, 0.52f),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Position = Vector2.Zero,
+            Size = MonsterButtonSize
+        };
+        button.AddChild(shade);
+
+        if (option.Model is CharacterModel character)
+        {
+            try
+            {
+                TextureRect portrait = new()
+                {
+                    Texture = character.CharacterSelectIcon,
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                    MouseFilter = Control.MouseFilterEnum.Ignore,
+                    Position = new Vector2(12f, 4f),
+                    Size = new Vector2(218f, 106f)
+                };
+                button.AddChild(portrait);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"BottledMonsterMorph: could not load character preview '{character.Id}'. {exception.Message}");
+            }
+        }
+
+        float titleY = option.Kind == MorphOptionKind.Original ? 48f : 112f;
+        MegaLabel title = CommonHelpers.CreateButtonLabel(
+            "MorphTitle",
+            FormatMorphOptionTitle(option),
+            new Vector2(12f, titleY),
+            new Vector2(218f, 48f),
+            option.Kind == MorphOptionKind.Original ? 24 : 20,
+            HorizontalAlignment.Center,
+            StsColors.cream);
+        ConfigureWrappingTitle(title);
+        button.AddChild(title);
+
+        if (option.Model is not null)
+        {
+            MegaLabel modLabel = CommonHelpers.CreateButtonLabel(
+                "MorphMod",
+                CommonHelpers.GetModName(CommonHelpers.GetModelModId(option.Model)),
+                new Vector2(12f, 140f),
+                new Vector2(218f, 20f),
+                13,
+                HorizontalAlignment.Center,
+                StsColors.gray);
+            button.AddChild(modLabel);
+        }
+
+        return button;
+    }
+
+    private static string FormatMorphOptionTitle(MorphOption option)
+    {
+        return option.Model switch
+        {
+            MonsterModel monster => FormatMonsterTitle(monster),
+            CharacterModel character => FormatCharacterTitle(character),
+            _ => LocMan.Loc("BOTTLEDMONSTER_MORPH_ORIGINAL", "Original Form")
+        };
+    }
+
+    private static string FormatCharacterTitle(CharacterModel character)
+    {
+        try
+        {
+            return character.Title.GetFormattedText();
+        }
+        catch
+        {
+            return character.Id.Entry;
+        }
     }
 
     private static Task<IReadOnlyList<LastActionEntry>> HandleSummonMonsterActivatedAsync(NGenericSelectScreen _, IGenericSelectItem selectItem)
@@ -431,4 +655,13 @@ public static class BottledMonster
     {
         return $"{prefix}_{Regex.Replace(raw.ToLowerInvariant(), "[^a-z0-9_]+", "_")}";
     }
+
+    private enum MorphOptionKind
+    {
+        Original,
+        Character,
+        Monster
+    }
+
+    private sealed record MorphOption(string Id, AbstractModel? Model, MorphOptionKind Kind);
 }

@@ -48,8 +48,11 @@ public partial class NLoadoutPanelItem : TextureButton
 	private ShaderMaterial _outlineMaterial;
 	private float _glowPulseTime;
 	private NGenericSelectScreen _boundScreen;
+	private NGenericSelectScreen _alternateBoundScreen;
 	private Action<NGenericSelectScreen> _beforeOpen;
 	private Action<NGenericSelectScreen> _afterOpen;
+	private Action<NGenericSelectScreen> _alternateBeforeOpen;
+	private Action<NGenericSelectScreen> _alternateAfterOpen;
 	private static readonly Color OutlineRestColor = Colors.Black;
 	private static readonly Shader OutlineTintShader = new()
 	{
@@ -96,7 +99,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		MouseEntered += OnMouseEntered;
 		MouseExited += OnMouseExited;
 		Resized += OnResized;
-		Pressed += OpenSelectScreen;
+		Pressed += OnPressed;
 
 		if (UseGlobalSkin)
 			LoadoutSkinManager.SkinChanged += OnSkinChanged;
@@ -112,7 +115,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		MouseEntered -= OnMouseEntered;
 		MouseExited -= OnMouseExited;
 		Resized -= OnResized;
-		Pressed -= OpenSelectScreen;
+		Pressed -= OnPressed;
 
 		if (UseGlobalSkin)
 			LoadoutSkinManager.SkinChanged -= OnSkinChanged;
@@ -143,6 +146,13 @@ public partial class NLoadoutPanelItem : TextureButton
 		if (@event is not InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: false } mouseButton)
 			return;
 
+		if ((mouseButton.AltPressed || Input.IsKeyPressed(Key.Alt)) && _alternateBoundScreen is not null)
+		{
+			AcceptEvent();
+			OpenSelectScreen(alternate: true);
+			return;
+		}
+
 		Func<Task> quickAction = GetQuickActionForGesture(mouseButton);
 		if (quickAction is not null)
 		{
@@ -156,7 +166,13 @@ public partial class NLoadoutPanelItem : TextureButton
 		}
 
 		AcceptEvent();
-		OpenSelectScreen();
+		OpenSelectScreen(alternate: false);
+	}
+
+	private void OnPressed()
+	{
+		bool alternate = Input.IsKeyPressed(Key.Alt) && _alternateBoundScreen is not null;
+		OpenSelectScreen(alternate);
 	}
 
 	public void RefreshVisuals()
@@ -361,16 +377,23 @@ public partial class NLoadoutPanelItem : TextureButton
 		return null;
 	}
 
-	private void OpenSelectScreen()
+	private void OpenSelectScreen(bool alternate)
 	{
-		//open select screen
-		if (_boundScreen == null)
+		NGenericSelectScreen screen = alternate ? _alternateBoundScreen : _boundScreen;
+		Action<NGenericSelectScreen> beforeOpen = alternate ? _alternateBeforeOpen : _beforeOpen;
+		Action<NGenericSelectScreen> afterOpen = alternate ? _alternateAfterOpen : _afterOpen;
+
+		if (screen == null)
 		{
 			var scene = GD.Load<PackedScene>("res://UI/Screens/SampleSelectScreen.tscn");
-			_boundScreen = scene.Instantiate<NGenericSelectScreen>();
+			screen = scene.Instantiate<NGenericSelectScreen>();
+			if (alternate)
+				_alternateBoundScreen = screen;
+			else
+				_boundScreen = screen;
 		}
 
-		_beforeOpen?.Invoke(_boundScreen);
+		beforeOpen?.Invoke(screen);
 
 		var root = NLoadoutPanelRoot.Instance ?? NLoadoutPanelRoot.GetOrAttach(GetTree());
 		if (root == null)
@@ -379,14 +402,20 @@ public partial class NLoadoutPanelItem : TextureButton
 			return;
 		}
 
-		root.OpenScreen(_boundScreen);
-		_afterOpen?.Invoke(_boundScreen);
+		root.OpenScreen(screen);
+		afterOpen?.Invoke(screen);
 	}
 
 	public NGenericSelectScreen BoundScreen
 	{
 		get => _boundScreen;
 		set => _boundScreen = value;
+	}
+
+	public NGenericSelectScreen AlternateBoundScreen
+	{
+		get => _alternateBoundScreen;
+		set => _alternateBoundScreen = value;
 	}
 
 	public Action<NGenericSelectScreen> BeforeOpen
@@ -399,6 +428,18 @@ public partial class NLoadoutPanelItem : TextureButton
 	{
 		get => _afterOpen;
 		set => _afterOpen = value;
+	}
+
+	public Action<NGenericSelectScreen> AlternateBeforeOpen
+	{
+		get => _alternateBeforeOpen;
+		set => _alternateBeforeOpen = value;
+	}
+
+	public Action<NGenericSelectScreen> AlternateAfterOpen
+	{
+		get => _alternateAfterOpen;
+		set => _alternateAfterOpen = value;
 	}
 
 	public Func<Task> QuickAction { get; set; }
