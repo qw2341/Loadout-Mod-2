@@ -166,6 +166,12 @@ public static class BottledMonsterMorphService
         {
             try
             {
+                if (runtime.LoopingTriggerAnimations.TryGetValue(mappedTrigger, out string? loopingAnimation))
+                {
+                    PlayLoopingAnimationOnce(runtime, loopingAnimation);
+                    return true;
+                }
+
                 runtime.Animator.SetTrigger(mappedTrigger);
                 return true;
             }
@@ -203,6 +209,11 @@ public static class BottledMonsterMorphService
             }
         }
 
+        // Several monster AssetPaths implementations lazily build their move state
+        // machine. That mutates the model, so querying it on ModelDb's canonical
+        // instance throws before the visual can be loaded. Use one isolated mutable
+        // monster for the entire visual installation instead.
+        visualModel = PrepareVisualModel(visualModel);
         await EnsureVisualAssetLoadedAsync(visualModel);
         if (!IsCurrentRevision(playerNetId, revision)
             || !GodotObject.IsInstanceValid(creatureNode)
@@ -262,6 +273,7 @@ public static class BottledMonsterMorphService
                     animator,
                     newVisuals.SpineBody,
                     ReadAvailableTriggers(animator),
+                    ReadLoopingTriggers(animator),
                     visualModel.Id.ToString(),
                     new HashSet<string>(StringComparer.OrdinalIgnoreCase));
                 SetIdle(ActiveVisuals[nodeId]);
@@ -321,24 +333,28 @@ public static class BottledMonsterMorphService
 
         if (model is MonsterModel monster)
         {
-            // Some monster animators (for example Tunneler) evaluate predicates through
-            // MonsterModel.Creature. Give the visual-only animator an isolated, valid
-            // creature instead of letting it touch the real player or a canonical model.
-            MonsterModel animatorModel = monster.ToMutable();
-            animatorModel.SetUpForCombat();
-            _ = new Creature(animatorModel, CombatSide.Enemy, null)
-            {
-                CombatState = new NullCombatState()
-            };
-
-            CreatureAnimator animator = animatorModel.GenerateAnimator(visuals.SpineBody);
-            visuals.SetUpSkin(animatorModel);
+            CreatureAnimator animator = monster.GenerateAnimator(visuals.SpineBody);
+            visuals.SetUpSkin(monster);
             return animator;
         }
 
         return model is CharacterModel character
             ? character.GenerateAnimator(visuals.SpineBody)
             : null;
+    }
+
+    private static AbstractModel PrepareVisualModel(AbstractModel model)
+    {
+        if (model is not MonsterModel monster)
+            return model;
+
+        MonsterModel visualMonster = monster.ToMutable();
+        visualMonster.SetUpForCombat();
+        _ = new Creature(visualMonster, CombatSide.Enemy, null)
+        {
+            CombatState = new NullCombatState()
+        };
+        return visualMonster;
     }
 
     private static void FlipMonsterVisuals(NCreatureVisuals visuals)
@@ -420,6 +436,49 @@ public static class BottledMonsterMorphService
         }
 
         return triggers;
+    }
+
+    private static Dictionary<string, string> ReadLoopingTriggers(CreatureAnimator animator)
+    {
+        Dictionary<string, string> triggers = new(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            if (AnyStateField?.GetValue(animator) is not AnimState anyState
+                || BranchedStatesField?.GetValue(anyState) is not IDictionary branches)
+            {
+                return triggers;
+            }
+
+            foreach (object? key in branches.Keys)
+            {
+                if (key is string trigger
+                    && anyState.CallTrigger(trigger) is { IsLooping: true } state)
+                {
+                    triggers[trigger] = state.Id;
+                }
+            }
+        }
+        catch
+        {
+            // Unknown conditional triggers retain their native animator behavior.
+        }
+
+        return triggers;
+    }
+
+    private static void PlayLoopingAnimationOnce(MorphVisualRuntime runtime, string animation)
+    {
+        MegaAnimationState animationState = runtime.Spine.GetAnimationState();
+        animationState.SetAnimation(animation, false);
+
+        foreach (string idleAnimation in new[] { "idle_loop", "idle", "relaxed_loop" })
+        {
+            if (!runtime.Spine.HasAnimation(idleAnimation))
+                continue;
+
+            animationState.AddAnimation(idleAnimation, 0f, true);
+            return;
+        }
     }
 
     private static string? MapTrigger(IReadOnlyCollection<string> triggers, string trigger)
@@ -747,6 +806,7 @@ public static class BottledMonsterMorphService
         CreatureAnimator Animator,
         MegaSprite Spine,
         HashSet<string> Triggers,
+        Dictionary<string, string> LoopingTriggerAnimations,
         string ModelId,
         HashSet<string> FailedTriggers);
 
