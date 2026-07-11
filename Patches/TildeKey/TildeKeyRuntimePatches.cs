@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
@@ -133,29 +134,39 @@ public static class TildeKeyModifyDamagePatch
 }
 
 
-[HarmonyPatch(
-    typeof(CardModel),
-    nameof(CardModel.OnPlayWrapper),
-    typeof(PlayerChoiceContext),
-    typeof(Creature),
-    typeof(bool),
-    typeof(ResourceInfo),
-    typeof(bool))]
-public static class TildeKeyDrawTillHandLimitAfterCardSettledPatch
+/// <summary>
+/// Queues the refill only after a real synchronized PlayCardAction completes.
+///
+/// Do not draw directly from CardModel.OnPlayWrapper: that method is also used
+/// by nested/automatic card plays, and its PlayerChoiceContext belongs to the
+/// card action that is already finishing. A direct CardPileCmd.Draw there makes
+/// every peer independently calculate and execute an extra hook-heavy draw
+/// inside the original action.
+///
+/// Requesting a separate networked draw action gives the refill its own action
+/// boundary, player-choice context, hook IDs, and post-action checksum. The
+/// IsLocalPlayer gate in RequestDrawTillHandLimitForLocalPlayer ensures exactly
+/// one peer requests it; the host then broadcasts the same action to everyone.
+/// </summary>
+[HarmonyPatch]
+public static class TildeKeyDrawTillHandLimitAfterPlayCardActionPatch
 {
-    [HarmonyPostfix]
-    public static void Postfix(CardModel __instance, PlayerChoiceContext choiceContext, ref Task __result)
+    public static MethodBase TargetMethod()
     {
-        __result = DrawAfterCardSettledAsync(__result, choiceContext, __instance.Owner);
+        return AccessTools.Method(typeof(PlayCardAction), "ExecuteAction")
+               ?? throw new MissingMethodException(typeof(PlayCardAction).FullName, "ExecuteAction");
     }
 
-    private static async Task DrawAfterCardSettledAsync(
-        Task original,
-        PlayerChoiceContext choiceContext,
-        Player owner)
+    [HarmonyPostfix]
+    public static void Postfix(PlayCardAction __instance, ref Task __result)
+    {
+        __result = RequestRefillAfterPlayActionAsync(__result, __instance.Player);
+    }
+
+    private static async Task RequestRefillAfterPlayActionAsync(Task original, Player owner)
     {
         await original;
-        await TildeKeyStateService.DrawTillHandLimitAsync(choiceContext, owner);
+        TildeKeyStateService.RequestDrawTillHandLimitForLocalPlayer(owner);
     }
 }
 
