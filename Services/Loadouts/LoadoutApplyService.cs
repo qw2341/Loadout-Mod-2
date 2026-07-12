@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
+using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.Targets;
@@ -119,7 +120,12 @@ public static class LoadoutApplyService
             int count = Math.Max(1, entry.Count);
             for (int i = 0; i < count; i++)
             {
-                CardModel? card = CreateDeckCardForLoadout(targetPlayer, canonical, entry.UpgradeLevel, isStartingDeck);
+                CardModel? card = CreateDeckCardForLoadout(
+                    targetPlayer,
+                    canonical,
+                    entry.UpgradeLevel,
+                    entry.ModificationState,
+                    isStartingDeck);
                 if (card is null)
                     continue;
 
@@ -187,6 +193,7 @@ public static class LoadoutApplyService
         Player targetPlayer,
         CardModel canonical,
         int upgradeLevel,
+        CardModificationState? modificationState,
         bool isStartingDeck)
     {
         try
@@ -194,6 +201,13 @@ public static class LoadoutApplyService
             CardModel card = targetPlayer.RunState.CreateCard(canonical, targetPlayer);
             if (isStartingDeck)
                 card.FloorAddedToDeck = 1;
+
+            if (HasEnabledInfiniteUpgrade(modificationState)
+                && !LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade))
+            {
+                card.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
+            }
+
             ApplyLoadoutUpgradeLevelDirect(card, upgradeLevel);
             CardModificationStateService.ApplyPermanentToCard(card);
             return card;
@@ -207,12 +221,29 @@ public static class LoadoutApplyService
 
     private static void ApplyLoadoutUpgradeLevelDirect(CardModel card, int upgradeLevel)
     {
-        int upgrades = Math.Min(Math.Max(0, upgradeLevel), Math.Max(0, card.MaxUpgradeLevel));
+        int upgrades = Math.Max(0, upgradeLevel);
         for (int i = 0; i < upgrades && card.IsUpgradable; i++)
         {
             card.UpgradeInternal();
             card.FinalizeUpgradeInternal();
         }
+    }
+
+    private static bool HasEnabledInfiniteUpgrade(CardModificationState? state)
+    {
+        if (state is null)
+            return false;
+
+        foreach ((string rawKeyword, bool enabled) in state.KeywordOverrides)
+        {
+            if (LoadoutKeywords.TryResolve(rawKeyword, out CardKeyword keyword)
+                && keyword.Equals(LoadoutKeywords.InfiniteUpgrade))
+            {
+                return enabled;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryGetDeckBackingList(Player targetPlayer, out List<CardModel> deckCards)
