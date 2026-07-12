@@ -3,6 +3,7 @@
 namespace Loadout.Services.CardModification;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -10,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Godot;
 using HarmonyLib;
 using Loadout.Keywords;
@@ -83,7 +85,7 @@ public static class CardModificationStateService
     private static readonly ConditionalWeakTable<CardModel, LocalCatalogDisplayCardMarker> LocalCatalogDisplayCards = new();
     private static readonly ConditionalWeakTable<CardModel, PreviewCardStateHolder> PreviewCardStates = new();
     private static readonly ConditionalWeakTable<CardModel, EffectiveStateCacheHolder> EffectiveStateCache = new();
-    private static readonly Dictionary<string, int> PermanentCardRevisions = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, int> PermanentCardRevisions = new(StringComparer.Ordinal);
     private static bool _registered;
     private static bool _permanentLoaded;
     private static bool _runLoaded;
@@ -132,6 +134,11 @@ public static class CardModificationStateService
 
     public static void EnsureLoaded()
     {
+        // This method sits under title/description/portrait patches, so the already-
+        // loaded path must not take the global state lock on every card access.
+        if (Volatile.Read(ref _permanentLoaded))
+            return;
+
         // SavedSpireField data is imported by BaseLib as part of CardModel loading.
         // Only profile-wide permanent state needs explicit loading here.
         ReloadPermanentIfNeeded();
@@ -161,37 +168,71 @@ public static class CardModificationStateService
     private static CardModificationState GetEffectiveStateForCardReadOnly(CardModel card)
     {
         EnsureLoaded();
+
+        if (!card.IsCanonical && PreviewCardStates.TryGetValue(card, out PreviewCardStateHolder? preview))
+            return preview.State;
+
+        bool catalogDisplayCard = IsLocalCatalogDisplayCard(card);
+        CardModificationInstanceSnapshot attached = catalogDisplayCard
+            ? default
+            : CardModificationInstanceState.GetSnapshot(card);
+        EffectiveStateCacheHolder cache = EffectiveStateCache.GetValue(
+            card,
+            model => new EffectiveStateCacheHolder(ToCardKey(model.Id)));
+        string cardKey = cache.CardKey;
+        PermanentCardRevisions.TryGetValue(cardKey, out int permanentCardRevision);
+        int effectiveRevision = Volatile.Read(ref _effectiveStateRevision);
+
+        EffectiveStateCacheEntry? cached = Volatile.Read(ref cache.Entry);
+        if (cached is not null
+            && cached.Revision == effectiveRevision
+            && cached.PermanentCardRevision == permanentCardRevision
+            && cached.AttachedRevision == attached.Revision
+            && cached.CatalogDisplayCard == catalogDisplayCard)
+        {
+            return cached.State;
+        }
+
+        // Cache misses are uncommon and may need the permanent-state dictionaries.
+        // Recheck everything under the state lock so a concurrent network delta cannot
+        // publish a cache entry built from mixed revisions.
         lock (SyncRoot)
         {
-            if (!card.IsCanonical && PreviewCardStates.TryGetValue(card, out PreviewCardStateHolder? preview))
+            if (!card.IsCanonical && PreviewCardStates.TryGetValue(card, out preview))
                 return preview.State;
 
-            string? attachedFingerprint = IsLocalCatalogDisplayCard(card)
-                ? null
-                : CardModificationInstanceState.GetFingerprint(card);
-            string cardKey = ToCardKey(card.Id);
-            int permanentCardRevision = PermanentCardRevisions.GetValueOrDefault(cardKey);
-            EffectiveStateCacheHolder cache = EffectiveStateCache.GetValue(card, _ => new EffectiveStateCacheHolder());
-            if (cache.Revision == _effectiveStateRevision
-                && cache.PermanentCardRevision == permanentCardRevision
-                && string.Equals(cache.AttachedFingerprint, attachedFingerprint, StringComparison.Ordinal))
+            catalogDisplayCard = IsLocalCatalogDisplayCard(card);
+            attached = catalogDisplayCard
+                ? default
+                : CardModificationInstanceState.GetSnapshot(card);
+            PermanentCardRevisions.TryGetValue(cardKey, out permanentCardRevision);
+            effectiveRevision = Volatile.Read(ref _effectiveStateRevision);
+
+            cached = Volatile.Read(ref cache.Entry);
+            if (cached is not null
+                && cached.Revision == effectiveRevision
+                && cached.PermanentCardRevision == permanentCardRevision
+                && cached.AttachedRevision == attached.Revision
+                && cached.CatalogDisplayCard == catalogDisplayCard)
             {
-                return cache.State;
+                return cached.State;
             }
 
-            bool catalogDisplayCard = IsLocalCatalogDisplayCard(card);
             CardModificationState effective = catalogDisplayCard
                 ? GetCatalogPermanentStateLocked(card.Id)
                 : GetEffectivePermanentStateLocked(card.Id);
 
             if (!catalogDisplayCard)
-                effective.MergeFrom(CardModificationInstanceState.GetReadOnly(card));
+                effective.MergeFrom(attached.State);
 
-            cache.Revision = _effectiveStateRevision;
-            cache.PermanentCardRevision = permanentCardRevision;
-            cache.AttachedFingerprint = attachedFingerprint;
-            cache.State = effective;
-            return cache.State;
+            EffectiveStateCacheEntry next = new(
+                effectiveRevision,
+                permanentCardRevision,
+                attached.Revision,
+                catalogDisplayCard,
+                effective);
+            Volatile.Write(ref cache.Entry, next);
+            return next.State;
         }
     }
 
@@ -602,19 +643,35 @@ public static class CardModificationStateService
 
             if (HasCardMutations(state))
             {
-                bool requiresBaselineReplay = state.Enchantment is not null
-                                              || state.Affliction is not null
-                                              || IsKeywordEnabledAfterState(
-                                                  card,
-                                                  state,
-                                                  LoadoutKeywords.InfiniteUpgrade);
-                if (requiresBaselineReplay)
+                // CardCmd.Upgrade has already performed the authoritative native
+                // upgrade on this exact card. Its DynamicVars now contain the correct
+                // result, including Infinite Upgrade's level-scaled addends. Replaying
+                // a canonical baseline merely because Infinite Upgrade is present
+                // performs the upgrade a second time and can collapse +2/+3 cards back
+                // to their previous values.
+                bool requiresAttachmentReplay = state.Enchantment is not null
+                                                || state.Affliction is not null;
+                Dictionary<string, decimal>? upgradedDynamicValues = null;
+                if (requiresAttachmentReplay)
+                {
+                    upgradedDynamicValues = card.DynamicVars.ToDictionary(
+                        pair => pair.Key,
+                        pair => pair.Value.BaseValue,
+                        StringComparer.Ordinal);
                     PrepareCardForState(card, state, includeAffliction: true);
+                }
 
-                // Ordinary absolute overrides can be restored directly after the
-                // native upgrade. Avoiding a canonical clone + upgrade replay per
-                // card is the main bulk-upgrade performance win.
-                ApplyStateToCard(card, state);
+                // Editor dynamic-variable overrides are absolute values. Do not write
+                // those stale values back over the result of the native upgrade. All
+                // non-dynamic modifications (rarity, type, keywords, costs, attachments)
+                // are still restored deterministically on every peer.
+                ApplyStateToCard(card, state, includeAffliction: true, applyDynamicVars: false);
+
+                // Attachment reconstruction needs a canonical replay. Restore the
+                // post-native-upgrade values captured before that replay so enchantment
+                // maintenance cannot erase Infinite Upgrade progress.
+                if (upgradedDynamicValues is not null)
+                    RestoreDynamicVarValues(card, upgradedDynamicValues);
             }
 
             if (refreshVisualsHere)
@@ -806,7 +863,11 @@ public static class CardModificationStateService
         }
     }
 
-    public static void ApplyStateToCard(CardModel? card, CardModificationState? state, bool includeAffliction = true)
+    public static void ApplyStateToCard(
+        CardModel? card,
+        CardModificationState? state,
+        bool includeAffliction = true,
+        bool applyDynamicVars = true)
     {
         if (card is null || state is null || state.IsEmpty)
             return;
@@ -828,10 +889,13 @@ public static class CardModificationStateService
             if (state.BaseStarCost.HasValue)
                 SetBaseStarCost(card, state.BaseStarCost.Value);
 
-            foreach ((string name, decimal value) in state.DynamicVars)
+            if (applyDynamicVars)
             {
-                if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
-                    dynamicVar.BaseValue = value;
+                foreach ((string name, decimal value) in state.DynamicVars)
+                {
+                    if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
+                        dynamicVar.BaseValue = value;
+                }
             }
 
             if (TryResolvePool(state.PoolId, out CardPoolModel? pool))
@@ -853,6 +917,17 @@ public static class CardModificationStateService
         catch (Exception exception)
         {
             GD.PushWarning($"CardModification: failed to apply modifications to '{card.Id}'. {exception.Message}");
+        }
+    }
+
+    private static void RestoreDynamicVarValues(
+        CardModel card,
+        IReadOnlyDictionary<string, decimal> values)
+    {
+        foreach ((string name, decimal value) in values)
+        {
+            if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
+                dynamicVar.BaseValue = value;
         }
     }
 
@@ -2243,15 +2318,12 @@ public static class CardModificationStateService
             return;
 
         DisplayCardCache.Remove(cardKey);
-        PermanentCardRevisions[cardKey] = unchecked(PermanentCardRevisions.GetValueOrDefault(cardKey) + 1);
+        PermanentCardRevisions.AddOrUpdate(cardKey, 1, (_, current) => unchecked(current + 1));
     }
 
     private static void InvalidateEffectiveStateCacheLocked()
     {
-        unchecked
-        {
-            _effectiveStateRevision++;
-        }
+        Interlocked.Increment(ref _effectiveStateRevision);
     }
 
     private static void ApplyKeywordOverrides(CardModel card, Dictionary<string, bool> keywordOverrides)
@@ -2465,7 +2537,7 @@ public static class CardModificationStateService
         FlushPendingSaves();
         lock (SyncRoot)
         {
-            _permanentLoaded = false;
+            Volatile.Write(ref _permanentLoaded, false);
             _runLoaded = false;
             _loadedRunStartTime = null;
             _permanent = new PermanentSaveData();
@@ -2488,7 +2560,7 @@ public static class CardModificationStateService
             SaveUtility.LoadResult<PermanentSaveData> loaded =
                 SaveUtility.LoadProfileJson(PermanentPath, new PermanentSaveData());
             _permanent = NormalizePermanent(loaded.Value);
-            _permanentLoaded = true;
+            Volatile.Write(ref _permanentLoaded, true);
             InvalidateDisplayCacheLocked();
 
             if (loaded.Loaded && loaded.Value.SchemaVersion != CurrentSchemaVersion)
@@ -2673,16 +2745,19 @@ public static class CardModificationStateService
     {
     }
 
-    private sealed class EffectiveStateCacheHolder
+    private sealed class EffectiveStateCacheHolder(string cardKey)
     {
-        public int Revision { get; set; } = -1;
+        public string CardKey { get; } = cardKey;
 
-        public int PermanentCardRevision { get; set; } = -1;
-
-        public string? AttachedFingerprint { get; set; }
-
-        public CardModificationState State { get; set; } = new();
+        public EffectiveStateCacheEntry? Entry;
     }
+
+    private sealed record EffectiveStateCacheEntry(
+        int Revision,
+        int PermanentCardRevision,
+        int AttachedRevision,
+        bool CatalogDisplayCard,
+        CardModificationState State);
 
     private sealed class PreviewCardStateHolder(CardModificationState state)
     {
