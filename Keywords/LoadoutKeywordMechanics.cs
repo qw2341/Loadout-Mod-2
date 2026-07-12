@@ -238,35 +238,83 @@ public static class StickyPlayedCardResultPilePatch
 public static class StickyDiscardPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(ref IEnumerable<CardModel> cardsToDiscard)
+    public static void Prefix(
+        ref IEnumerable<CardModel> cardsToDiscard,
+        out List<CardModel>? __state)
     {
-        cardsToDiscard = cardsToDiscard
-            .Where(card => !LoadoutKeywords.Has(card, LoadoutKeywords.Sticky))
-            .ToList();
+        // Do not remove Sticky cards from the native discard operation.
+        // The game must see them so that discard history, hooks, and Sly work.
+        IReadOnlyList<CardModel> cards;
+
+        if (cardsToDiscard is IReadOnlyList<CardModel> readOnlyList)
+        {
+            cards = readOnlyList;
+        }
+        else
+        {
+            List<CardModel> materialized = cardsToDiscard.ToList();
+            cardsToDiscard = materialized;
+            cards = materialized;
+        }
+
+        __state = null;
+
+        for (int i = 0; i < cards.Count; i++)
+        {
+            CardModel card = cards[i];
+
+            if (!LoadoutKeywords.Has(card, LoadoutKeywords.Sticky))
+                continue;
+
+            (__state ??= new List<CardModel>(1)).Add(card);
+        }
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(
+        ref Task __result,
+        List<CardModel>? __state)
+    {
+        if (__state is not { Count: > 0 })
+            return;
+
+        __result = ReturnStickyCardsAfterDiscard(__result, __state);
+    }
+
+    private static async Task ReturnStickyCardsAfterDiscard(
+        Task originalDiscard,
+        IReadOnlyList<CardModel> stickyCards)
+    {
+        // Wait for the entire native discard sequence:
+        await originalDiscard;
+
+        List<CardModel>? cardsToReturn = null;
+
+        for (int i = 0; i < stickyCards.Count; i++)
+        {
+            CardModel card = stickyCards[i];
+
+            // A Sticky + Sly card will normally already be back in hand
+            // because Sly auto-plays it and Sticky changes its result pile.
+            //
+            // Only return cards that remain in the discard pile.
+            if (card.Pile?.Type != PileType.Discard)
+                continue;
+
+            (cardsToReturn ??= new List<CardModel>(stickyCards.Count))
+                .Add(card);
+        }
+
+        if (cardsToReturn is null)
+            return;
+
+        await CardPileCmd.Add(
+            cardsToReturn,
+            PileType.Hand,
+            CardPilePosition.Bottom);
     }
 }
 
-[HarmonyPatch(
-    typeof(CardPileCmd),
-    nameof(CardPileCmd.Add),
-    typeof(CardModel),
-    typeof(CardPile),
-    typeof(CardPilePosition),
-    typeof(AbstractModel),
-    typeof(bool))]
-public static class StickyHandMovementPatch
-{
-    [HarmonyPrefix]
-    public static void Prefix(CardModel card, ref CardPile newPile)
-    {
-        if (card.Pile?.Type == PileType.Hand
-            && newPile.Type is not PileType.Hand and not PileType.Play and not PileType.Exhaust
-            && LoadoutKeywords.Has(card, LoadoutKeywords.Sticky))
-        {
-            newPile = PileType.Hand.GetPile(card.Owner);
-        }
-    }
-}
 
 [HarmonyPatch]
 public static class StickyFlushPlayerHandPatch
@@ -338,17 +386,35 @@ public static class StickyFlushPlayerHandPatch
 public static class InevitableExhaustPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(CardModel card, ref Task __result)
+    public static void Postfix(
+        CardModel card,
+        ref Task __result)
     {
-        if (LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable))
-            __result = ReturnToHandAsync(card, __result);
+        if (!LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable))
+            return;
+
+        __result = AddCopyToHandAfterExhaust(__result, card);
     }
 
-    private static async Task ReturnToHandAsync(CardModel card, Task original)
+    private static async Task AddCopyToHandAfterExhaust(
+        Task originalExhaust,
+        CardModel exhaustedCard)
     {
-        await original;
-        if (card.Pile?.Type == PileType.Exhaust)
-            await CardPileCmd.Add(card, PileType.Hand);
+        
+        await originalExhaust;
+
+        // Do not produce a copy if another exhaust hook already moved or
+        // removed the original card.
+        if (exhaustedCard.Pile?.Type != PileType.Exhaust)
+            return;
+        
+        CardModel copy = exhaustedCard.CreateClone();
+
+        await CardPileCmd.AddGeneratedCardToCombat(
+            copy,
+            PileType.Hand,
+            exhaustedCard.Owner,
+            CardPilePosition.Bottom);
     }
 }
 

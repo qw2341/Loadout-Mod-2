@@ -1,6 +1,6 @@
 {
   "LOADOUT-INEVITABLE.title": "无法逃脱",
-  "LOADOUT-INEVITABLE.description": "被[gold]消耗[/gold]时返回你的[gold]手牌[/gold]，从[gold]牌组[/gold]移除时返回牌组，并在被转化时转化为自身的复制品。",
+  "LOADOUT-INEVITABLE.description": "被[gold]消耗[/gold]时返回你的[gold]手牌[/gold]，从[gold]牌组[/gold]移除时返回牌组，并在被转化时转化为自身。",
   "LOADOUT-STICKY.title": "黏手",
   "LOADOUT-STICKY.description": "打出后返回你的[gold]手牌[/gold]，且无法通过其他方式移出你的手牌。",
   "LOADOUT-X_COST.title": "X 费用",
