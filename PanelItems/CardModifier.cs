@@ -104,6 +104,15 @@ public class CardModifier
         });
     }
 
+    public static bool AddCopiesToTargetDeck(LoadoutOwnedItem<CardModel> item, int amount)
+    {
+        return LoadoutImmediateMutationService.RequestAddDeckCardCopies(
+            item.Model.Id,
+            amount,
+            LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+            item.Model.CurrentUpgradeLevel);
+    }
+
     private static void OpenCardModificationScreen(
         NGenericSelectScreen selectScreen,
         LoadoutOwnedItem<CardModel> fallbackItem,

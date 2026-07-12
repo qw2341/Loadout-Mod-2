@@ -183,7 +183,9 @@ public static class CardPileRemoveCardModificationPatch
         }
 
         __state = new RemovalState(
-            cards.Where(card => LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable)).ToList(),
+            LoadoutImmediateMutationService.IsRemovingAllCards
+                ? []
+                : cards.Where(card => LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable)).ToList(),
             removedCards);
     }
 

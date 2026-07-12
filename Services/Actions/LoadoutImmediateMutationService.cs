@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.CardModification;
@@ -62,7 +63,10 @@ public enum LoadoutImmediateMutationKind
     TildeRelicCounterDelta,
     TildeRelicCounterLock,
     SummonMonster,
-    MorphPlayer
+    MorphPlayer,
+    AddDeckCardCopies,
+    RemoveAllCards,
+    RemoveAllRelics
 }
 
 public static class LoadoutImmediateMutationService
@@ -74,6 +78,9 @@ public static class LoadoutImmediateMutationService
     private static int _nextHostSequence;
     private static int _lastAppliedHostSequence;
     private static bool _clientApplyQueued;
+    private static readonly AsyncLocal<int> RemoveAllCardsDepth = new();
+
+    internal static bool IsRemovingAllCards => RemoveAllCardsDepth.Value > 0;
 
     public static void OnRunLaunched()
     {
@@ -124,6 +131,22 @@ public static class LoadoutImmediateMutationService
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.AddCard,
+            ModelId = modelId,
+            Amount = amount,
+            Target = target,
+            CardUpgradeCount = Math.Max(0, cardUpgradeCount)
+        });
+    }
+
+    public static bool RequestAddDeckCardCopies(
+        ModelId modelId,
+        int amount,
+        LoadoutTargetSelection target,
+        int cardUpgradeCount = 0)
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.AddDeckCardCopies,
             ModelId = modelId,
             Amount = amount,
             Target = target,
@@ -200,6 +223,28 @@ public static class LoadoutImmediateMutationService
             Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
             OwnedItemIndex = item.Index,
             ExpectedModelId = item.Model.Id
+        });
+    }
+
+    public static bool RequestRemoveAllCards(LoadoutTargetSelection target)
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.RemoveAllCards,
+            ModelId = ModelId.none,
+            Amount = 1,
+            Target = target
+        });
+    }
+
+    public static bool RequestRemoveAllRelics(LoadoutTargetSelection target)
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.RemoveAllRelics,
+            ModelId = ModelId.none,
+            Amount = 1,
+            Target = target
         });
     }
 
@@ -701,6 +746,15 @@ public static class LoadoutImmediateMutationService
             case LoadoutImmediateMutationKind.MorphPlayer:
                 BottledMonsterMorphService.ApplySynchronizedMorph(payload.ModelId, payload.Target);
                 break;
+            case LoadoutImmediateMutationKind.AddDeckCardCopies:
+                await ApplyAddDeckCardCopiesAsync(payload, requester);
+                break;
+            case LoadoutImmediateMutationKind.RemoveAllCards:
+                await ApplyRemoveAllCardsAsync(payload, requester);
+                break;
+            case LoadoutImmediateMutationKind.RemoveAllRelics:
+                await ApplyRemoveAllRelicsAsync(payload, requester);
+                break;
         }
     }
 
@@ -728,14 +782,28 @@ public static class LoadoutImmediateMutationService
         }
     }
 
+    private static async Task ApplyAddDeckCardCopiesAsync(LoadoutImmediateMutationPayload payload, Player requester)
+    {
+        if (payload.Amount <= 0 || ResolveCanonicalCard(payload.ModelId) is not { } canonicalCard)
+            return;
+
+        foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
+        {
+            await AddDeckCardCopiesAsync(
+                targetPlayer,
+                canonicalCard,
+                payload.Amount,
+                payload.CardUpgradeCount);
+        }
+    }
+
     private static async Task<IReadOnlyList<CardModel>> AddDeckCardCopiesAsync(
         Player targetPlayer,
         CardModel canonicalCard,
         int amount,
         int upgradeCount)
     {
-        List<CardPileAddResult> addedCards = [];
-        List<CardModel> changedCards = [];
+        List<CardModel> cards = new(amount);
         for (int i = 0; i < amount; i++)
         {
             try
@@ -743,24 +811,37 @@ public static class LoadoutImmediateMutationService
                 CardModel card = targetPlayer.RunState.CreateCard(canonicalCard, targetPlayer);
                 if (upgradeCount > 0)
                     UpgradeCardWithCommand(card, upgradeCount);
-
-                CardPileAddResult result = await CardPileCmd.Add(card, targetPlayer.Deck);
-                if (result.success)
-                {
-                    addedCards.Add(result);
-                    changedCards.Add(result.cardAdded);
-                }
+                cards.Add(card);
             }
             catch (Exception exception)
             {
-                GD.PushWarning($"LoadoutImmediateMutation: stopped adding deck card '{canonicalCard.Id}' to player {targetPlayer.NetId} after {i}/{amount}. {exception.Message}");
+                GD.PushWarning($"LoadoutImmediateMutation: stopped creating deck card '{canonicalCard.Id}' for player {targetPlayer.NetId} after {i}/{amount}. {exception.Message}");
                 break;
             }
         }
 
+        if (cards.Count == 0)
+            return [];
+
+        IReadOnlyList<CardPileAddResult> addedCards;
+        try
+        {
+            // The native batch path runs deck hooks for every fresh card while
+            // producing one structural notification and one preview group.
+            addedCards = await CardPileCmd.Add(cards, targetPlayer.Deck);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: failed adding {cards.Count} deck copies of '{canonicalCard.Id}' to player {targetPlayer.NetId}. {exception.Message}");
+            return [];
+        }
+
         if (IsLocalPlayer(targetPlayer))
             PreviewAddedCards(addedCards);
-        return changedCards;
+        return addedCards
+            .Where(result => result.success)
+            .Select(result => result.cardAdded)
+            .ToList();
     }
 
     private static async Task<bool> AddCombatHandCardCopiesAsync(
@@ -959,6 +1040,51 @@ public static class LoadoutImmediateMutationService
         {
             GD.PushWarning($"LoadoutImmediateMutation: failed removing relic '{item.Model.Id}' at index {item.Index}. {exception.Message}");
         }
+    }
+
+    private static async Task ApplyRemoveAllCardsAsync(LoadoutImmediateMutationPayload payload, Player requester)
+    {
+        foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
+        {
+            List<CardModel> cards = targetPlayer.Deck.Cards.ToList();
+            if (cards.Count == 0)
+                continue;
+
+            try
+            {
+                using (BeginRemoveAllCards())
+                    await CardPileCmd.RemoveFromDeck(cards, showPreview: true);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"LoadoutImmediateMutation: failed removing all cards from player {targetPlayer.NetId}. {exception.Message}");
+            }
+        }
+    }
+
+    private static async Task ApplyRemoveAllRelicsAsync(LoadoutImmediateMutationPayload payload, Player requester)
+    {
+        foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
+        {
+            List<RelicModel> relics = targetPlayer.Relics.ToList();
+            foreach (RelicModel relic in relics)
+            {
+                try
+                {
+                    await RelicCmd.Remove(relic);
+                }
+                catch (Exception exception)
+                {
+                    GD.PushWarning($"LoadoutImmediateMutation: failed removing relic '{relic.Id}' while clearing player {targetPlayer.NetId}. {exception.Message}");
+                }
+            }
+        }
+    }
+
+    private static IDisposable BeginRemoveAllCards()
+    {
+        RemoveAllCardsDepth.Value++;
+        return new RemoveAllCardsScope();
     }
 
     private static void ApplyCardModification(LoadoutImmediateMutationPayload payload, Player requester)
@@ -1167,7 +1293,24 @@ public static class LoadoutImmediateMutationService
             or LoadoutImmediateMutationKind.TildeToggleSet
             or LoadoutImmediateMutationKind.TildeRelicCounterDelta
             or LoadoutImmediateMutationKind.TildeRelicCounterLock
-            or LoadoutImmediateMutationKind.MorphPlayer;
+            or LoadoutImmediateMutationKind.MorphPlayer
+            or LoadoutImmediateMutationKind.AddDeckCardCopies
+            or LoadoutImmediateMutationKind.RemoveAllCards
+            or LoadoutImmediateMutationKind.RemoveAllRelics;
+    }
+
+    private sealed class RemoveAllCardsScope : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            RemoveAllCardsDepth.Value = Math.Max(0, RemoveAllCardsDepth.Value - 1);
+        }
     }
 
     private static bool IsHostSession()

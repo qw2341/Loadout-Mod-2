@@ -32,6 +32,7 @@ SORT_ID,ID,ID,ID,ID,ID,ID
 SAVE_PERMANENT,Save Permanent,永久保存,Enregistrer définitivement,恒久的に保存,영구 저장,Guardar permanentemente
 RESET_TEMPORARY,Reset Temporary,重置临时修改,Réinitialiser les modifications temporaires,一時変更をリセット,임시 변경 초기화,Restablecer cambios temporales
 RESET_PERMANENT,Reset Permanent,重置永久修改,Réinitialiser les modifications permanentes,恒久変更をリセット,영구 변경 초기화,Restablecer cambios permanentes
+CARD_MOD_ADD_COPIES_TO_DECK,Add Copies To Deck,添加卡牌复制进卡组,Ajouter une copie de la carte au deck,カードのコピーをデッキに追加,카드 복사본을 덱에 추가,Añadir una copia de la carta al mazo
 CARD_MOD_NUMERIC_STATS,Numeric Stats,数值属性,Statistiques numériques,数値ステータス,수치 능력치,Estadísticas numéricas
 CARD_MOD_ENERGY_COST,Energy Cost,费用,Coût d'énergie,エナジーコスト,에너지 비용,Coste de energía
 CARD_MOD_REPLAY_COUNT,Replay Count,重放,Nombre de répétitions,再使用回数,재사용 횟수,Número de repeticiones
@@ -230,3 +231,5 @@ LOADOUT_DELETED,Deleted loadout.,已删除预设方案。,Équipement supprimé.
 LOADOUT_EXPORTED,Exported loadout.,已导出预设方案。,Équipement exporté.,ロードアウトをエクスポートしました。,로드아웃을 내보냈습니다.,Equipamiento exportado.
 LOADOUT_EXPORT_FAILED,Could not export loadout.,无法导出预设方案。,Impossible d'exporter l'équipement.,ロードアウトをエクスポートできませんでした。,로드아웃을 내보낼 수 없습니다.,No se pudo exportar el equipamiento.
 LOADOUT_IMPORTED,Imported loadout.,已导入预设方案。,Équipement importé.,ロードアウトをインポートしました。,로드아웃을 가져왔습니다.,Equipamiento importado.
+REMOVE_ALL_RELICS,Remove All Relics,移除所有遗物,Supprimer toutes les reliques,すべてのレリックを削除,모든 유물 제거,Eliminar todas las reliquias
+REMOVE_ALL_CARDS,Remove All Cards,移除所有卡牌,Supprimer toutes les cartes,すべてのカードを削除,모든 카드 제거,Eliminar todas las cartas

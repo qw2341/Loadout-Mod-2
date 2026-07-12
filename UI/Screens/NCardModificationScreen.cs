@@ -522,6 +522,14 @@ public partial class NCardModificationScreen : Control
             _actionControls.AddChild(resetPermanentButton);
             ConfigureActionButtonSize(resetPermanentButton);
         }
+
+        NLoadoutActionButton addCopiesButton = CreateActionButton(
+            "add_copies_to_deck",
+            LocMan.Loc("CARD_MOD_ADD_COPIES_TO_DECK", "Add Copies To Deck"),
+            CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
+        ConnectActionButton(addCopiesButton, AddCopiesToDeck);
+        _actionControls.AddChild(addCopiesButton);
+        ConfigureActionButtonSize(addCopiesButton);
     }
 
     private void AddCardEditActions()
@@ -941,6 +949,18 @@ public partial class NCardModificationScreen : Control
         RefreshParentView(forceReload: true);
         RebuildControls();
         RefreshPreview(forceReload: true);
+    }
+
+    private void AddCopiesToDeck()
+    {
+        if (_item is null)
+            return;
+
+        int amount = NGenericSelectScreen.GetCurrentInputMultiplier();
+        if (!CardModifier.AddCopiesToTargetDeck(_item, amount))
+        {
+            GD.PushWarning($"CardModification: failed adding {amount} copies of '{_item.Model.Id}' to player {_item.OwnerNetId}.");
+        }
     }
 
     private void ApplyWorkingState()

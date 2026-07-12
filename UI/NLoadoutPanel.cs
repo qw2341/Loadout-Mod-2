@@ -361,6 +361,11 @@ public partial class NLoadoutPanel : Panel
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Eager);
 				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
+				builder.ActionButton(
+					"remove_all_relics",
+					LocMan.Loc("REMOVE_ALL_RELICS", "Remove All Relics"),
+					HandleRemoveAllRelics,
+					CommonHelpers.LoadActionButtonIcon("TrashBin.png"));
 			},
 			HandleRemoveRelicActivatedAsync,
 			"TrashBin.png",
@@ -434,6 +439,11 @@ public partial class NLoadoutPanel : Panel
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
+				builder.ActionButton(
+					"remove_all_cards",
+					LocMan.Loc("REMOVE_ALL_CARDS", "Remove All Cards"),
+					HandleRemoveAllCards,
+					CommonHelpers.LoadActionButtonIcon("CardShredder.png"));
 			},
 			HandleRemoveCardActivatedAsync,
 			"CardShredder.png",
@@ -672,6 +682,20 @@ public partial class NLoadoutPanel : Panel
 		}
 
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
+	}
+
+	private static void HandleRemoveAllCards(NGenericSelectScreen _)
+	{
+		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(RemoveCardTargetKey, LoadoutTargetMode.PlayersOnly);
+		if (!LoadoutImmediateMutationService.RequestRemoveAllCards(target))
+			GD.PushWarning("LoadoutPanel: failed to request removal of all cards.");
+	}
+
+	private static void HandleRemoveAllRelics(NGenericSelectScreen _)
+	{
+		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(RemoveRelicTargetKey, LoadoutTargetMode.PlayersOnly);
+		if (!LoadoutImmediateMutationService.RequestRemoveAllRelics(target))
+			GD.PushWarning("LoadoutPanel: failed to request removal of all relics.");
 	}
 
 	private static Task ReplayLoadoutBagLastActionAsync()
