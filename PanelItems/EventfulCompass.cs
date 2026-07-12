@@ -358,7 +358,7 @@ public class EventfulCompass
 			    Size = AncientPreviewTextureSize,
 			    TransparentBg = false,
 			    Disable3D = false,
-			    RenderTargetUpdateMode = SubViewport.UpdateMode.Once
+			    RenderTargetUpdateMode = SubViewport.UpdateMode.WhenVisible
 		    };
 
 		    Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);
