@@ -31,7 +31,9 @@ using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Runs;
 
 public static class BottledMonsterMorphService
@@ -43,6 +45,7 @@ public static class BottledMonsterMorphService
     private static readonly object AssetLoadLock = new();
     private static readonly Dictionary<string, Task> AssetLoads = new(StringComparer.Ordinal);
     private static readonly Dictionary<ulong, int> PlayerRevisions = new();
+    private static readonly Dictionary<ulong, int> MerchantRevisions = new();
     private static readonly Dictionary<ulong, MorphVisualRuntime> ActiveVisuals = new();
     private static readonly FieldInfo? VisualsField = AccessTools.Field(typeof(NCreature), "<Visuals>k__BackingField");
     private static readonly FieldInfo? SpineAnimatorField = AccessTools.Field(typeof(NCreature), "_spineAnimator");
@@ -51,6 +54,12 @@ public static class BottledMonsterMorphService
     private static readonly MethodInfo? SetOrbManagerPositionMethod = AccessTools.Method(typeof(NCreature), "SetOrbManagerPosition");
     private static readonly FieldInfo? AnyStateField = AccessTools.Field(typeof(CreatureAnimator), "_anyState");
     private static readonly FieldInfo? BranchedStatesField = AccessTools.Field(typeof(AnimState), "_branchedStates");
+    private static readonly FieldInfo? MerchantPlayersField = AccessTools.Field(typeof(NMerchantRoom), "_players");
+    private static readonly FieldInfo? MerchantPlayerVisualsField = AccessTools.Field(typeof(NMerchantRoom), "_playerVisuals");
+    private static readonly FieldInfo? FakeMerchantPlayersField = AccessTools.Field(typeof(NFakeMerchant), "_players");
+    private static readonly FieldInfo? FakeMerchantCharacterContainerField = AccessTools.Field(typeof(NFakeMerchant), "_characterContainer");
+    private static readonly Dictionary<ulong, NCreatureVisuals> FakeMerchantVisuals = new();
+    private static NFakeMerchant? _activeFakeMerchant;
 
     private static MorphRunSaveData _state = new();
     private static INetGameService? _runNetService;
@@ -138,6 +147,7 @@ public static class BottledMonsterMorphService
         SaveRunStateIfAuthoritative();
         int revision = NextRevision(player.NetId);
         TaskHelper.RunSafely(ApplyCurrentVisualAsync(player.NetId, revision));
+        ScheduleMerchantVisualRefresh(player.NetId);
     }
 
     public static void OnCreatureReady(NCreature creatureNode)
@@ -150,6 +160,52 @@ public static class BottledMonsterMorphService
 
         int revision = NextRevision(player.NetId);
         TaskHelper.RunSafely(ApplyCurrentVisualAsync(player.NetId, revision, creatureNode));
+    }
+
+    public static void OnMerchantRoomReady(NMerchantRoom merchantRoom)
+    {
+        if (MerchantPlayersField?.GetValue(merchantRoom) is not List<Player> players)
+        {
+            GD.PushWarning("BottledMonsterMorph: current game build does not expose merchant player visuals.");
+            return;
+        }
+
+        foreach (Player player in players)
+        {
+            if (!_state.Players.ContainsKey(player.NetId.ToString()))
+                continue;
+
+            int revision = NextMerchantRevision(player.NetId);
+            TaskHelper.RunSafely(ApplyCurrentMerchantVisualAsync(player.NetId, revision, merchantRoom));
+        }
+    }
+
+    public static void OnFakeMerchantReady(NFakeMerchant fakeMerchant)
+    {
+        if (FakeMerchantPlayersField?.GetValue(fakeMerchant) is not List<Player> players
+            || FakeMerchantCharacterContainerField?.GetValue(fakeMerchant) is not Control container)
+        {
+            GD.PushWarning("BottledMonsterMorph: current game build does not expose fake merchant player visuals.");
+            return;
+        }
+
+        List<NCreatureVisuals> visuals = container.GetChildren()
+            .OfType<NCreatureVisuals>()
+            .Reverse()
+            .ToList();
+        _activeFakeMerchant = fakeMerchant;
+        FakeMerchantVisuals.Clear();
+        for (int index = 0; index < players.Count && index < visuals.Count; index++)
+            FakeMerchantVisuals[players[index].NetId] = visuals[index];
+
+        foreach (Player player in players)
+        {
+            if (!_state.Players.ContainsKey(player.NetId.ToString()))
+                continue;
+
+            int revision = NextMerchantRevision(player.NetId);
+            TaskHelper.RunSafely(ApplyCurrentFakeMerchantVisualAsync(player.NetId, revision, fakeMerchant));
+        }
     }
 
     public static bool TryHandleAnimation(NCreature creatureNode, string trigger)
@@ -223,6 +279,229 @@ public static class BottledMonsterMorphService
         }
 
         ReplaceVisuals(creatureNode, visualModel, isMorphed);
+    }
+
+    private static async Task ApplyCurrentMerchantVisualAsync(
+        ulong playerNetId,
+        int revision,
+        NMerchantRoom? expectedRoom = null)
+    {
+        Player? player = GetRunPlayer(playerNetId);
+        NMerchantRoom? merchantRoom = expectedRoom ?? NMerchantRoom.Instance;
+        if (player is null
+            || merchantRoom is null
+            || !GodotObject.IsInstanceValid(merchantRoom)
+            || !TryGetMerchantSlot(merchantRoom, playerNetId, out int slot, out NMerchantCharacter oldVisual))
+        {
+            return;
+        }
+
+        AbstractModel visualModel = player.Character;
+        if (_state.Players.TryGetValue(playerNetId.ToString(), out string? modelId))
+            visualModel = ResolveMorphModel(modelId) ?? player.Character;
+
+        visualModel = PrepareVisualModel(visualModel);
+        string? assetPath = GetMerchantVisualAssetPath(visualModel);
+        if (string.IsNullOrWhiteSpace(assetPath))
+            return;
+
+        await EnsureAssetLoadedAsync(assetPath);
+        if (!IsCurrentMerchantRevision(playerNetId, revision)
+            || !GodotObject.IsInstanceValid(merchantRoom)
+            || !ReferenceEquals(NMerchantRoom.Instance, merchantRoom)
+            || !TryGetMerchantSlot(merchantRoom, playerNetId, out int currentSlot, out NMerchantCharacter currentVisual)
+            || currentSlot != slot
+            || !ReferenceEquals(currentVisual, oldVisual))
+        {
+            return;
+        }
+
+        ReplaceMerchantVisual(merchantRoom, slot, oldVisual, visualModel, assetPath);
+    }
+
+    private static async Task ApplyCurrentFakeMerchantVisualAsync(
+        ulong playerNetId,
+        int revision,
+        NFakeMerchant? expectedFakeMerchant = null)
+    {
+        Player? player = GetRunPlayer(playerNetId);
+        NFakeMerchant? fakeMerchant = expectedFakeMerchant
+                                      ?? NEventRoom.Instance?.CustomEventNode as NFakeMerchant;
+        if (player is null
+            || fakeMerchant is null
+            || !GodotObject.IsInstanceValid(fakeMerchant)
+            || !ReferenceEquals(_activeFakeMerchant, fakeMerchant)
+            || !FakeMerchantVisuals.TryGetValue(playerNetId, out NCreatureVisuals? oldVisual)
+            || !GodotObject.IsInstanceValid(oldVisual))
+        {
+            return;
+        }
+
+        AbstractModel visualModel = player.Character;
+        if (_state.Players.TryGetValue(playerNetId.ToString(), out string? modelId))
+            visualModel = ResolveMorphModel(modelId) ?? player.Character;
+
+        visualModel = PrepareVisualModel(visualModel);
+        string? assetPath = GetCombatVisualAssetPath(visualModel);
+        if (string.IsNullOrWhiteSpace(assetPath))
+            return;
+
+        await EnsureAssetLoadedAsync(assetPath);
+        if (!IsCurrentMerchantRevision(playerNetId, revision)
+            || !GodotObject.IsInstanceValid(fakeMerchant)
+            || !ReferenceEquals(NEventRoom.Instance?.CustomEventNode, fakeMerchant)
+            || !ReferenceEquals(_activeFakeMerchant, fakeMerchant)
+            || !FakeMerchantVisuals.TryGetValue(playerNetId, out NCreatureVisuals? currentVisual)
+            || !ReferenceEquals(currentVisual, oldVisual))
+        {
+            return;
+        }
+
+        ReplaceFakeMerchantVisual(playerNetId, oldVisual, visualModel);
+    }
+
+    private static bool TryGetMerchantSlot(
+        NMerchantRoom merchantRoom,
+        ulong playerNetId,
+        out int slot,
+        out NMerchantCharacter visual)
+    {
+        slot = -1;
+        visual = null!;
+        if (MerchantPlayersField?.GetValue(merchantRoom) is not List<Player> players
+            || MerchantPlayerVisualsField?.GetValue(merchantRoom) is not List<NMerchantCharacter> visuals)
+        {
+            return false;
+        }
+
+        slot = players.FindIndex(player => player.NetId == playerNetId);
+        if (slot < 0 || slot >= visuals.Count)
+            return false;
+
+        visual = visuals[slot];
+        return GodotObject.IsInstanceValid(visual);
+    }
+
+    private static string? GetMerchantVisualAssetPath(AbstractModel model)
+    {
+        return model switch
+        {
+            CharacterModel character => character.MerchantAnimPath,
+            MonsterModel monster => monster.AssetPaths.FirstOrDefault(),
+            _ => null
+        };
+    }
+
+    private static string? GetCombatVisualAssetPath(AbstractModel model)
+    {
+        return model switch
+        {
+            MonsterModel monster => monster.AssetPaths.FirstOrDefault(),
+            CharacterModel character => character.AssetPaths.FirstOrDefault(),
+            _ => null
+        };
+    }
+
+    private static void ReplaceMerchantVisual(
+        NMerchantRoom merchantRoom,
+        int slot,
+        NMerchantCharacter oldVisual,
+        AbstractModel visualModel,
+        string assetPath)
+    {
+        if (MerchantPlayerVisualsField?.GetValue(merchantRoom) is not List<NMerchantCharacter> playerVisuals)
+            return;
+
+        NMerchantCharacter? newVisual = null;
+        try
+        {
+            newVisual = visualModel switch
+            {
+                CharacterModel => PreloadManager.Cache.GetScene(assetPath)
+                    .Instantiate<NMerchantCharacter>(PackedScene.GenEditState.Disabled),
+                MonsterModel monster => CreateMonsterMerchantVisual(monster),
+                _ => null
+            };
+            if (newVisual is null || oldVisual.GetParent() is not Node parent)
+                return;
+
+            int siblingIndex = oldVisual.GetIndex();
+            newVisual.Position = oldVisual.Position;
+            newVisual.Modulate = oldVisual.Modulate;
+            newVisual.Visible = oldVisual.Visible;
+            parent.AddChild(newVisual);
+            parent.MoveChild(newVisual, Math.Max(0, siblingIndex));
+            playerVisuals[slot] = newVisual;
+            oldVisual.QueueFree();
+        }
+        catch (Exception exception)
+        {
+            if (newVisual is not null && GodotObject.IsInstanceValid(newVisual))
+                newVisual.QueueFree();
+            GD.PushWarning(
+                $"BottledMonsterMorph: could not install merchant player visual '{visualModel.Id}'. {exception.Message}");
+        }
+    }
+
+    private static NMerchantCharacter CreateMonsterMerchantVisual(MonsterModel monster)
+    {
+        NMorphedMerchantCharacter merchantCharacter = new();
+        merchantCharacter.Initialize(monster, monster.CreateVisuals());
+        return merchantCharacter;
+    }
+
+    private static void ReplaceFakeMerchantVisual(
+        ulong playerNetId,
+        NCreatureVisuals oldVisual,
+        AbstractModel visualModel)
+    {
+        NCreatureVisuals? newVisual = null;
+        try
+        {
+            newVisual = CreateVisuals(visualModel);
+            if (newVisual is null || oldVisual.GetParent() is not Node parent)
+                return;
+
+            int siblingIndex = oldVisual.GetIndex();
+            newVisual.Position = oldVisual.Position;
+            newVisual.Modulate = oldVisual.Modulate;
+            newVisual.Visible = oldVisual.Visible;
+            newVisual.Scale = oldVisual.Scale;
+            parent.AddChild(newVisual);
+            parent.MoveChild(newVisual, Math.Max(0, siblingIndex));
+            if (visualModel is MonsterModel monster)
+            {
+                newVisual.UpdatePhobiaMode(monster);
+                newVisual.SetUpSkin(monster);
+                FlipMonsterVisuals(newVisual);
+            }
+
+            PlayRelaxedOrIdle(newVisual);
+            FakeMerchantVisuals[playerNetId] = newVisual;
+            oldVisual.QueueFree();
+        }
+        catch (Exception exception)
+        {
+            if (newVisual is not null && GodotObject.IsInstanceValid(newVisual))
+                newVisual.QueueFree();
+            GD.PushWarning(
+                $"BottledMonsterMorph: could not install fake merchant player visual '{visualModel.Id}'. {exception.Message}");
+        }
+    }
+
+    private static void PlayRelaxedOrIdle(NCreatureVisuals visuals)
+    {
+        if (visuals.SpineBody is not { } spine)
+            return;
+
+        foreach (string animation in new[] { "relaxed_loop", "idle_loop", "idle" })
+        {
+            if (!spine.HasAnimation(animation))
+                continue;
+
+            spine.GetAnimationState().SetAnimation(animation, true);
+            return;
+        }
     }
 
     private static void ReplaceVisuals(NCreature creatureNode, AbstractModel visualModel, bool isMorphed)
@@ -373,18 +652,14 @@ public static class BottledMonsterMorphService
 
     private static async Task EnsureVisualAssetLoadedAsync(AbstractModel model)
     {
-        string? assetPath = model switch
-        {
-            MonsterModel monster => monster.AssetPaths.FirstOrDefault(),
-            CharacterModel character => character.AssetPaths.FirstOrDefault(),
-            _ => null
-        };
+        await EnsureAssetLoadedAsync(GetCombatVisualAssetPath(model));
+    }
 
+    private static async Task EnsureAssetLoadedAsync(string? assetPath)
+    {
         if (string.IsNullOrWhiteSpace(assetPath)
             || PreloadManager.Cache.GetLoadedCacheAssets().Contains(assetPath))
-        {
             return;
-        }
 
         Task loadTask;
         lock (AssetLoadLock)
@@ -603,6 +878,25 @@ public static class BottledMonsterMorphService
         return PlayerRevisions.TryGetValue(playerNetId, out int current) && current == revision;
     }
 
+    private static int NextMerchantRevision(ulong playerNetId)
+    {
+        int revision = MerchantRevisions.GetValueOrDefault(playerNetId) + 1;
+        MerchantRevisions[playerNetId] = revision;
+        return revision;
+    }
+
+    private static bool IsCurrentMerchantRevision(ulong playerNetId, int revision)
+    {
+        return MerchantRevisions.TryGetValue(playerNetId, out int current) && current == revision;
+    }
+
+    private static void ScheduleMerchantVisualRefresh(ulong playerNetId)
+    {
+        int revision = NextMerchantRevision(playerNetId);
+        TaskHelper.RunSafely(ApplyCurrentMerchantVisualAsync(playerNetId, revision));
+        TaskHelper.RunSafely(ApplyCurrentFakeMerchantVisualAsync(playerNetId, revision));
+    }
+
     private static void PruneInvalidVisuals()
     {
         foreach (ulong nodeId in ActiveVisuals
@@ -671,6 +965,7 @@ public static class BottledMonsterMorphService
 
             int revision = NextRevision(playerNetId);
             TaskHelper.RunSafely(ApplyCurrentVisualAsync(playerNetId, revision));
+            ScheduleMerchantVisualRefresh(playerNetId);
         }
     }
 
@@ -784,6 +1079,7 @@ public static class BottledMonsterMorphService
             {
                 int revision = NextRevision(playerNetId);
                 TaskHelper.RunSafely(ApplyCurrentVisualAsync(playerNetId, revision));
+                ScheduleMerchantVisualRefresh(playerNetId);
             }
         }
         catch (Exception exception)
@@ -796,7 +1092,10 @@ public static class BottledMonsterMorphService
     {
         _state = new MorphRunSaveData();
         PlayerRevisions.Clear();
+        MerchantRevisions.Clear();
         ActiveVisuals.Clear();
+        FakeMerchantVisuals.Clear();
+        _activeFakeMerchant = null;
         lock (AssetLoadLock)
             AssetLoads.Clear();
     }
