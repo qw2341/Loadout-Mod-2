@@ -6,6 +6,7 @@ using HarmonyLib;
 using Loadout.Services.Morphing;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
+using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Runs;
@@ -47,6 +48,36 @@ public static class BottledMonsterMorphFakeMerchantReadyPatch
     public static void Postfix(NFakeMerchant __instance)
     {
         BottledMonsterMorphService.OnFakeMerchantReady(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NRestSiteRoom), nameof(NRestSiteRoom._Ready))]
+public static class BottledMonsterMorphRestSiteRoomReadyPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(NRestSiteRoom __instance)
+    {
+        BottledMonsterMorphService.OnRestSiteRoomReady(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NRestSiteCharacter), nameof(NRestSiteCharacter._Ready))]
+public static class BottledMonsterMorphRestSiteCharacterReadyPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(NRestSiteCharacter __instance)
+    {
+        return !BottledMonsterMorphService.ShouldSkipRestSiteVisualProxyReady(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(NRestSiteCharacter), nameof(NRestSiteCharacter.HideFlameGlow))]
+public static class BottledMonsterMorphRestSiteFlamePatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(NRestSiteCharacter __instance)
+    {
+        BottledMonsterMorphService.OnRestSiteFlameGlowHidden(__instance);
     }
 }
 

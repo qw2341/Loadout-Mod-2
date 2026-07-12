@@ -32,6 +32,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
+using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Runs;
@@ -46,6 +47,7 @@ public static class BottledMonsterMorphService
     private static readonly Dictionary<string, Task> AssetLoads = new(StringComparer.Ordinal);
     private static readonly Dictionary<ulong, int> PlayerRevisions = new();
     private static readonly Dictionary<ulong, int> MerchantRevisions = new();
+    private static readonly Dictionary<ulong, int> RestSiteRevisions = new();
     private static readonly Dictionary<ulong, MorphVisualRuntime> ActiveVisuals = new();
     private static readonly FieldInfo? VisualsField = AccessTools.Field(typeof(NCreature), "<Visuals>k__BackingField");
     private static readonly FieldInfo? SpineAnimatorField = AccessTools.Field(typeof(NCreature), "_spineAnimator");
@@ -59,6 +61,8 @@ public static class BottledMonsterMorphService
     private static readonly FieldInfo? FakeMerchantPlayersField = AccessTools.Field(typeof(NFakeMerchant), "_players");
     private static readonly FieldInfo? FakeMerchantCharacterContainerField = AccessTools.Field(typeof(NFakeMerchant), "_characterContainer");
     private static readonly Dictionary<ulong, NCreatureVisuals> FakeMerchantVisuals = new();
+    private static readonly Dictionary<ulong, RestSiteVisualRuntime> RestSiteVisuals = new();
+    private static readonly HashSet<ulong> RestSiteVisualProxyIds = new();
     private static NFakeMerchant? _activeFakeMerchant;
 
     private static MorphRunSaveData _state = new();
@@ -148,6 +152,7 @@ public static class BottledMonsterMorphService
         int revision = NextRevision(player.NetId);
         TaskHelper.RunSafely(ApplyCurrentVisualAsync(player.NetId, revision));
         ScheduleMerchantVisualRefresh(player.NetId);
+        ScheduleRestSiteVisualRefresh(player.NetId);
     }
 
     public static void OnCreatureReady(NCreature creatureNode)
@@ -206,6 +211,43 @@ public static class BottledMonsterMorphService
             int revision = NextMerchantRevision(player.NetId);
             TaskHelper.RunSafely(ApplyCurrentFakeMerchantVisualAsync(player.NetId, revision, fakeMerchant));
         }
+    }
+
+    public static void OnRestSiteRoomReady(NRestSiteRoom restSiteRoom)
+    {
+        RestSiteVisuals.Clear();
+        RestSiteVisualProxyIds.Clear();
+        foreach (NRestSiteCharacter character in restSiteRoom.Characters)
+        {
+            if (!_state.Players.ContainsKey(character.Player.NetId.ToString()))
+                continue;
+
+            int revision = NextRestSiteRevision(character.Player.NetId);
+            TaskHelper.RunSafely(ApplyCurrentRestSiteVisualAsync(character.Player.NetId, revision, restSiteRoom));
+        }
+    }
+
+    public static bool ShouldSkipRestSiteVisualProxyReady(NRestSiteCharacter character)
+    {
+        return RestSiteVisualProxyIds.Contains(character.GetInstanceId());
+    }
+
+    public static void OnRestSiteFlameGlowHidden(NRestSiteCharacter character)
+    {
+        if (!RestSiteVisuals.TryGetValue(character.Player.NetId, out RestSiteVisualRuntime? runtime)
+            || !ReferenceEquals(runtime.Host, character)
+            || runtime.InjectedVisual is null)
+        {
+            return;
+        }
+
+        if (runtime.InjectedVisual is NMorphedRestSiteCharacter monsterVisual)
+        {
+            monsterVisual.HideFlameGlow();
+            return;
+        }
+
+        PlayRestSiteTrack(runtime.InjectedVisual, "_tracks/light_off", track: 1);
     }
 
     public static bool TryHandleAnimation(NCreature creatureNode, string trigger)
@@ -358,6 +400,213 @@ public static class BottledMonsterMorphService
         }
 
         ReplaceFakeMerchantVisual(playerNetId, oldVisual, visualModel);
+    }
+
+    private static async Task ApplyCurrentRestSiteVisualAsync(
+        ulong playerNetId,
+        int revision,
+        NRestSiteRoom? expectedRoom = null)
+    {
+        Player? player = GetRunPlayer(playerNetId);
+        NRestSiteRoom? restSiteRoom = expectedRoom ?? NRestSiteRoom.Instance;
+        NRestSiteCharacter? host = player is null ? null : restSiteRoom?.GetCharacterForPlayer(player);
+        if (player is null
+            || restSiteRoom is null
+            || host is null
+            || !GodotObject.IsInstanceValid(restSiteRoom)
+            || !GodotObject.IsInstanceValid(host))
+        {
+            return;
+        }
+
+        RestSiteVisualRuntime runtime = GetOrCreateRestSiteRuntime(restSiteRoom, host);
+        AbstractModel visualModel = player.Character;
+        bool reset = true;
+        if (_state.Players.TryGetValue(playerNetId.ToString(), out string? modelId)
+            && ResolveMorphModel(modelId) is { } selected)
+        {
+            visualModel = selected;
+            reset = selected.Id == player.Character.Id;
+        }
+
+        if (reset)
+        {
+            if (IsCurrentRestSiteRevision(playerNetId, revision))
+                ResetRestSiteVisual(runtime);
+            return;
+        }
+
+        visualModel = PrepareVisualModel(visualModel);
+        string? assetPath = visualModel switch
+        {
+            CharacterModel character => character.RestSiteAnimPath,
+            _ => GetCombatVisualAssetPath(visualModel)
+        };
+        if (string.IsNullOrWhiteSpace(assetPath))
+            return;
+
+        await EnsureAssetLoadedAsync(assetPath);
+        if (!IsCurrentRestSiteRevision(playerNetId, revision)
+            || !GodotObject.IsInstanceValid(restSiteRoom)
+            || !ReferenceEquals(NRestSiteRoom.Instance, restSiteRoom)
+            || !GodotObject.IsInstanceValid(host)
+            || !RestSiteVisuals.TryGetValue(playerNetId, out RestSiteVisualRuntime? currentRuntime)
+            || !ReferenceEquals(currentRuntime.Host, host))
+        {
+            return;
+        }
+
+        InstallRestSiteVisual(currentRuntime, visualModel, assetPath);
+    }
+
+    private static RestSiteVisualRuntime GetOrCreateRestSiteRuntime(
+        NRestSiteRoom restSiteRoom,
+        NRestSiteCharacter host)
+    {
+        ulong playerNetId = host.Player.NetId;
+        if (RestSiteVisuals.TryGetValue(playerNetId, out RestSiteVisualRuntime? runtime)
+            && ReferenceEquals(runtime.Room, restSiteRoom)
+            && ReferenceEquals(runtime.Host, host))
+        {
+            return runtime;
+        }
+
+        runtime = new RestSiteVisualRuntime(
+            restSiteRoom,
+            host,
+            host.GetChildren()
+                .OfType<Node2D>()
+                .Where(node => node.GetClass() == "SpineSprite")
+                .ToList());
+        RestSiteVisuals[playerNetId] = runtime;
+        return runtime;
+    }
+
+    private static void InstallRestSiteVisual(
+        RestSiteVisualRuntime runtime,
+        AbstractModel visualModel,
+        string assetPath)
+    {
+        Node2D? newVisual = null;
+        bool proxyRegistered = false;
+        try
+        {
+            int characterIndex = runtime.Room.Characters.IndexOf(runtime.Host);
+            bool flippedSlot = characterIndex % 2 == 1;
+            if (visualModel is CharacterModel)
+            {
+                NRestSiteCharacter proxy = PreloadManager.Cache.GetScene(assetPath)
+                    .Instantiate<NRestSiteCharacter>(PackedScene.GenEditState.Disabled);
+                newVisual = proxy;
+                RestSiteVisualProxyIds.Add(proxy.GetInstanceId());
+                proxyRegistered = true;
+                proxy.GetNodeOrNull<CanvasItem>("ControlRoot")?.Hide();
+                if (characterIndex >= 2
+                    && proxy.GetNodeOrNull<Node2D>("Osty") is { } osty
+                    && proxy.GetNodeOrNull<Node2D>("OstyRightAnchor") is { } rightAnchor)
+                {
+                    osty.Position = rightAnchor.Position;
+                    proxy.MoveChild(osty, 0);
+                }
+
+                Transform2D authoredTransform = proxy.Transform;
+                authoredTransform.Origin = Vector2.Zero;
+                proxy.Transform = runtime.Host.Transform.AffineInverse() * authoredTransform;
+            }
+            else if (visualModel is MonsterModel monster)
+            {
+                NMorphedRestSiteCharacter monsterVisual = new();
+                monsterVisual.Initialize(monster, monster.CreateVisuals(), flippedSlot);
+                newVisual = monsterVisual;
+            }
+
+            if (newVisual is null)
+                return;
+
+            runtime.Host.AddChild(newVisual);
+            if (newVisual is NRestSiteCharacter characterProxy)
+            {
+                if (flippedSlot)
+                    FlipRestSiteProxy(characterProxy);
+                PlayRestSiteTrack(characterProxy, GetRestSiteActAnimation(runtime.Host.Player), track: 0);
+            }
+
+            foreach (Node2D originalVisual in runtime.OriginalVisuals)
+            {
+                if (GodotObject.IsInstanceValid(originalVisual))
+                    originalVisual.Visible = false;
+            }
+
+            RemoveInjectedRestSiteVisual(runtime);
+            runtime.InjectedVisual = newVisual;
+        }
+        catch (Exception exception)
+        {
+            if (proxyRegistered && newVisual is not null)
+                RestSiteVisualProxyIds.Remove(newVisual.GetInstanceId());
+            if (newVisual is not null && GodotObject.IsInstanceValid(newVisual))
+                newVisual.QueueFree();
+            GD.PushWarning(
+                $"BottledMonsterMorph: could not install rest-site player visual '{visualModel.Id}'. {exception.Message}");
+        }
+    }
+
+    private static void ResetRestSiteVisual(RestSiteVisualRuntime runtime)
+    {
+        RemoveInjectedRestSiteVisual(runtime);
+        foreach (Node2D originalVisual in runtime.OriginalVisuals)
+        {
+            if (GodotObject.IsInstanceValid(originalVisual))
+                originalVisual.Visible = true;
+        }
+    }
+
+    private static void RemoveInjectedRestSiteVisual(RestSiteVisualRuntime runtime)
+    {
+        if (runtime.InjectedVisual is null)
+            return;
+
+        RestSiteVisualProxyIds.Remove(runtime.InjectedVisual.GetInstanceId());
+        if (GodotObject.IsInstanceValid(runtime.InjectedVisual))
+            runtime.InjectedVisual.QueueFree();
+        runtime.InjectedVisual = null;
+    }
+
+    private static string GetRestSiteActAnimation(Player player)
+    {
+        return player.RunState.CurrentActIndex switch
+        {
+            0 => "overgrowth_loop",
+            1 => "hive_loop",
+            2 => "glory_loop",
+            _ => "relaxed_loop"
+        };
+    }
+
+    private static void PlayRestSiteTrack(Node root, string animation, int track)
+    {
+        foreach (Node2D spineNode in root.GetChildren()
+                     .OfType<Node2D>()
+                     .Where(node => node.GetClass() == "SpineSprite"))
+        {
+            MegaSprite spine = new(spineNode);
+            root.RunWhenSpineReady(spine, animationState =>
+            {
+                if (spine.HasAnimation(animation))
+                    animationState.SetAnimation(animation, true, track);
+            });
+        }
+    }
+
+    private static void FlipRestSiteProxy(NRestSiteCharacter proxy)
+    {
+        foreach (Node2D spineNode in proxy.GetChildren()
+                     .OfType<Node2D>()
+                     .Where(node => node.GetClass() == "SpineSprite"))
+        {
+            spineNode.Scale = new Vector2(-spineNode.Scale.X, spineNode.Scale.Y);
+            spineNode.Position = new Vector2(-spineNode.Position.X, spineNode.Position.Y);
+        }
     }
 
     private static bool TryGetMerchantSlot(
@@ -890,11 +1139,29 @@ public static class BottledMonsterMorphService
         return MerchantRevisions.TryGetValue(playerNetId, out int current) && current == revision;
     }
 
+    private static int NextRestSiteRevision(ulong playerNetId)
+    {
+        int revision = RestSiteRevisions.GetValueOrDefault(playerNetId) + 1;
+        RestSiteRevisions[playerNetId] = revision;
+        return revision;
+    }
+
+    private static bool IsCurrentRestSiteRevision(ulong playerNetId, int revision)
+    {
+        return RestSiteRevisions.TryGetValue(playerNetId, out int current) && current == revision;
+    }
+
     private static void ScheduleMerchantVisualRefresh(ulong playerNetId)
     {
         int revision = NextMerchantRevision(playerNetId);
         TaskHelper.RunSafely(ApplyCurrentMerchantVisualAsync(playerNetId, revision));
         TaskHelper.RunSafely(ApplyCurrentFakeMerchantVisualAsync(playerNetId, revision));
+    }
+
+    private static void ScheduleRestSiteVisualRefresh(ulong playerNetId)
+    {
+        int revision = NextRestSiteRevision(playerNetId);
+        TaskHelper.RunSafely(ApplyCurrentRestSiteVisualAsync(playerNetId, revision));
     }
 
     private static void PruneInvalidVisuals()
@@ -966,6 +1233,7 @@ public static class BottledMonsterMorphService
             int revision = NextRevision(playerNetId);
             TaskHelper.RunSafely(ApplyCurrentVisualAsync(playerNetId, revision));
             ScheduleMerchantVisualRefresh(playerNetId);
+            ScheduleRestSiteVisualRefresh(playerNetId);
         }
     }
 
@@ -1080,6 +1348,7 @@ public static class BottledMonsterMorphService
                 int revision = NextRevision(playerNetId);
                 TaskHelper.RunSafely(ApplyCurrentVisualAsync(playerNetId, revision));
                 ScheduleMerchantVisualRefresh(playerNetId);
+                ScheduleRestSiteVisualRefresh(playerNetId);
             }
         }
         catch (Exception exception)
@@ -1093,9 +1362,12 @@ public static class BottledMonsterMorphService
         _state = new MorphRunSaveData();
         PlayerRevisions.Clear();
         MerchantRevisions.Clear();
+        RestSiteRevisions.Clear();
         ActiveVisuals.Clear();
         FakeMerchantVisuals.Clear();
         _activeFakeMerchant = null;
+        RestSiteVisuals.Clear();
+        RestSiteVisualProxyIds.Clear();
         lock (AssetLoadLock)
             AssetLoads.Clear();
     }
@@ -1108,6 +1380,17 @@ public static class BottledMonsterMorphService
         Dictionary<string, string> LoopingTriggerAnimations,
         string ModelId,
         HashSet<string> FailedTriggers);
+
+    private sealed class RestSiteVisualRuntime(
+        NRestSiteRoom room,
+        NRestSiteCharacter host,
+        List<Node2D> originalVisuals)
+    {
+        public NRestSiteRoom Room { get; } = room;
+        public NRestSiteCharacter Host { get; } = host;
+        public List<Node2D> OriginalVisuals { get; } = originalVisuals;
+        public Node2D? InjectedVisual { get; set; }
+    }
 
     public sealed class MorphRunSaveData : ISerializable
     {
