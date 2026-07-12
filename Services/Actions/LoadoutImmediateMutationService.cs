@@ -254,12 +254,7 @@ public static class LoadoutImmediateMutationService
 
     public static bool RequestSummonMonster(ModelId monsterId)
     {
-        return Request(new LoadoutImmediateMutationPayload
-        {
-            Kind = LoadoutImmediateMutationKind.SummonMonster,
-            ModelId = monsterId,
-            Amount = 1
-        });
+        return LoadoutSummonMonsterService.RequestSummonMonster(monsterId);
     }
 
     public static bool RequestMorphPlayer(ModelId modelId, LoadoutTargetSelection target)
@@ -579,15 +574,20 @@ public static class LoadoutImmediateMutationService
 
         LoadoutMutationSerialExecutor.Enqueue(async () =>
         {
-            await ApplyAsync(payload);
-
-            lock (SequenceGate)
+            try
             {
-                _lastAppliedHostSequence = sequence;
-                _clientApplyQueued = false;
+                await ApplyAsync(payload);
             }
+            finally
+            {
+                lock (SequenceGate)
+                {
+                    _lastAppliedHostSequence = sequence;
+                    _clientApplyQueued = false;
+                }
 
-            TryScheduleNextClientApply();
+                TryScheduleNextClientApply();
+            }
         }, $"host mutation {payload.Kind} #{sequence}");
     }
 
@@ -827,7 +827,17 @@ public static class LoadoutImmediateMutationService
             {
                 try
                 {
-                    await RelicCmd.Obtain(canonicalRelic.ToMutable(), targetPlayer);
+                    RelicModel relic = canonicalRelic.ToMutable();
+                    Task<RelicModel> obtainTask = RelicCmd.Obtain(relic, targetPlayer);
+
+                    // RelicCmd inserts the relic before it awaits AfterObtained.
+                    // Pickup-effect relics can then wait on the target player's native
+                    // choice screen, so let that effect continue without blocking the
+                    // authoritative broadcast or later immediate mutations.
+                    if (relic.HasUponPickupEffect && !obtainTask.IsCompleted)
+                        _ = TaskHelper.RunSafely(obtainTask);
+                    else
+                        await obtainTask;
                 }
                 catch (Exception exception)
                 {

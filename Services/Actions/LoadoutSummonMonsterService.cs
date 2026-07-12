@@ -9,13 +9,39 @@ using System.Threading.Tasks;
 using Godot;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Runs;
 
 public static class LoadoutSummonMonsterService
 {
+    public static bool RequestSummonMonster(ModelId monsterId)
+    {
+        if (!CombatManager.Instance.IsInProgress || LoadoutModelIdSafety.IsNoneOrEmpty(monsterId))
+            return false;
+
+        try
+        {
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            Player? localPlayer = runState is null ? null : LocalContext.GetMe(runState);
+            if (localPlayer is null)
+                return false;
+
+            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+                new LoadoutSummonMonsterAction(localPlayer, monsterId));
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"LoadoutSummonMonsterAction: failed requesting monster summon '{monsterId}': {exception}");
+            return false;
+        }
+    }
+
     public static async Task SummonMonsterNowAsync(ModelId monsterId)
     {
         if (!CombatManager.Instance.IsInProgress)

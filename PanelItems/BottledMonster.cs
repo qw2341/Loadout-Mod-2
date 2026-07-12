@@ -348,7 +348,7 @@ public static class BottledMonster
 
         try
         {
-            return LoadoutImmediateMutationService.RequestSummonMonster(monster.Id);
+            return LoadoutSummonMonsterService.RequestSummonMonster(monster.Id);
         }
         catch (Exception exception)
         {
@@ -371,7 +371,7 @@ public static class BottledMonster
                      .Select(creature => creature.Monster!.Id)
                      .ToList())
         {
-            LoadoutImmediateMutationService.RequestSummonMonster(monsterId);
+            LoadoutSummonMonsterService.RequestSummonMonster(monsterId);
         }
     }
 
