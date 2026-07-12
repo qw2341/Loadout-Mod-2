@@ -1012,17 +1012,24 @@ public static class BottledMonsterMorphService
             return exact;
 
         if (trigger.Equals("Attack", StringComparison.OrdinalIgnoreCase))
-            return FindByTokens(triggers, "attack", "slash", "bite", "chomp", "ram", "strike")
-                   ?? FindExact(triggers, "Cast")
-                   ?? FindExact(triggers, "PowerUp");
+            return FindExact(triggers, "Attack") ?? FindByTokens(triggers, "attack", "attack_light", "slash", "bite", "chomp", "ram", "strike");
+        
+        if (trigger.Equals("heavyAttack", StringComparison.OrdinalIgnoreCase))
+            return FindExact(triggers, "heavyAttack") ?? FindByTokens(triggers, "attack_heavy", "crush", "bite", "slash", "chomp", "ram", "strike","attack");
+        
+        if (trigger.Equals("MultiAttack", StringComparison.OrdinalIgnoreCase))
+            return FindExact(triggers, "MultiAttack") ?? FindByTokens(triggers, "attack_multi", "multi", "attack", "slash", "bite", "chomp", "ram", "strike");
 
-        if (trigger.Equals("Cast", StringComparison.OrdinalIgnoreCase)
-            || trigger.Equals("PowerUp", StringComparison.OrdinalIgnoreCase))
+        if (trigger.Equals("Cast", StringComparison.OrdinalIgnoreCase))
         {
-            return FindExact(triggers, trigger)
-                   ?? FindExact(triggers, trigger.Equals("Cast", StringComparison.OrdinalIgnoreCase) ? "PowerUp" : "Cast")
-                   ?? FindByTokens(triggers, "cast", "buff", "power", "charge", "rally", "heal", "summon")
-                   ?? FindExact(triggers, "Attack");
+            return FindExact(triggers, "Cast")
+                   ?? FindByTokens(triggers, "cast", "charge", "rally", "summon");
+        }
+        
+        if (trigger.Equals("PowerUp", StringComparison.OrdinalIgnoreCase))
+        {
+            return FindExact(triggers, "PowerUp")
+                   ?? FindByTokens(triggers, "power", "buff", "charge", "rally" , "heal", "summon","cast");
         }
 
         if (trigger.Equals("Hit", StringComparison.OrdinalIgnoreCase))
@@ -1034,10 +1041,14 @@ public static class BottledMonsterMorphService
         if (trigger.Equals("Revive", StringComparison.OrdinalIgnoreCase))
             return FindExact(triggers, "Revive") ?? FindByTokens(triggers, "revive", "wake", "respawn");
 
-        if (trigger.Equals("Idle", StringComparison.OrdinalIgnoreCase)
-            || trigger.Equals("Relaxed", StringComparison.OrdinalIgnoreCase))
+        if (trigger.Equals("Idle", StringComparison.OrdinalIgnoreCase))
         {
-            return FindExact(triggers, trigger) ?? FindExact(triggers, "Idle");
+            return FindExact(triggers, "Idle") ?? FindByTokens(triggers, "idle", "idle_loop", "awake_loop");
+        }
+        
+        if (trigger.Equals("Relaxed", StringComparison.OrdinalIgnoreCase))
+        {
+            return FindExact(triggers, "Relaxed") ?? FindExact(triggers, "Idle");
         }
 
         return FindByTokens(triggers, trigger);
