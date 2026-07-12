@@ -252,16 +252,19 @@ public partial class NLoadoutPanelRoot : Control
 			return;
 
 		bool newlyAttached = screen.GetParent() != _screenContainer;
+		TrackScreen(screen);
+
 		if (newlyAttached)
 		{
+			// Keep the screen completely dormant before AddChild triggers _Ready().
 			screen.Visible = false;
+			screen.ProcessMode = ProcessModeEnum.Disabled;
+			screen.MouseFilter = MouseFilterEnum.Ignore;
 			ApplyFullRectLayout(screen);
 			_screenContainer.AddChild(screen);
 		}
 
 		ApplyFullRectLayout(screen);
-		TrackScreen(screen);
-
 		if (newlyAttached)
 			SetScreenActive(screen, false);
 
@@ -357,11 +360,6 @@ public partial class NLoadoutPanelRoot : Control
 		if (!IsInstanceValid(screen))
 			return;
 
-		if (!isActive)
-			ReleaseFocusOwnedBy(screen);
-
-		screen.Visible = isActive;
-
 		if (!_screenProcessModes.TryGetValue(screen, out var originalMode))
 		{
 			originalMode = screen.ProcessMode;
@@ -374,8 +372,18 @@ public partial class NLoadoutPanelRoot : Control
 			_screenMouseFilters[screen] = originalMouseFilter;
 		}
 
-		screen.ProcessMode = isActive ? originalMode : ProcessModeEnum.Disabled;
-		screen.MouseFilter = isActive ? MouseFilterEnum.Ignore : originalMouseFilter;
+		if (isActive)
+		{
+			screen.ProcessMode = originalMode;
+			screen.MouseFilter = originalMouseFilter;
+			screen.Visible = true;
+			return;
+		}
+
+		ReleaseFocusOwnedBy(screen);
+		screen.Visible = false;
+		screen.MouseFilter = MouseFilterEnum.Ignore;
+		screen.ProcessMode = ProcessModeEnum.Disabled;
 	}
 
 	private void ReleaseFocusOwnedBy(Control screen)

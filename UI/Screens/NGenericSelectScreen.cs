@@ -35,14 +35,17 @@ public partial class NGenericSelectScreen : Control
     private const float SidebarWidth = 288f;
     private const float CardVisualLeftOverhang = 96f;
     private const float CardScrollbarReserve = 48f;
-    private const int InitialMaterializeBudget = 96;
-    private const int RemovalMaterializeBudget = 12;
-    private const int ScrollMaterializeBudget = 164;
+    private const int InitialMaterializeBudget = 80;
+    private const int RemovalMaterializeBudget = 24;
+    private const int ScrollMaterializeBudget = 48;
+    private const int MaxPreloadConcurrency = 2;
     private const float ScrollSmoothingRate = 15f;
     private const float ScrollSpeedMultiplier = 3f;
     private const float MaterializeRowsAhead = 5f;
     private const float MaterializeRowsBehind = 3f;
     private const float CullRetentionRows = 2.5f;
+    private const float RecycleRowsBehind = 8f;
+    private const float RecycleRowsAhead = 12f;
     private const float CullUpdateRowsThreshold = 0.5f;
     private const float RelayoutTweenSeconds = 0.18f;
     private const float RelayoutTweenMinDistance = 1f;
@@ -173,7 +176,9 @@ public partial class NGenericSelectScreen : Control
     private System.Threading.CancellationTokenSource? _searchDelayCts;
     private ulong _layoutGeneration;
     private ulong _scheduledEagerRefreshGeneration;
-    private ulong _scheduledVisibleRefreshGeneration;
+    private ulong _scheduledVisibleRefreshGeneration = ulong.MaxValue;
+    private bool _refreshPendingWhileHidden;
+    private bool _pendingResetScroll;
     private ulong _lastEagerMismatchWarningGeneration;
     private Control? _multiplierBadge;
     private MegaLabel? _multiplierBadgeLabel;
@@ -206,8 +211,17 @@ public partial class NGenericSelectScreen : Control
         RebuildFilterButtons();
         ApplyLayoutSettings();
 
-        if (_isConfigured)
+        bool active = IsVisibleInTree();
+        SetProcess(active);
+        SetProcessInput(active);
+
+        if (!_isConfigured)
+            return;
+
+        if (active)
             RefreshNow(resetScroll: true);
+        else
+            RequestRefreshWhenVisible(resetScroll: true);
     }
 
     public override void _ExitTree()
@@ -217,25 +231,33 @@ public partial class NGenericSelectScreen : Control
         _searchDelayCts?.Dispose();
         _searchDelayCts = null;
         CancelPendingMaterialization();
+        SetProcess(false);
+        SetProcessInput(false);
         UnsubscribeFromLocaleChanges();
     }
 
     public override void _Notification(int what)
     {
-        if (what == NotificationVisibilityChanged && !Visible)
+        if (what != NotificationVisibilityChanged)
+            return;
+
+        bool active = IsVisibleInTree();
+        SetProcess(active);
+        SetProcessInput(active);
+
+        if (!active)
         {
             CloseOpenDropdowns();
             ReleaseFocusInsideScreen();
             SetActionButtonsActive(false);
+            SuspendHiddenScreenWork();
             ScreenClosed?.Invoke();
+            return;
         }
 
-        if (what == NotificationVisibilityChanged && Visible)
-        {
-            SetActionButtonsActive(true);
-            UpdateConfirmButtonState();
-            ScheduleDeferredVisibleRefresh();
-        }
+        SetActionButtonsActive(true);
+        UpdateConfirmButtonState();
+        ScheduleDeferredVisibleRefresh();
     }
 
     public override void _Process(double delta)
@@ -243,7 +265,6 @@ public partial class NGenericSelectScreen : Control
         CompleteThreadedPreloadIfReady();
         UpdateSelectScroll(delta);
         UpdateMultiplierBadge();
-        KeepHoverTipsAboveSelectScreen();
     }
 
     public override void _Input(InputEvent @event)
@@ -374,17 +395,18 @@ public partial class NGenericSelectScreen : Control
 
             staleView.GetParent()?.RemoveChild(staleView);
             ClearActivationBinding(staleView);
-            staleView.QueueFreeSafely();
+            QueueFreeItemViewSafely(staleView);
         }
 
-        if (animateRelayout)
+        bool shouldAnimateRelayout = animateRelayout && IsInsideTree() && IsVisibleInTree();
+        if (shouldAnimateRelayout)
             LockRelayoutPositions(relayoutStartPositions);
 
         _isConfigured = true;
         _configuredLocaleLanguage = GetCurrentLocaleLanguage();
         RefreshNow(resetScroll: false);
 
-        if (animateRelayout)
+        if (shouldAnimateRelayout)
             AnimateRelayoutFrom(relayoutStartPositions);
     }
 
@@ -471,20 +493,21 @@ public partial class NGenericSelectScreen : Control
 
             staleView.GetParent()?.RemoveChild(staleView);
             ClearActivationBinding(staleView);
-            staleView.QueueFreeSafely();
+            QueueFreeItemViewSafely(staleView);
         }
 
         HashSet<string> currentItemIds = _items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
         foreach (string staleSelectionId in _selectedAmounts.Keys.Where(id => !currentItemIds.Contains(id)).ToList())
             _selectedAmounts.Remove(staleSelectionId);
 
-        if (animateRelayout)
+        bool shouldAnimateRelayout = animateRelayout && IsInsideTree() && IsVisibleInTree();
+        if (shouldAnimateRelayout)
             LockRelayoutPositions(relayoutStartPositions);
 
         _configuredLocaleLanguage = GetCurrentLocaleLanguage();
         RebuildCurrentLayout(resetScroll, updateExistingViews);
 
-        if (animateRelayout)
+        if (shouldAnimateRelayout)
             AnimateRelayoutFrom(relayoutStartPositions);
     }
 
@@ -528,13 +551,14 @@ public partial class NGenericSelectScreen : Control
         foreach (string staleSelectionId in _selectedAmounts.Keys.Where(id => !currentItemIds.Contains(id)).ToList())
             _selectedAmounts.Remove(staleSelectionId);
 
-        if (animateRelayout)
+        bool shouldAnimateRelayout = animateRelayout && IsInsideTree() && IsVisibleInTree();
+        if (shouldAnimateRelayout)
             LockRelayoutPositions(relayoutStartPositions);
 
         _configuredLocaleLanguage = GetCurrentLocaleLanguage();
         RebuildCurrentLayoutAfterSingleRemoval(updateExistingViews);
 
-        if (animateRelayout)
+        if (shouldAnimateRelayout)
             AnimateRelayoutFrom(relayoutStartPositions);
     }
 
@@ -691,6 +715,8 @@ public partial class NGenericSelectScreen : Control
         _customVisibilityPredicate = null;
         _query = string.Empty;
         _isConfigured = false;
+        _refreshPendingWhileHidden = false;
+        _pendingResetScroll = false;
         _lastMeasuredItemWidth = -1f;
 
         if (_searchLineEdit is not null)
@@ -859,16 +885,52 @@ public partial class NGenericSelectScreen : Control
 
     public void RefreshNow(bool resetScroll = false)
     {
-        if (!_isConfigured || _itemGrid is null)
+        if (!_isConfigured)
             return;
 
-        RebuildCurrentLayout(resetScroll, updateExistingViews: true);
+        if (_itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
+        {
+            RequestRefreshWhenVisible(resetScroll);
+            return;
+        }
+
+        _refreshPendingWhileHidden = false;
+        bool effectiveResetScroll = resetScroll || _pendingResetScroll;
+        _pendingResetScroll = false;
+        RebuildCurrentLayout(effectiveResetScroll, updateExistingViews: true);
+    }
+
+    private void RequestRefreshWhenVisible(bool resetScroll)
+    {
+        _refreshPendingWhileHidden = true;
+        _pendingResetScroll |= resetScroll;
+    }
+
+    private void SuspendHiddenScreenWork()
+    {
+        CancelPendingSearchRefresh();
+        CancelPendingMaterialization();
+        CancelRelayoutAnimations(applyFinalPositions: false);
+
+        if (_multiplierBadge is not null)
+            _multiplierBadge.Visible = false;
+
+        if (!_isConfigured)
+            return;
+
+        ClearItemViews();
+        ClearGeneratedGroupContainers();
+        ClearLayoutTracking();
+        RequestRefreshWhenVisible(resetScroll: false);
     }
 
     private void RebuildCurrentLayout(bool resetScroll, bool updateExistingViews)
     {
-        if (!_isConfigured || _itemGrid is null)
+        if (!_isConfigured || _itemGrid is null || !IsVisibleInTree())
+        {
+            RequestRefreshWhenVisible(resetScroll);
             return;
+        }
 
         CancelPendingMaterialization();
         CancelPendingSearchRefresh();
@@ -907,8 +969,11 @@ public partial class NGenericSelectScreen : Control
 
     private void RebuildCurrentLayoutAfterSingleRemoval(bool updateExistingViews)
     {
-        if (!_isConfigured || _itemGrid is null)
+        if (!_isConfigured || _itemGrid is null || !IsVisibleInTree())
+        {
+            RequestRefreshWhenVisible(resetScroll: false);
             return;
+        }
 
         _visibleItems.Clear();
         _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
@@ -2167,6 +2232,15 @@ public partial class NGenericSelectScreen : Control
             _visibleLayoutNodes.Add(control);
     }
 
+    private void UntrackVisibleLayoutNode(Control control)
+    {
+        if (!_visibleLayoutNodeSet.Remove(control))
+            return;
+
+        _visibleLayoutNodes.Remove(control);
+        _lastCullNodeCount = -1;
+    }
+
     private int MaterializeViewportItemViews(int maxCount, bool updateExistingViews = false)
     {
         if (_itemGrid is null || maxCount <= 0)
@@ -2319,7 +2393,7 @@ public partial class NGenericSelectScreen : Control
 
     private void StartThreadedPreloadThenMaterializeAll()
     {
-        if (_itemGrid is null)
+        if (_itemGrid is null || !IsVisibleInTree())
             return;
 
         IGenericSelectItem[] preloadItems = _itemLayoutOrder
@@ -2345,7 +2419,7 @@ public partial class NGenericSelectScreen : Control
         IReadOnlyList<IGenericSelectItem> preloadItems,
         CancellationToken token)
     {
-        int maxDegreeOfParallelism = Math.Max(1, Math.Min(preloadItems.Count, System.Environment.ProcessorCount - 1));
+        int maxDegreeOfParallelism = Math.Max(1, Math.Min(preloadItems.Count, MaxPreloadConcurrency));
 
         try
         {
@@ -2403,7 +2477,7 @@ public partial class NGenericSelectScreen : Control
 
         FlushThreadedPreloadWarnings();
 
-        if (!_isConfigured || _itemGrid is null || !IsInsideTree())
+        if (!_isConfigured || _itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
             return;
 
         FinalizeEagerMaterialization(warnOnMismatch: true);
@@ -2432,11 +2506,17 @@ public partial class NGenericSelectScreen : Control
     private async System.Threading.Tasks.Task DeferredVisibleRefreshAsync(ulong generation)
     {
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (_scheduledVisibleRefreshGeneration == generation)
+            _scheduledVisibleRefreshGeneration = ulong.MaxValue;
 
         if (generation != _layoutGeneration || !IsInsideTree() || !IsVisibleInTree())
             return;
 
-        RefreshNow(resetScroll: false);
+        bool resetScroll = _pendingResetScroll;
+        if (_refreshPendingWhileHidden || resetScroll)
+            RefreshNow(resetScroll);
+        else
+            RefreshNow(resetScroll: false);
     }
 
     private void ScheduleDeferredEagerMaterializationRefresh()
@@ -2742,9 +2822,9 @@ public partial class NGenericSelectScreen : Control
             return content;
         }
 
-        NSelectItemSlot slot = new();
-        slot.SetContent(content, _layout.ItemSize);
+        NSelectItemSlot slot = NSelectItemSlot.GetPooled();
         slot.ContentReady = readyContent => NotifyItemViewReady(item, readyContent);
+        slot.SetContent(content, _layout.ItemSize);
         return slot;
     }
 
@@ -2933,10 +3013,27 @@ public partial class NGenericSelectScreen : Control
             return;
 
         Control view = item.View;
+        if (_relayoutTweens.Remove(view, out Tween? tween) && GodotObject.IsInstanceValid(tween))
+            tween.Kill();
+
+        _relayoutTargets.Remove(view);
+        _relayoutPositionLockedViews.Remove(view);
+        UntrackVisibleLayoutNode(view);
         view.GetParent()?.RemoveChild(view);
         ClearActivationBinding(view);
-        view.QueueFreeSafely();
+        QueueFreeItemViewSafely(view);
         item.SetView(null);
+    }
+
+
+    private static void QueueFreeItemViewSafely(Control view)
+    {
+        // GeneratedNodePool disconnects signals recursively. Detach the game-native
+        // poolable content first so its own NodePool can reset it normally.
+        if (view is NSelectItemSlot slot)
+            slot.ReleaseContentToPool();
+
+        view.QueueFreeSafely();
     }
 
     private void AnimateAndRemoveItemView(IGenericSelectItem item)
@@ -2951,7 +3048,7 @@ public partial class NGenericSelectScreen : Control
         if (_itemGrid is null || !view.Visible || !view.IsInsideTree())
         {
             view.GetParent()?.RemoveChild(view);
-            view.QueueFreeSafely();
+            QueueFreeItemViewSafely(view);
             return;
         }
 
@@ -2973,7 +3070,7 @@ public partial class NGenericSelectScreen : Control
         tween.Parallel().TweenProperty(view, "modulate", Colors.Black, 0.14f)
             .SetEase(Tween.EaseType.In)
             .SetTrans(Tween.TransitionType.Cubic);
-        tween.TweenCallback(Callable.From(view.QueueFreeSafely));
+        tween.TweenCallback(Callable.From(() => QueueFreeItemViewSafely(view)));
     }
 
     private void NormalizeItemForGrid(Control control)
@@ -3141,11 +3238,31 @@ public partial class NGenericSelectScreen : Control
             float bottom = top + Math.Max(controlSize.Y, control.CustomMinimumSize.Y);
             control.Visible = bottom >= cullTop && top <= cullBottom;
         }
+
+        RecycleDistantItemViews();
     }
 
-    private static void KeepHoverTipsAboveSelectScreen()
+    private void RecycleDistantItemViews()
     {
-        NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+        if (_materializationMode != SelectMaterializationMode.Lazy || _itemGrid is null)
+            return;
+
+        Rect2 retentionRect = BuildViewportMaterializeRect(_targetScrollY, RecycleRowsBehind, RecycleRowsAhead);
+        foreach (IGenericSelectItem item in _itemLayoutOrder.ToArray())
+        {
+            if (item.View is not Control view || !GodotObject.IsInstanceValid(view))
+                continue;
+
+            if (_relayoutTweens.ContainsKey(view) || _relayoutPositionLockedViews.Contains(view))
+                continue;
+
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                continue;
+
+            Rect2 itemRect = new(layout.Position, layout.Size);
+            if (!itemRect.Intersects(retentionRect, includeBorders: true))
+                RemoveItemView(item);
+        }
     }
 
     private void UpdateMultiplierBadge()

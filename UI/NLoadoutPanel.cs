@@ -93,6 +93,8 @@ public partial class NLoadoutPanel : Panel
 	private bool _loadoutItemsAdded;
 	private string? _lastLoadoutItemInitError;
 	private bool _runStartedConnected;
+	private bool _isReady;
+	private Control? _layoutParent;
 	
 	public event Action? VisibilityStateChanged;
 
@@ -114,17 +116,27 @@ public partial class NLoadoutPanel : Panel
 		
 		BindRunHooks();
 		LoadoutPanelAccessService.AccessChanged += OnLoadoutPanelAccessChanged;
+
+		_layoutParent = GetParent<Control>();
+		if (_layoutParent is not null)
+			_layoutParent.Resized += OnPanelLayoutChanged;
+		Resized += OnPanelLayoutChanged;
+
+		_isReady = true;
 		SnapToTargetPosition();
-		
-		// Recompute whenever the VBox minimum size changes
-		// _marginContainer.MinimumSizeChanged += UpdatePanelHeight;
-		// _itemsContainer.MinimumSizeChanged += UpdatePanelHeight;
 	}
 
 	public override void _ExitTree()
 	{
 		UnbindRunHooks();
 		LoadoutPanelAccessService.AccessChanged -= OnLoadoutPanelAccessChanged;
+
+		if (_layoutParent is not null && IsInstanceValid(_layoutParent))
+			_layoutParent.Resized -= OnPanelLayoutChanged;
+		Resized -= OnPanelLayoutChanged;
+		_layoutParent = null;
+		_isReady = false;
+		SetProcess(false);
 
 		if (_instance == this)
 			_instance = null;
@@ -255,6 +267,9 @@ public partial class NLoadoutPanel : Panel
 		Hidden = hidden;
 		Shown = shown;
 
+		if (_isReady)
+			StartSlideAnimation();
+
 		if (notify)
 			VisibilityStateChanged?.Invoke();
 	}
@@ -275,14 +290,48 @@ public partial class NLoadoutPanel : Panel
 	private void UpdatePosition(double delta)
 	{
 		Vector2 target = GetTargetPosition();
-		
+		if (SlideSpeed <= 0f || Position.DistanceSquaredTo(target) <= 0.25f)
+		{
+			Position = target;
+			SetProcess(false);
+			return;
+		}
+
 		float weight = Mathf.Clamp((float)(SlideSpeed * delta), 0f, 1f);
 		Position = Position.Lerp(target, weight);
+	}
+
+	private void StartSlideAnimation()
+	{
+		if (!_isReady || !IsInsideTree())
+			return;
+
+		Vector2 target = GetTargetPosition();
+		if (Position.DistanceSquaredTo(target) <= 0.25f)
+		{
+			Position = target;
+			SetProcess(false);
+			return;
+		}
+
+		SetProcess(true);
 	}
 
 	private void SnapToTargetPosition()
 	{
 		Position = GetTargetPosition();
+		SetProcess(false);
+	}
+
+	private void OnPanelLayoutChanged()
+	{
+		if (!_isReady)
+			return;
+
+		if (IsProcessing())
+			StartSlideAnimation();
+		else
+			SnapToTargetPosition();
 	}
 
 	private Vector2 GetTargetPosition()
@@ -318,7 +367,7 @@ public partial class NLoadoutPanel : Panel
 			}, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
 				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 				AddRelicPoolFilters(builder);
@@ -359,7 +408,7 @@ public partial class NLoadoutPanel : Panel
 			builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(10, new Vector2(68f, 68f), 32, 32);
 				builder.ActionButton(
 					"remove_all_relics",
@@ -390,7 +439,7 @@ public partial class NLoadoutPanel : Panel
 			}, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(10, new Vector2(60f, 60f), 32, 32);
 				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 				AddPotionPoolFilters(builder);
@@ -1012,9 +1061,6 @@ public partial class NLoadoutPanel : Panel
 		Vector2 size = Size;
 		size.Y = contentMin.Y;
 		Size = size;
-		//recenter it
-		Vector2 pos = Position;
-		pos.Y = (GetParent<Control>().Size.Y - Size.Y) / 2f;
-		Position = pos;
+		SnapToTargetPosition();
 	}
 }

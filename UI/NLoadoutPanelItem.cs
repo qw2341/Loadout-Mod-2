@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
@@ -13,6 +14,9 @@ namespace Loadout.UI;
 
 public partial class NLoadoutPanelItem : TextureButton
 {
+	private const float AnimationProgressEpsilon = 0.0001f;
+	private const string FallbackSelectScreenPath = "res://UI/Screens/SampleSelectScreen.tscn";
+
 	[Export]
 	public string TextureFileName = "LoadoutBag.png";
 
@@ -28,7 +32,7 @@ public partial class NLoadoutPanelItem : TextureButton
 	[Export]
 	public string AnimationId = LoadoutPanelItemAnimationManager.DefaultAnimationId;
 
-	[Export] 
+	[Export]
 	public int MinimumSizeY = 76;
 
 	[Export]
@@ -36,12 +40,13 @@ public partial class NLoadoutPanelItem : TextureButton
 
 	[Export]
 	public string Description = string.Empty;
-	
+
 	private PanelItemAnimationProfile _animationProfile;
 	private float _hoverProgress;
 	private bool _isHovered;
 	private bool _isInsideContainer;
 	private bool _quickActionInFlight;
+	private bool _visualsReady;
 	private Vector2 _baseScale = Vector2.One;
 	private Vector2 _basePosition;
 	private TextureRect _outline;
@@ -53,6 +58,9 @@ public partial class NLoadoutPanelItem : TextureButton
 	private Action<NGenericSelectScreen> _afterOpen;
 	private Action<NGenericSelectScreen> _alternateBeforeOpen;
 	private Action<NGenericSelectScreen> _alternateAfterOpen;
+
+	private static readonly Dictionary<string, Texture2D> OutlineTextureCache = new(StringComparer.Ordinal);
+	private static PackedScene _fallbackSelectScreenScene;
 	private static readonly Color OutlineRestColor = Colors.Black;
 	private static readonly Shader OutlineTintShader = new()
 	{
@@ -61,8 +69,8 @@ public partial class NLoadoutPanelItem : TextureButton
 		       uniform vec4 outline_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 
 		       void fragment() {
-		       	vec4 tex = texture(TEXTURE, UV);
-		       	COLOR = vec4(outline_color.rgb, tex.a * outline_color.a);
+		           vec4 tex = texture(TEXTURE, UV);
+		           COLOR = vec4(outline_color.rgb, tex.a * outline_color.a);
 		       }
 		       """
 	};
@@ -91,6 +99,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		SetCustomMinimumSize(new Vector2(0, MinimumSizeY));
 
 		_animationProfile = ResolveAnimationProfile();
+		_visualsReady = true;
 		EnsureOutlineNode();
 		ApplySkinTexture();
 		UpdatePivotOffset();
@@ -106,8 +115,8 @@ public partial class NLoadoutPanelItem : TextureButton
 
 		if (UseGlobalAnimation)
 			LoadoutPanelItemAnimationManager.AnimationChanged += OnAnimationChanged;
-		
-		// GD.Print($"Initialized Loadout Panel Item, Size: {Size}");
+
+		SetProcess(false);
 	}
 
 	public override void _ExitTree()
@@ -123,12 +132,44 @@ public partial class NLoadoutPanelItem : TextureButton
 		if (UseGlobalAnimation)
 			LoadoutPanelItemAnimationManager.AnimationChanged -= OnAnimationChanged;
 
+		_visualsReady = false;
+		SetProcess(false);
+		NHoverTipSet.Remove(this);
+	}
+
+	public override void _Notification(int what)
+	{
+		base._Notification(what);
+
+		if (what != NotificationVisibilityChanged || IsVisibleInTree())
+			return;
+
+		if (!_visualsReady)
+		{
+			SetProcess(false);
+			return;
+		}
+
+		_isHovered = false;
+		_hoverProgress = 0f;
+		_glowPulseTime = 0f;
+		ApplyAnimationVisuals();
+		SetProcess(false);
 		NHoverTipSet.Remove(this);
 	}
 
 	public override void _Process(double delta)
 	{
-		_glowPulseTime += (float)delta;
+		if (!IsVisibleInTree())
+		{
+			SetProcess(false);
+			return;
+		}
+
+		bool pulseActive = IsGlowPulseActive();
+		if (pulseActive)
+			_glowPulseTime += (float)delta;
+
 		float target = _isHovered ? 1f : 0f;
 		_hoverProgress = LoadoutPanelItemAnimationManager.StepProgress(
 			_hoverProgress,
@@ -136,7 +177,13 @@ public partial class NLoadoutPanelItem : TextureButton
 			_animationProfile,
 			(float)delta);
 
+		if (Mathf.Abs(_hoverProgress - target) <= AnimationProgressEpsilon)
+			_hoverProgress = target;
+
 		ApplyAnimationVisuals();
+
+		if (_hoverProgress == target && !pulseActive)
+			SetProcess(false);
 	}
 
 	public override void _GuiInput(InputEvent @event)
@@ -181,6 +228,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		ApplySkinTexture();
 		UpdatePivotOffset();
 		ApplyAnimationVisuals();
+		UpdateAnimationProcessing();
 	}
 
 	private void ApplySkinTexture()
@@ -250,6 +298,10 @@ public partial class NLoadoutPanelItem : TextureButton
 			Material = _outlineMaterial
 		};
 		_outline.SetAnchorsPreset(LayoutPreset.FullRect);
+		_outline.OffsetLeft = 0f;
+		_outline.OffsetTop = 0f;
+		_outline.OffsetRight = 0f;
+		_outline.OffsetBottom = 0f;
 		AddChild(_outline);
 	}
 
@@ -278,7 +330,12 @@ public partial class NLoadoutPanelItem : TextureButton
 			return null;
 
 		string texturePath = $"res://Loadout/images/relics/{skinId}/outline/{TextureFileName}";
-		return ResourceLoader.Exists(texturePath) ? GD.Load<Texture2D>(texturePath) : null;
+		if (OutlineTextureCache.TryGetValue(texturePath, out Texture2D cachedTexture))
+			return cachedTexture;
+
+		Texture2D texture = ResourceLoader.Exists(texturePath) ? GD.Load<Texture2D>(texturePath) : null;
+		OutlineTextureCache[texturePath] = texture;
+		return texture;
 	}
 
 	private void ApplyOutlineVisuals(float easedProgress)
@@ -302,15 +359,28 @@ public partial class NLoadoutPanelItem : TextureButton
 			: 0f;
 		Color outlineColor = OutlineRestColor.Lerp(_animationProfile.GlowColor, glowAmount);
 		_outlineMaterial?.SetShaderParameter("outline_color", outlineColor);
-		_outline.Scale = Vector2.One;
-		_outline.Position = Vector2.Zero;
-		_outline.Size = Size;
-		_outline.PivotOffset = Size * 0.5f;
+	}
+
+	private bool IsGlowPulseActive()
+	{
+		return _isHovered
+			&& _animationProfile.GlowEnabled
+			&& _animationProfile.GlowPulseSpeed > 0f
+			&& _outline is not null
+			&& IsInstanceValid(_outline)
+			&& _outline.Texture is not null;
+	}
+
+	private void UpdateAnimationProcessing()
+	{
+		bool transitioning = Mathf.Abs(_hoverProgress - (_isHovered ? 1f : 0f)) > AnimationProgressEpsilon;
+		SetProcess(IsVisibleInTree() && (transitioning || IsGlowPulseActive()));
 	}
 
 	private void OnMouseEntered()
 	{
 		_isHovered = true;
+		SetProcess(true);
 		SfxCmd.Play(FmodSfx.uiHover);
 		ShowHoverTip();
 	}
@@ -318,6 +388,7 @@ public partial class NLoadoutPanelItem : TextureButton
 	private void OnMouseExited()
 	{
 		_isHovered = false;
+		UpdateAnimationProcessing();
 		NHoverTipSet.Remove(this);
 	}
 
@@ -354,6 +425,7 @@ public partial class NLoadoutPanelItem : TextureButton
 			return;
 
 		ApplySkinTexture();
+		UpdateAnimationProcessing();
 	}
 
 	private void OnAnimationChanged(string _)
@@ -364,6 +436,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		_animationProfile = ResolveAnimationProfile();
 		UpdatePivotOffset();
 		ApplyAnimationVisuals();
+		UpdateAnimationProcessing();
 	}
 
 	private Func<Task> GetQuickActionForGesture(InputEventMouseButton mouseButton)
@@ -385,8 +458,14 @@ public partial class NLoadoutPanelItem : TextureButton
 
 		if (screen == null)
 		{
-			var scene = GD.Load<PackedScene>("res://UI/Screens/SampleSelectScreen.tscn");
-			screen = scene.Instantiate<NGenericSelectScreen>();
+			_fallbackSelectScreenScene ??= GD.Load<PackedScene>(FallbackSelectScreenPath);
+			if (_fallbackSelectScreenScene is null)
+			{
+				GD.PushError($"LoadoutPanelItem: failed to load fallback select screen '{FallbackSelectScreenPath}'.");
+				return;
+			}
+
+			screen = _fallbackSelectScreenScene.Instantiate<NGenericSelectScreen>();
 			if (alternate)
 				_alternateBoundScreen = screen;
 			else
