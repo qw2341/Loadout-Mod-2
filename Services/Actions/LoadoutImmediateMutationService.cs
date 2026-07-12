@@ -85,12 +85,25 @@ public static class LoadoutImmediateMutationService
     private static int _nextHostSequence;
     private static int _lastAppliedHostSequence;
     private static bool _clientApplyQueued;
+    private static int _runGeneration;
     private static readonly AsyncLocal<int> RemoveAllCardsDepth = new();
 
     internal static bool IsRemovingAllCards => RemoveAllCardsDepth.Value > 0;
 
     public static void OnRunLaunched()
     {
+        Interlocked.Increment(ref _runGeneration);
+        LoadoutRunContentChangeService.ResetQueuedChanges();
+        LoadoutMutationSerialExecutor.Reset();
+        _nextRequestId = 0;
+        _nextHostSequence = 0;
+        lock (SequenceGate)
+        {
+            _lastAppliedHostSequence = 0;
+            _clientApplyQueued = false;
+            PendingHostApplies.Clear();
+        }
+
         try
         {
             INetGameService netService = RunManager.Instance.NetService;
@@ -98,17 +111,7 @@ public static class LoadoutImmediateMutationService
                 return;
 
             RegisterRunNetService(netService);
-            LoadoutRunContentChangeService.ResetQueuedChanges();
-            LoadoutMutationSerialExecutor.Reset();
             LoadoutModelRegistry.WarmUp();
-            _nextRequestId = 0;
-            _nextHostSequence = 0;
-            lock (SequenceGate)
-            {
-                _lastAppliedHostSequence = 0;
-                _clientApplyQueued = false;
-                PendingHostApplies.Clear();
-            }
         }
         catch (Exception exception)
         {
@@ -118,14 +121,26 @@ public static class LoadoutImmediateMutationService
 
     public static void OnRunCleaningUp()
     {
-        UnregisterRunNetService();
-        LoadoutRunContentChangeService.ResetQueuedChanges();
+        Interlocked.Increment(ref _runGeneration);
         LoadoutMutationSerialExecutor.Reset();
+        LoadoutRunContentChangeService.ResetQueuedChanges();
+        _nextRequestId = 0;
+        _nextHostSequence = 0;
         lock (SequenceGate)
         {
             _lastAppliedHostSequence = 0;
             _clientApplyQueued = false;
             PendingHostApplies.Clear();
+        }
+
+        try
+        {
+            UnregisterRunNetService();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: failed unregistering run net service during cleanup. {exception.Message}");
+            _runNetService = null;
         }
     }
 
@@ -637,19 +652,23 @@ public static class LoadoutImmediateMutationService
 
         LoadoutMutationSerialExecutor.Enqueue(async () =>
         {
+            int runGeneration = _runGeneration;
             try
             {
                 await ApplyAsync(payload);
             }
             finally
             {
-                lock (SequenceGate)
+                if (runGeneration == _runGeneration)
                 {
-                    _lastAppliedHostSequence = sequence;
-                    _clientApplyQueued = false;
-                }
+                    lock (SequenceGate)
+                    {
+                        _lastAppliedHostSequence = sequence;
+                        _clientApplyQueued = false;
+                    }
 
-                TryScheduleNextClientApply();
+                    TryScheduleNextClientApply();
+                }
             }
         }, $"host mutation {payload.Kind} #{sequence}");
     }
@@ -668,9 +687,13 @@ public static class LoadoutImmediateMutationService
             return TryEnqueueSynchronizedDeckCardCopies(payload);
 
         payload.Sequence = ++_nextHostSequence;
+        int runGeneration = _runGeneration;
         LoadoutMutationSerialExecutor.Enqueue(async () =>
         {
             await ApplyAsync(payload);
+
+            if (runGeneration != _runGeneration)
+                return;
 
             if (netService is not null && netService.Type == NetGameType.Host)
             {
@@ -1337,10 +1360,11 @@ public static class LoadoutImmediateMutationService
                     Task<RelicModel> obtainTask = RelicCmd.Obtain(relic, targetPlayer);
 
                     // RelicCmd inserts the relic before it awaits AfterObtained.
-                    // Pickup-effect relics can then wait on the target player's native
-                    // choice screen, so let that effect continue without blocking the
-                    // authoritative broadcast or later immediate mutations.
-                    if (relic.HasUponPickupEffect && !obtainTask.IsCompleted)
+                    // Some relics expose their screen as a pickup effect (Kifuda),
+                    // while others await RewardsCmd without that flag (Small Capsule).
+                    // Any incomplete native effect must continue independently so no
+                    // choice/reward screen can block broadcasts or later mutations.
+                    if (!obtainTask.IsCompleted)
                         _ = TaskHelper.RunSafely(obtainTask);
                     else
                         await obtainTask;

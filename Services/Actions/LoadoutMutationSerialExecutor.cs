@@ -18,6 +18,7 @@ public static class LoadoutMutationSerialExecutor
     private static readonly object Gate = new();
     private static readonly Queue<QueuedMutation> Pending = new();
     private static bool _isDraining;
+    private static int _generation;
 
     public static int PendingCount
     {
@@ -32,8 +33,10 @@ public static class LoadoutMutationSerialExecutor
     {
         ArgumentNullException.ThrowIfNull(mutation);
 
+        int generation;
         lock (Gate)
         {
+            generation = _generation;
             Pending.Enqueue(new QueuedMutation(mutation, description));
             if (_isDraining)
                 return;
@@ -41,27 +44,32 @@ public static class LoadoutMutationSerialExecutor
             _isDraining = true;
         }
 
-        TaskHelper.RunSafely(DrainAsync());
+        _ = TaskHelper.RunSafely(DrainAsync(generation));
     }
 
     public static void Reset()
     {
         lock (Gate)
         {
-            // Do not mark the executor idle while an operation is still awaiting.
-            // New-run work must remain behind that in-flight native command rather
-            // than starting a second drain concurrently.
+            // Invalidate an in-flight drain as well as its pending work. A native
+            // choice/reward screen cannot be forcibly cancelled here, but it must
+            // never keep a later run behind the old run's executor.
+            _generation++;
             Pending.Clear();
+            _isDraining = false;
         }
     }
 
-    private static async Task DrainAsync()
+    private static async Task DrainAsync(int generation)
     {
         while (true)
         {
             QueuedMutation next;
             lock (Gate)
             {
+                if (generation != _generation)
+                    return;
+
                 if (Pending.Count == 0)
                 {
                     _isDraining = false;
