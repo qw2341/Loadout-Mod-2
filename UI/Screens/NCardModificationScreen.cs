@@ -956,6 +956,11 @@ public partial class NCardModificationScreen : Control
         if (_item is null)
             return;
 
+        // Make the card currently shown by the editor authoritative before the
+        // exact-clone mutation is queued. Both operations share the FIFO mutation
+        // executor, so host and guests clone the same finalized source state.
+        CommitPendingTemporaryModification();
+
         int amount = NGenericSelectScreen.GetCurrentInputMultiplier();
         if (!CardModifier.AddCopiesToTargetDeck(_item, amount))
         {

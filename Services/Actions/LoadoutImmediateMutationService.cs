@@ -139,18 +139,17 @@ public static class LoadoutImmediateMutationService
     }
 
     public static bool RequestAddDeckCardCopies(
-        ModelId modelId,
-        int amount,
-        LoadoutTargetSelection target,
-        int cardUpgradeCount = 0)
+        LoadoutOwnedItem<CardModel> item,
+        int amount)
     {
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.AddDeckCardCopies,
-            ModelId = modelId,
+            ModelId = item.Model.Id,
             Amount = amount,
-            Target = target,
-            CardUpgradeCount = Math.Max(0, cardUpgradeCount)
+            Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+            OwnedItemIndex = item.Index,
+            ExpectedModelId = item.Model.Id
         });
     }
 
@@ -784,17 +783,57 @@ public static class LoadoutImmediateMutationService
 
     private static async Task ApplyAddDeckCardCopiesAsync(LoadoutImmediateMutationPayload payload, Player requester)
     {
-        if (payload.Amount <= 0 || ResolveCanonicalCard(payload.ModelId) is not { } canonicalCard)
+        if (payload.Amount <= 0 || TryGetOwnedDeckCard(payload, requester) is not { } sourceItem)
             return;
 
-        foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
+        await AddExactDeckCardCopiesAsync(
+            sourceItem.Owner,
+            sourceItem.Model,
+            payload.Amount);
+    }
+
+    private static async Task<IReadOnlyList<CardModel>> AddExactDeckCardCopiesAsync(
+        Player targetPlayer,
+        CardModel sourceCard,
+        int amount)
+    {
+        List<CardModel> cards = new(amount);
+        for (int i = 0; i < amount; i++)
         {
-            await AddDeckCardCopiesAsync(
-                targetPlayer,
-                canonicalCard,
-                payload.Amount,
-                payload.CardUpgradeCount);
+            try
+            {
+                // RunState.CloneCard duplicates the complete mutable card state without
+                // assigning CardModel._cloneOf. BaseLib's SavedSpireField CopyOnClone
+                // callback also carries the per-copy temporary modification snapshot.
+                cards.Add(targetPlayer.RunState.CloneCard(sourceCard));
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"LoadoutImmediateMutation: stopped cloning deck card '{sourceCard.Id}' for player {targetPlayer.NetId} after {i}/{amount}. {exception.Message}");
+                break;
+            }
         }
+
+        if (cards.Count == 0)
+            return [];
+
+        IReadOnlyList<CardPileAddResult> addedCards;
+        try
+        {
+            addedCards = await CardPileCmd.Add(cards, targetPlayer.Deck);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: failed adding {cards.Count} exact deck copies of '{sourceCard.Id}' to player {targetPlayer.NetId}. {exception.Message}");
+            return [];
+        }
+
+        if (IsLocalPlayer(targetPlayer))
+            PreviewAddedCards(addedCards);
+        return addedCards
+            .Where(result => result.success)
+            .Select(result => result.cardAdded)
+            .ToList();
     }
 
     private static async Task<IReadOnlyList<CardModel>> AddDeckCardCopiesAsync(

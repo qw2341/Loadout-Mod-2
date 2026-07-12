@@ -106,11 +106,7 @@ public class CardModifier
 
     public static bool AddCopiesToTargetDeck(LoadoutOwnedItem<CardModel> item, int amount)
     {
-        return LoadoutImmediateMutationService.RequestAddDeckCardCopies(
-            item.Model.Id,
-            amount,
-            LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
-            item.Model.CurrentUpgradeLevel);
+        return LoadoutImmediateMutationService.RequestAddDeckCardCopies(item, amount);
     }
 
     private static void OpenCardModificationScreen(
