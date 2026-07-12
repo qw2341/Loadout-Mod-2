@@ -363,7 +363,7 @@ public partial class NLoadoutPanel : Panel
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription}",
 				CreateView = (relic, _) => CreateRelicGridItem(relic),
-				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
+				BindActivationWithCleanup = (_, view, activate) => BindRelicActivationWithCleanup(view, activate)
 			}, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
@@ -403,7 +403,7 @@ public partial class NLoadoutPanel : Panel
 				GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
 				GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)} {item.Model.DynamicDescription}",
 				CreateView = (item, _) => CreateOwnedRelicGridItem(item.Model),
-				BindActivation = (_, view, activate) => BindRelicActivation(view, activate)
+				BindActivationWithCleanup = (_, view, activate) => BindRelicActivationWithCleanup(view, activate)
 			},
 			builder =>
 			{
@@ -435,7 +435,7 @@ public partial class NLoadoutPanel : Panel
 				GetName = potion => CommonHelpers.FormatPotionTitle(potion),
 				GetSearchText = potion => $"{potion.Id} {CommonHelpers.FormatPotionTitle(potion)} {potion.DynamicDescription}",
 				CreateView = (potion, _) => CreatePotionGridItem(potion),
-				BindActivation = (_, view, activate) => CommonHelpers.BindGuiReleaseActivation(view, activate)
+				BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
 			}, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
@@ -481,7 +481,7 @@ public partial class NLoadoutPanel : Panel
 					CardPrinter.ForceRefreshCardVisuals(view, item.Model);
 					CardPrinter.UpdateCardGridItem(view, state);
 				},
-				BindActivation = (_, view, activate) => CardPrinter.BindCardActivation(view, activate)
+				BindActivationWithCleanup = (_, view, activate) => CardPrinter.BindCardActivationWithCleanup(view, activate)
 			},
 			builder =>
 			{
@@ -813,21 +813,37 @@ public partial class NLoadoutPanel : Panel
 		return holder;
 	}
 
-	private static bool BindRelicActivation(Control view, Action activate)
+	private static Action? BindRelicActivationWithCleanup(Control view, Action activate)
 	{
 		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicCollectionEntry collectionEntry))
 		{
-			collectionEntry.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicCollectionEntry>(_ => activate()));
-			return true;
+			Callable releasedCallable = Callable.From<NRelicCollectionEntry>(_ => activate());
+			collectionEntry.Connect(NClickableControl.SignalName.Released, releasedCallable);
+			return () =>
+			{
+				if (GodotObject.IsInstanceValid(collectionEntry)
+				    && collectionEntry.IsConnected(NClickableControl.SignalName.Released, releasedCallable))
+				{
+					collectionEntry.Disconnect(NClickableControl.SignalName.Released, releasedCallable);
+				}
+			};
 		}
 
 		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder basicHolder))
 		{
-			basicHolder.Connect(NClickableControl.SignalName.Released, Callable.From<NRelicBasicHolder>(_ => activate()));
-			return true;
+			Callable releasedCallable = Callable.From<NRelicBasicHolder>(_ => activate());
+			basicHolder.Connect(NClickableControl.SignalName.Released, releasedCallable);
+			return () =>
+			{
+				if (GodotObject.IsInstanceValid(basicHolder)
+				    && basicHolder.IsConnected(NClickableControl.SignalName.Released, releasedCallable))
+				{
+					basicHolder.Disconnect(NClickableControl.SignalName.Released, releasedCallable);
+				}
+			};
 		}
 
-		return CommonHelpers.BindGuiReleaseActivation(view, activate);
+		return CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate);
 	}
 
 	private static void AddPotionPoolFilters(SelectScreenBuilder<PotionModel> builder)

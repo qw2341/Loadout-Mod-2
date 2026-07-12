@@ -406,19 +406,32 @@ public class CommonHelpers
         }
     }
 
-    public static bool BindGuiReleaseActivation(Control view, Action activate)
+    public static Action? BindGuiReleaseActivationWithCleanup(Control view, Action activate)
     {
+        if (view is null || !GodotObject.IsInstanceValid(view))
+            return null;
+
         Control control = TryFindDescendantOrSelf(view, out NLabPotionHolder potionHolder)
             ? potionHolder!
             : view;
 
-        control.GuiInput += input =>
+        void OnGuiInput(InputEvent input)
         {
             if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
                 activate();
-        };
+        }
 
-        return true;
+        control.GuiInput += OnGuiInput;
+        return () =>
+        {
+            if (GodotObject.IsInstanceValid(control))
+                control.GuiInput -= OnGuiInput;
+        };
+    }
+
+    public static bool BindGuiReleaseActivation(Control view, Action activate)
+    {
+        return BindGuiReleaseActivationWithCleanup(view, activate) is not null;
     }
 
     public static bool TryFindDescendantOrSelf<TControl>(Node root, out TControl control)
@@ -812,7 +825,7 @@ public class CommonHelpers
         }
         finally
         {
-            clearActivation();
+            DeferActivationClear(clearActivation);
         }
     }
 
@@ -1069,9 +1082,23 @@ public class CommonHelpers
         }
         finally
         {
-            refresh(screen, selectItem);
-            clearActivation();
+            try
+            {
+                refresh(screen, selectItem);
+            }
+            finally
+            {
+                DeferActivationClear(clearActivation);
+            }
         }
+    }
+
+    private static void DeferActivationClear(Action clearActivation)
+    {
+        // NCardHolder emits its Pressed signal through CallDeferred. Keeping this
+        // gate closed until the next idle turn prevents multiple stale pooled
+        // callbacks from turning one physical click into several mutations.
+        Callable.From(clearActivation).CallDeferred();
     }
 
     public delegate Task<IReadOnlyList<LastActionEntry>> SelectActivationHandler(NGenericSelectScreen screen, IGenericSelectItem selectItem);

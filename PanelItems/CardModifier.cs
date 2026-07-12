@@ -34,7 +34,7 @@ public class CardModifier
                 CardPrinter.ForceRefreshCardVisuals(view, item.Model);
                 CardPrinter.UpdateCardGridItem(view, state);
             },
-            BindActivation = (item, view, activate) => CardPrinter.BindCardActivation(
+            BindActivationWithCleanup = (item, view, activate) => CardPrinter.BindCardActivationWithCleanup(
                 view,
                 activate,
                 () => OpenCardModificationScreen(modifierScreen, item, view))

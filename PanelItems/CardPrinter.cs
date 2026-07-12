@@ -47,7 +47,7 @@ public class CardPrinter
 			    ForceRefreshCardVisuals(view, card);
 			    UpdateCardGridItem(view, state);
 		    },
-		    BindActivation = (_, view, activate) => BindCardActivation(view, activate)
+		    BindActivationWithCleanup = (_, view, activate) => BindCardActivationWithCleanup(view, activate)
 	    };
 
 	    void BuildCardPrinterScreen(SelectScreenBuilder<CardModel> builder)
@@ -505,23 +505,55 @@ public class CardPrinter
 		    : CardModificationStateService.GetEffectivePermanentCardForDisplay(model);
     }
 
-    public static bool BindCardActivation(Control view, Action activate)
+    public static Action? BindCardActivationWithCleanup(Control view, Action activate)
     {
 	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder))
-		    return false;
+		    return null;
 
-	    holder.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
-	    return true;
+	    Callable pressedCallable = Callable.From<NCardHolder>(_ => activate());
+	    holder.Connect(NCardHolder.SignalName.Pressed, pressedCallable);
+	    return () =>
+	    {
+		    if (GodotObject.IsInstanceValid(holder)
+		        && holder.IsConnected(NCardHolder.SignalName.Pressed, pressedCallable))
+		    {
+			    holder.Disconnect(NCardHolder.SignalName.Pressed, pressedCallable);
+		    }
+	    };
+    }
+
+    public static Action? BindCardActivationWithCleanup(
+	    Control view,
+	    Action activate,
+	    Action alternateActivate)
+    {
+	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder))
+		    return null;
+
+	    Callable pressedCallable = Callable.From<NCardHolder>(_ => activate());
+	    Callable alternatePressedCallable = Callable.From<NCardHolder>(_ => alternateActivate());
+	    holder.Connect(NCardHolder.SignalName.Pressed, pressedCallable);
+	    holder.Connect(NCardHolder.SignalName.AltPressed, alternatePressedCallable);
+	    return () =>
+	    {
+		    if (!GodotObject.IsInstanceValid(holder))
+			    return;
+
+		    if (holder.IsConnected(NCardHolder.SignalName.Pressed, pressedCallable))
+			    holder.Disconnect(NCardHolder.SignalName.Pressed, pressedCallable);
+		    if (holder.IsConnected(NCardHolder.SignalName.AltPressed, alternatePressedCallable))
+			    holder.Disconnect(NCardHolder.SignalName.AltPressed, alternatePressedCallable);
+	    };
+    }
+
+    public static bool BindCardActivation(Control view, Action activate)
+    {
+	    return BindCardActivationWithCleanup(view, activate) is not null;
     }
 
     public static bool BindCardActivation(Control view, Action activate, Action alternateActivate)
     {
-	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder))
-		    return false;
-
-	    holder.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => activate()));
-	    holder.Connect(NCardHolder.SignalName.AltPressed, Callable.From<NCardHolder>(_ => alternateActivate()));
-	    return true;
+	    return BindCardActivationWithCleanup(view, activate, alternateActivate) is not null;
     }
 
     private static bool TryFindLiveCardHolder(Control view, out NGridCardHolder holder)

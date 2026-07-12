@@ -53,7 +53,7 @@ public class PowerGiver
 				PowerGiverStateService.GetCounter(PowerId(power)),
 				PowerGiverStateService.IsFavorite(PowerId(power)) && !showPowerGiverFavoritesOnly),
 			UpdateView = (power, view, _) => UpdatePowerGridItem(view, power, showPowerGiverFavoritesOnly),
-			BindActivation = (power, view, _) => BindPowerGiverActivation(
+			BindActivationWithCleanup = (power, view, _) => BindPowerGiverActivationWithCleanup(
 				screen,
 				power,
 				view,
@@ -276,14 +276,17 @@ public class PowerGiver
 		label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
 	}
 
-	private static bool BindPowerGiverActivation(
+	private static Action? BindPowerGiverActivationWithCleanup(
 		NGenericSelectScreen screen,
 		PowerModel power,
 		Control view,
 		Action<LastActionEntry> recordLastAction = null)
 	{
+		if (view is null || !GodotObject.IsInstanceValid(view))
+			return null;
+
 		string powerId = PowerId(power);
-		view.GuiInput += input =>
+		void OnGuiInput(InputEvent input)
 		{
 			if (input is not InputEventMouseButton mouseButton || mouseButton.Pressed)
 				return;
@@ -316,9 +319,14 @@ public class PowerGiver
 
 			screen.RefreshCurrentItemStates();
 			view.AcceptEvent();
-		};
+		}
 
-		return true;
+		view.GuiInput += OnGuiInput;
+		return () =>
+		{
+			if (GodotObject.IsInstanceValid(view))
+				view.GuiInput -= OnGuiInput;
+		};
 	}
 
 	private static void AddPowerGiverSidebarDropdowns(

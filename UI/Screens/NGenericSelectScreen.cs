@@ -134,6 +134,7 @@ public partial class NGenericSelectScreen : Control
     private readonly HashSet<Control> _relayoutPositionLockedViews = new();
     private readonly Dictionary<Control, IGenericSelectItem> _activationItemsByView = new();
     private readonly HashSet<Control> _activationBoundViews = new();
+    private readonly Dictionary<Control, Action> _activationUnbindByView = new();
     private readonly List<Control> _pendingCustomSidebarControls = new();
     private readonly List<Control> _pendingCustomSidebarBottomControls = new();
 
@@ -242,6 +243,7 @@ public partial class NGenericSelectScreen : Control
         // Closing a screen only suspends it, but leaving the tree is the correct
         // time to return retained native views and wrapper slots to NodePool.
         ClearItemViews();
+        ClearAllActivationBindings();
         ClearGeneratedGroupContainers();
         ClearLayoutTracking();
     }
@@ -1122,8 +1124,7 @@ public partial class NGenericSelectScreen : Control
         {
             if (!GodotObject.IsInstanceValid(view) || item.View != view)
             {
-                _activationItemsByView.Remove(view);
-                _activationBoundViews.Remove(view);
+                ClearActivationBinding(view);
                 continue;
             }
 
@@ -3071,25 +3072,46 @@ public partial class NGenericSelectScreen : Control
             return;
 
         Action activate = () => ActivateCurrentItemForView(view);
-        if (item.TryBindActivation(activate))
+        if (item.TryBindActivation(activate, out Action? customUnbind))
+        {
+            if (customUnbind is not null)
+                _activationUnbindByView[view] = customUnbind;
             return;
+        }
 
         if (view is NClickableControl clickableControl || TryFindDescendant(view, out clickableControl))
         {
-            clickableControl.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => ActivateCurrentItemForView(view)));
+            Callable releasedCallable = Callable.From<NClickableControl>(_ => ActivateCurrentItemForView(view));
+            clickableControl.Connect(NClickableControl.SignalName.Released, releasedCallable);
+            _activationUnbindByView[view] = () =>
+            {
+                if (GodotObject.IsInstanceValid(clickableControl)
+                    && clickableControl.IsConnected(NClickableControl.SignalName.Released, releasedCallable))
+                {
+                    clickableControl.Disconnect(NClickableControl.SignalName.Released, releasedCallable);
+                }
+            };
             return;
         }
 
         if (view is BaseButton button || TryFindDescendant(view, out button))
-            button.Pressed += () => ActivateCurrentItemForView(view);
+        {
+            void OnPressed() => ActivateCurrentItemForView(view);
+            button.Pressed += OnPressed;
+            _activationUnbindByView[view] = () =>
+            {
+                if (GodotObject.IsInstanceValid(button))
+                    button.Pressed -= OnPressed;
+            };
+        }
 
-        // For non-button views, the adapter should provide BindActivation.
+        // For non-button views, the adapter should provide BindActivationWithCleanup.
     }
 
     private void SetItemView(IGenericSelectItem item, Control view)
     {
         if (item.View is Control previousView && previousView != view)
-            _activationItemsByView.Remove(previousView);
+            ClearActivationBinding(previousView);
 
         item.SetView(view);
         _activationItemsByView[view] = item;
@@ -3097,8 +3119,34 @@ public partial class NGenericSelectScreen : Control
 
     private void ClearActivationBinding(Control view)
     {
+        if (_activationUnbindByView.Remove(view, out Action? unbind))
+        {
+            try
+            {
+                unbind();
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"GenericSelectScreen: failed to unbind a recycled item view. {exception.Message}");
+            }
+        }
+
         _activationItemsByView.Remove(view);
         _activationBoundViews.Remove(view);
+    }
+
+    private void ClearAllActivationBindings()
+    {
+        Control[] boundViews = _activationBoundViews
+            .Concat(_activationUnbindByView.Keys)
+            .Distinct()
+            .ToArray();
+        foreach (Control view in boundViews)
+            ClearActivationBinding(view);
+
+        _activationUnbindByView.Clear();
+        _activationItemsByView.Clear();
+        _activationBoundViews.Clear();
     }
 
     public bool TryGetItemForView(Control view, out IGenericSelectItem item)
@@ -4106,6 +4154,7 @@ public sealed class SelectItemAdapter<TModel>
     public Action<TModel, Control>? ViewReady { get; init; }
     public Action<TModel, Control, SelectItemState>? UpdateView { get; init; }
     public Func<TModel, string, bool>? MatchesSearch { get; init; }
+    public Func<TModel, Control, Action, Action?>? BindActivationWithCleanup { get; init; }
     public Func<TModel, Control, Action, bool>? BindActivation { get; init; }
 }
 
@@ -4124,7 +4173,7 @@ public interface IGenericSelectItem
     void NotifyViewReady(Control renderedView);
     void UpdateView(SelectItemState state);
     bool MatchesSearch(string normalizedQuery);
-    bool TryBindActivation(Action activate);
+    bool TryBindActivation(Action activate, out Action? unbind);
     void SetView(Control? view);
 }
 
@@ -4180,12 +4229,19 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
         return SelectText.Normalize(SearchText).Contains(normalizedQuery, StringComparison.Ordinal);
     }
 
-    public bool TryBindActivation(Action activate)
+    public bool TryBindActivation(Action activate, out Action? unbind)
     {
-        if (View is null || _adapter.BindActivation is null)
+        unbind = null;
+        if (View is null)
             return false;
 
-        return _adapter.BindActivation(Model, View, activate);
+        if (_adapter.BindActivationWithCleanup is not null)
+        {
+            unbind = _adapter.BindActivationWithCleanup(Model, View, activate);
+            return unbind is not null;
+        }
+
+        return _adapter.BindActivation?.Invoke(Model, View, activate) == true;
     }
 
     public void SetView(Control? view)

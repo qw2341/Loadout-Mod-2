@@ -4,7 +4,9 @@ namespace Loadout.Services.Actions;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -71,6 +73,11 @@ public enum LoadoutImmediateMutationKind
 
 public static class LoadoutImmediateMutationService
 {
+    internal const int MaxSynchronizedCardCopies = 50;
+    internal const int MaxSynchronizedCardUpgradeCount = 1000;
+    private const string SynchronizedAddCardsCommandPrefix = "__loadout_add_cards_v1";
+    private const string SynchronizedDeckCardCopiesCommandPrefix = "__loadout_clone_deck_card_v1";
+
     private static readonly object SequenceGate = new();
     private static readonly SortedDictionary<int, LoadoutImmediateMutationPayload> PendingHostApplies = new();
     private static INetGameService? _runNetService;
@@ -128,6 +135,15 @@ public static class LoadoutImmediateMutationService
         LoadoutTargetSelection target,
         int cardUpgradeCount = 0)
     {
+        if (amount <= 0
+            || amount > MaxSynchronizedCardCopies
+            || cardUpgradeCount < 0
+            || cardUpgradeCount > MaxSynchronizedCardUpgradeCount
+            || LoadoutModelIdSafety.IsNoneOrEmpty(modelId))
+        {
+            return false;
+        }
+
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.AddCard,
@@ -142,6 +158,9 @@ public static class LoadoutImmediateMutationService
         LoadoutOwnedItem<CardModel> item,
         int amount)
     {
+        if (amount <= 0 || amount > MaxSynchronizedCardCopies)
+            return false;
+
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.AddDeckCardCopies,
@@ -513,8 +532,7 @@ public static class LoadoutImmediateMutationService
                 return true;
             }
 
-            PublishHostApply(payload, netService);
-            return true;
+            return PublishHostApply(payload, netService);
         }
         catch (Exception exception)
         {
@@ -558,7 +576,8 @@ public static class LoadoutImmediateMutationService
             LoadoutImmediateMutationPayload payload = message.payload;
             payload.RequesterNetId = senderId;
             payload = HardenClientPayload(payload, netService.NetId);
-            PublishHostApply(payload, netService);
+            if (!PublishHostApply(payload, netService))
+                GD.PushWarning($"LoadoutImmediateMutation: rejected host apply for {payload.Kind} from peer {senderId}.");
         }
         catch (Exception exception)
         {
@@ -635,11 +654,20 @@ public static class LoadoutImmediateMutationService
         }, $"host mutation {payload.Kind} #{sequence}");
     }
 
-    private static void PublishHostApply(LoadoutImmediateMutationPayload payload, INetGameService? netService)
+    private static bool PublishHostApply(LoadoutImmediateMutationPayload payload, INetGameService? netService)
     {
         payload.NormalizeDefaults();
-        payload.Sequence = ++_nextHostSequence;
 
+        // Fresh card instances must be created inside the game's synchronized
+        // action queue. Broadcasting only an amount makes every peer create its
+        // own cards outside that queue, which can produce different runtime card
+        // identities and later state divergence.
+        if (payload.Kind == LoadoutImmediateMutationKind.AddCard)
+            return TryEnqueueSynchronizedAddCards(payload);
+        if (payload.Kind == LoadoutImmediateMutationKind.AddDeckCardCopies)
+            return TryEnqueueSynchronizedDeckCardCopies(payload);
+
+        payload.Sequence = ++_nextHostSequence;
         LoadoutMutationSerialExecutor.Enqueue(async () =>
         {
             await ApplyAsync(payload);
@@ -658,6 +686,364 @@ public static class LoadoutImmediateMutationService
                     $"immediate mutation {payload.Kind} #{payload.Sequence}");
             }
         }, $"local mutation {payload.Kind} #{payload.Sequence}");
+        return true;
+    }
+
+    private static bool TryEnqueueSynchronizedAddCards(LoadoutImmediateMutationPayload payload)
+    {
+        if (payload.Amount <= 0
+            || payload.Amount > MaxSynchronizedCardCopies
+            || payload.CardUpgradeCount < 0
+            || payload.CardUpgradeCount > MaxSynchronizedCardUpgradeCount
+            || ResolveCanonicalCard(payload.ModelId) is null)
+        {
+            return false;
+        }
+
+        Player? requester = GetRunPlayer(payload.RequesterNetId) ?? GetLocalRunPlayer();
+        Player? actionOwner = GetLocalRunPlayer();
+        if (requester is null || actionOwner is null)
+            return false;
+
+        ulong[] targetNetIds = ResolveTargetPlayers(payload.Target, requester)
+            .Select(player => player.NetId)
+            .Where(netId => netId != 0)
+            .Distinct()
+            .OrderBy(netId => netId)
+            .ToArray();
+        if (targetNetIds.Length == 0)
+            return false;
+
+        bool includeCombatHand = CombatManager.Instance.IsInProgress;
+        string command = BuildSynchronizedAddCardsCommand(
+            payload.ModelId,
+            payload.Amount,
+            payload.CardUpgradeCount,
+            includeCombatHand,
+            targetNetIds);
+        try
+        {
+            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+                new ConsoleCmdGameAction(actionOwner, command, includeCombatHand));
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: failed to enqueue synchronized card grant. {exception.Message}");
+            return false;
+        }
+    }
+
+    private static bool TryEnqueueSynchronizedDeckCardCopies(LoadoutImmediateMutationPayload payload)
+    {
+        if (payload.Amount <= 0 || payload.Amount > MaxSynchronizedCardCopies)
+            return false;
+
+        Player? requester = GetRunPlayer(payload.RequesterNetId) ?? GetLocalRunPlayer();
+        Player? actionOwner = GetLocalRunPlayer();
+        if (requester is null
+            || actionOwner is null
+            || TryGetOwnedDeckCard(payload, requester) is not { } sourceItem)
+        {
+            return false;
+        }
+
+        string command = BuildSynchronizedDeckCardCopiesCommand(
+            sourceItem.OwnerNetId,
+            sourceItem.Index,
+            sourceItem.Model.Id,
+            payload.Amount);
+        try
+        {
+            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+                new ConsoleCmdGameAction(
+                    actionOwner,
+                    command,
+                    CombatManager.Instance.IsInProgress));
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: failed to enqueue synchronized deck-card copies. {exception.Message}");
+            return false;
+        }
+    }
+
+    internal static bool TryHandleSynchronizedConsoleAction(
+        ConsoleCmdGameAction action,
+        out Task result)
+    {
+        result = Task.CompletedTask;
+        string command = action.Cmd ?? string.Empty;
+
+        string addCardsPrefix = SynchronizedAddCardsCommandPrefix + " ";
+        if (command.StartsWith(addCardsPrefix, StringComparison.Ordinal))
+        {
+            if (!IsAuthorizedSynchronizedActionOwner(action.Player))
+            {
+                GD.PushWarning($"LoadoutImmediateMutation: ignored unauthorized synchronized card action from player {action.Player?.NetId}.");
+                return true;
+            }
+
+            string[] args = command[addCardsPrefix.Length..]
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (args.Length != 5
+                || !TryDecodeModelIdToken(args[0], out ModelId modelId)
+                || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int amount)
+                || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int upgradeCount)
+                || !TryParseCombatHandFlag(args[3], out bool includeCombatHand)
+                || !TryParseTargetNetIds(args[4], out ulong[] targetNetIds))
+            {
+                GD.PushWarning("LoadoutImmediateMutation: ignored malformed synchronized card action.");
+                return true;
+            }
+
+            result = ExecuteSynchronizedAddCardsAsync(
+                modelId,
+                amount,
+                upgradeCount,
+                includeCombatHand,
+                targetNetIds);
+            return true;
+        }
+
+        string deckCopiesPrefix = SynchronizedDeckCardCopiesCommandPrefix + " ";
+        if (!command.StartsWith(deckCopiesPrefix, StringComparison.Ordinal))
+            return false;
+
+        if (!IsAuthorizedSynchronizedActionOwner(action.Player))
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: ignored unauthorized synchronized deck-card-copy action from player {action.Player?.NetId}.");
+            return true;
+        }
+
+        string[] deckCopyArgs = command[deckCopiesPrefix.Length..]
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (deckCopyArgs.Length != 4
+            || !ulong.TryParse(deckCopyArgs[0], NumberStyles.None, CultureInfo.InvariantCulture, out ulong ownerNetId)
+            || ownerNetId == 0
+            || !int.TryParse(deckCopyArgs[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int sourceIndex)
+            || sourceIndex < 0
+            || !TryDecodeModelIdToken(deckCopyArgs[2], out ModelId expectedModelId)
+            || !int.TryParse(deckCopyArgs[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int copyAmount))
+        {
+            GD.PushWarning("LoadoutImmediateMutation: ignored malformed synchronized deck-card-copy action.");
+            return true;
+        }
+
+        result = ExecuteSynchronizedDeckCardCopiesAsync(
+            ownerNetId,
+            sourceIndex,
+            expectedModelId,
+            copyAmount);
+        return true;
+    }
+
+    private static bool IsAuthorizedSynchronizedActionOwner(Player? player)
+    {
+        if (player is null)
+            return false;
+
+        try
+        {
+            INetGameService netService = RunManager.Instance.NetService;
+            return netService.Type switch
+            {
+                NetGameType.Singleplayer => IsLocalPlayer(player),
+                NetGameType.Host => player.NetId == netService.NetId,
+                NetGameType.Client => LoadoutNetworkBroadcast.IsExpectedHostSender(player.NetId, netService),
+                NetGameType.Replay => true,
+                _ => false
+            };
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static async Task ExecuteSynchronizedAddCardsAsync(
+        ModelId modelId,
+        int amount,
+        int upgradeCount,
+        bool includeCombatHand,
+        IReadOnlyList<ulong> targetNetIds)
+    {
+        if (amount <= 0
+            || amount > MaxSynchronizedCardCopies
+            || upgradeCount < 0
+            || upgradeCount > MaxSynchronizedCardUpgradeCount
+            || ResolveCanonicalCard(modelId) is not { } canonicalCard)
+        {
+            return;
+        }
+
+        ulong[] orderedTargetIds = targetNetIds
+            .Where(netId => netId != 0)
+            .Distinct()
+            .OrderBy(netId => netId)
+            .ToArray();
+        if (orderedTargetIds.Length == 0)
+            return;
+
+        List<Player> targetPlayers = new(orderedTargetIds.Length);
+        foreach (ulong targetNetId in orderedTargetIds)
+        {
+            Player? targetPlayer = GetRunPlayer(targetNetId);
+            if (targetPlayer is null)
+            {
+                GD.PushWarning($"LoadoutImmediateMutation: synchronized card grant could not resolve player {targetNetId}; no cards were created.");
+                return;
+            }
+
+            targetPlayers.Add(targetPlayer);
+        }
+
+        foreach (Player targetPlayer in targetPlayers)
+        {
+            await AddDeckCardCopiesAsync(
+                targetPlayer,
+                canonicalCard,
+                amount,
+                upgradeCount);
+
+            if (includeCombatHand && CombatManager.Instance.IsInProgress)
+            {
+                await AddCombatHandCardCopiesAsync(
+                    targetPlayer,
+                    canonicalCard,
+                    amount,
+                    upgradeCount);
+            }
+        }
+    }
+
+    private static async Task ExecuteSynchronizedDeckCardCopiesAsync(
+        ulong ownerNetId,
+        int sourceIndex,
+        ModelId expectedModelId,
+        int amount)
+    {
+        if (amount <= 0 || amount > MaxSynchronizedCardCopies)
+            return;
+
+        Player? owner = GetRunPlayer(ownerNetId);
+        if (owner is null
+            || sourceIndex < 0
+            || sourceIndex >= owner.Deck.Cards.Count)
+        {
+            return;
+        }
+
+        CardModel sourceCard = owner.Deck.Cards[sourceIndex];
+        if (!IdMatches(sourceCard, expectedModelId)
+            || sourceCard.Pile?.Type != PileType.Deck)
+        {
+            return;
+        }
+
+        await AddExactDeckCardCopiesAsync(owner, sourceCard, amount);
+    }
+
+    private static string BuildSynchronizedAddCardsCommand(
+        ModelId modelId,
+        int amount,
+        int upgradeCount,
+        bool includeCombatHand,
+        IReadOnlyList<ulong> targetNetIds)
+    {
+        string targets = string.Join(",", targetNetIds
+            .Where(netId => netId != 0)
+            .Distinct()
+            .OrderBy(netId => netId)
+            .Select(netId => netId.ToString(CultureInfo.InvariantCulture)));
+
+        return string.Join(" ",
+            SynchronizedAddCardsCommandPrefix,
+            EncodeModelIdToken(LoadoutModelIdSafety.ToWireString(modelId)),
+            amount.ToString(CultureInfo.InvariantCulture),
+            upgradeCount.ToString(CultureInfo.InvariantCulture),
+            includeCombatHand ? "1" : "0",
+            targets);
+    }
+
+    private static string BuildSynchronizedDeckCardCopiesCommand(
+        ulong ownerNetId,
+        int sourceIndex,
+        ModelId expectedModelId,
+        int amount)
+    {
+        return string.Join(" ",
+            SynchronizedDeckCardCopiesCommandPrefix,
+            ownerNetId.ToString(CultureInfo.InvariantCulture),
+            sourceIndex.ToString(CultureInfo.InvariantCulture),
+            EncodeModelIdToken(LoadoutModelIdSafety.ToWireString(expectedModelId)),
+            amount.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static string EncodeModelIdToken(string wireModelId)
+    {
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(wireModelId))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    private static bool TryDecodeModelIdToken(string token, out ModelId modelId)
+    {
+        modelId = ModelId.none;
+        if (string.IsNullOrWhiteSpace(token))
+            return false;
+
+        string base64 = token
+            .Replace('-', '+')
+            .Replace('_', '/');
+        int padding = (4 - base64.Length % 4) % 4;
+        if (padding > 0)
+            base64 = base64.PadRight(base64.Length + padding, '=');
+
+        try
+        {
+            string wireModelId = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+            return LoadoutModelRegistry.TryResolveWireId(wireModelId, out modelId)
+                   && !LoadoutModelIdSafety.IsNoneOrEmpty(modelId);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryParseCombatHandFlag(string raw, out bool includeCombatHand)
+    {
+        includeCombatHand = raw == "1";
+        return includeCombatHand || raw == "0";
+    }
+
+    private static bool TryParseTargetNetIds(string raw, out ulong[] targetNetIds)
+    {
+        targetNetIds = [];
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        string[] tokens = raw.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        List<ulong> parsed = new(tokens.Length);
+        foreach (string token in tokens)
+        {
+            if (!ulong.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out ulong netId)
+                || netId == 0)
+            {
+                return false;
+            }
+
+            parsed.Add(netId);
+        }
+
+        targetNetIds = parsed
+            .Distinct()
+            .OrderBy(netId => netId)
+            .ToArray();
+        return targetNetIds.Length > 0;
     }
 
     private static async Task ApplyAsync(LoadoutImmediateMutationPayload payload)

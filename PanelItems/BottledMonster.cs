@@ -51,7 +51,7 @@ public static class BottledMonster
                 GetName = FormatMonsterTitle,
                 GetSearchText = monster => $"{monster.Id} {FormatMonsterTitle(monster)} {CommonHelpers.GetModName(CommonHelpers.GetModelModId(monster))} {GetActSearchText(monster, actNamesByMonsterId)} {GetRoomTypeSearchText(monster, roomTypesByMonsterId)}",
                 CreateView = (monster, _) => CreateMonsterGridItem(monster),
-                BindActivation = (_, view, activate) => CommonHelpers.BindGuiReleaseActivation(view, activate)
+                BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
             },
             builder =>
             {
@@ -112,7 +112,7 @@ public static class BottledMonster
                 ? $"{FormatMorphOptionTitle(option)} reset original"
                 : $"{option.Model.Id} {FormatMorphOptionTitle(option)} {CommonHelpers.GetModName(CommonHelpers.GetModelModId(option.Model))}",
             CreateView = (option, _) => CreateMorphGridItem(option),
-            BindActivation = (_, view, activate) => CommonHelpers.BindGuiReleaseActivation(view, activate)
+            BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
         };
 
         void Configure(NGenericSelectScreen target)
