@@ -17,7 +17,9 @@ using Loadout.Services.Saving;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Assets;
+using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -30,6 +32,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.Audio;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
@@ -49,6 +52,7 @@ public static class BottledMonsterMorphService
     private static readonly Dictionary<ulong, int> MerchantRevisions = new();
     private static readonly Dictionary<ulong, int> RestSiteRevisions = new();
     private static readonly Dictionary<ulong, MorphVisualRuntime> ActiveVisuals = new();
+    private static readonly Dictionary<ulong, MorphAudioProfile> ActiveAudioProfiles = new();
     private static readonly FieldInfo? VisualsField = AccessTools.Field(typeof(NCreature), "<Visuals>k__BackingField");
     private static readonly FieldInfo? SpineAnimatorField = AccessTools.Field(typeof(NCreature), "_spineAnimator");
     private static readonly MethodInfo? ConnectAnimatorSignalsMethod = AccessTools.Method(typeof(NCreature), "ConnectSpineAnimatorSignals");
@@ -259,6 +263,12 @@ public static class BottledMonsterMorphService
             return false;
         }
 
+        if (trigger.Equals("Hit", StringComparison.OrdinalIgnoreCase)
+            && ActiveAudioProfiles.TryGetValue(creatureNode.GetInstanceId(), out MorphAudioProfile? audioProfile))
+        {
+            PlayMorphHurtSfx(audioProfile);
+        }
+
         string? mappedTrigger = MapTrigger(runtime.Triggers, trigger);
         if (!string.IsNullOrWhiteSpace(mappedTrigger) && !runtime.FailedTriggers.Contains(mappedTrigger))
         {
@@ -283,6 +293,90 @@ public static class BottledMonsterMorphService
 
         SetIdle(runtime);
         return true;
+    }
+
+    public static void PlayMorphDamageSfx(Creature creature, DamageResult damageResult)
+    {
+        if (damageResult.UnblockedDamage <= 0
+            || !TryGetMorphAudioProfile(creature, out MorphAudioProfile profile)
+            || profile.Model is not MonsterModel monster)
+        {
+            return;
+        }
+
+        try
+        {
+            if (monster.TakeDamageSfxType == DamageSfxType.None)
+                return;
+            SfxCmd.PlayDamage(monster, damageResult.UnblockedDamage);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"BottledMonsterMorph: could not play damage SFX for '{profile.Model.Id}'. {exception.Message}");
+        }
+    }
+
+    public static bool TryPlayMorphDeathSfx(Player player)
+    {
+        if (!TryGetMorphAudioProfile(player.Creature, out MorphAudioProfile profile))
+            return false;
+
+        try
+        {
+            switch (profile.Model)
+            {
+                case MonsterModel monster:
+                    if (monster.HasDeathSfx)
+                        SfxCmd.PlayDeath(monster);
+                    return true;
+                case CharacterModel character:
+                    if (NonInteractiveMode.IsActive)
+                        return true;
+                    if (NAudioManager.Instance is not { } audioManager)
+                        return false;
+                    audioManager.PlayOneShot(character.DeathSfx);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"BottledMonsterMorph: could not play death SFX for '{profile.Model.Id}', using the original character SFX. {exception.Message}");
+            return false;
+        }
+    }
+
+    private static bool TryGetMorphAudioProfile(Creature creature, out MorphAudioProfile profile)
+    {
+        profile = null!;
+        NCreature? creatureNode = NCombatRoom.Instance?.GetCreatureNode(creature);
+        if (creatureNode is null
+            || !GodotObject.IsInstanceValid(creatureNode)
+            || !ActiveAudioProfiles.TryGetValue(creatureNode.GetInstanceId(), out MorphAudioProfile? found)
+            || !ReferenceEquals(found.Node, creatureNode))
+        {
+            return false;
+        }
+
+        profile = found;
+        return true;
+    }
+
+    private static void PlayMorphHurtSfx(MorphAudioProfile profile)
+    {
+        try
+        {
+            if (profile.Model is MonsterModel { HasHurtSfx: true, HurtSfx: { } hurtSfx })
+                SfxCmd.Play(hurtSfx);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"BottledMonsterMorph: could not play hurt SFX for '{profile.Model.Id}'. {exception.Message}");
+        }
     }
 
     private static async Task ApplyCurrentVisualAsync(ulong playerNetId, int revision, NCreature? expectedNode = null)
@@ -794,6 +888,10 @@ public static class BottledMonsterMorphService
 
             ulong nodeId = creatureNode.GetInstanceId();
             PruneInvalidVisuals();
+            if (isMorphed)
+                ActiveAudioProfiles[nodeId] = new MorphAudioProfile(creatureNode, visualModel);
+            else
+                ActiveAudioProfiles.Remove(nodeId);
             if (isMorphed && animator is not null && newVisuals.SpineBody is not null)
             {
                 ActiveVisuals[nodeId] = new MorphVisualRuntime(
@@ -818,6 +916,7 @@ public static class BottledMonsterMorphService
         catch (Exception exception)
         {
             ActiveVisuals.Remove(creatureNode.GetInstanceId());
+            ActiveAudioProfiles.Remove(creatureNode.GetInstanceId());
             if (fieldsSwapped && oldVisuals is not null && GodotObject.IsInstanceValid(oldVisuals))
             {
                 try
@@ -1012,7 +1111,7 @@ public static class BottledMonsterMorphService
             return exact;
 
         if (trigger.Equals("Attack", StringComparison.OrdinalIgnoreCase))
-            return FindExact(triggers, "Attack") ?? FindByTokens(triggers, "attack", "attack_light", "slash", "bite", "chomp", "ram", "strike");
+            return FindExact(triggers, "Attack") ?? FindByTokens(triggers, "attack_medium","attack", "attack_light", "slash", "bite", "chomp", "ram", "strike");
         
         if (trigger.Equals("heavyAttack", StringComparison.OrdinalIgnoreCase))
             return FindExact(triggers, "heavyAttack") ?? FindByTokens(triggers, "attack_heavy", "crush", "bite", "slash", "chomp", "ram", "strike","attack");
@@ -1023,7 +1122,7 @@ public static class BottledMonsterMorphService
         if (trigger.Equals("Cast", StringComparison.OrdinalIgnoreCase))
         {
             return FindExact(triggers, "Cast")
-                   ?? FindByTokens(triggers, "cast", "charge", "rally", "summon");
+                   ?? FindByTokens(triggers, "cast", "charge", "rally", "summon", "mind", "power", "buff");
         }
         
         if (trigger.Equals("PowerUp", StringComparison.OrdinalIgnoreCase))
@@ -1183,6 +1282,14 @@ public static class BottledMonsterMorphService
                      .ToList())
         {
             ActiveVisuals.Remove(nodeId);
+        }
+
+        foreach (ulong nodeId in ActiveAudioProfiles
+                     .Where(pair => !GodotObject.IsInstanceValid(pair.Value.Node))
+                     .Select(pair => pair.Key)
+                     .ToList())
+        {
+            ActiveAudioProfiles.Remove(nodeId);
         }
     }
 
@@ -1375,6 +1482,7 @@ public static class BottledMonsterMorphService
         MerchantRevisions.Clear();
         RestSiteRevisions.Clear();
         ActiveVisuals.Clear();
+        ActiveAudioProfiles.Clear();
         FakeMerchantVisuals.Clear();
         _activeFakeMerchant = null;
         RestSiteVisuals.Clear();
@@ -1391,6 +1499,8 @@ public static class BottledMonsterMorphService
         Dictionary<string, string> LoopingTriggerAnimations,
         string ModelId,
         HashSet<string> FailedTriggers);
+
+    private sealed record MorphAudioProfile(NCreature Node, AbstractModel Model);
 
     private sealed class RestSiteVisualRuntime(
         NRestSiteRoom room,

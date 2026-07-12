@@ -4,6 +4,9 @@ namespace Loadout.Patches.Morphing;
 
 using HarmonyLib;
 using Loadout.Services.Morphing;
+using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
@@ -28,6 +31,26 @@ public static class BottledMonsterMorphAnimationPatch
     public static bool Prefix(NCreature __instance, string trigger)
     {
         return !BottledMonsterMorphService.TryHandleAnimation(__instance, trigger);
+    }
+}
+
+[HarmonyPatch(typeof(Creature), nameof(Creature.LoseHpInternal))]
+public static class BottledMonsterMorphDamageSfxPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(Creature __instance, DamageResult __result)
+    {
+        BottledMonsterMorphService.PlayMorphDamageSfx(__instance, __result);
+    }
+}
+
+[HarmonyPatch(typeof(SfxCmd), nameof(SfxCmd.PlayDeath), typeof(Player))]
+public static class BottledMonsterMorphDeathSfxPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(Player player)
+    {
+        return !BottledMonsterMorphService.TryPlayMorphDeathSfx(player);
     }
 }
 
