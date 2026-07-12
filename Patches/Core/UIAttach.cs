@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -141,9 +142,14 @@ public static class UIAttach
                 return;
 
             IReadOnlyList<NLoadoutPanel.SelectScreenPreloadEntry> screens = panel.GetSelectScreensForPreload();
+            IReadOnlyList<NLoadoutPanel.SelectScreenPreloadEntry> prioritizedScreens = screens
+                .OrderBy(GetSelectScreenPreloadPriority)
+                .ThenBy(entry => entry.Name.ToString(), StringComparer.Ordinal)
+                .ToList();
             int attachedScreens = 0;
+            int prewarmedScreens = 0;
 
-            foreach (NLoadoutPanel.SelectScreenPreloadEntry entry in screens)
+            foreach (NLoadoutPanel.SelectScreenPreloadEntry entry in prioritizedScreens)
             {
                 if (!IsValid(root) || !IsValid(entry.Screen))
                     continue;
@@ -152,9 +158,20 @@ public static class UIAttach
                 root.RegisterScreen(entry.Screen);
                 attachedScreens++;
 
-                // Register one catalog per frame. Each AddChild invokes the screen's
-                // _Ready path and shifts its first-open construction cost into startup
-                // without combining every catalog into one long main-thread stall.
+                // AddChild only initializes the shell while the screen is hidden.
+                // Materialize its first-use viewport now, in small per-frame batches,
+                // so expensive event portraits and monster creature previews are ready
+                // before the player opens those tools.
+                if (!await WaitForNextFrame(root))
+                    return;
+
+                await entry.Screen.PrewarmForFirstOpenAsync();
+                if (!IsValid(root))
+                    return;
+
+                if (entry.Screen.IsFirstOpenPrewarmed)
+                    prewarmedScreens++;
+
                 if (!await WaitForNextFrame(root))
                     return;
             }
@@ -165,7 +182,8 @@ public static class UIAttach
             root.CloseAllScreens();
             _preloaded = true;
 
-            Log.Info($"[Loadout] Preloaded {attachedScreens} generic select screens before first use.");
+            Log.Info(
+                $"[Loadout] Registered {attachedScreens} and prewarmed {prewarmedScreens} generic select screens before first use.");
         }
         catch (Exception e)
         {
@@ -175,6 +193,30 @@ public static class UIAttach
         {
             _preloadScheduled = false;
         }
+    }
+
+    private static int GetSelectScreenPreloadPriority(NLoadoutPanel.SelectScreenPreloadEntry entry)
+    {
+        string name = entry.Name.ToString();
+
+        // These screens have the most expensive first-use view factories. Warm
+        // them first so normal startup/menu time absorbs their construction.
+        if (name.Contains("EventfulCompass", StringComparison.Ordinal))
+            return 0;
+
+        if (name.Contains("BottledMonster", StringComparison.Ordinal))
+        {
+            return name.EndsWith("_Primary", StringComparison.Ordinal) ? 1 : 2;
+        }
+
+        if (name.Contains("CardPrinter", StringComparison.Ordinal)
+            || name.Contains("CardShredder", StringComparison.Ordinal)
+            || name.Contains("CardModifier", StringComparison.Ordinal))
+        {
+            return 3;
+        }
+
+        return 4;
     }
 
     private static async Task<bool> WaitForNextFrame(NLoadoutPanelRoot root)

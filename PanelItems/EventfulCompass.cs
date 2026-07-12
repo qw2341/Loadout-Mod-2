@@ -43,7 +43,7 @@ public class EventfulCompass
 			}, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(4, EventTileSize, 24, 24);
 				builder.FilterGroup("layout", LocMan.Loc("FILTER_GROUP_LAYOUT", "Layout"));
 				builder.Filter("default", LocMan.Loc("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
@@ -358,7 +358,7 @@ public class EventfulCompass
 			    Size = AncientPreviewTextureSize,
 			    TransparentBg = false,
 			    Disable3D = false,
-			    RenderTargetUpdateMode = SubViewport.UpdateMode.Always
+			    RenderTargetUpdateMode = SubViewport.UpdateMode.Once
 		    };
 
 		    Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);

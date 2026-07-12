@@ -39,6 +39,7 @@ public partial class NGenericSelectScreen : Control
     private const int RemovalMaterializeBudget = 24;
     private const int ScrollMaterializeBudget = 48;
     private const int MaxPreloadConcurrency = 2;
+    private const int DefaultHiddenPrewarmBatchSize = 4;
     private const float ScrollSmoothingRate = 15f;
     private const float ScrollSpeedMultiplier = 3f;
     private const float MaterializeRowsAhead = 5f;
@@ -190,11 +191,14 @@ public partial class NGenericSelectScreen : Control
     private CancellationTokenSource? _preloadCts;
     private long _completedPreloadGeneration = -1;
     private readonly ConcurrentQueue<string> _preloadWarnings = new();
+    private Task? _hiddenPrewarmTask;
+    private bool _hiddenPrewarmCompleted;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
     public IReadOnlyDictionary<string, int> SelectedAmounts => _selectedAmounts;
     public bool IsConfiguredForCurrentLocale => string.Equals(_configuredLocaleLanguage, GetCurrentLocaleLanguage(), StringComparison.Ordinal);
+    public bool IsFirstOpenPrewarmed => _hiddenPrewarmCompleted;
 
     public override void _Ready()
     {
@@ -234,6 +238,12 @@ public partial class NGenericSelectScreen : Control
         SetProcess(false);
         SetProcessInput(false);
         UnsubscribeFromLocaleChanges();
+
+        // Closing a screen only suspends it, but leaving the tree is the correct
+        // time to return retained native views and wrapper slots to NodePool.
+        ClearItemViews();
+        ClearGeneratedGroupContainers();
+        ClearLayoutTracking();
     }
 
     public override void _Notification(int what)
@@ -567,6 +577,154 @@ public partial class NGenericSelectScreen : Control
         ScheduleDeferredVisibleRefresh();
     }
 
+    /// <summary>
+    /// Materializes the first-use view set while the screen is still hidden.
+    /// Eager screens are warmed completely; lazy screens warm only the retained
+    /// viewport window. Work is spread across frames to avoid replacing a
+    /// first-open hitch with a startup-frame hitch.
+    /// </summary>
+    public Task PrewarmForFirstOpenAsync()
+    {
+        if (_hiddenPrewarmCompleted || !_isConfigured || !IsInsideTree())
+            return Task.CompletedTask;
+
+        if (_hiddenPrewarmTask is { IsCompleted: false })
+            return _hiddenPrewarmTask;
+
+        _hiddenPrewarmTask = PrewarmForFirstOpenCoreAsync();
+        return _hiddenPrewarmTask;
+    }
+
+    private async Task PrewarmForFirstOpenCoreAsync()
+    {
+        try
+        {
+            if (_hiddenPrewarmCompleted
+                || !_isConfigured
+                || _itemGrid is null
+                || !IsInsideTree()
+                || IsVisibleInTree())
+            {
+                return;
+            }
+
+            PrepareHiddenPrewarmLayout();
+            ulong generation = _layoutGeneration;
+            IReadOnlyList<IGenericSelectItem> warmItems = BuildHiddenPrewarmItemList();
+            int batchSize = GetHiddenPrewarmBatchSize();
+            int materializedInBatch = 0;
+
+            foreach (IGenericSelectItem item in warmItems)
+            {
+                if (generation != _layoutGeneration
+                    || !IsInsideTree()
+                    || IsVisibleInTree())
+                {
+                    return;
+                }
+
+                if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                    continue;
+
+                MaterializeItemView(item, layout, updateExistingView: false);
+                materializedInBatch++;
+
+                if (materializedInBatch < batchSize)
+                    continue;
+
+                materializedInBatch = 0;
+                if (!await WaitForHiddenPrewarmFrameAsync(generation))
+                    return;
+            }
+
+            if (generation != _layoutGeneration || !IsInsideTree() || IsVisibleInTree())
+                return;
+
+            UpdateViewportCulling(force: true);
+            _refreshPendingWhileHidden = false;
+            _pendingResetScroll = false;
+            _hiddenPrewarmCompleted = true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Loadout select screen '{Name}' hidden prewarm failed: {exception}");
+        }
+        finally
+        {
+            _hiddenPrewarmTask = null;
+        }
+    }
+
+    private void PrepareHiddenPrewarmLayout()
+    {
+        CancelPendingMaterialization();
+        CancelPendingSearchRefresh();
+        CancelRelayoutAnimations(applyFinalPositions: false);
+
+        _visibleItems.Clear();
+        _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
+        _visibleItems.Sort(CompareItems);
+        ClearLayoutTracking();
+
+        foreach (IGenericSelectItem item in _items)
+        {
+            if (item.View is not null && GodotObject.IsInstanceValid(item.View))
+                item.View.Visible = false;
+        }
+
+        float measuredWidth = GetActiveGroupDefinition() is { } group
+            ? RefreshGroupedItems(group)
+            : RefreshFlatItems();
+
+        _lastMeasuredItemWidth = measuredWidth > 0f ? measuredWidth : FallbackItemWidth;
+        ApplyLayoutSettings();
+        UpdateConfirmButtonState();
+        UpdateScrollBounds();
+        ScrollToTop();
+    }
+
+    private int GetHiddenPrewarmBatchSize()
+    {
+        string screenName = Name.ToString();
+        if (screenName.Contains("BottledMonster", StringComparison.Ordinal))
+            return 1;
+
+        if (screenName.Contains("EventfulCompass", StringComparison.Ordinal))
+            return 2;
+
+        return DefaultHiddenPrewarmBatchSize;
+    }
+
+    private IReadOnlyList<IGenericSelectItem> BuildHiddenPrewarmItemList()
+    {
+        if (_materializationMode == SelectMaterializationMode.Eager)
+            return _itemLayoutOrder.ToList();
+
+        Rect2 materializeRect = BuildViewportMaterializeRect(
+            _targetScrollY,
+            MaterializeRowsBehind,
+            MaterializeRowsAhead);
+
+        return _itemLayoutOrder
+            .Where(item => _itemLayouts.TryGetValue(item, out SelectItemLayout layout)
+                           && new Rect2(layout.Position, layout.Size).Intersects(materializeRect, includeBorders: true))
+            .Take(InitialMaterializeBudget)
+            .ToList();
+    }
+
+    private async Task<bool> WaitForHiddenPrewarmFrameAsync(ulong generation)
+    {
+        if (generation != _layoutGeneration || !IsInsideTree())
+            return false;
+
+        SceneTree tree = GetTree();
+        if (tree is null)
+            return false;
+
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return generation == _layoutGeneration && IsInsideTree() && !IsVisibleInTree();
+    }
+
     public void RefreshCurrentItemStates()
     {
         RefreshVisibleItemStates();
@@ -717,6 +875,7 @@ public partial class NGenericSelectScreen : Control
         _isConfigured = false;
         _refreshPendingWhileHidden = false;
         _pendingResetScroll = false;
+        _hiddenPrewarmCompleted = false;
         _lastMeasuredItemWidth = -1f;
 
         if (_searchLineEdit is not null)
@@ -908,6 +1067,7 @@ public partial class NGenericSelectScreen : Control
 
     private void SuspendHiddenScreenWork()
     {
+        bool hadPendingSearchRefresh = _searchDelayCts is not null;
         CancelPendingSearchRefresh();
         CancelPendingMaterialization();
         CancelRelayoutAnimations(applyFinalPositions: false);
@@ -918,10 +1078,63 @@ public partial class NGenericSelectScreen : Control
         if (!_isConfigured)
             return;
 
-        ClearItemViews();
-        ClearGeneratedGroupContainers();
-        ClearLayoutTracking();
-        RequestRefreshWhenVisible(resetScroll: false);
+        // Do not synchronously tear down every card/creature/event node here.
+        // NLoadoutPanelRoot disables this screen's ProcessMode and hides it, so
+        // retained descendants neither render nor update while closed. Keeping
+        // the bounded lazy-materialization window removes the close hitch and
+        // lets the same NodePool-backed views be reused on the next open.
+        if (hadPendingSearchRefresh)
+            RequestRefreshWhenVisible(resetScroll: false);
+    }
+
+    private void ResumeRetainedLayout()
+    {
+        if (!_isConfigured || _itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
+        {
+            RequestRefreshWhenVisible(resetScroll: false);
+            return;
+        }
+
+        _refreshPendingWhileHidden = false;
+        _pendingResetScroll = false;
+
+        ApplyLayoutSettings();
+        UpdateScrollBounds();
+        ClampScrollToBounds();
+        ApplyRetainedItemLayouts();
+
+        if (_materializationMode == SelectMaterializationMode.Lazy)
+        {
+            MaterializeViewportItemViews(InitialMaterializeBudget, updateExistingViews: false);
+        }
+        else if (_itemLayoutOrder.Any(item => item.View is null || !GodotObject.IsInstanceValid(item.View)))
+        {
+            StartThreadedPreloadThenMaterializeAll();
+        }
+
+        UpdateConfirmButtonState();
+        UpdateViewportCulling(force: true);
+    }
+
+    private void ApplyRetainedItemLayouts()
+    {
+        foreach ((Control view, IGenericSelectItem item) in _activationItemsByView.ToArray())
+        {
+            if (!GodotObject.IsInstanceValid(view) || item.View != view)
+            {
+                _activationItemsByView.Remove(view);
+                _activationBoundViews.Remove(view);
+                continue;
+            }
+
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+            {
+                view.Visible = false;
+                continue;
+            }
+
+            MaterializeItemView(item, layout, updateExistingView: false);
+        }
     }
 
     private void RebuildCurrentLayout(bool resetScroll, bool updateExistingViews)
@@ -2513,10 +2726,10 @@ public partial class NGenericSelectScreen : Control
             return;
 
         bool resetScroll = _pendingResetScroll;
-        if (_refreshPendingWhileHidden || resetScroll)
+        if (_refreshPendingWhileHidden || resetScroll || _itemLayoutOrder.Count == 0)
             RefreshNow(resetScroll);
         else
-            RefreshNow(resetScroll: false);
+            ResumeRetainedLayout();
     }
 
     private void ScheduleDeferredEagerMaterializationRefresh()
@@ -2635,11 +2848,24 @@ public partial class NGenericSelectScreen : Control
 
     private void CloseOpenDropdowns()
     {
-        CloseOpenDropdowns(this);
+        foreach (NLoadoutDropdown dropdown in _filterDropdownsByGroupId.Values)
+        {
+            if (GodotObject.IsInstanceValid(dropdown))
+                dropdown.CloseLoadoutDropdown(restoreFocus: false);
+        }
+
+        // Custom target/room controls can contain dropdowns. Restrict traversal
+        // to the sidebar instead of recursively walking every materialized card
+        // or creature node during the screen-closing frame.
+        CloseOpenDropdowns(_customControlsContainer);
+        CloseOpenDropdowns(_bottomCustomControlsContainer);
     }
 
-    private static void CloseOpenDropdowns(Node root)
+    private static void CloseOpenDropdowns(Node? root)
     {
+        if (root is null || !GodotObject.IsInstanceValid(root))
+            return;
+
         foreach (Node child in root.GetChildren())
         {
             if (child is NLoadoutDropdown dropdown)
