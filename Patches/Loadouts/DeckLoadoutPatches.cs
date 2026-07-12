@@ -76,7 +76,8 @@ internal static class DeckViewRefreshService
 
     private static void OnRunContentChanged(LoadoutRunContentChangedEventArgs change)
     {
-        if (change.Kind != LoadoutRunContentKind.Cards || change.Mode != LoadoutRunContentChangeMode.Update)
+        if (change.Kind != LoadoutRunContentKind.Cards
+            || change.Mode is not (LoadoutRunContentChangeMode.Update or LoadoutRunContentChangeMode.Replace))
             return;
 
         foreach (NDeckViewScreen screen in Screens.ToList())
@@ -159,7 +160,9 @@ internal static class DeckViewRefreshService
                 if (card?.Owner is null || !change.AffectsPlayer(card.Owner.NetId))
                     continue;
 
-                LoadoutCardVisualRefreshKind refreshKind = LoadoutCardVisualRefreshKind.Lightweight;
+                LoadoutCardVisualRefreshKind refreshKind = change.Mode == LoadoutRunContentChangeMode.Replace
+                    ? LoadoutCardVisualRefreshKind.Reload
+                    : LoadoutCardVisualRefreshKind.Lightweight;
                 if (change.ChangedCards.Count > 0)
                 {
                     int index = FindCardIndex(card.Owner.Deck.Cards, card);
