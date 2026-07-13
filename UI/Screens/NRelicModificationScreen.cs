@@ -29,10 +29,11 @@ public partial class NRelicModificationScreen : Control
     private const float ActionButtonWidth = 318f;
     private const float ActionButtonHeight = 42f;
     private const float RelicEditButtonWidth = 164f;
-    private const float HoverTipViewportMargin = 24f;
+    private const float HoverTipViewportMargin = 0f;
     private const float HoverTipWidth = 360f;
     private const float HoverTipMinHeight = 220f;
     private const float HoverTipMaxHeight = 460f;
+    private const float HoverTipScrollSpeedMultiplier = 3f;
 
     private LoadoutOwnedItem<RelicModel>? _item;
     private List<LoadoutOwnedItem<RelicModel>> _items = [];
@@ -114,12 +115,48 @@ public partial class NRelicModificationScreen : Control
         if (what == NotificationVisibilityChanged)
         {
             RefreshNativeButtonState();
-            if (!Visible)
+            if (Visible && IsInsideTree() && _item is not null && !_isClosing)
+            {
+                Callable.From(RefreshPreview).CallDeferred();
+            }
+            else if (!Visible)
             {
                 CloseTextEditor();
                 ClearHoverTips();
             }
         }
+    }
+
+    public override void _Input(InputEvent @event)
+    {
+        if (!IsVisibleInTree()
+            || _nativeHoverTipScroll is null
+            || !GodotObject.IsInstanceValid(_nativeHoverTipScroll))
+        {
+            return;
+        }
+
+        float drag = ScrollHelper.GetDragForScrollEvent(@event);
+        if (Mathf.IsZeroApprox(drag))
+            return;
+
+        Vector2 pointerPosition = @event is InputEventMouseButton mouseButton
+            ? mouseButton.GlobalPosition
+            : GetViewport().GetMousePosition();
+        if (!_nativeHoverTipScroll.GetGlobalRect().HasPoint(pointerPosition))
+            return;
+
+        VScrollBar scrollbar = _nativeHoverTipScroll.GetVScrollBar();
+        double maximumScroll = Math.Max(0d, scrollbar.MaxValue - scrollbar.Page);
+        if (maximumScroll <= 0d)
+            return;
+
+        double nextScroll = Math.Clamp(
+            _nativeHoverTipScroll.ScrollVertical - drag * HoverTipScrollSpeedMultiplier,
+            0d,
+            maximumScroll);
+        _nativeHoverTipScroll.ScrollVertical = Mathf.RoundToInt(nextScroll);
+        GetViewport().SetInputAsHandled();
     }
 
     public override void _ExitTree()
@@ -196,11 +233,23 @@ public partial class NRelicModificationScreen : Control
         _leftArrowMount = GetNodeOrNull<Control>("%LeftArrow");
         _rightArrowMount = GetNodeOrNull<Control>("%RightArrow");
         _nativeHoverTipAnchor = GetNodeOrNull<Control>("%NativeHoverTipAnchor");
+        DisableHorizontalEditorScroll(_leftControls);
+        DisableHorizontalEditorScroll(_rightControls);
         _leftArrow = EnsureInspectArrowButton(_leftArrowMount, isLeft: true);
         _rightArrow = EnsureInspectArrowButton(_rightArrowMount, isLeft: false);
         EnsureInspectionPresentation();
         EnsureBackButton();
         BindSceneSignals();
+    }
+
+    private static void DisableHorizontalEditorScroll(Control? controls)
+    {
+        Node? ancestor = controls?.GetParent();
+        while (ancestor is not null && ancestor is not ScrollContainer)
+            ancestor = ancestor.GetParent();
+
+        if (ancestor is ScrollContainer scroll)
+            scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
     }
 
     private void EnsureFallbackScene()
@@ -471,7 +520,7 @@ public partial class NRelicModificationScreen : Control
             int current = _workingState.DynamicVars.TryGetValue(name, out decimal saved)
                 ? Decimal.ToInt32(saved)
                 : Decimal.ToInt32(dynamicVar.BaseValue);
-            AddStepperRow(_leftControls, name, current, int.MinValue, int.MaxValue, value =>
+            AddStepperRow(_leftControls, LocMan.DynamicVarLoc(dynamicVar), current, int.MinValue, int.MaxValue, value =>
             {
                 _workingState.DynamicVars[name] = value;
                 MarkDirty();
@@ -540,18 +589,6 @@ public partial class NRelicModificationScreen : Control
                 MarkDirty(rebuildControls: true);
             }));
 
-        _rightControls.AddChild(CreateToggle(
-            "never_used",
-            LocMan.Loc("RELICMODIFIER_NEVER_USED", "Never Used"),
-            _workingState.NeverUsed == true,
-            value =>
-            {
-                _workingState.NeverUsed = value;
-                if (value && _workingState.Status == RelicStatus.Disabled.ToString())
-                    _workingState.Status = RelicStatus.Normal.ToString();
-                MarkDirty(rebuildControls: true);
-            }));
-
         AddCounterControls(model);
     }
 
@@ -565,7 +602,7 @@ public partial class NRelicModificationScreen : Control
         }
 
         _rightControls.AddChild(CreateSectionLabel(LocMan.Loc("RELICMODIFIER_COUNTER", "Counter")));
-        AddStepperRow(_rightControls, counterMember, _workingState.CounterValue ?? counter, int.MinValue, int.MaxValue, value =>
+        AddRightStepperRow(_rightControls, counterMember, _workingState.CounterValue ?? counter, int.MinValue, int.MaxValue, value =>
         {
             TildeKeyStateService.RequestRelicCounterAbsolute(model, counterMember, value);
             _workingState.CounterMember = counterMember;
@@ -652,7 +689,7 @@ public partial class NRelicModificationScreen : Control
 
         if (!long.TryParse(primitive.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long integer))
             integer = 0;
-        AddStepperRow(
+        AddRightStepperRow(
             container,
             descriptor.Name,
             (int)Math.Clamp(integer, int.MinValue, int.MaxValue),
@@ -838,16 +875,19 @@ public partial class NRelicModificationScreen : Control
         float y = MathF.Max(112f, viewport.Y * 0.40f);
         if (_previewHost is not null && GodotObject.IsInstanceValid(_previewHost))
         {
-            x = _previewHost.GlobalPosition.X + _previewHost.Size.X + 22f;
+            x = _previewHost.GlobalPosition.X + _previewHost.Size.X * 0.95f;
             y = _previewHost.GlobalPosition.Y + 70f;
         }
 
         _nativeHoverTipAnchor.SetAnchorsPreset(LayoutPreset.TopLeft);
-        x = Mathf.Clamp(x, HoverTipViewportMargin, MathF.Max(HoverTipViewportMargin, viewport.X - HoverTipWidth - HoverTipViewportMargin));
         if (_rightArrow is not null && GodotObject.IsInstanceValid(_rightArrow))
             y = _rightArrow.GlobalPosition.Y + _rightArrow.Size.Y * 1.5f;
         _nativeHoverTipAnchor.Position = new Vector2(x, y);
         _nativeHoverTipAnchor.Size = new Vector2(HoverTipWidth, GetHoverTipAvailableHeight(viewport, y));
+        // The relic editor's right side is itself a ScrollContainer. Keep the
+        // hover-tip viewport above it so that container cannot steal wheel input.
+        _nativeHoverTipAnchor.ZIndex = 20;
+        _nativeHoverTipAnchor.ZAsRelative = true;
         _nativeHoverTipAnchor.MouseFilter = MouseFilterEnum.Ignore;
     }
 
@@ -863,6 +903,15 @@ public partial class NRelicModificationScreen : Control
         tipSet.ZIndex = 0;
         tipSet.ZAsRelative = true;
         tipSet.MouseFilter = MouseFilterEnum.Ignore;
+
+        // Relic hover-tip containers can finish their flow layout after being
+        // reparented. Re-measure once after that layout pass so the scroll range
+        // reflects their final height instead of the pre-reparent size.
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(tipSet) && GodotObject.IsInstanceValid(scroll))
+                NormalizeHoverTipSetForScroll(tipSet, scroll);
+        }).CallDeferred();
     }
 
     private ScrollContainer EnsureNativeHoverTipScroll()
@@ -877,7 +926,9 @@ public partial class NRelicModificationScreen : Control
         {
             Name = "NativeHoverTipScroll",
             ClipContents = true,
-            MouseFilter = MouseFilterEnum.Stop
+            MouseFilter = MouseFilterEnum.Stop,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto
         };
         scroll.SetAnchorsPreset(LayoutPreset.FullRect);
         _nativeHoverTipAnchor.AddChild(scroll);
@@ -1294,7 +1345,15 @@ public partial class NRelicModificationScreen : Control
         NLoadoutNumberStepper stepper = new();
         stepper.Init(value, min, max);
         stepper.ValueChanged += onChanged;
-        container.AddChild(CreateRow(label, stepper));
+        container.AddChild(CreateCardStyleStepperRow(label, stepper));
+    }
+
+    private static void AddRightStepperRow(VBoxContainer container, string label, int value, int min, int max, Action<int> onChanged)
+    {
+        NLoadoutNumberStepper stepper = new();
+        stepper.Init(value, min, max);
+        stepper.ValueChanged += onChanged;
+        container.AddChild(CreateRightOverflowStepperRow(label, stepper));
     }
 
     private static void AddDropdownRow(
@@ -1327,7 +1386,7 @@ public partial class NRelicModificationScreen : Control
         return toggle;
     }
 
-    private static Control CreateRow(string label, Control input)
+    private static Control CreateCardStyleStepperRow(string label, Control input)
     {
         HBoxContainer row = new()
         {
@@ -1341,6 +1400,40 @@ public partial class NRelicModificationScreen : Control
         text.CustomMinimumSize = new Vector2(184f, 44f);
         text.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         row.AddChild(text);
+
+        input.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+        row.AddChild(input);
+        return row;
+    }
+
+    private static Control CreateRightOverflowStepperRow(string label, Control input)
+    {
+        HBoxContainer row = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 44f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        row.AddThemeConstantOverride("separation", 8);
+
+        Control labelHost = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 44f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            ClipContents = false,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        row.AddChild(labelHost);
+
+        MegaLabel text = CreateLabel(label, 21, StsColors.cream);
+        text.HorizontalAlignment = HorizontalAlignment.Right;
+        text.SetAnchorsPreset(LayoutPreset.FullRect);
+        text.OffsetLeft = -768f;
+        text.OffsetTop = 0f;
+        text.OffsetRight = 0f;
+        text.OffsetBottom = 0f;
+        labelHost.AddChild(text);
+
         input.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
         row.AddChild(input);
         return row;

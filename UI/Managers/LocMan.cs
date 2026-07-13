@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Godot;
 using Loadout.Helpers;
 using MegaCrit.Sts2.Core.Localization;
@@ -181,6 +182,17 @@ public static class LocMan
         return result as PowerModel;
     }
     
+    public static string ToUpperSnakeCase(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return value;
+
+        string result = Regex.Replace(value, @"([a-z0-9])([A-Z])", "$1_$2");
+        result = Regex.Replace(result, @"([A-Z]+)([A-Z][a-z])", "$1_$2");
+
+        return result.ToUpperInvariant();
+    }
+    
     public static string DynamicVarLoc(DynamicVar dynamicVar)
     {
 
@@ -210,7 +222,7 @@ public static class LocMan
             RepeatVar _ => CommonLoc.Repeat,
             StarsVar _ => CommonLoc.Stars,
             SummonVar _ => CommonLoc.Summon,
-            _ => Loc($"DYNAMIC_VAR_{dynamicVar.Name.ToUpper()}",dynamicVar.Name)
+            _ => Loc($"DYNAMIC_VAR_{ToUpperSnakeCase(dynamicVar.Name)}",dynamicVar.Name)
 
         };
     }

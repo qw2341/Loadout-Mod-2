@@ -124,7 +124,11 @@ public partial class NCardModificationScreen : Control
         if (what == NotificationVisibilityChanged)
         {
             RefreshNativeButtonState();
-            if (!Visible)
+            if (Visible && IsInsideTree() && _item is not null && !_isClosing)
+            {
+                Callable.From(() => RefreshPreview(forceReload: false)).CallDeferred();
+            }
+            else if (!Visible)
             {
                 CloseTextEditor();
                 ClearHoverTips();

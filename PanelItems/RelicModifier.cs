@@ -8,7 +8,6 @@ using System.Globalization;
 using Godot;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
-using Loadout.Services.TildeKey;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
@@ -125,10 +124,20 @@ public static class RelicModifier
     private static void RefreshCounterLabel(NRelic relicView, RelicModel model)
     {
         MegaLabel? label = relicView.GetNodeOrNull<MegaLabel>(CounterLabelName);
-        int counterValue = 0;
-        bool hasCounter = TildeKeyStateService.TryGetRelicCounterMember(model, out string counterMember)
-                          && TildeKeyStateService.TryGetRelicCounterValue(model, counterMember, out counterValue);
-        if (!hasCounter)
+        bool showCounter;
+        int displayAmount;
+        try
+        {
+            showCounter = model.ShowCounter;
+            displayAmount = model.DisplayAmount;
+        }
+        catch
+        {
+            showCounter = false;
+            displayAmount = 0;
+        }
+
+        if (!showCounter)
         {
             if (label is not null)
                 label.Visible = false;
@@ -165,7 +174,7 @@ public static class RelicModifier
             relicView.AddChild(label);
         }
 
-        label.Text = counterValue.ToString(CultureInfo.InvariantCulture);
+        label.Text = displayAmount.ToString(CultureInfo.InvariantCulture);
         label.Visible = true;
         relicView.MoveChild(label, relicView.GetChildCount() - 1);
     }

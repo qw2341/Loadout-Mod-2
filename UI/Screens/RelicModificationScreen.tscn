@@ -122,6 +122,7 @@ offset_right = 474.0
 offset_bottom = -224.0
 grow_vertical = 2
 mouse_filter = 0
+horizontal_scroll_mode = 0
 
 [node name="Margin" type="MarginContainer" parent="LeftEditor"]
 layout_mode = 2
@@ -151,6 +152,7 @@ offset_bottom = -60.0
 grow_horizontal = 0
 grow_vertical = 2
 mouse_filter = 0
+horizontal_scroll_mode = 0
 
 [node name="Margin" type="MarginContainer" parent="RightEditor"]
 layout_mode = 2
