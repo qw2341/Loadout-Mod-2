@@ -194,6 +194,7 @@ public partial class NGenericSelectScreen : Control
     private readonly ConcurrentQueue<string> _preloadWarnings = new();
     private Task? _hiddenPrewarmTask;
     private bool _hiddenPrewarmCompleted;
+    private bool _hiddenPrewarmEnabled = true;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -587,7 +588,7 @@ public partial class NGenericSelectScreen : Control
     /// </summary>
     public Task PrewarmForFirstOpenAsync()
     {
-        if (_hiddenPrewarmCompleted || !_isConfigured || !IsInsideTree())
+        if (!_hiddenPrewarmEnabled || _hiddenPrewarmCompleted || !_isConfigured || !IsInsideTree())
             return Task.CompletedTask;
 
         if (_hiddenPrewarmTask is { IsCompleted: false })
@@ -878,6 +879,7 @@ public partial class NGenericSelectScreen : Control
         _refreshPendingWhileHidden = false;
         _pendingResetScroll = false;
         _hiddenPrewarmCompleted = false;
+        _hiddenPrewarmEnabled = true;
         _lastMeasuredItemWidth = -1f;
 
         if (_searchLineEdit is not null)
@@ -911,6 +913,11 @@ public partial class NGenericSelectScreen : Control
     public void SetMaterializationMode(SelectMaterializationMode mode)
     {
         _materializationMode = mode;
+    }
+
+    public void SetHiddenPrewarmEnabled(bool enabled)
+    {
+        _hiddenPrewarmEnabled = enabled;
     }
 
     public void AddFilterGroup(SelectFilterGroupDefinition group)
@@ -4011,6 +4018,12 @@ public sealed class SelectScreenBuilder<TModel>
     public SelectScreenBuilder<TModel> Materialization(SelectMaterializationMode mode)
     {
         _screen.SetMaterializationMode(mode);
+        return this;
+    }
+
+    public SelectScreenBuilder<TModel> HiddenPrewarm(bool enabled)
+    {
+        _screen.SetHiddenPrewarmEnabled(enabled);
         return this;
     }
 

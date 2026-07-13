@@ -4,7 +4,6 @@ namespace Loadout.PanelItems;
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Godot;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
@@ -26,7 +25,7 @@ public static class RelicModifier
         {
             GetId = CommonHelpers.OwnedItemId,
             GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
-            GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)} {item.Model.DynamicDescription}",
+            GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)}",
             CreateView = (item, _) => NLoadoutPanel.CreateOwnedRelicGridItem(item.Model),
             UpdateView = (item, view, _) => RefreshView(view, item.Model),
             BindActivationWithCleanup = (item, view, _) => BindRightClickWithCleanup(
@@ -41,6 +40,7 @@ public static class RelicModifier
             {
                 builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
                 builder.Materialization(SelectMaterializationMode.Lazy);
+                builder.HiddenPrewarm(false);
                 builder.Layout(10, new Vector2(68f, 68f), 32, 32);
                 builder.ActionButton(
                     "host_relic_permamods",
@@ -62,7 +62,7 @@ public static class RelicModifier
     internal static IReadOnlyList<LoadoutOwnedItem<RelicModel>> GetSelectedTargetRelics()
     {
         LoadoutTargetSelection target = LoadoutTargetService.GetSelected(TargetKey, LoadoutTargetMode.PlayersOnly);
-        return LoadoutTargetService.BuildOwnedItems(target, player => player.Relics.ToList());
+        return LoadoutTargetService.BuildOwnedItems(target, player => player.Relics);
     }
 
     private static void OpenModificationScreen(NGenericSelectScreen? selectScreen, LoadoutOwnedItem<RelicModel> fallback, Control sourceView)

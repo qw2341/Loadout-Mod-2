@@ -37,6 +37,16 @@ public static class RelicClonePreservingMutabilityModificationPatch
     }
 }
 
+[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.FromSerializable))]
+public static class RelicFromSerializableModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(RelicModel __result)
+    {
+        RelicModificationStateService.ApplyDeserializedState(__result);
+    }
+}
+
 [HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Obtain), typeof(RelicModel), typeof(MegaCrit.Sts2.Core.Entities.Players.Player), typeof(int))]
 public static class RelicObtainModificationPatch
 {

@@ -216,6 +216,7 @@ public static class RelicModificationStateService
     private const string PermanentPath = "loadout/services/relic_modifications/permanent.json";
     private static readonly object Gate = new();
     private static readonly ConcurrentDictionary<Type, IReadOnlyList<RelicSavedPropertyDescriptor>> DescriptorCache = new();
+    private static readonly ConcurrentDictionary<Type, IReadOnlyDictionary<string, RelicSavedPropertyDescriptor>> DescriptorMapCache = new();
     private static readonly MethodInfo? DisplayAmountChanged = AccessTools.Method(typeof(RelicModel), "InvokeDisplayAmountChanged");
     private static readonly MethodInfo? StatusChanged = AccessTools.Method(typeof(RelicModel), "InvokeStatusChanged");
     private static readonly MethodInfo? IconChanged = AccessTools.Method(typeof(RelicModel), "RelicIconChanged");
@@ -238,7 +239,6 @@ public static class RelicModificationStateService
         _registered = true;
         RelicModificationInstanceState.Initialize();
         SaveManager.Instance.ProfileIdChanged += OnProfileChanged;
-        RunManager.Instance.RunStarted += OnRunStarted;
         EnsureLoaded();
         RelicModificationMultiplayerSyncService.Register();
     }
@@ -248,7 +248,6 @@ public static class RelicModificationStateService
         if (!_registered) return;
         FlushSave();
         SaveManager.Instance.ProfileIdChanged -= OnProfileChanged;
-        RunManager.Instance.RunStarted -= OnRunStarted;
         RelicModificationMultiplayerSyncService.Unregister();
         _registered = false;
     }
@@ -284,19 +283,23 @@ public static class RelicModificationStateService
     private static RelicModificationState GetEffectiveStateReadOnly(RelicModel relic)
     {
         EnsureLoaded();
+        RelicModificationInstanceSnapshot attached = RelicModificationInstanceState.GetSnapshot(relic);
         int revision = Volatile.Read(ref _stateRevision);
         EffectiveStateCache cache = EffectiveStates.GetValue(relic, _ => new EffectiveStateCache());
         EffectiveStateEntry? current = Volatile.Read(ref cache.Entry);
-        if (current is not null && current.Revision == revision) return current.State;
+        if (current is not null && current.Revision == revision && current.AttachedRevision == attached.Revision)
+            return current.State;
         lock (Gate)
         {
+            attached = RelicModificationInstanceState.GetSnapshot(relic);
             revision = Volatile.Read(ref _stateRevision);
             current = Volatile.Read(ref cache.Entry);
-            if (current is not null && current.Revision == revision) return current.State;
+            if (current is not null && current.Revision == revision && current.AttachedRevision == attached.Revision)
+                return current.State;
             RelicModificationState state = GetPermanentLocked(relic.Id).Clone();
-            state.MergeFrom(RelicModificationInstanceState.GetStateReadOnly(relic));
+            state.MergeFrom(attached.Attachment.State);
             state.Normalize();
-            Volatile.Write(ref cache.Entry, new EffectiveStateEntry(revision, state));
+            Volatile.Write(ref cache.Entry, new EffectiveStateEntry(revision, attached.Revision, state));
             return state;
         }
     }
@@ -317,7 +320,7 @@ public static class RelicModificationStateService
                     attachment.Baseline = CaptureCurrentState(relic);
                 attachment.State = state;
                 RelicModificationInstanceState.Set(relic, attachment);
-                Interlocked.Increment(ref _stateRevision);
+                EffectiveStates.Remove(relic);
                 ApplyEffectiveState(relic);
                 break;
             }
@@ -332,7 +335,7 @@ public static class RelicModificationStateService
                     if (GetPermanentLocked(relic.Id).IsEmpty) RelicModificationInstanceState.Clear(relic);
                     else RelicModificationInstanceState.Set(relic, attachment);
                 }
-                Interlocked.Increment(ref _stateRevision);
+                EffectiveStates.Remove(relic);
                 ApplyEffectiveState(relic);
                 break;
             }
@@ -391,7 +394,21 @@ public static class RelicModificationStateService
     public static void CarryStateToClone(RelicModel source, RelicModel clone)
     {
         if (clone.IsCanonical) return;
-        ApplyEffectiveState(clone);
+        // Canonical-to-mutable is also the first half of RelicModel.FromSerializable.
+        // Avoid touching an unmodified clone before BaseLib imports its saved fields.
+        if (source.IsCanonical && GetEffectiveStateReadOnly(source).IsEmpty) return;
+        EffectiveStates.Remove(clone);
+        ApplyPermanentToRelic(clone);
+    }
+
+    public static void ApplyDeserializedState(RelicModel relic)
+    {
+        if (relic.IsCanonical) return;
+        // RelicModel.FromSerializable fills SavedProperties after ToMutable. Any cache
+        // created by clone propagation must be discarded before reading attached state.
+        RelicModificationInstanceState.Invalidate(relic);
+        EffectiveStates.Remove(relic);
+        ApplyPermanentToRelic(relic);
     }
 
     public static RelicModel CreatePreviewRelic(RelicModel source, RelicModificationState state)
@@ -464,7 +481,7 @@ public static class RelicModificationStateService
         if (descriptor is not null)
             attachment.State.PrimitiveValues[descriptor.Key] = RelicPrimitiveValue.FromObject(value, descriptor.ValueType);
         RelicModificationInstanceState.Set(relic, attachment);
-        Interlocked.Increment(ref _stateRevision);
+        EffectiveStates.Remove(relic);
     }
 
     public static void PrepareRuntimeCounterMutation(RelicModel relic)
@@ -547,14 +564,14 @@ public static class RelicModificationStateService
         bool wasMelted = relic.IsMelted;
         bool melted = state.NeverMelt == true ? false : state.IsMelted ?? relic.IsMelted;
         TrySetProperty(relic, nameof(RelicModel.IsMelted), melted);
-        if (wasMelted && !melted) RestoreFlashSubscriptionAfterUnmelt(relic);
+        if ((wasMelted && !melted) || state.NeverMelt == true) RestoreFlashSubscriptionAfterUnmelt(relic);
         string? status = state.NeverUsed == true && string.Equals(state.Status, "Disabled", StringComparison.OrdinalIgnoreCase) ? "Normal" : state.Status;
         if ((state.NeverUsed == true || state.NeverMelt == true) && status is null && relic.Status == RelicStatus.Disabled)
             status = RelicStatus.Normal.ToString();
         if (status is not null && Enum.TryParse(typeof(RelicStatus), status, true, out object? parsedStatus))
             TrySetProperty(relic, nameof(RelicModel.Status), parsedStatus);
 
-        Dictionary<string, RelicSavedPropertyDescriptor> descriptors = GetSavedPropertyDescriptors(relic).ToDictionary(d => d.Key, StringComparer.Ordinal);
+        IReadOnlyDictionary<string, RelicSavedPropertyDescriptor> descriptors = GetSavedPropertyDescriptorMap(relic);
         foreach ((string key, RelicPrimitiveValue primitive) in state.PrimitiveValues)
             if (descriptors.TryGetValue(key, out RelicSavedPropertyDescriptor? descriptor) && primitive.TryConvert(descriptor.ValueType, out object? value))
                 TrySetDescriptor(relic, descriptor, value);
@@ -594,7 +611,7 @@ public static class RelicModificationStateService
         if (baseline.IsWax.HasValue) TrySetProperty(relic, nameof(RelicModel.IsWax), baseline.IsWax.Value);
         if (baseline.IsMelted.HasValue) TrySetProperty(relic, nameof(RelicModel.IsMelted), baseline.IsMelted.Value);
         if (baseline.Status is not null && Enum.TryParse(typeof(RelicStatus), baseline.Status, true, out object? status)) TrySetProperty(relic, nameof(RelicModel.Status), status);
-        Dictionary<string, RelicSavedPropertyDescriptor> descriptors = GetSavedPropertyDescriptors(relic).ToDictionary(d => d.Key, StringComparer.Ordinal);
+        IReadOnlyDictionary<string, RelicSavedPropertyDescriptor> descriptors = GetSavedPropertyDescriptorMap(relic);
         foreach ((string key, RelicPrimitiveValue primitive) in baseline.PrimitiveValues)
             if (descriptors.TryGetValue(key, out RelicSavedPropertyDescriptor? descriptor) && primitive.TryConvert(descriptor.ValueType, out object? value)) TrySetDescriptor(relic, descriptor, value);
         if (baseline.CounterMember is not null && baseline.CounterValue.HasValue)
@@ -621,6 +638,13 @@ public static class RelicModificationStateService
             result.Add(new RelicSavedPropertyDescriptor(key, field.Name, field.FieldType, relic => field.GetValue(relic), (relic, value) => field.SetValue(relic, value)));
         }
         return result.OrderBy(descriptor => descriptor.Name, StringComparer.Ordinal).ToArray();
+    }
+
+    private static IReadOnlyDictionary<string, RelicSavedPropertyDescriptor> GetSavedPropertyDescriptorMap(RelicModel relic)
+    {
+        return DescriptorMapCache.GetOrAdd(
+            relic.GetType(),
+            _ => GetSavedPropertyDescriptors(relic).ToDictionary(descriptor => descriptor.Key, StringComparer.Ordinal));
     }
 
     private static bool HasSavedProperty(MemberInfo member) => member.GetCustomAttributes(true).Any(a => a.GetType().Name == "SavedPropertyAttribute");
@@ -731,7 +755,6 @@ public static class RelicModificationStateService
             ApplyEffectiveState(relic);
         }
     }
-    private static void OnRunStarted(RunState run) => Callable.From(() => { foreach (RelicModel relic in run.Players.SelectMany(player => player.Relics)) ApplyEffectiveState(relic); }).CallDeferred();
     private static void OnProfileChanged(int _)
     {
         FlushSave();
@@ -765,6 +788,6 @@ public static class RelicModificationStateService
     }
 
     private sealed class EffectiveStateCache { public EffectiveStateEntry? Entry; }
-    private sealed record EffectiveStateEntry(int Revision, RelicModificationState State);
+    private sealed record EffectiveStateEntry(int Revision, int AttachedRevision, RelicModificationState State);
     private sealed class LocStringOwner { public RelicModel? Relic; public string Kind = string.Empty; }
 }
