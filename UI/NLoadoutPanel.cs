@@ -443,7 +443,9 @@ public partial class NLoadoutPanel : Panel
 				RemoveRelicTargetKey,
 				LoadoutTargetMode.PlayersOnly,
 				refresh));
-		//03 - LOADOUT CAULDRON
+		//03 - RELIC MODIFIER
+		RelicModifier.Initialize();
+		//04 - LOADOUT CAULDRON
 		CommonHelpers.CreateAndAddLoadoutItem(
 			ModelDb.AllPotions,
 			new SelectItemAdapter<PotionModel>
@@ -482,9 +484,9 @@ public partial class NLoadoutPanel : Panel
 			LocMan.Loc("LOADOUTCAULDRON_DESC", "Right-click this relic to obtain any potion you want. Ctrl + right click to repeat the last action."),
 			HandleAddPotionActivatedAsync);
 
-		//04 - CARD PRINTER
+		//05 - CARD PRINTER
 		CardPrinter.Initialize();
-		//05 - CARD SHREDDER
+		//06 - CARD SHREDDER
 		CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForRemoval,
 			new SelectItemAdapter<LoadoutOwnedItem<CardModel>>
 			{
@@ -522,10 +524,8 @@ public partial class NLoadoutPanel : Panel
 				LoadoutTargetMode.PlayersOnly,
 				refresh),
 			(_, _) => { });
-		//06 - CARD MODIFIER
+		//07 - CARD MODIFIER
 		CardModifier.Initialize();
-		//07 - RELIC MODIFIER
-		RelicModifier.Initialize();
 				
 		//08 - EVENTFUL COMPASS
 		EventfulCompass.Initialize();

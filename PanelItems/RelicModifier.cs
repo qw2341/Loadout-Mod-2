@@ -50,10 +50,10 @@ public static class RelicModifier
                     "host_relic_permamods",
                     LocMan.Loc("HOST_PERMAMODS_DOWNLOAD_TITLE", "Download Host Permamods"),
                     _ => OpenHostPermamodConflictScreen(),
-                    CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
+                    CommonHelpers.LoadActionButtonIcon("RelicModifier.png"));
             },
             (_, _) => System.Threading.Tasks.Task.FromResult<IReadOnlyList<Services.LastActions.LastActionEntry>>([]),
-            "CardModifier.png",
+            "RelicModifier.png",
             LocMan.Loc("RELICMODIFIER_TITLE", "Relic Modifier"),
             LocMan.Loc("RELICMODIFIER_DESC", "Right-click this relic to modify owned relics; right-click a relic to inspect and edit it."),
             (screen, refresh) =>
