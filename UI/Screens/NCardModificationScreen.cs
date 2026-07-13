@@ -59,6 +59,7 @@ public partial class NCardModificationScreen : Control
     private HBoxContainer? _cardEditActions;
     private Control? _nativeHoverTipAnchor;
     private ScrollContainer? _nativeHoverTipScroll;
+    private NHoverTipCardContainer? _nativeCardHoverTips;
     private Control? _backButtonMount;
     private Control? _previewHost;
     private Control? _leftArrowMount;
@@ -1319,7 +1320,14 @@ public partial class NCardModificationScreen : Control
             _nativeHoverTipScroll.QueueFree();
         }
 
+        if (_nativeCardHoverTips is not null && GodotObject.IsInstanceValid(_nativeCardHoverTips))
+        {
+            _nativeCardHoverTips.GetParent()?.RemoveChild(_nativeCardHoverTips);
+            _nativeCardHoverTips.QueueFree();
+        }
+
         _nativeHoverTipScroll = null;
+        _nativeCardHoverTips = null;
     }
 
     private void LayoutNativeHoverTipAnchor()
@@ -1354,6 +1362,18 @@ public partial class NCardModificationScreen : Control
         if (_nativeHoverTipAnchor is null || !GodotObject.IsInstanceValid(_nativeHoverTipAnchor))
             return;
 
+        NHoverTipCardContainer? cardTips = tipSet.GetNodeOrNull<NHoverTipCardContainer>("cardHoverTipContainer");
+        if (cardTips is not null && cardTips.GetChildCount() > 0)
+        {
+            cardTips.GetParent()?.RemoveChild(cardTips);
+            AddChild(cardTips);
+            _nativeCardHoverTips = cardTips;
+            LayoutNativeCardHoverTips(cardTips);
+            cardTips.ZIndex = 20;
+            cardTips.ZAsRelative = true;
+            cardTips.MouseFilter = MouseFilterEnum.Ignore;
+        }
+
         ScrollContainer scroll = EnsureNativeHoverTipScroll();
         tipSet.GetParent()?.RemoveChild(tipSet);
         scroll.AddChild(tipSet);
@@ -1361,6 +1381,37 @@ public partial class NCardModificationScreen : Control
         tipSet.ZIndex = 0;
         tipSet.ZAsRelative = true;
         tipSet.MouseFilter = MouseFilterEnum.Ignore;
+
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(tipSet) && GodotObject.IsInstanceValid(scroll))
+                NormalizeHoverTipSetForScroll(tipSet, scroll);
+            if (cardTips is not null && GodotObject.IsInstanceValid(cardTips))
+                LayoutNativeCardHoverTips(cardTips);
+        }).CallDeferred();
+    }
+
+    private void LayoutNativeCardHoverTips(NHoverTipCardContainer cardTips)
+    {
+        Vector2 viewport = GetViewportRect().Size;
+        if (viewport == Vector2.Zero)
+            return;
+
+        float mirroredRightEdge = viewport.X * 0.25f;
+        float bottomEdge = viewport.Y - HoverTipViewportMargin;
+        if (_previewHost is not null && GodotObject.IsInstanceValid(_previewHost))
+        {
+            mirroredRightEdge = _previewHost.GlobalPosition.X + _previewHost.Size.X * 0.14f;
+            bottomEdge = _previewHost.GlobalPosition.Y + _previewHost.Size.Y;
+        }
+
+        cardTips.LayoutResizeAndReposition(new Vector2(mirroredRightEdge, bottomEdge), HoverTipAlignment.Left);
+        cardTips.GlobalPosition = new Vector2(
+            MathF.Max(HoverTipViewportMargin, cardTips.GlobalPosition.X),
+            Mathf.Clamp(
+                bottomEdge - cardTips.Size.Y,
+                HoverTipViewportMargin,
+                MathF.Max(HoverTipViewportMargin, viewport.Y - cardTips.Size.Y - HoverTipViewportMargin)));
     }
 
     private ScrollContainer EnsureNativeHoverTipScroll()
