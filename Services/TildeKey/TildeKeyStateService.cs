@@ -6,6 +6,7 @@ using BaseLib.Hooks;
 using BaseLib.Patches.Hooks;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
@@ -17,6 +18,7 @@ using Godot;
 using HarmonyLib;
 using Loadout.Services.Actions;
 using Loadout.Services.Saving;
+using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Combat;
@@ -145,6 +147,7 @@ public static class TildeKeyStateService
         ReadCommentHandling = JsonCommentHandling.Skip,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+    private static readonly ConcurrentDictionary<Type, IReadOnlyList<RelicCounterBinding>> RelicCounterBindingCache = new();
 
     private static readonly IReadOnlyList<TildeKeyStatDefinition> Definitions =
     [
@@ -576,6 +579,21 @@ public static class TildeKeyStateService
         return false;
     }
 
+    public static bool RequestRelicCounterAbsolute(RelicModel relic, string counterMember, int value)
+    {
+        return LoadoutImmediateMutationService.RequestTildeRelicCounterSet(relic, value, counterMember);
+    }
+
+    public static bool RequestRelicCounterLocked(RelicModel relic, string counterMember, int value, bool locked)
+    {
+        return LoadoutImmediateMutationService.RequestTildeRelicCounterLock(relic, counterMember, value, locked);
+    }
+
+    public static bool ReconcileRelicCounterValue(RelicModel relic, string counterMember, int value)
+    {
+        return TrySetRelicCounterValue(relic, counterMember, value);
+    }
+
     public static void ApplySynchronizedRelicCounterDelta(
         string payloadJson,
         int delta,
@@ -601,8 +619,37 @@ public static class TildeKeyStateService
                 return;
         }
 
-        if (TryApplyRelicCounterDelta(relic, payload.CounterMember, delta, out _))
+        RelicModificationStateService.PrepareRuntimeCounterMutation(relic);
+        if (TryApplyRelicCounterDelta(relic, payload.CounterMember, delta, out int newValue))
+        {
+            RelicModificationStateService.RecordRuntimeCounterValue(relic, payload.CounterMember, newValue);
             RefreshRelicCounterLockBadgeForRelic(relic);
+        }
+    }
+
+    public static void ApplySynchronizedRelicCounterSet(
+        string payloadJson,
+        int value,
+        LoadoutTargetSelection target,
+        int ownedItemIndex,
+        ModelId expectedModelId,
+        Player requester)
+    {
+        if (!TryParsePayload(payloadJson, out TildeKeyMutationPayload? payload)
+            || payload is null || string.IsNullOrWhiteSpace(payload.CounterMember)) return;
+        if (ResolveRelicTarget(target, requester, ownedItemIndex, expectedModelId) is not { } relic) return;
+        RelicModificationStateService.PrepareRuntimeCounterMutation(relic);
+        if (!TrySetRelicCounterValue(relic, payload.CounterMember, value)) return;
+        RelicModificationStateService.RecordRuntimeCounterValue(relic, payload.CounterMember, value);
+        lock (SyncRoot)
+        {
+            string key = RelicCounterKey(ownedItemIndex, RelicIdKey(relic), payload.CounterMember);
+            if (GetPlayerStateLocked(relic.Owner.NetId, create: false, out TildeKeyPlayerState? state)
+                && state?.RelicCounterLocks.TryGetValue(key, out TildeKeyRelicCounterLock? saved) == true)
+                saved.Value = value;
+        }
+        SaveRunState();
+        RefreshRelicCounterLockBadgeForRelic(relic);
     }
 
     public static void ApplySynchronizedRelicCounterLock(
@@ -626,8 +673,11 @@ public static class TildeKeyStateService
         string relicId = RelicIdKey(relic);
         if (payload.Enabled)
         {
+            RelicModificationStateService.PrepareRuntimeCounterMutation(relic);
             if (!TrySetRelicCounterValue(relic, payload.CounterMember, value))
                 return;
+
+            RelicModificationStateService.RecordRuntimeCounterValue(relic, payload.CounterMember, value);
 
             lock (SyncRoot)
             {
@@ -1073,7 +1123,7 @@ public static class TildeKeyStateService
     private static bool TryResolveRelicCounter(RelicModel relic, string? requestedMember, out RelicCounterBinding? binding)
     {
         binding = null;
-        List<RelicCounterBinding> candidates = BuildRelicCounterCandidates(relic);
+        IReadOnlyList<RelicCounterBinding> candidates = RelicCounterBindingCache.GetOrAdd(relic.GetType(), BuildRelicCounterCandidates);
         if (!string.IsNullOrWhiteSpace(requestedMember))
         {
             binding = candidates.FirstOrDefault(candidate => string.Equals(candidate.Key, requestedMember, StringComparison.Ordinal));
@@ -1093,9 +1143,8 @@ public static class TildeKeyStateService
         return true;
     }
 
-    private static List<RelicCounterBinding> BuildRelicCounterCandidates(RelicModel relic)
+    private static IReadOnlyList<RelicCounterBinding> BuildRelicCounterCandidates(Type type)
     {
-        Type type = relic.GetType();
         List<RelicCounterBinding> candidates = [];
         BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 

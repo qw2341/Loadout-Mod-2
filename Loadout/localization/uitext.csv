@@ -180,6 +180,26 @@ BLIGHTCHESTALT_DESC,"Right-click this relic to obtain any blights. Left-click to
 ALLINONEBAGUP_TITLE,Ultimate Bag,终极装备箱,Sac ultime,究極のバッグ,궁극의 가방,Bolsa definitiva
 ALLINONEBAGUP_DESC,Right-click this relic to win the game.,右键此遗物来获取胜利。,Faites un clic droit sur cette relique pour gagner la partie.,このレリックを右クリックすると、ゲームに勝利します。,이 유물을 우클릭하면 게임에서 승리합니다.,Haz clic derecho en esta reliquia para ganar la partida.
 HOST_PERMAMODS_DOWNLOAD_TITLE, Download Host Permamod,下载主机永久修改, Télécharger les modifications permanentes de l'hôte, ホストの恒久変更をダウンロード, 호스트 영구 변경 다운로드, Descargar modificaciones permanentes del anfitrión
+RELICMODIFIER_TITLE,Relic Modifier,遗物修改器,Modificateur de reliques,レリック改造機,유물 수정기,Modificador de reliquias
+RELICMODIFIER_DESC,Right-click this relic to modify owned relics; right-click a relic to inspect and edit it.,右键此遗物以修改已拥有的遗物；右键一个遗物以检查和编辑。,Faites un clic droit sur cette relique pour modifier les reliques possédées ; faites un clic droit sur une relique pour l'inspecter et la modifier.,このレリックを右クリックして所持レリックを変更します。レリックを右クリックして確認・編集します。,이 유물을 우클릭하여 보유 유물을 수정하세요. 유물을 우클릭하여 검사하고 편집합니다.,Haz clic derecho en esta reliquia para modificar las reliquias que posees; haz clic derecho en una reliquia para inspeccionarla y editarla.
+RELICMODIFIER_PRESENTATION,Presentation,外观,Présentation,表示,표시,Presentación
+RELICMODIFIER_CUSTOM_TITLE,Custom Title,自定义标题,Titre personnalisé,カスタム名,사용자 지정 이름,Título personalizado
+RELICMODIFIER_CUSTOM_DESCRIPTION,Custom Description,自定义描述,Description personnalisée,カスタム説明,사용자 지정 설명,Descripción personalizada
+RELICMODIFIER_CUSTOM_FLAVOR,Custom Flavor,自定义风味文字,Texte d'ambiance personnalisé,カスタムフレーバー,사용자 지정 플레이버,Texto de ambientación personalizado
+RELICMODIFIER_MODIFY_NAME,Modify Name,修改名称,Modifier le nom,名前を変更,이름 수정,Modificar nombre
+RELICMODIFIER_MODIFY_DESCRIPTION,Modify Description,修改描述,Modifier la description,説明を変更,설명 수정,Modificar descripción
+RELICMODIFIER_MODIFY_FLAVOR,Modify Flavor,修改风味文字,Modifier le texte d'ambiance,フレーバーを変更,플레이버 수정,Modificar ambientación
+RELICMODIFIER_DYNAMIC_VARS,Canonical / Dynamic Vars,标准/动态变量,Variables canoniques / dynamiques,基準値 / 動的変数,기본값 / 동적 변수,Variables canónicas / dinámicas
+RELICMODIFIER_STATE,Relic State,遗物状态,État de la relique,レリック状態,유물 상태,Estado de la reliquia
+RELICMODIFIER_NEVER_MELT,Never Melt,永不熔化,Ne jamais fondre,溶けない,절대 녹지 않음,Nunca fundir
+RELICMODIFIER_NEVER_USED,Never Used,永不耗尽,Jamais épuisée,使い切らない,절대 소모되지 않음,Nunca agotada
+RELICMODIFIER_COUNTER,Counter,计数器,Compteur,カウンター,카운터,Contador
+RELICMODIFIER_COUNTER_LOCK,Lock Counter,锁定计数器,Verrouiller le compteur,カウンターを固定,카운터 잠금,Bloquear contador
+RELICMODIFIER_SAVED_PROPERTIES,Saved Properties,已保存属性,Propriétés sauvegardées,保存プロパティ,저장 속성,Propiedades guardadas
+ADD_COPIES,Add Copies,添加复制品,Ajouter des copies,コピーを追加,복사본 추가,Añadir copias
+RELICMODIFIER_IS_WAX,Is Wax,蜡制状态,Est en cire,蝋製,밀랍 상태,Es de cera
+RELICMODIFIER_IS_MELTED,Is Melted,已熔化,Est fondue,溶解済み,녹은 상태,Está fundida
+RELICMODIFIER_STATUS,Relic Status,遗物状态,Statut de la relique,レリックの状態,유물 상태,Estado de la reliquia
 DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
 DYNAMIC_VAR_DAMAGEBACK,Damage Back,伤害返还,Dégâts de riposte,反撃ダメージ,반격 피해,Daño de respuesta
 DYNAMIC_VAR_CALCULATED_BLOCK,Calculated Block,计算格挡,Bloc calculé,計算ブロック,계산된 방어도,Bloqueo calculado

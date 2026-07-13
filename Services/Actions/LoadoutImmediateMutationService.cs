@@ -16,6 +16,7 @@ using Loadout.Services.Loadouts;
 using Loadout.Services.Morphing;
 using Loadout.Services.Networking;
 using Loadout.Services.PowerGiver;
+using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using Loadout.Services.TildeKey;
 using Loadout.UI;
@@ -68,13 +69,17 @@ public enum LoadoutImmediateMutationKind
     MorphPlayer,
     AddDeckCardCopies,
     RemoveAllCards,
-    RemoveAllRelics
+    RemoveAllRelics,
+    RelicModification,
+    AddOwnedRelicCopies,
+    TildeRelicCounterSet
 }
 
 public static class LoadoutImmediateMutationService
 {
     internal const int MaxSynchronizedCardCopies = 50;
     internal const int MaxSynchronizedCardUpgradeCount = 1000;
+    private const int MaxRelicModificationStateJsonLength = 256 * 1024;
     private const string SynchronizedAddCardsCommandPrefix = "__loadout_add_cards_v1";
     private const string SynchronizedDeckCardCopiesCommandPrefix = "__loadout_clone_deck_card_v1";
 
@@ -443,6 +448,45 @@ public static class LoadoutImmediateMutationService
     public static bool RequestTildeRelicCounterLock(RelicModel relic, string counterMember, int value, bool locked)
     {
         return RequestTildeRelicCounterMutation(relic, LoadoutImmediateMutationKind.TildeRelicCounterLock, value, counterMember, locked);
+    }
+
+    public static bool RequestTildeRelicCounterSet(RelicModel relic, int value, string counterMember)
+    {
+        return RequestTildeRelicCounterMutation(relic, LoadoutImmediateMutationKind.TildeRelicCounterSet, value, counterMember, enabled: false);
+    }
+
+    public static bool RequestRelicModification(
+        LoadoutOwnedItem<RelicModel> item,
+        RelicModificationOperation operation,
+        RelicModificationState? state)
+    {
+        string stateJson = state is null ? string.Empty : JsonSerializer.Serialize(state);
+        if (stateJson.Length > MaxRelicModificationStateJsonLength)
+            return false;
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.RelicModification,
+            ModelId = item.Model.Id,
+            Amount = 1,
+            Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+            OwnedItemIndex = item.Index,
+            ExpectedModelId = item.Model.Id,
+            RelicModificationOperation = operation,
+            RelicModificationStateJson = stateJson
+        });
+    }
+
+    public static bool RequestOwnedRelicCopies(LoadoutOwnedItem<RelicModel> item, int amount)
+    {
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.AddOwnedRelicCopies,
+            ModelId = item.Model.Id,
+            Amount = Math.Clamp(amount, 1, MaxSynchronizedCardCopies),
+            Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+            OwnedItemIndex = item.Index,
+            ExpectedModelId = item.Model.Id
+        });
     }
 
     private static bool RequestTildeRelicCounterMutation(
@@ -1148,6 +1192,15 @@ public static class LoadoutImmediateMutationService
                     payload.ExpectedModelId,
                     requester);
                 break;
+            case LoadoutImmediateMutationKind.TildeRelicCounterSet:
+                TildeKeyStateService.ApplySynchronizedRelicCounterSet(
+                    payload.TildePayloadJson,
+                    payload.Amount,
+                    payload.Target,
+                    payload.OwnedItemIndex,
+                    payload.ExpectedModelId,
+                    requester);
+                break;
             case LoadoutImmediateMutationKind.SummonMonster:
                 await LoadoutSummonMonsterService.SummonMonsterNowAsync(payload.ModelId);
                 break;
@@ -1162,6 +1215,12 @@ public static class LoadoutImmediateMutationService
                 break;
             case LoadoutImmediateMutationKind.RemoveAllRelics:
                 await ApplyRemoveAllRelicsAsync(payload, requester);
+                break;
+            case LoadoutImmediateMutationKind.RelicModification:
+                ApplyRelicModification(payload, requester);
+                break;
+            case LoadoutImmediateMutationKind.AddOwnedRelicCopies:
+                await ApplyAddOwnedRelicCopiesAsync(payload, requester);
                 break;
         }
     }
@@ -1561,6 +1620,52 @@ public static class LoadoutImmediateMutationService
             requester);
     }
 
+    private static void ApplyRelicModification(LoadoutImmediateMutationPayload payload, Player requester)
+    {
+        if (TryGetOwnedRelic(payload, requester) is not { } item)
+            return;
+
+        RelicModificationState? state = null;
+        if (payload.RelicModificationStateJson.Length > MaxRelicModificationStateJsonLength)
+        {
+            GD.PushWarning("LoadoutImmediateMutation: rejected oversized relic modification state.");
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(payload.RelicModificationStateJson))
+        {
+            try { state = JsonSerializer.Deserialize<RelicModificationState>(payload.RelicModificationStateJson); }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"LoadoutImmediateMutation: failed to deserialize relic modification state. {exception.Message}");
+                return;
+            }
+        }
+
+        RelicModificationStateService.ApplyOperation(item, payload.RelicModificationOperation, state);
+    }
+
+    private static async Task ApplyAddOwnedRelicCopiesAsync(LoadoutImmediateMutationPayload payload, Player requester)
+    {
+        if (payload.Amount <= 0 || TryGetOwnedRelic(payload, requester) is not { } item)
+            return;
+
+        for (int i = 0; i < Math.Min(payload.Amount, MaxSynchronizedCardCopies); i++)
+        {
+            try
+            {
+                RelicModel clone = (RelicModel)item.Model.ClonePreservingMutability();
+                Task<RelicModel> obtainTask = RelicCmd.Obtain(clone, item.Owner);
+                if (!obtainTask.IsCompleted) _ = TaskHelper.RunSafely(obtainTask);
+                else await obtainTask;
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"LoadoutImmediateMutation: stopped cloning relic '{item.Model.Id}' after {i}/{payload.Amount}. {exception.Message}");
+                break;
+            }
+        }
+    }
+
     private static void ApplyAdjustPower(LoadoutImmediateMutationPayload payload, Player requester)
     {
         PowerGiverStateService.AdjustCounterFromAction(
@@ -1742,10 +1847,13 @@ public static class LoadoutImmediateMutationService
             or LoadoutImmediateMutationKind.TildeToggleSet
             or LoadoutImmediateMutationKind.TildeRelicCounterDelta
             or LoadoutImmediateMutationKind.TildeRelicCounterLock
+            or LoadoutImmediateMutationKind.TildeRelicCounterSet
             or LoadoutImmediateMutationKind.MorphPlayer
             or LoadoutImmediateMutationKind.AddDeckCardCopies
             or LoadoutImmediateMutationKind.RemoveAllCards
-            or LoadoutImmediateMutationKind.RemoveAllRelics;
+            or LoadoutImmediateMutationKind.RemoveAllRelics
+            or LoadoutImmediateMutationKind.RelicModification
+            or LoadoutImmediateMutationKind.AddOwnedRelicCopies;
     }
 
     private sealed class RemoveAllCardsScope : IDisposable
@@ -1821,6 +1929,8 @@ public struct LoadoutImmediateMutationPayload
     public string LoadoutPayload;
     public string TildePayloadJson;
     public int CardUpgradeCount;
+    public RelicModificationOperation RelicModificationOperation;
+    public string RelicModificationStateJson;
 
     public void Serialize(PacketWriter writer)
     {
@@ -1843,6 +1953,8 @@ public struct LoadoutImmediateMutationPayload
         writer.WriteString(LoadoutPayload ?? string.Empty);
         writer.WriteString(TildePayloadJson ?? string.Empty);
         writer.WriteInt(CardUpgradeCount);
+        writer.WriteInt((int)RelicModificationOperation, 8);
+        writer.WriteString(RelicModificationStateJson ?? string.Empty);
     }
 
     public void Deserialize(PacketReader reader)
@@ -1863,6 +1975,8 @@ public struct LoadoutImmediateMutationPayload
         LoadoutPayload = reader.ReadString();
         TildePayloadJson = reader.ReadString();
         CardUpgradeCount = reader.ReadInt();
+        RelicModificationOperation = (RelicModificationOperation)reader.ReadInt(8);
+        RelicModificationStateJson = reader.ReadString();
         NormalizeDefaults();
     }
 
@@ -1873,6 +1987,7 @@ public struct LoadoutImmediateMutationPayload
         CardModificationStateJson ??= string.Empty;
         LoadoutPayload ??= string.Empty;
         TildePayloadJson ??= string.Empty;
+        RelicModificationStateJson ??= string.Empty;
         CardUpgradeCount = Math.Max(0, CardUpgradeCount);
     }
 

@@ -1,0 +1,194 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://UI/Screens/NRelicModificationScreen.cs" id="1_screen"]
+
+[node name="RelicModificationScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+script = ExtResource("1_screen")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.925)
+
+[node name="NativeHoverTipAnchor" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+offset_left = 1360.0
+offset_top = 640.0
+offset_right = 1361.0
+offset_bottom = 641.0
+mouse_filter = 2
+
+[node name="RelicAnchor" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -432.0
+offset_top = -432.0
+offset_right = 432.0
+offset_bottom = 432.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="PreviewRelicHost" type="Control" parent="RelicAnchor"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LeftArrow" type="Control" parent="RelicAnchor"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -488.0
+offset_top = -64.0
+offset_right = -360.0
+offset_bottom = 64.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(64, 64)
+focus_mode = 2
+mouse_filter = 0
+
+[node name="RightArrow" type="Control" parent="RelicAnchor"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 360.0
+offset_top = -64.0
+offset_right = 488.0
+offset_bottom = 64.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(64, 64)
+focus_mode = 2
+mouse_filter = 0
+
+[node name="RelicEditActions" type="HBoxContainer" parent="RelicAnchor"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -270.0
+offset_top = 456.0
+offset_right = 270.0
+offset_bottom = 508.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="LeftEditor" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 0.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = 92.0
+offset_right = 474.0
+offset_bottom = -224.0
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Margin" type="MarginContainer" parent="LeftEditor"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="LeftControls" type="VBoxContainer" parent="LeftEditor/Margin"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="RightEditor" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -474.0
+offset_top = 92.0
+offset_right = -36.0
+offset_bottom = -60.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Margin" type="MarginContainer" parent="RightEditor"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="RightControls" type="VBoxContainer" parent="RightEditor/Margin"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(426, 0)
+size_flags_horizontal = 0
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="ActionRow" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 42.0
+offset_top = -202.0
+offset_right = 396.0
+offset_bottom = -48.0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="BackButtonMount" type="Control" parent="."]
+unique_name_in_owner = true
+z_index = 30
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2

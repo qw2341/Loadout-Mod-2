@@ -29,6 +29,7 @@ using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
+using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Runs;
@@ -184,6 +185,49 @@ public class CommonHelpers
 		bool TryHandleTargetedRunContentChange(NGenericSelectScreen target, LoadoutRunContentChangedEventArgs change)
 		{
 			Type modelType = typeof(TModel);
+			if (change.Kind == LoadoutRunContentKind.Relics
+			    && IsOwnedItemModel(modelType, typeof(RelicModel)))
+			{
+				if (change.Mode == LoadoutRunContentChangeMode.Update)
+				{
+					if (change.ChangedRelics.Count == 0)
+						return true;
+
+					HashSet<(ulong OwnerNetId, int Index, string ModelId)> changedRelics = change.ChangedRelics
+						.Select(changed => (changed.OwnerNetId, changed.Index, changed.ModelId.ToString()))
+						.ToHashSet();
+					foreach (IGenericSelectItem item in target.VisibleItems)
+					{
+						if (item.UntypedModel is not LoadoutOwnedItem<RelicModel> ownedRelic || item.View is not { } view)
+							continue;
+						if (!changedRelics.Contains((ownedRelic.OwnerNetId, ownedRelic.Index, ownedRelic.Model.Id.ToString())))
+							continue;
+						if (TryFindDescendantOrSelf(view, out NRelicBasicHolder holder) && holder.Relic is { } relicView)
+							relicView.Model = ownedRelic.Model;
+					}
+					return true;
+				}
+
+				if (change.Mode == LoadoutRunContentChangeMode.Add)
+				{
+					RefreshCurrentModels(target, animateRelayout: false, updateExistingViews: false);
+					return true;
+				}
+
+				if (change.Mode == LoadoutRunContentChangeMode.Remove)
+				{
+					object? relicRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
+					IReadOnlyList<TModel> relicModels = getModels();
+					string? removedRelicItemId = change.ChangedRelics
+						.Select(changed => target.VisibleItems.FirstOrDefault(item => item.UntypedModel is LoadoutOwnedItem<RelicModel> owned && MatchesChangedRelic(owned, changed))?.Id)
+						.FirstOrDefault(id => id is not null);
+					if (!target.TryApplySingleItemRemoval(relicModels, adapter, relicModels.Count <= DynamicRelayoutAnimationItemLimit, updateExistingViews: false, expectedRemovedItemId: removedRelicItemId))
+						return false;
+					configuredRunState = relicRunState;
+					return true;
+				}
+			}
+
 			if (change.Kind != LoadoutRunContentKind.Cards
 			    || !IsOwnedItemModel(modelType, typeof(CardModel)))
 			{
@@ -361,6 +405,13 @@ public class CommonHelpers
 	}
 
 	private static bool MatchesChangedCard(LoadoutOwnedItem<CardModel> item, LoadoutChangedCard changed)
+	{
+		return item.OwnerNetId == changed.OwnerNetId
+		       && item.Index == changed.Index
+		       && item.Model.Id.Equals(changed.ModelId);
+	}
+
+	private static bool MatchesChangedRelic(LoadoutOwnedItem<RelicModel> item, LoadoutChangedRelic changed)
 	{
 		return item.OwnerNetId == changed.OwnerNetId
 		       && item.Index == changed.Index

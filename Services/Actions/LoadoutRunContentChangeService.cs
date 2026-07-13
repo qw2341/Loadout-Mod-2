@@ -36,13 +36,19 @@ public readonly record struct LoadoutChangedCard(
     ModelId ModelId,
     LoadoutCardVisualRefreshKind RefreshKind = LoadoutCardVisualRefreshKind.Lightweight);
 
+public readonly record struct LoadoutChangedRelic(
+    ulong OwnerNetId,
+    int Index,
+    ModelId ModelId);
+
 public sealed class LoadoutRunContentChangedEventArgs
 {
     public LoadoutRunContentChangedEventArgs(
         LoadoutRunContentKind kind,
         IEnumerable<ulong>? playerNetIds,
         LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown,
-        IEnumerable<LoadoutChangedCard>? changedCards = null)
+        IEnumerable<LoadoutChangedCard>? changedCards = null,
+        IEnumerable<LoadoutChangedRelic>? changedRelics = null)
     {
         Kind = kind;
         Mode = mode;
@@ -51,6 +57,7 @@ public sealed class LoadoutRunContentChangedEventArgs
             .ToHashSet()
             ?? new HashSet<ulong>();
         ChangedCards = changedCards?.ToList() ?? [];
+        ChangedRelics = changedRelics?.ToList() ?? [];
     }
 
     public LoadoutRunContentKind Kind { get; }
@@ -60,6 +67,8 @@ public sealed class LoadoutRunContentChangedEventArgs
     public IReadOnlySet<ulong> PlayerNetIds { get; }
 
     public IReadOnlyList<LoadoutChangedCard> ChangedCards { get; }
+
+    public IReadOnlyList<LoadoutChangedRelic> ChangedRelics { get; }
 
     public bool AffectsPlayer(ulong playerNetId)
     {
@@ -87,9 +96,10 @@ public static class LoadoutRunContentChangeService
         LoadoutRunContentKind kind,
         IEnumerable<ulong> playerNetIds,
         LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown,
-        IEnumerable<LoadoutChangedCard>? changedCards = null)
+        IEnumerable<LoadoutChangedCard>? changedCards = null,
+        IEnumerable<LoadoutChangedRelic>? changedRelics = null)
     {
-        LoadoutRunContentChangedEventArgs args = new(kind, playerNetIds, mode, changedCards);
+        LoadoutRunContentChangedEventArgs args = new(kind, playerNetIds, mode, changedCards, changedRelics);
         Action<LoadoutRunContentChangedEventArgs>? handlers = Changed;
         if (handlers is null)
             return;
@@ -117,11 +127,12 @@ public static class LoadoutRunContentChangeService
         LoadoutRunContentKind kind,
         IEnumerable<ulong> playerNetIds,
         LoadoutRunContentChangeMode mode = LoadoutRunContentChangeMode.Unknown,
-        IEnumerable<LoadoutChangedCard>? changedCards = null)
+        IEnumerable<LoadoutChangedCard>? changedCards = null,
+        IEnumerable<LoadoutChangedRelic>? changedRelics = null)
     {
         lock (QueueGate)
         {
-            QueuedChanges.Add(new LoadoutRunContentChangedEventArgs(kind, playerNetIds, mode, changedCards));
+            QueuedChanges.Add(new LoadoutRunContentChangedEventArgs(kind, playerNetIds, mode, changedCards, changedRelics));
             if (_queueFlushScheduled)
                 return;
 
@@ -185,7 +196,13 @@ public static class LoadoutRunContentChangeService
                 })
                 .ToList();
 
-            Notify(group.Key, players, mergedMode, cards);
+            List<LoadoutChangedRelic> relics = group
+                .SelectMany(change => change.ChangedRelics)
+                .GroupBy(relic => (relic.OwnerNetId, relic.Index, Id: relic.ModelId.ToString()))
+                .Select(relicGroup => relicGroup.First())
+                .ToList();
+
+            Notify(group.Key, players, mergedMode, cards, relics);
         }
     }
 
@@ -198,5 +215,14 @@ public static class LoadoutRunContentChangeService
             [item.OwnerNetId],
             LoadoutRunContentChangeMode.Update,
             [new LoadoutChangedCard(item.OwnerNetId, item.Index, item.Model.Id, refreshKind)]);
+    }
+
+    public static void NotifyRelicUpdated(LoadoutOwnedItem<RelicModel> item)
+    {
+        Notify(
+            LoadoutRunContentKind.Relics,
+            [item.OwnerNetId],
+            LoadoutRunContentChangeMode.Update,
+            changedRelics: [new LoadoutChangedRelic(item.OwnerNetId, item.Index, item.Model.Id)]);
     }
 }

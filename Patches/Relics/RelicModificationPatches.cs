@@ -1,0 +1,145 @@
+#nullable enable
+
+namespace Loadout.Patches.Relics;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
+using HarmonyLib;
+using Loadout.Services.RelicModification;
+using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Models;
+
+[HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.MutableClone))]
+public static class RelicMutableCloneModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(AbstractModel __instance, AbstractModel __result)
+    {
+        if (__instance is RelicModel source && __result is RelicModel clone)
+            RelicModificationStateService.CarryStateToClone(source, clone);
+    }
+}
+
+[HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.ClonePreservingMutability))]
+public static class RelicClonePreservingMutabilityModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(AbstractModel __instance, AbstractModel __result)
+    {
+        if (__instance is RelicModel source && __result is RelicModel clone)
+            RelicModificationStateService.CarryStateToClone(source, clone);
+    }
+}
+
+[HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Obtain), typeof(RelicModel), typeof(MegaCrit.Sts2.Core.Entities.Players.Player), typeof(int))]
+public static class RelicObtainModificationPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(RelicModel relic) => RelicModificationStateService.ApplyPermanentToRelic(relic);
+}
+
+[HarmonyPatch(typeof(Player), "PopulateRelics", typeof(IEnumerable<RelicModel>), typeof(bool))]
+public static class PlayerPopulateRelicsModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(Player __instance)
+    {
+        foreach (RelicModel relic in __instance.Relics) RelicModificationStateService.ApplyPermanentToRelic(relic);
+    }
+}
+
+[HarmonyPatch]
+public static class RelicRarityModificationPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods() => typeof(RelicModel).Assembly.GetTypes()
+        .Where(type => !type.IsAbstract && typeof(RelicModel).IsAssignableFrom(type))
+        .Select(type => AccessTools.PropertyGetter(type, nameof(RelicModel.Rarity)))
+        .Where(method => method is not null)
+        .Distinct()!;
+
+    [HarmonyPostfix]
+    public static void Postfix(RelicModel __instance, ref RelicRarity __result)
+    {
+        if (RelicModificationStateService.TryGetRarity(__instance, out RelicRarity rarity))
+            __result = rarity;
+    }
+}
+
+[HarmonyPatch]
+public static class RelicIsUsedUpModificationPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods() => typeof(RelicModel).Assembly.GetTypes()
+        .Where(type => !type.IsAbstract && typeof(RelicModel).IsAssignableFrom(type))
+        .Select(type => AccessTools.PropertyGetter(type, nameof(RelicModel.IsUsedUp)))
+        .Where(method => method is not null)
+        .Distinct()!;
+
+    [HarmonyPostfix]
+    public static void Postfix(RelicModel __instance, ref bool __result)
+    {
+        if (RelicModificationStateService.ShouldNeverUse(__instance)) __result = false;
+    }
+}
+
+[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.Status), MethodType.Setter)]
+public static class RelicStatusModificationPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(RelicModel __instance, ref RelicStatus value)
+    {
+        if (value == RelicStatus.Disabled && RelicModificationStateService.ShouldNeverUse(__instance))
+            value = RelicStatus.Normal;
+    }
+}
+
+[HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Melt), typeof(RelicModel))]
+public static class RelicMeltModificationPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(RelicModel relic, ref Task __result)
+    {
+        if (!RelicModificationStateService.ShouldNeverMelt(relic)) return true;
+        __result = Task.CompletedTask;
+        return false;
+    }
+}
+
+[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.Title), MethodType.Getter)]
+public static class RelicTitleModificationPatch
+{
+    [HarmonyPrefix] public static void Prefix(RelicModel __instance) => RelicModificationStateService.PushLocStringContext(__instance, "title");
+    [HarmonyPostfix] public static void Postfix(RelicModel __instance, LocString __result) => RelicModificationStateService.AssociateLocString(__instance, __result, "title");
+    [HarmonyFinalizer] public static Exception? Finalizer(Exception? __exception) { RelicModificationStateService.PopLocStringContext(); return __exception; }
+}
+
+[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.Flavor), MethodType.Getter)]
+public static class RelicFlavorModificationPatch
+{
+    [HarmonyPrefix] public static void Prefix(RelicModel __instance) => RelicModificationStateService.PushLocStringContext(__instance, "flavor");
+    [HarmonyPostfix] public static void Postfix(RelicModel __instance, LocString __result) => RelicModificationStateService.AssociateLocString(__instance, __result, "flavor");
+    [HarmonyFinalizer] public static Exception? Finalizer(Exception? __exception) { RelicModificationStateService.PopLocStringContext(); return __exception; }
+}
+
+[HarmonyPatch(typeof(LocString), nameof(LocString.GetRawText))]
+public static class RelicLocStringRawTextModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(LocString __instance, ref string __result)
+    {
+        if (RelicModificationStateService.TryGetCustomRawLocString(__instance, out string text)) __result = text;
+    }
+}
+
+[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.DynamicDescription), MethodType.Getter)]
+public static class RelicDescriptionModificationPatch
+{
+    [HarmonyPrefix] public static void Prefix(RelicModel __instance) => RelicModificationStateService.PushLocStringContext(__instance, "description");
+    [HarmonyPostfix] public static void Postfix(RelicModel __instance, LocString __result) => RelicModificationStateService.AssociateLocString(__instance, __result, "description");
+    [HarmonyFinalizer] public static Exception? Finalizer(Exception? __exception) { RelicModificationStateService.PopLocStringContext(); return __exception; }
+}

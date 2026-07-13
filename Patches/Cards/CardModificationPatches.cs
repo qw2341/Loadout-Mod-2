@@ -11,6 +11,7 @@ using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Services.RelicModification;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -424,6 +425,7 @@ public static class StartRunLobbyCardModificationConstructorPatch
     public static void Postfix(StartRunLobby __instance)
     {
         CardModificationMultiplayerSyncService.RegisterLobby(__instance);
+        RelicModificationMultiplayerSyncService.RegisterLobby(__instance);
     }
 }
 
@@ -434,6 +436,7 @@ public static class StartRunLobbyCardModificationCleanUpPatch
     public static void Prefix(StartRunLobby __instance, bool disconnectSession)
     {
         CardModificationMultiplayerSyncService.UnregisterLobby(__instance, disconnectSession);
+        RelicModificationMultiplayerSyncService.UnregisterLobby(__instance, disconnectSession);
     }
 }
 
@@ -445,6 +448,7 @@ public static class RunManagerLaunchCardModificationPatch
     {
         LoadoutImmediateMutationService.OnRunLaunched();
         CardModificationMultiplayerSyncService.OnRunLaunched();
+        RelicModificationMultiplayerSyncService.OnRunLaunched();
         CardModificationStateService.ApplySavedRunStateToLiveDecks();
     }
 }
@@ -457,5 +461,6 @@ public static class RunManagerCleanUpCardModificationPatch
     {
         LoadoutImmediateMutationService.OnRunCleaningUp();
         CardModificationMultiplayerSyncService.OnRunCleaningUp();
+        RelicModificationMultiplayerSyncService.OnRunCleaningUp();
     }
 }

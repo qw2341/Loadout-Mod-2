@@ -6,6 +6,7 @@ using System;
 using Godot;
 using Loadout.PanelItems;
 using Loadout.Services.CardModification;
+using Loadout.Services.RelicModification;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
@@ -16,6 +17,9 @@ public partial class NHostPermamodConflictScreen : Control
 {
     private const float DialogWidth = 520f;
     private const float ButtonHeight = 42f;
+    private bool _relicMode;
+
+    public void InitForRelics() => _relicMode = true;
 
     public override void _Ready()
     {
@@ -92,7 +96,8 @@ public partial class NHostPermamodConflictScreen : Control
 
     private void Apply(CardModificationPermanentImportMode mode)
     {
-        CardModificationMultiplayerSyncService.ApplyPendingHostPermanentSnapshot(mode);
+        if (_relicMode) RelicModificationMultiplayerSyncService.ApplyPendingHostPermanentSnapshot(mode);
+        else CardModificationMultiplayerSyncService.ApplyPendingHostPermanentSnapshot(mode);
         Close();
     }
 

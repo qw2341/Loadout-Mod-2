@@ -507,14 +507,16 @@ public partial class NLoadoutPanel : Panel
 			(_, _) => { });
 		//06 - CARD MODIFIER
 		CardModifier.Initialize();
+		//07 - RELIC MODIFIER
+		RelicModifier.Initialize();
 				
-		//07 - EVENTFUL COMPASS
+		//08 - EVENTFUL COMPASS
 		EventfulCompass.Initialize();
-		//08 - POWER GIVER
+		//09 - POWER GIVER
 		PowerGiver.Initialize();
-		//09 - TILDE KEY
+		//10 - TILDE KEY
 		TildeKey.Initialize();
-		//10 - BOTTLE MONSTER
+		//11 - BOTTLE MONSTER
 		BottledMonster.Initialize();
 	}
 
@@ -802,7 +804,7 @@ public partial class NLoadoutPanel : Panel
 		return holder;
 	}
 
-	private static Control CreateOwnedRelicGridItem(RelicModel model)
+	internal static Control CreateOwnedRelicGridItem(RelicModel model)
 	{
 		NRelicBasicHolder? holder = NRelicBasicHolder.Create(model);
 		if (holder is null)
@@ -813,7 +815,7 @@ public partial class NLoadoutPanel : Panel
 		return holder;
 	}
 
-	private static Action? BindRelicActivationWithCleanup(Control view, Action activate)
+	internal static Action? BindRelicActivationWithCleanup(Control view, Action activate)
 	{
 		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicCollectionEntry collectionEntry))
 		{
