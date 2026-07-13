@@ -52,6 +52,7 @@ using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
+using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using Loadout.UI.Managers;
 
@@ -95,6 +96,8 @@ public partial class NLoadoutPanel : Panel
 	private bool _runStartedConnected;
 	private bool _isReady;
 	private Control? _layoutParent;
+	private NGenericSelectScreen? _loadoutBagRelicScreen;
+	private readonly HashSet<string> _pendingPermanentRelicRefreshIds = new(StringComparer.Ordinal);
 	
 	public event Action? VisibilityStateChanged;
 
@@ -116,6 +119,7 @@ public partial class NLoadoutPanel : Panel
 		
 		BindRunHooks();
 		LoadoutPanelAccessService.AccessChanged += OnLoadoutPanelAccessChanged;
+		RelicModificationStateService.PermanentRelicDisplayChanged += OnPermanentRelicDisplayChanged;
 
 		_layoutParent = GetParent<Control>();
 		if (_layoutParent is not null)
@@ -130,6 +134,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		UnbindRunHooks();
 		LoadoutPanelAccessService.AccessChanged -= OnLoadoutPanelAccessChanged;
+		RelicModificationStateService.PermanentRelicDisplayChanged -= OnPermanentRelicDisplayChanged;
 
 		if (_layoutParent is not null && IsInstanceValid(_layoutParent))
 			_layoutParent.Resized -= OnPanelLayoutChanged;
@@ -355,7 +360,7 @@ public partial class NLoadoutPanel : Panel
 	{
 		
 		//01 - LOADOUT BAG
-		CommonHelpers.CreateAndAddLoadoutItem(
+		NLoadoutPanelItem loadoutBagItem = CommonHelpers.CreateAndAddLoadoutItem(
 			ModelDb.AllRelics,
 			new SelectItemAdapter<RelicModel>
 			{
@@ -363,6 +368,8 @@ public partial class NLoadoutPanel : Panel
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription}",
 				CreateView = (relic, _) => CreateRelicGridItem(relic),
+				ViewReady = (relic, view) => RefreshRelicGridItem(view, relic),
+				UpdateView = (relic, view, _) => RefreshRelicGridItem(view, relic),
 				BindActivationWithCleanup = (_, view, activate) => BindRelicActivationWithCleanup(view, activate)
 			}, builder =>
 			{
@@ -384,17 +391,27 @@ public partial class NLoadoutPanel : Panel
 					key => GetRelicGroupHeader(key, relicGroupingData),
 					relicGroupingData.GroupOrder,
 					relicGroupingData.DescendingGroupOrder);
-			}, screen => LoadoutTargetService.UpsertTargetDropdown(
-				screen,
-				LoadoutBagTargetDropdownName,
-				LastActionService.LoadoutBagKey,
-				LoadoutTargetMode.AllPlayersAndPlayers),
+			}, screen =>
+			{
+				LoadoutTargetService.UpsertTargetDropdown(
+					screen,
+					LoadoutBagTargetDropdownName,
+					LastActionService.LoadoutBagKey,
+					LoadoutTargetMode.AllPlayersAndPlayers);
+				RefreshPendingPermanentRelics(screen);
+			},
 			"LoadoutBag.png",
 			LocMan.Loc("LOADOUTBAG_TITLE", "Loadout Bag"),
 			LocMan.Loc("LOADOUTBAG_DESC", "Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action."),
 			HandleAddRelicActivatedAsync,
 			LastActionService.LoadoutBagKey,
 			ReplayLoadoutBagLastActionAsync);
+		_loadoutBagRelicScreen = loadoutBagItem.BoundScreen;
+		_loadoutBagRelicScreen.VisibilityChanged += () =>
+		{
+			if (_loadoutBagRelicScreen?.IsVisibleInTree() == true)
+				RefreshPendingPermanentRelics(_loadoutBagRelicScreen);
+		};
 		//02 - TRASH BIN
 		CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetRelics,
 			new SelectItemAdapter<LoadoutOwnedItem<RelicModel>>
@@ -802,6 +819,60 @@ public partial class NLoadoutPanel : Panel
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(68f, 68f);
 		return holder;
+	}
+
+	private static void RefreshRelicGridItem(Control view, RelicModel model)
+	{
+		if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicCollectionEntry collectionEntry))
+			collectionEntry.relic = model;
+
+		if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelic relicView))
+			return;
+
+		relicView.Model = RelicModificationStateService.GetEffectivePermanentRelicForDisplay(model);
+	}
+
+	private void OnPermanentRelicDisplayChanged(ModelId relicId)
+	{
+		string key = relicId.ToString();
+		if (string.IsNullOrWhiteSpace(key))
+			return;
+
+		_pendingPermanentRelicRefreshIds.Add(key);
+		NGenericSelectScreen? screen = _loadoutBagRelicScreen;
+		if (screen is null || !IsInstanceValid(screen) || !screen.IsInsideTree())
+			return;
+
+		Callable.From(() =>
+		{
+			if (!IsInstanceValid(screen) || !screen.IsInsideTree())
+				return;
+
+			screen.ForEachVisibleItemView((item, view) =>
+			{
+				if (item.UntypedModel is RelicModel relic && relic.Id.Equals(relicId))
+					RefreshRelicGridItem(view, relic);
+			});
+
+			if (screen.IsVisibleInTree())
+				RefreshPendingPermanentRelics(screen);
+		}).CallDeferred();
+	}
+
+	private void RefreshPendingPermanentRelics(NGenericSelectScreen screen)
+	{
+		if (_pendingPermanentRelicRefreshIds.Count == 0
+		    || !IsInstanceValid(screen)
+		    || !screen.IsInsideTree()
+		    || !screen.IsVisibleInTree())
+		{
+			return;
+		}
+
+		_pendingPermanentRelicRefreshIds.Clear();
+		// Rarity is both presentation and layout state in this catalog, so a permanent
+		// change must rerun the existing filters/grouping rather than only swap the icon.
+		screen.RefreshNow(resetScroll: false);
 	}
 
 	internal static Control CreateOwnedRelicGridItem(RelicModel model)

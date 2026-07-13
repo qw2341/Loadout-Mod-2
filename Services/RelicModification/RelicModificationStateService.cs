@@ -232,6 +232,7 @@ public static class RelicModificationStateService
     [ThreadStatic] private static Stack<(RelicModel Relic, string Kind)>? _locContext;
 
     public static event Action? StateChanged;
+    public static event Action<ModelId>? PermanentRelicDisplayChanged;
 
     public static void Register()
     {
@@ -374,7 +375,10 @@ public static class RelicModificationStateService
         }
 
         if (operation is RelicModificationOperation.ApplyPermanent or RelicModificationOperation.ResetPermanentToBasic)
+        {
             NotifyAllMatchingRelicsUpdated(relic.Id);
+            RaisePermanentRelicDisplayChanged(relic.Id);
+        }
         else
             LoadoutRunContentChangeService.NotifyRelicUpdated(item);
         StateChanged?.Invoke();
@@ -420,6 +424,19 @@ public static class RelicModificationStateService
         EffectiveStates.Remove(preview);
         ApplyEffectiveState(preview);
         return preview;
+    }
+
+    public static RelicModel GetEffectivePermanentRelicForDisplay(RelicModel relic)
+    {
+        EnsureLoaded();
+        lock (Gate)
+        {
+            if (GetPermanentLocked(relic.Id).IsEmpty)
+                return relic;
+        }
+
+        RelicModel canonical = relic.IsCanonical ? relic : relic.CanonicalInstance;
+        return canonical.ToMutable();
     }
 
     public static bool ShouldNeverMelt(RelicModel relic) => GetEffectiveStateReadOnly(relic).NeverMelt == true;
@@ -498,21 +515,35 @@ public static class RelicModificationStateService
     public static void SetHostPermanentOverlay(string json)
     {
         Dictionary<string, RelicModificationState>? states = JsonSerializer.Deserialize<Dictionary<string, RelicModificationState>>(json);
+        string[] changedKeys;
         RestoreAllOverlayBaselines();
         lock (Gate)
         {
+            changedKeys = _hostOverlay.Keys
+                .Concat(states is null ? Enumerable.Empty<string>() : states.Keys)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
             _hostOverlay = states is null ? new(StringComparer.Ordinal) : new(states, StringComparer.Ordinal);
             _hasHostOverlay = true;
             Interlocked.Increment(ref _stateRevision);
         }
         ApplyAllLoadedRelics();
+        RaisePermanentRelicDisplayChanged(changedKeys);
     }
 
     public static void ClearHostPermanentOverlay()
     {
+        string[] changedKeys;
         RestoreAllOverlayBaselines();
-        lock (Gate) { _hostOverlay.Clear(); _hasHostOverlay = false; Interlocked.Increment(ref _stateRevision); }
+        lock (Gate)
+        {
+            changedKeys = _hostOverlay.Keys.ToArray();
+            _hostOverlay.Clear();
+            _hasHostOverlay = false;
+            Interlocked.Increment(ref _stateRevision);
+        }
         ApplyAllLoadedRelics();
+        RaisePermanentRelicDisplayChanged(changedKeys);
     }
 
     public static void ImportHostPermanentSnapshot(string json, bool merge)
@@ -529,6 +560,7 @@ public static class RelicModificationStateService
             QueueSave();
             Interlocked.Increment(ref _stateRevision);
         }
+        RaisePermanentRelicDisplayChanged(states.Keys);
     }
 
     public static void RefreshRelic(RelicModel relic)
@@ -776,6 +808,40 @@ public static class RelicModificationStateService
             snapshot = _permanent.Clone();
         }
         SaveUtility.SaveProfileJson(PermanentPath, snapshot);
+    }
+
+    private static void RaisePermanentRelicDisplayChanged(ModelId relicId)
+    {
+        Action<ModelId>? handlers = PermanentRelicDisplayChanged;
+        if (handlers is null)
+            return;
+
+        foreach (Action<ModelId> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(relicId);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"RelicModifier: permanent-relic display handler failed. {exception.Message}");
+            }
+        }
+    }
+
+    private static void RaisePermanentRelicDisplayChanged(IEnumerable<string> relicKeys)
+    {
+        HashSet<string> keys = relicKeys
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .ToHashSet(StringComparer.Ordinal);
+        if (keys.Count == 0)
+            return;
+
+        foreach (RelicModel relic in ModelDb.AllRelics)
+        {
+            if (keys.Contains(relic.Id.ToString()))
+                RaisePermanentRelicDisplayChanged(relic.Id);
+        }
     }
 
     private struct PermanentSaveData : ISerializable

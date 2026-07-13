@@ -10,10 +10,15 @@ using System.Threading.Tasks;
 using HarmonyLib;
 using Loadout.Services.RelicModification;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
+using MegaCrit.Sts2.Core.Nodes.Screens.InspectScreens;
+using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
 
 [HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.MutableClone))]
 public static class RelicMutableCloneModificationPatch
@@ -44,6 +49,62 @@ public static class RelicFromSerializableModificationPatch
     public static void Postfix(RelicModel __result)
     {
         RelicModificationStateService.ApplyDeserializedState(__result);
+    }
+}
+
+[HarmonyPatch(typeof(NInspectRelicScreen), nameof(NInspectRelicScreen.Open))]
+public static class InspectRelicPermanentDisplayPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(ref IReadOnlyList<RelicModel> relics, ref RelicModel relic)
+    {
+        IReadOnlyList<RelicModel> originalRelics = relics;
+        RelicModel selectedRelic = relic;
+        int selectedIndex = -1;
+        for (int index = 0; index < originalRelics.Count; index++)
+        {
+            RelicModel candidate = originalRelics[index];
+            if (!ReferenceEquals(candidate, selectedRelic) && !candidate.Id.Equals(selectedRelic.Id))
+                continue;
+            selectedIndex = index;
+            break;
+        }
+        if (selectedIndex < 0)
+            return;
+
+        List<RelicModel> displayRelics = originalRelics
+            .Select(RelicModificationStateService.GetEffectivePermanentRelicForDisplay)
+            .ToList();
+        bool changed = false;
+        for (int index = 0; index < displayRelics.Count; index++)
+            changed |= !ReferenceEquals(displayRelics[index], originalRelics[index]);
+        if (changed)
+        {
+            relics = displayRelics;
+            relic = displayRelics[selectedIndex];
+        }
+    }
+}
+
+[HarmonyPatch(typeof(NRelicCollectionEntry), "OnFocus")]
+public static class RelicCollectionHoverTipPermanentDisplayPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(NRelicCollectionEntry __instance)
+    {
+        if (__instance.ModelVisibility != ModelVisibility.Visible)
+            return;
+
+        RelicModel displayRelic = RelicModificationStateService.GetEffectivePermanentRelicForDisplay(__instance.relic);
+        if (ReferenceEquals(displayRelic, __instance.relic))
+            return;
+
+        NHoverTipSet.Remove(__instance);
+        NHoverTipSet.CreateAndShow(
+                __instance,
+                displayRelic.HoverTips,
+                HoverTip.GetHoverTipAlignment(__instance))
+            ?.SetFollowOwner();
     }
 }
 

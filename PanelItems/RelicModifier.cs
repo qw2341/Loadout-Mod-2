@@ -4,12 +4,15 @@ namespace Loadout.PanelItems;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Godot;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
+using Loadout.Services.TildeKey;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 
@@ -17,6 +20,7 @@ public static class RelicModifier
 {
     public const string TargetKey = "relic_modifier";
     private const string TargetDropdownName = "RelicModifierTargetDropdown";
+    private const string CounterLabelName = "LoadoutRelicModifierCounterLabel";
 
     public static void Initialize()
     {
@@ -27,6 +31,7 @@ public static class RelicModifier
             GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
             GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)}",
             CreateView = (item, _) => NLoadoutPanel.CreateOwnedRelicGridItem(item.Model),
+            ViewReady = (item, view) => RefreshView(view, item.Model),
             UpdateView = (item, view, _) => RefreshView(view, item.Model),
             BindActivationWithCleanup = (item, view, _) => BindRightClickWithCleanup(
                 view,
@@ -113,7 +118,56 @@ public static class RelicModifier
         {
             relicView.Model = model;
             RelicModificationStateService.RefreshRelic(model);
+            RefreshCounterLabel(relicView, model);
         }
+    }
+
+    private static void RefreshCounterLabel(NRelic relicView, RelicModel model)
+    {
+        MegaLabel? label = relicView.GetNodeOrNull<MegaLabel>(CounterLabelName);
+        int counterValue = 0;
+        bool hasCounter = TildeKeyStateService.TryGetRelicCounterMember(model, out string counterMember)
+                          && TildeKeyStateService.TryGetRelicCounterValue(model, counterMember, out counterValue);
+        if (!hasCounter)
+        {
+            if (label is not null)
+                label.Visible = false;
+            return;
+        }
+
+        if (label is null)
+        {
+            label = new MegaLabel
+            {
+                Name = CounterLabelName,
+                AutoSizeEnabled = false,
+                MinFontSize = 12,
+                MaxFontSize = 18,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                FocusMode = Control.FocusModeEnum.None
+            };
+            label.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
+            label.OffsetLeft = -36f;
+            label.OffsetTop = -33f;
+            label.OffsetRight = -4f;
+            label.OffsetBottom = -1f;
+            label.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
+            label.AddThemeFontSizeOverride("font_size", 18);
+            label.AddThemeColorOverride("font_color", new Color(1f, 0.965f, 0.886f));
+            label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.19f));
+            label.AddThemeColorOverride("font_outline_color", new Color(0.15f, 0.141f, 0.111f));
+            label.AddThemeConstantOverride("shadow_offset_x", 2);
+            label.AddThemeConstantOverride("shadow_offset_y", 2);
+            label.AddThemeConstantOverride("outline_size", 10);
+            label.AddThemeConstantOverride("shadow_outline_size", 10);
+            relicView.AddChild(label);
+        }
+
+        label.Text = counterValue.ToString(CultureInfo.InvariantCulture);
+        label.Visible = true;
+        relicView.MoveChild(label, relicView.GetChildCount() - 1);
     }
 
     private static void OpenHostPermamodConflictScreen()
