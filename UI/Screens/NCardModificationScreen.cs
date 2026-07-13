@@ -1399,10 +1399,11 @@ public partial class NCardModificationScreen : Control
 
         float mirroredRightEdge = viewport.X * 0.25f;
         float bottomEdge = viewport.Y - HoverTipViewportMargin;
-        if (_previewHost is not null && GodotObject.IsInstanceValid(_previewHost))
+        if (_previewCard is not null && GodotObject.IsInstanceValid(_previewCard))
         {
-            mirroredRightEdge = _previewHost.GlobalPosition.X + _previewHost.Size.X * 0.14f;
-            bottomEdge = _previewHost.GlobalPosition.Y + _previewHost.Size.Y;
+            Vector2 cardSize = _previewCard.GetCurrentSize();
+            mirroredRightEdge = _previewCard.GlobalPosition.X - cardSize.X * 0.5f;
+            bottomEdge = _previewCard.GlobalPosition.Y + cardSize.Y * 0.5f;
         }
 
         cardTips.LayoutResizeAndReposition(new Vector2(mirroredRightEdge, bottomEdge), HoverTipAlignment.Left);
