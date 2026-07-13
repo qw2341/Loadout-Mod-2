@@ -231,5 +231,6 @@ LOADOUT_DELETED,Deleted loadout.,已删除预设方案。,Équipement supprimé.
 LOADOUT_EXPORTED,Exported loadout.,已导出预设方案。,Équipement exporté.,ロードアウトをエクスポートしました。,로드아웃을 내보냈습니다.,Equipamiento exportado.
 LOADOUT_EXPORT_FAILED,Could not export loadout.,无法导出预设方案。,Impossible d'exporter l'équipement.,ロードアウトをエクスポートできませんでした。,로드아웃을 내보낼 수 없습니다.,No se pudo exportar el equipamiento.
 LOADOUT_IMPORTED,Imported loadout.,已导入预设方案。,Équipement importé.,ロードアウトをインポートしました。,로드아웃을 가져왔습니다.,Equipamiento importado.
+LOADOUT_CLIPBOARD_INVALID,Clipboard is invalid.,剪贴板内容无效。,Le presse-papiers n'est pas valide.,クリップボードの内容が無効です。,클립보드 내용이 잘못되었습니다.,El portapapeles no es válido.
 REMOVE_ALL_RELICS,Remove All Relics,移除所有遗物,Supprimer toutes les reliques,すべてのレリックを削除,모든 유물 제거,Eliminar todas las reliquias
 REMOVE_ALL_CARDS,Remove All Cards,移除所有卡牌,Supprimer toutes les cartes,すべてのカードを削除,모든 카드 제거,Eliminar todas las cartas

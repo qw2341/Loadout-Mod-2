@@ -585,17 +585,19 @@ public partial class NDeckLoadoutPanel : Control
 
     private void ImportFromClipboard()
     {
-        if (!LoadoutClipboardService.TryImportFromClipboard(out SavedLoadout loadout, out string error))
+        if (!LoadoutClipboardService.TryImportFromClipboard(out SavedLoadout loadout, out _))
         {
-            SetStatus(error);
+            SetStatus(LocMan.Loc("LOADOUT_CLIPBOARD_INVALID", "Clipboard is invalid."));
             return;
         }
 
-        SavedLoadout imported = LoadoutStorageService.Import(loadout);
-        _selectedOptionId = $"local:{imported.Id}";
-        RefreshLoadoutOptions();
-        RefreshSelectedName();
-        SetStatus(LocMan.Loc("LOADOUT_IMPORTED", "Imported loadout."));
+        if (!LoadoutApplyService.RequestApply(loadout, GetApplyTarget()))
+        {
+            SetStatus(LocMan.Loc("LOADOUT_APPLY_FAILED", "Could not apply loadout."));
+            return;
+        }
+
+        SetStatus(LocMan.Loc("LOADOUT_APPLIED", "Applied loadout."));
     }
 
     private bool TryGetSelected(out LoadoutCatalogEntry entry)
