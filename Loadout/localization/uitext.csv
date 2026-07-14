@@ -235,6 +235,8 @@ RENAME_LOADOUT,Rename,重命名,Renommer,名前を変更,이름 변경,Renombrar
 DELETE_LOADOUT,Delete,删除,Supprimer,削除,삭제,Eliminar
 IMPORT_LOADOUT,Import from clipboard,导入剪贴板,Importer depuis le presse-papiers,クリップボードからインポート,클립보드에서 가져오기,Importar desde el portapapeles
 EXPORT_LOADOUT,Export to clipboard,导出剪贴板,Exporter vers le presse-papiers,クリップボードへエクスポート,클립보드로 내보내기,Exportar al portapapeles
+EXPORT_CARDS_LOADOUT,Export Deck,导出当前卡组,Exporter le deck,現在のデッキをエクスポート,현재 덱 내보내기,Exportar mazo
+EXPORT_CARDS_RELICS_LOADOUT,Export Deck + Relics,导出卡组 + 遗物,Exporter deck + reliques,デッキ + レリックをエクスポート,덱 + 유물 내보내기,Exportar mazo + reliquias
 LOADOUT_NAME_PLACEHOLDER,Loadout name,预设名称,Nom de l'équipement,ロードアウト名,로드아웃 이름,Nombre del equipamiento
 LOADOUT_KIND_RELICS,Relics,遗物,Reliques,レリック,유물,Reliquias
 LOADOUT_KIND_BOTH,Cards + Relics,卡牌 + 遗物,Cartes + reliques,カード + レリック,카드 + 유물,Cartas + reliquias

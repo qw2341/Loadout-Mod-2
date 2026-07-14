@@ -29,7 +29,7 @@ public partial class NDeckLoadoutPanel : Control
     private const string StartingDeckOptionId = "special:starting_deck";
     private const string TargetKey = "deck_loadout_apply";
     private const float PanelWidth = 245f;
-    private const float PanelHeight = 340f;
+    private const float PanelHeight = 370f;
     private const float DropdownHeight = 38f;
     private const float ButtonHeight = 26f;
     private const float ButtonRowGap = 8f;
@@ -182,9 +182,10 @@ public partial class NDeckLoadoutPanel : Control
         _content.AddChild(CreateButtonRow(
             CreateButton("rename", LocMan.Loc("RENAME_LOADOUT", "Rename"), RenameSelected, HalfButtonWidth),
             CreateButton("delete", LocMan.Loc("DELETE_LOADOUT", "Delete"), DeleteSelected, HalfButtonWidth)));
+        _content.AddChild(CreateButton("import", LocMan.Loc("IMPORT_LOADOUT", "Import from clipboard"), ImportFromClipboard));
         _content.AddChild(CreateButtonRow(
-            CreateButton("import", LocMan.Loc("IMPORT_LOADOUT", "Import"), ImportFromClipboard, HalfButtonWidth),
-            CreateButton("export", LocMan.Loc("EXPORT_LOADOUT", "Export"), CopySelected, HalfButtonWidth)));
+            CreateButton("export_cards", LocMan.Loc("EXPORT_CARDS_LOADOUT", "Export Deck"), () => ExportCurrent(LoadoutKind.Cards), HalfButtonWidth),
+            CreateButton("export_both", LocMan.Loc("EXPORT_CARDS_RELICS_LOADOUT", "Export Deck + Relics"), () => ExportCurrent(LoadoutKind.CardsAndRelics), HalfButtonWidth)));
 
         _statusLabel = CreateLabel(string.Empty, 15, StsColors.cream);
         _statusLabel.CustomMinimumSize = new Vector2(PanelWidth, 44f);
@@ -570,15 +571,17 @@ public partial class NDeckLoadoutPanel : Control
         }
     }
 
-    private void CopySelected()
+    private void ExportCurrent(LoadoutKind kind)
     {
-        if (!TryGetSelected(out LoadoutCatalogEntry entry))
+        Player? player = _player ?? ResolveLocalPlayer();
+        if (player is null)
         {
-            SetStatus(LocMan.Loc("LOADOUT_SELECT_FIRST", "Select a loadout first."));
+            SetStatus(LocMan.Loc("LOADOUT_NO_PLAYER", "No run player available."));
             return;
         }
 
-        SetStatus(LoadoutClipboardService.Copy(entry.Loadout)
+        SavedLoadout current = LoadoutSerializationService.Capture(player, kind);
+        SetStatus(LoadoutClipboardService.Copy(current)
             ? LocMan.Loc("LOADOUT_EXPORTED", "Exported loadout.")
             : LocMan.Loc("LOADOUT_EXPORT_FAILED", "Could not export loadout."));
     }
