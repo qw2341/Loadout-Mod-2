@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
 using Loadout.Services.CardModification;
+using Loadout.Services.RelicModification;
 
 public enum LoadoutKind
 {
@@ -115,12 +116,19 @@ public sealed class SavedRelicLoadoutEntry
     [JsonPropertyName("count")]
     public int Count { get; set; } = 1;
 
+    [JsonPropertyName("state")]
+    public RelicModificationState? ModificationState { get; set; }
+
+    [JsonIgnore]
+    public bool HasModificationState => ModificationState is not null && !ModificationState.IsEmpty;
+
     public SavedRelicLoadoutEntry Clone()
     {
         return new SavedRelicLoadoutEntry
         {
             ModelId = ModelId,
-            Count = Count
+            Count = Count,
+            ModificationState = ModificationState?.Clone()
         };
     }
 }

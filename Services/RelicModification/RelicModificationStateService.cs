@@ -395,6 +395,23 @@ public static class RelicModificationStateService
         ApplyEffectiveState(relic);
     }
 
+    public static void ApplyLoadoutTemporaryState(RelicModel relic, RelicModificationState state)
+    {
+        if (relic.IsCanonical) return;
+
+        RelicModificationState normalized = state.Clone();
+        normalized.Normalize();
+        if (normalized.IsEmpty) return;
+
+        RelicModificationAttachment attachment = RelicModificationInstanceState.Get(relic);
+        if (attachment.Baseline.IsEmpty)
+            attachment.Baseline = CaptureCurrentState(relic);
+        attachment.State = normalized;
+        RelicModificationInstanceState.Set(relic, attachment);
+        EffectiveStates.Remove(relic);
+        ApplyEffectiveState(relic);
+    }
+
     public static void CarryStateToClone(RelicModel source, RelicModel clone)
     {
         if (clone.IsCanonical) return;

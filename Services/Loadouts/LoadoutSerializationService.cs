@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
 using Loadout.Services.CardModification;
+using Loadout.Services.RelicModification;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 
@@ -210,24 +211,39 @@ public static class LoadoutSerializationService
 
     private static List<SavedRelicLoadoutEntry> CaptureRelics(Player player)
     {
-        Dictionary<string, SavedRelicLoadoutEntry> entries = new(StringComparer.Ordinal);
+        List<SavedRelicLoadoutEntry> relics = [];
+        Dictionary<string, SavedRelicLoadoutEntry> compactEntries = new(StringComparer.Ordinal);
         foreach (RelicModel relic in player.Relics)
         {
+            RelicModificationState state = RelicModificationStateService.GetEffectiveState(relic);
+            if (!state.IsEmpty)
+            {
+                relics.Add(new SavedRelicLoadoutEntry
+                {
+                    ModelId = relic.Id.ToString(),
+                    Count = 1,
+                    ModificationState = state.Clone()
+                });
+                continue;
+            }
+
             string key = relic.Id.ToString();
-            if (entries.TryGetValue(key, out SavedRelicLoadoutEntry? existing))
+            if (compactEntries.TryGetValue(key, out SavedRelicLoadoutEntry? existing))
             {
                 existing.Count++;
                 continue;
             }
 
-            entries[key] = new SavedRelicLoadoutEntry
+            SavedRelicLoadoutEntry entry = new()
             {
                 ModelId = key,
                 Count = 1
             };
+            compactEntries[key] = entry;
+            relics.Add(entry);
         }
 
-        return entries.Values.ToList();
+        return relics;
     }
 
     private static SavedCardLoadoutEntry NormalizeCard(SavedCardLoadoutEntry card)
@@ -250,6 +266,14 @@ public static class LoadoutSerializationService
     {
         relic.ModelId = relic.ModelId.Trim();
         relic.Count = Math.Max(1, relic.Count);
+        relic.ModificationState?.Normalize();
+        relic.ModificationState = relic.ModificationState?.Clone();
+        if (relic.ModificationState is not null && relic.ModificationState.IsEmpty)
+            relic.ModificationState = null;
+
+        if (relic.ModificationState is not null)
+            relic.Count = 1;
+
         return relic;
     }
 

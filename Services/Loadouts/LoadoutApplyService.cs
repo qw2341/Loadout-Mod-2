@@ -12,6 +12,7 @@ using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
@@ -277,7 +278,10 @@ public static class LoadoutApplyService
         }
 
         if (changedRelicPlayers.Count > 0)
-            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Relics, changedRelicPlayers);
+            LoadoutRunContentChangeService.Notify(
+                LoadoutRunContentKind.Relics,
+                changedRelicPlayers,
+                LoadoutRunContentChangeMode.Replace);
     }
 
     private static async Task<bool> ReplaceRelics(Player targetPlayer, IReadOnlyList<SavedRelicLoadoutEntry> entries)
@@ -309,7 +313,11 @@ public static class LoadoutApplyService
             {
                 try
                 {
-                    await RelicCmd.Obtain(canonical.ToMutable(), targetPlayer);
+                    RelicModel relic = canonical.ToMutable();
+                    if (entry.ModificationState is not null && !entry.ModificationState.IsEmpty)
+                        RelicModificationStateService.ApplyLoadoutTemporaryState(relic, entry.ModificationState);
+
+                    await RelicCmd.Obtain(relic, targetPlayer);
                     changed = true;
                 }
                 catch (Exception exception)
