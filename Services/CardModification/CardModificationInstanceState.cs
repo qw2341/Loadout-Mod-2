@@ -34,6 +34,8 @@ internal static class CardModificationInstanceState
 
     private static readonly SavedSpireField<CardModel, string> SerializedState = CreateSavedField();
     private static readonly ConditionalWeakTable<CardModel, ParsedStateCache> ParsedStates = new();
+    private static readonly CardModificationState EmptyState = new();
+    private static readonly CardModificationInstanceSnapshot EmptySnapshot = new(EmptyState, 0);
 
     public static void Initialize()
     {
@@ -46,18 +48,35 @@ internal static class CardModificationInstanceState
         field.CopyOnClone((source, destination, value) =>
         {
             string? serialized = NormalizeSerialized(value);
+            ParsedStateEntry? sourceEntry = null;
 
-            // Carry the parsed runtime snapshot so a modified card clone does not pay
-            // a JSON parse on first use. GetOrInitialize also converts legacy verbose
-            // payloads to the compact wire form once per card.
-            ParsedStateCache sourceCache = ParsedStates.GetValue(source, _ => new ParsedStateCache());
-            ParsedStateEntry sourceEntry = GetOrInitialize(sourceCache, serialized);
-            if (!string.Equals(serialized, sourceEntry.Serialized, StringComparison.Ordinal))
-                field.Set(source, sourceEntry.Serialized);
-            if (sourceEntry.Serialized is not null)
-                field.Set(destination, sourceEntry.Serialized);
+            if (serialized is null)
+            {
+                // SavedSpireField invokes clone callbacks for every CardModel, including
+                // the overwhelmingly common unmodified case. Do not create weak-table
+                // entries, state objects, or destination metadata for an empty card.
+                if (!ParsedStates.TryGetValue(source, out ParsedStateCache? existingCache))
+                    return;
 
-            ParsedStateCache destinationCache = ParsedStates.GetValue(destination, _ => new ParsedStateCache());
+                sourceEntry = Volatile.Read(ref existingCache.Entry);
+                if (sourceEntry is null || sourceEntry.Serialized is null || sourceEntry.State.IsEmpty)
+                    return;
+            }
+            else
+            {
+                // Modified cards keep the parsed snapshot when cloned so they do not
+                // deserialize their compact payload again on first use.
+                ParsedStateCache sourceCache = ParsedStates.GetValue(source, static _ => new ParsedStateCache());
+                sourceEntry = GetOrInitialize(sourceCache, serialized);
+                if (!string.Equals(serialized, sourceEntry.Serialized, StringComparison.Ordinal))
+                    field.Set(source, sourceEntry.Serialized);
+            }
+
+            if (sourceEntry.Serialized is null || sourceEntry.State.IsEmpty)
+                return;
+
+            field.Set(destination, sourceEntry.Serialized);
+            ParsedStateCache destinationCache = ParsedStates.GetValue(destination, static _ => new ParsedStateCache());
             Volatile.Write(
                 ref destinationCache.Entry,
                 new ParsedStateEntry(
@@ -70,15 +89,58 @@ internal static class CardModificationInstanceState
 
     public static CardModificationInstanceSnapshot GetSnapshot(CardModel card)
     {
-        ParsedStateCache cache = ParsedStates.GetValue(card, _ => new ParsedStateCache());
-        ParsedStateEntry entry = GetOrInitialize(card, cache);
-        return new CardModificationInstanceSnapshot(entry.State, entry.Revision);
+        return TryGetSnapshot(card, out CardModificationInstanceSnapshot snapshot)
+            ? snapshot
+            : EmptySnapshot;
+    }
+
+    public static bool TryGetSnapshot(CardModel card, out CardModificationInstanceSnapshot snapshot)
+    {
+        if (ParsedStates.TryGetValue(card, out ParsedStateCache? existingCache))
+        {
+            ParsedStateEntry? existing = Volatile.Read(ref existingCache.Entry);
+            if (existing is not null)
+            {
+                snapshot = new CardModificationInstanceSnapshot(existing.State, existing.Revision);
+                return !existing.State.IsEmpty;
+            }
+        }
+
+        string? serialized = NormalizeSerialized(SerializedState.Get(card));
+        if (serialized is null)
+        {
+            snapshot = EmptySnapshot;
+            return false;
+        }
+
+        ParsedStateCache cache = existingCache
+                                 ?? ParsedStates.GetValue(card, static _ => new ParsedStateCache());
+        ParsedStateEntry entry = GetOrInitialize(cache, serialized);
+        if (!string.Equals(serialized, entry.Serialized, StringComparison.Ordinal))
+            SerializedState.Set(card, entry.Serialized);
+        snapshot = new CardModificationInstanceSnapshot(entry.State, entry.Revision);
+        return !entry.State.IsEmpty;
     }
 
     public static string? GetFingerprint(CardModel card)
     {
-        ParsedStateCache cache = ParsedStates.GetValue(card, _ => new ParsedStateCache());
-        return GetOrInitialize(card, cache).Serialized;
+        if (ParsedStates.TryGetValue(card, out ParsedStateCache? existingCache))
+        {
+            ParsedStateEntry? existing = Volatile.Read(ref existingCache.Entry);
+            if (existing is not null)
+                return existing.Serialized;
+        }
+
+        string? serialized = NormalizeSerialized(SerializedState.Get(card));
+        if (serialized is null)
+            return null;
+
+        ParsedStateCache cache = existingCache
+                                 ?? ParsedStates.GetValue(card, static _ => new ParsedStateCache());
+        ParsedStateEntry entry = GetOrInitialize(cache, serialized);
+        if (!string.Equals(serialized, entry.Serialized, StringComparison.Ordinal))
+            SerializedState.Set(card, entry.Serialized);
+        return entry.Serialized;
     }
 
     public static CardModificationState Get(CardModel card)
@@ -96,11 +158,14 @@ internal static class CardModificationInstanceState
         CardModificationState normalized = state?.Clone() ?? new CardModificationState();
         normalized.Normalize();
 
+        if (normalized.IsEmpty && !TryGetSnapshot(card, out _))
+            return false;
+
         string? nextSerialized = normalized.IsEmpty
             ? null
             : Serialize(normalized);
 
-        ParsedStateCache cache = ParsedStates.GetValue(card, _ => new ParsedStateCache());
+        ParsedStateCache cache = ParsedStates.GetValue(card, static _ => new ParsedStateCache());
         lock (cache)
         {
             ParsedStateEntry current = GetOrInitializeLocked(card, cache);
@@ -125,7 +190,7 @@ internal static class CardModificationInstanceState
 
     public static bool HasState(CardModel card)
     {
-        return !GetSnapshot(card).State.IsEmpty;
+        return TryGetSnapshot(card, out _);
     }
 
     private static ParsedStateEntry GetOrInitialize(CardModel card, ParsedStateCache cache)

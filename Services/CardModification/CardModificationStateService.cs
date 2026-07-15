@@ -87,6 +87,8 @@ public static class CardModificationStateService
     private static readonly ConditionalWeakTable<CardModel, RuntimeFeatureHolder> RuntimeFeatures = new();
     private static readonly ConditionalWeakTable<CardModel, EffectiveStateCacheHolder> EffectiveStateCache = new();
     private static readonly ConcurrentDictionary<string, int> PermanentCardRevisions = new(StringComparer.Ordinal);
+    private static readonly CardModificationState EmptyState = new();
+    private static HashSet<string> _effectivePermanentCardKeys = new(StringComparer.Ordinal);
     private static bool _registered;
     private static bool _permanentLoaded;
     private static bool _runLoaded;
@@ -174,46 +176,65 @@ public static class CardModificationStateService
             return preview.State;
 
         bool catalogDisplayCard = IsLocalCatalogDisplayCard(card);
-        CardModificationInstanceSnapshot attached = catalogDisplayCard
-            ? default
-            : CardModificationInstanceState.GetSnapshot(card);
+        CardModificationInstanceSnapshot attached = default;
+        bool hasAttachedState = !catalogDisplayCard
+                                && CardModificationInstanceState.TryGetSnapshot(card, out attached);
+        HashSet<string> activePermanentKeys = Volatile.Read(ref _effectivePermanentCardKeys);
+
+        // The common path has no permanent modifications anywhere in the profile and
+        // no state attached to this card. Avoid even formatting the ModelId/string key.
+        if (activePermanentKeys.Count == 0)
+            return hasAttachedState ? attached.State : EmptyState;
+
+        string cardKey = ToCardKey(card.Id);
+        bool hasPermanentState = activePermanentKeys.Contains(cardKey);
+
+        // Cards with only temporary/per-copy state can return their exact immutable
+        // snapshot. Only cards with a permanent layer need the merged-state cache.
+        if (!hasPermanentState)
+            return hasAttachedState ? attached.State : EmptyState;
+
         EffectiveStateCacheHolder cache = EffectiveStateCache.GetValue(
             card,
-            model => new EffectiveStateCacheHolder(ToCardKey(model.Id)));
-        string cardKey = cache.CardKey;
+            _ => new EffectiveStateCacheHolder(cardKey));
         PermanentCardRevisions.TryGetValue(cardKey, out int permanentCardRevision);
         int effectiveRevision = Volatile.Read(ref _effectiveStateRevision);
+        int attachedRevision = hasAttachedState ? attached.Revision : 0;
 
         EffectiveStateCacheEntry? cached = Volatile.Read(ref cache.Entry);
         if (cached is not null
             && cached.Revision == effectiveRevision
             && cached.PermanentCardRevision == permanentCardRevision
-            && cached.AttachedRevision == attached.Revision
+            && cached.AttachedRevision == attachedRevision
             && cached.CatalogDisplayCard == catalogDisplayCard)
         {
             return cached.State;
         }
 
-        // Cache misses are uncommon and may need the permanent-state dictionaries.
-        // Recheck everything under the state lock so a concurrent network delta cannot
-        // publish a cache entry built from mixed revisions.
+        // Permanent dictionaries are changed only by serialized mutation operations.
+        // Recheck under the lock so a network delta cannot publish a mixed snapshot.
         lock (SyncRoot)
         {
             if (!card.IsCanonical && PreviewCardStates.TryGetValue(card, out preview))
                 return preview.State;
 
             catalogDisplayCard = IsLocalCatalogDisplayCard(card);
-            attached = catalogDisplayCard
-                ? default
-                : CardModificationInstanceState.GetSnapshot(card);
+            hasAttachedState = !catalogDisplayCard
+                               && CardModificationInstanceState.TryGetSnapshot(card, out attached);
+            activePermanentKeys = Volatile.Read(ref _effectivePermanentCardKeys);
+            hasPermanentState = activePermanentKeys.Contains(cardKey);
+            if (!hasPermanentState)
+                return hasAttachedState ? attached.State : EmptyState;
+
             PermanentCardRevisions.TryGetValue(cardKey, out permanentCardRevision);
             effectiveRevision = Volatile.Read(ref _effectiveStateRevision);
+            attachedRevision = hasAttachedState ? attached.Revision : 0;
 
             cached = Volatile.Read(ref cache.Entry);
             if (cached is not null
                 && cached.Revision == effectiveRevision
                 && cached.PermanentCardRevision == permanentCardRevision
-                && cached.AttachedRevision == attached.Revision
+                && cached.AttachedRevision == attachedRevision
                 && cached.CatalogDisplayCard == catalogDisplayCard)
             {
                 return cached.State;
@@ -223,13 +244,13 @@ public static class CardModificationStateService
                 ? GetCatalogPermanentStateLocked(card.Id)
                 : GetEffectivePermanentStateLocked(card.Id);
 
-            if (!catalogDisplayCard)
+            if (hasAttachedState)
                 effective.MergeFrom(attached.State);
 
             EffectiveStateCacheEntry next = new(
                 effectiveRevision,
                 permanentCardRevision,
-                attached.Revision,
+                attachedRevision,
                 catalogDisplayCard,
                 effective);
             Volatile.Write(ref cache.Entry, next);
@@ -544,6 +565,7 @@ public static class CardModificationStateService
             changedPermanentKeys = _permanent.Cards.Keys.ToList();
             _permanent.Cards.Clear();
             InvalidatePermanentCardsLocked(changedPermanentKeys);
+            RefreshEffectivePermanentCardKeysLocked();
             SavePermanentState();
         }
 
@@ -591,10 +613,10 @@ public static class CardModificationStateService
             return;
 
         CardModificationState state = GetEffectiveStateForCardReadOnly(card);
-        SetRuntimeFeatures(card, state);
         if (state.IsEmpty)
             return;
 
+        SetRuntimeFeatures(card, state);
         PrepareCardForState(card, state, includeAffliction: true);
         ApplyStateToCard(card, state);
     }
@@ -1074,40 +1096,81 @@ public static class CardModificationStateService
 
         EnsureLoaded();
         bool migratedLegacyState = false;
+        bool hasLegacySidecarState;
+        lock (SyncRoot)
+            hasLegacySidecarState = _run.Cards.Count > 0;
+
+        HashSet<string> activePermanentKeys = Volatile.Read(ref _effectivePermanentCardKeys);
+        bool hasAnyPermanentState = activePermanentKeys.Count > 0;
         IReadOnlyList<CardModel> cards = player.Deck.Cards;
         for (int index = 0; index < cards.Count; index++)
         {
             CardModel card = cards[index];
-            migratedLegacyState |= TryMigrateLegacyTemporaryState(player, index, card);
+            if (hasLegacySidecarState)
+                migratedLegacyState |= TryMigrateLegacyTemporaryState(player, index, card);
 
-            string cardKey = ToCardKey(card.Id);
-            if (changedPermanentKeys is not null && !changedPermanentKeys.Contains(cardKey))
+            string? cardKey = null;
+            bool permanentTransitionRequested = changedPermanentKeys is not null;
+            bool hasPermanentState = false;
+            if (permanentTransitionRequested || hasAnyPermanentState)
+            {
+                cardKey = ToCardKey(card.Id);
+                if (permanentTransitionRequested && !changedPermanentKeys!.Contains(cardKey))
+                    continue;
+
+                hasPermanentState = activePermanentKeys.Contains(cardKey);
+            }
+
+            bool hasAttachedState = CardModificationInstanceState.TryGetSnapshot(
+                card,
+                out CardModificationInstanceSnapshot attachedSnapshot);
+
+            // A normal lifecycle pass has nothing to do for an unmodified card. This
+            // avoids state objects, JSON/cache access, locking and visual work for the
+            // common case, even in decks containing thousands of cards.
+            if (!permanentTransitionRequested && !hasPermanentState && !hasAttachedState)
                 continue;
 
-            CardModificationState attachedState = CardModificationInstanceState.GetReadOnly(card);
+            CardModificationState attachedState = hasAttachedState
+                ? attachedSnapshot.State
+                : EmptyState;
             CardModificationState state;
             CardModificationState? previousState = null;
             lock (SyncRoot)
             {
-                state = GetEffectivePermanentStateLocked(card.Id);
-                state.MergeFrom(attachedState);
+                state = hasPermanentState
+                    ? GetEffectivePermanentStateLocked(card.Id)
+                    : new CardModificationState();
+                if (hasAttachedState)
+                    state.MergeFrom(attachedState);
 
-                if (previousPermanentStates is not null)
+                if (previousPermanentStates is not null && cardKey is not null)
                 {
-                    previousState = previousPermanentStates.TryGetValue(cardKey, out CardModificationState? previousPermanent)
+                    previousState = previousPermanentStates.TryGetValue(
+                        cardKey,
+                        out CardModificationState? previousPermanent)
                         ? previousPermanent.Clone()
                         : new CardModificationState();
-                    previousState.MergeFrom(attachedState);
+                    if (hasAttachedState)
+                        previousState.MergeFrom(attachedState);
                 }
             }
 
-            bool hasCardMutation = ApplyStateTransitionToCard(card, state, previousState, includeAffliction: true);
-            LoadoutCardVisualRefreshKind refreshKind = GetVisualRefreshKind(previousState, state);
+            SetRuntimeFeatures(card, state);
+            bool hasCardMutation = ApplyStateTransitionToCard(
+                card,
+                state,
+                previousState,
+                includeAffliction: true);
+            bool hasVisualChange = HasVisualOverrides(state) || HasVisualOverrides(previousState);
+            LoadoutCardVisualRefreshKind refreshKind = hasCardMutation || hasVisualChange || permanentTransitionRequested
+                ? GetVisualRefreshKind(previousState, state)
+                : LoadoutCardVisualRefreshKind.Lightweight;
 
-            if (hasCardMutation || HasVisualOverrides(state) || HasVisualOverrides(previousState))
+            if (hasCardMutation || hasVisualChange)
                 RefreshLiveCardVisuals(card, refreshKind);
 
-            if (changedPermanentKeys is not null)
+            if (permanentTransitionRequested)
             {
                 changedPlayers?.Add(player.NetId);
                 changedCards?.Add(new LoadoutChangedCard(player.NetId, index, card.Id, refreshKind));
@@ -1164,6 +1227,7 @@ public static class CardModificationStateService
             if (changed)
             {
                 InvalidatePermanentCardLocked(key);
+                RefreshEffectivePermanentCardKeysLocked();
                 SavePermanentState();
             }
 
@@ -1179,6 +1243,7 @@ public static class CardModificationStateService
             if (changed)
             {
                 InvalidatePermanentCardLocked(ToCardKey(cardId));
+                RefreshEffectivePermanentCardKeysLocked();
                 SavePermanentState();
             }
 
@@ -1476,6 +1541,7 @@ public static class CardModificationStateService
             _hasHostPermanentOverlay = true;
             if (changedPermanentKeys.Count > 0)
                 InvalidatePermanentCardsLocked(changedPermanentKeys);
+            RefreshEffectivePermanentCardKeysLocked();
         }
 
         if (changedPermanentKeys.Count == 0)
@@ -1524,7 +1590,10 @@ public static class CardModificationStateService
             }
 
             if (changed)
+            {
                 InvalidatePermanentCardLocked(key);
+                RefreshEffectivePermanentCardKeysLocked();
+            }
         }
 
         if (!changed)
@@ -1557,6 +1626,7 @@ public static class CardModificationStateService
             _hasHostPermanentOverlay = false;
             if (changedPermanentKeys.Count > 0)
                 InvalidatePermanentCardsLocked(changedPermanentKeys);
+            RefreshEffectivePermanentCardKeysLocked();
         }
 
         if (changedPermanentKeys.Count == 0)
@@ -1610,6 +1680,7 @@ public static class CardModificationStateService
                 InvalidatePermanentCardsLocked(changedPermanentKeys);
                 SavePermanentState();
             }
+            RefreshEffectivePermanentCardKeysLocked();
         }
 
         if (changedPermanentKeys.Count == 0)
@@ -2331,7 +2402,20 @@ public static class CardModificationStateService
         _displayRevision++;
         DisplayCardCache.Clear();
         PermanentCardRevisions.Clear();
+        RefreshEffectivePermanentCardKeysLocked();
         InvalidateEffectiveStateCacheLocked();
+    }
+
+    private static void RefreshEffectivePermanentCardKeysLocked()
+    {
+        IReadOnlyDictionary<string, CardModificationState> source = _hasHostPermanentOverlay
+            ? _hostPermanentOverlay
+            : _permanent.Cards;
+        HashSet<string> keys = source
+            .Where(pair => !pair.Value.IsEmpty)
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        Volatile.Write(ref _effectivePermanentCardKeys, keys);
     }
 
     private static void InvalidatePermanentCardsLocked(IEnumerable<string> cardKeys)
