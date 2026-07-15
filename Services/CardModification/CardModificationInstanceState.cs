@@ -1,27 +1,29 @@
 #nullable enable
 
-using System.Collections.Generic;
-using MegaCrit.Sts2.Core.Models;
-
 namespace Loadout.Services.CardModification;
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using BaseLib.Utils;
 using Godot;
+using Loadout.Keywords;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Models;
 
 /// <summary>
-/// Stores a temporary/per-copy card modification directly on the CardModel.
+/// Sparse per-card storage for the card modifier.
 ///
-/// The SavedSpireField remains the persistence source of truth, while ParsedStates is
-/// the runtime source of truth after the first access. Reads therefore do not repeatedly
-/// enter BaseLib's SavedProperties dictionaries or deserialize JSON. CopyOnClone carries
-/// the parsed read-only snapshot to the clone in O(1), which is important because the
-/// game creates short-lived CardModel clones while cards are inspected and played.
+/// Temporary state is serialized on the CardModel through BaseLib so it follows the
+/// game's own card save/load path. Effective runtime state is attached only to cards
+/// that are actually modified. Numeric/native values are written directly to CardModel;
+/// the runtime entry exists only for reset/clone metadata and features CardModel does
+/// not natively expose (custom text, portrait paths and Infinite Upgrade).
+///
+/// Nothing in this class polls, walks a deck, or recomputes state each frame.
 /// </summary>
 internal static class CardModificationInstanceState
 {
@@ -32,59 +34,62 @@ internal static class CardModificationInstanceState
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private static readonly SavedSpireField<CardModel, string> SerializedState = CreateSavedField();
-    private static readonly ConditionalWeakTable<CardModel, ParsedStateCache> ParsedStates = new();
+    private static readonly SavedSpireField<CardModel, string> SerializedTemporaryState = CreateSavedField();
+    private static ConditionalWeakTable<CardModel, ParsedStateCache> _parsedTemporaryStates = new();
+    private static ConditionalWeakTable<CardModel, RuntimeStateHolder> _runtimeStates = new();
     private static readonly CardModificationState EmptyState = new();
     private static readonly CardModificationInstanceSnapshot EmptySnapshot = new(EmptyState, 0);
+    private static int _runtimeFeatureHints;
 
     public static void Initialize()
     {
-        _ = SerializedState.Name;
+        _ = SerializedTemporaryState.Name;
     }
 
     private static SavedSpireField<CardModel, string> CreateSavedField()
     {
         SavedSpireField<CardModel, string> field = new(() => (string?)null, FieldName);
         field.CopyOnClone((source, destination, value) =>
+            CopyTemporaryStateOnClone(field, source, destination, value));
+        return field;
+    }
+
+    private static void CopyTemporaryStateOnClone(
+        SavedSpireField<CardModel, string> field,
+        CardModel source,
+        CardModel destination,
+        string? value)
+    {
+        string? serialized = NormalizeSerialized(value);
+        ParsedStateEntry? sourceEntry = null;
+
+        if (serialized is null)
         {
-            string? serialized = NormalizeSerialized(value);
-            ParsedStateEntry? sourceEntry = null;
-
-            if (serialized is null)
-            {
-                // SavedSpireField invokes clone callbacks for every CardModel, including
-                // the overwhelmingly common unmodified case. Do not create weak-table
-                // entries, state objects, or destination metadata for an empty card.
-                if (!ParsedStates.TryGetValue(source, out ParsedStateCache? existingCache))
-                    return;
-
-                sourceEntry = Volatile.Read(ref existingCache.Entry);
-                if (sourceEntry is null || sourceEntry.Serialized is null || sourceEntry.State.IsEmpty)
-                    return;
-            }
-            else
-            {
-                // Modified cards keep the parsed snapshot when cloned so they do not
-                // deserialize their compact payload again on first use.
-                ParsedStateCache sourceCache = ParsedStates.GetValue(source, static _ => new ParsedStateCache());
-                sourceEntry = GetOrInitialize(sourceCache, serialized);
-                if (!string.Equals(serialized, sourceEntry.Serialized, StringComparison.Ordinal))
-                    field.Set(source, sourceEntry.Serialized);
-            }
-
-            if (sourceEntry.Serialized is null || sourceEntry.State.IsEmpty)
+            if (!_parsedTemporaryStates.TryGetValue(source, out ParsedStateCache? existingCache))
                 return;
 
-            field.Set(destination, sourceEntry.Serialized);
-            ParsedStateCache destinationCache = ParsedStates.GetValue(destination, static _ => new ParsedStateCache());
-            Volatile.Write(
-                ref destinationCache.Entry,
-                new ParsedStateEntry(
-                    sourceEntry.Revision,
-                    sourceEntry.Serialized,
-                    sourceEntry.State));
-        });
-        return field;
+            sourceEntry = Volatile.Read(ref existingCache.Entry);
+            if (sourceEntry is null || sourceEntry.Serialized is null || sourceEntry.State.IsEmpty)
+                return;
+        }
+        else
+        {
+            ParsedStateCache sourceCache =
+                _parsedTemporaryStates.GetValue(source, static _ => new ParsedStateCache());
+            sourceEntry = GetOrInitialize(sourceCache, serialized);
+            if (!string.Equals(serialized, sourceEntry.Serialized, StringComparison.Ordinal))
+                field.Set(source, sourceEntry.Serialized);
+        }
+
+        if (sourceEntry.Serialized is null || sourceEntry.State.IsEmpty)
+            return;
+
+        field.Set(destination, sourceEntry.Serialized);
+        ParsedStateCache destinationCache =
+            _parsedTemporaryStates.GetValue(destination, static _ => new ParsedStateCache());
+        Volatile.Write(
+            ref destinationCache.Entry,
+            new ParsedStateEntry(sourceEntry.Revision, sourceEntry.Serialized, sourceEntry.State));
     }
 
     public static CardModificationInstanceSnapshot GetSnapshot(CardModel card)
@@ -96,7 +101,7 @@ internal static class CardModificationInstanceState
 
     public static bool TryGetSnapshot(CardModel card, out CardModificationInstanceSnapshot snapshot)
     {
-        if (ParsedStates.TryGetValue(card, out ParsedStateCache? existingCache))
+        if (_parsedTemporaryStates.TryGetValue(card, out ParsedStateCache? existingCache))
         {
             ParsedStateEntry? existing = Volatile.Read(ref existingCache.Entry);
             if (existing is not null)
@@ -106,7 +111,7 @@ internal static class CardModificationInstanceState
             }
         }
 
-        string? serialized = NormalizeSerialized(SerializedState.Get(card));
+        string? serialized = NormalizeSerialized(SerializedTemporaryState.Get(card));
         if (serialized is null)
         {
             snapshot = EmptySnapshot;
@@ -114,32 +119,33 @@ internal static class CardModificationInstanceState
         }
 
         ParsedStateCache cache = existingCache
-                                 ?? ParsedStates.GetValue(card, static _ => new ParsedStateCache());
+                                 ?? _parsedTemporaryStates.GetValue(card, static _ => new ParsedStateCache());
         ParsedStateEntry entry = GetOrInitialize(cache, serialized);
         if (!string.Equals(serialized, entry.Serialized, StringComparison.Ordinal))
-            SerializedState.Set(card, entry.Serialized);
+            SerializedTemporaryState.Set(card, entry.Serialized);
+
         snapshot = new CardModificationInstanceSnapshot(entry.State, entry.Revision);
         return !entry.State.IsEmpty;
     }
 
     public static string? GetFingerprint(CardModel card)
     {
-        if (ParsedStates.TryGetValue(card, out ParsedStateCache? existingCache))
+        if (_parsedTemporaryStates.TryGetValue(card, out ParsedStateCache? existingCache))
         {
             ParsedStateEntry? existing = Volatile.Read(ref existingCache.Entry);
             if (existing is not null)
                 return existing.Serialized;
         }
 
-        string? serialized = NormalizeSerialized(SerializedState.Get(card));
+        string? serialized = NormalizeSerialized(SerializedTemporaryState.Get(card));
         if (serialized is null)
             return null;
 
         ParsedStateCache cache = existingCache
-                                 ?? ParsedStates.GetValue(card, static _ => new ParsedStateCache());
+                                 ?? _parsedTemporaryStates.GetValue(card, static _ => new ParsedStateCache());
         ParsedStateEntry entry = GetOrInitialize(cache, serialized);
         if (!string.Equals(serialized, entry.Serialized, StringComparison.Ordinal))
-            SerializedState.Set(card, entry.Serialized);
+            SerializedTemporaryState.Set(card, entry.Serialized);
         return entry.Serialized;
     }
 
@@ -161,18 +167,16 @@ internal static class CardModificationInstanceState
         if (normalized.IsEmpty && !TryGetSnapshot(card, out _))
             return false;
 
-        string? nextSerialized = normalized.IsEmpty
-            ? null
-            : Serialize(normalized);
-
-        ParsedStateCache cache = ParsedStates.GetValue(card, static _ => new ParsedStateCache());
+        string? nextSerialized = normalized.IsEmpty ? null : Serialize(normalized);
+        ParsedStateCache cache =
+            _parsedTemporaryStates.GetValue(card, static _ => new ParsedStateCache());
         lock (cache)
         {
             ParsedStateEntry current = GetOrInitializeLocked(card, cache);
             if (string.Equals(current.Serialized, nextSerialized, StringComparison.Ordinal))
                 return false;
 
-            SerializedState.Set(card, nextSerialized);
+            SerializedTemporaryState.Set(card, nextSerialized);
             Volatile.Write(
                 ref cache.Entry,
                 new ParsedStateEntry(
@@ -193,14 +197,138 @@ internal static class CardModificationInstanceState
         return TryGetSnapshot(card, out _);
     }
 
-    private static ParsedStateEntry GetOrInitialize(CardModel card, ParsedStateCache cache)
+    /// <summary>
+    /// Publishes the already-applied effective state for this exact CardModel.
+    /// This is called only when a card is created, loaded, cloned or explicitly edited.
+    /// </summary>
+    public static void SetAppliedState(CardModel card, CardModificationState? state)
     {
-        ParsedStateEntry? entry = Volatile.Read(ref cache.Entry);
-        if (entry is not null)
-            return entry;
+        CardModificationState normalized = state?.Clone() ?? new CardModificationState();
+        normalized.Normalize();
+        if (normalized.IsEmpty)
+        {
+            _runtimeStates.Remove(card);
+            return;
+        }
 
-        lock (cache)
-            return GetOrInitializeLocked(card, cache);
+        RuntimeStateHolder holder = RuntimeStateHolder.FromState(normalized);
+        _runtimeStates.Remove(card);
+        _runtimeStates.Add(card, holder);
+        MarkRuntimeFeatureHints(holder.Features);
+    }
+
+    public static void ClearAppliedState(CardModel card)
+    {
+        _runtimeStates.Remove(card);
+    }
+
+    public static bool TryGetAppliedState(CardModel card, out CardModificationState state)
+    {
+        if (_runtimeStates.TryGetValue(card, out RuntimeStateHolder? holder))
+        {
+            state = holder.State;
+            return true;
+        }
+
+        state = EmptyState;
+        return false;
+    }
+
+    public static CardModificationState GetAppliedStateClone(CardModel card)
+    {
+        return TryGetAppliedState(card, out CardModificationState state)
+            ? state.Clone()
+            : new CardModificationState();
+    }
+
+    public static void CopyAppliedState(CardModel source, CardModel destination)
+    {
+        if (!_runtimeStates.TryGetValue(source, out RuntimeStateHolder? sourceHolder))
+            return;
+
+        RuntimeStateHolder copy = sourceHolder.Clone();
+        _runtimeStates.Remove(destination);
+        _runtimeStates.Add(destination, copy);
+        MarkRuntimeFeatureHints(copy.Features);
+    }
+
+    public static bool HasAnyCustomText => HasFeatureHint(CardRuntimeFeature.CustomText);
+    public static bool HasAnyPortraitOverride => HasFeatureHint(CardRuntimeFeature.Portrait);
+    public static bool HasAnyInfiniteUpgrade => HasFeatureHint(CardRuntimeFeature.InfiniteUpgrade);
+
+    public static bool HasCustomText(CardModel card)
+    {
+        return HasAnyCustomText
+               && _runtimeStates.TryGetValue(card, out RuntimeStateHolder? holder)
+               && (holder.Features & CardRuntimeFeature.CustomText) != 0;
+    }
+
+    public static bool HasPortraitOverride(CardModel card)
+    {
+        return HasAnyPortraitOverride
+               && _runtimeStates.TryGetValue(card, out RuntimeStateHolder? holder)
+               && (holder.Features & CardRuntimeFeature.Portrait) != 0;
+    }
+
+    public static bool HasInfiniteUpgrade(CardModel card)
+    {
+        return HasAnyInfiniteUpgrade
+               && _runtimeStates.TryGetValue(card, out RuntimeStateHolder? holder)
+               && (holder.Features & CardRuntimeFeature.InfiniteUpgrade) != 0;
+    }
+
+    public static bool TryGetCustomTitle(CardModel card, out string title)
+    {
+        if (HasAnyCustomText
+            && _runtimeStates.TryGetValue(card, out RuntimeStateHolder? holder)
+            && holder.CustomTitle is { Length: > 0 } customTitle)
+        {
+            title = customTitle;
+            return true;
+        }
+
+        title = string.Empty;
+        return false;
+    }
+
+    public static bool TryGetCustomDescription(CardModel card, out string description)
+    {
+        if (HasAnyCustomText
+            && _runtimeStates.TryGetValue(card, out RuntimeStateHolder? holder)
+            && holder.CustomDescription is { Length: > 0 } customDescription)
+        {
+            description = customDescription;
+            return true;
+        }
+
+        description = string.Empty;
+        return false;
+    }
+
+    public static bool TryGetPortraitPath(CardModel card, bool beta, out string path)
+    {
+        if (HasAnyPortraitOverride
+            && _runtimeStates.TryGetValue(card, out RuntimeStateHolder? holder))
+        {
+            string? selected = beta
+                ? holder.BetaPortraitPath ?? holder.PortraitPath
+                : holder.PortraitPath;
+            if (!string.IsNullOrWhiteSpace(selected))
+            {
+                path = selected!;
+                return true;
+            }
+        }
+
+        path = string.Empty;
+        return false;
+    }
+
+    public static void ResetRuntimeCaches()
+    {
+        _parsedTemporaryStates = new ConditionalWeakTable<CardModel, ParsedStateCache>();
+        _runtimeStates = new ConditionalWeakTable<CardModel, RuntimeStateHolder>();
+        Volatile.Write(ref _runtimeFeatureHints, 0);
     }
 
     private static ParsedStateEntry GetOrInitialize(ParsedStateCache cache, string? serialized)
@@ -227,10 +355,10 @@ internal static class CardModificationInstanceState
         if (entry is not null)
             return entry;
 
-        string? serialized = NormalizeSerialized(SerializedState.Get(card));
+        string? serialized = NormalizeSerialized(SerializedTemporaryState.Get(card));
         entry = CreateInitialEntry(serialized);
         if (!string.Equals(serialized, entry.Serialized, StringComparison.Ordinal))
-            SerializedState.Set(card, entry.Serialized);
+            SerializedTemporaryState.Set(card, entry.Serialized);
         Volatile.Write(ref cache.Entry, entry);
         return entry;
     }
@@ -244,7 +372,9 @@ internal static class CardModificationInstanceState
 
     private static string Serialize(CardModificationState state)
     {
-        return JsonSerializer.Serialize(CompactCardModificationState.FromState(state), SerializedStateJsonOptions);
+        return JsonSerializer.Serialize(
+            CompactCardModificationState.FromState(state),
+            SerializedStateJsonOptions);
     }
 
     private static CardModificationState Deserialize(string? serialized)
@@ -254,13 +384,12 @@ internal static class CardModificationInstanceState
 
         try
         {
-            // New attached states use short property names because this string travels
-            // with the card through BaseLib's SavedProperties path. Old v2 payloads were
-            // emitted by the default serializer and always used the long property names.
+            // Older v2 payloads used the default long property names; newer writes keep the same saved-field key but use compact names.
             if (LooksLikeLegacyPayload(serialized))
             {
-                CardModificationState legacy = JsonSerializer.Deserialize<CardModificationState>(serialized)
-                                               ?? new CardModificationState();
+                CardModificationState legacy =
+                    JsonSerializer.Deserialize<CardModificationState>(serialized)
+                    ?? new CardModificationState();
                 legacy.Normalize();
                 return legacy;
             }
@@ -289,6 +418,107 @@ internal static class CardModificationInstanceState
     private static string? NormalizeSerialized(string? serialized)
     {
         return string.IsNullOrWhiteSpace(serialized) ? null : serialized;
+    }
+
+    private static bool HasFeatureHint(CardRuntimeFeature feature)
+    {
+        return ((CardRuntimeFeature)Volatile.Read(ref _runtimeFeatureHints) & feature) != 0;
+    }
+
+    private static void MarkRuntimeFeatureHints(CardRuntimeFeature features)
+    {
+        int added = (int)features;
+        if (added == 0)
+            return;
+
+        int current;
+        int updated;
+        do
+        {
+            current = Volatile.Read(ref _runtimeFeatureHints);
+            updated = current | added;
+            if (updated == current)
+                return;
+        }
+        while (Interlocked.CompareExchange(ref _runtimeFeatureHints, updated, current) != current);
+    }
+
+    [Flags]
+    private enum CardRuntimeFeature
+    {
+        None = 0,
+        CustomText = 1 << 0,
+        Portrait = 1 << 1,
+        InfiniteUpgrade = 1 << 2
+    }
+
+    private sealed class RuntimeStateHolder
+    {
+        private RuntimeStateHolder(
+            CardModificationState state,
+            CardRuntimeFeature features,
+            string? customTitle,
+            string? customDescription,
+            string? portraitPath,
+            string? betaPortraitPath)
+        {
+            State = state;
+            Features = features;
+            CustomTitle = customTitle;
+            CustomDescription = customDescription;
+            PortraitPath = portraitPath;
+            BetaPortraitPath = betaPortraitPath;
+        }
+
+        public CardModificationState State { get; }
+        public CardRuntimeFeature Features { get; }
+        public string? CustomTitle { get; }
+        public string? CustomDescription { get; }
+        public string? PortraitPath { get; }
+        public string? BetaPortraitPath { get; }
+
+        public static RuntimeStateHolder FromState(CardModificationState state)
+        {
+            CardRuntimeFeature features = CardRuntimeFeature.None;
+            if (!string.IsNullOrWhiteSpace(state.CustomTitle)
+                || !string.IsNullOrWhiteSpace(state.CustomDescription))
+            {
+                features |= CardRuntimeFeature.CustomText;
+            }
+
+            if (!string.IsNullOrWhiteSpace(state.PortraitPath)
+                || !string.IsNullOrWhiteSpace(state.BetaPortraitPath))
+            {
+                features |= CardRuntimeFeature.Portrait;
+            }
+
+            if (state.KeywordOverrides.TryGetValue(
+                    LoadoutKeywords.InfiniteUpgradeKey,
+                    out bool infiniteUpgrade)
+                && infiniteUpgrade)
+            {
+                features |= CardRuntimeFeature.InfiniteUpgrade;
+            }
+
+            return new RuntimeStateHolder(
+                state.Clone(),
+                features,
+                state.CustomTitle,
+                state.CustomDescription,
+                state.PortraitPath,
+                state.BetaPortraitPath);
+        }
+
+        public RuntimeStateHolder Clone()
+        {
+            return new RuntimeStateHolder(
+                State.Clone(),
+                Features,
+                CustomTitle,
+                CustomDescription,
+                PortraitPath,
+                BetaPortraitPath);
+        }
     }
 
     private sealed class CompactCardModificationState

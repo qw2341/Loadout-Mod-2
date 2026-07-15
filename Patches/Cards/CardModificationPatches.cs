@@ -50,37 +50,33 @@ public static class CombatStateCreateCardPatch
 }
 
 [HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.MutableClone))]
-public static class CardModelMutableCloneModificationStatePatch
+public static class CardModelMutableCloneRuntimeStatePatch
 {
     [HarmonyPostfix]
     public static void Postfix(AbstractModel __instance, AbstractModel __result)
     {
-        if (NInspectCardScreenCloneStatePatch.IsActive
-            && __instance is CardModel source
-            && __result is CardModel clone)
-            CardModificationStateService.CarryEffectiveStateToClone(source, clone);
+        if (__instance is CardModel source && __result is CardModel clone)
+            CardModificationStateService.CopyRuntimeStateToClone(source, clone);
     }
 }
 
-[HarmonyPatch(typeof(NInspectCardScreen), "UpdateCardDisplay")]
-public static class NInspectCardScreenCloneStatePatch
+[HarmonyPatch(typeof(RunState), nameof(RunState.CloneCard), typeof(CardModel))]
+public static class RunStateCloneCardModificationPatch
 {
-    [ThreadStatic]
-    private static int _depth;
-
-    internal static bool IsActive => _depth > 0;
-
-    [HarmonyPrefix]
-    public static void Prefix()
+    [HarmonyPostfix]
+    public static void Postfix(CardModel mutableCard, CardModel __result)
     {
-        _depth++;
+        CardModificationStateService.CarryEffectiveStateToClone(mutableCard, __result);
     }
+}
 
-    [HarmonyFinalizer]
-    public static Exception? Finalizer(Exception? __exception)
+[HarmonyPatch(typeof(CombatState), nameof(CombatState.CloneCard), typeof(CardModel))]
+public static class CombatStateCloneCardModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(CardModel mutableCard, CardModel __result)
     {
-        _depth = Math.Max(0, _depth - 1);
-        return __exception;
+        CardModificationStateService.CarryEffectiveStateToClone(mutableCard, __result);
     }
 }
 
@@ -253,10 +249,22 @@ public static class PlayerPopulateDeckCardModificationPatch
             [typeof(IEnumerable<CardModel>), typeof(bool)]);
     }
 
-    [HarmonyPostfix]
-    public static void Postfix(Player __instance)
+    [HarmonyPrefix]
+    public static void Prefix(ref IEnumerable<CardModel> cards, out IReadOnlyList<CardModel> __state)
     {
-        CardModificationStateService.ApplySavedRunStateToPlayerDeck(__instance);
+        List<CardModel> materialized = cards?.Where(card => card is not null).ToList() ?? [];
+        cards = materialized;
+        __state = materialized;
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(IReadOnlyList<CardModel> __state)
+    {
+        // PopulateDeck directly inserts the supplied models instead of routing them
+        // through RunState.CreateCard. Treat the supplied models as another one-time
+        // construction boundary; already-registered cards exit immediately.
+        foreach (CardModel card in __state)
+            CardModificationStateService.ApplyPermanentToCard(card);
     }
 }
 
@@ -486,5 +494,6 @@ public static class RunManagerCleanUpCardModificationPatch
         LoadoutImmediateMutationService.OnRunCleaningUp();
         CardModificationMultiplayerSyncService.OnRunCleaningUp();
         RelicModificationMultiplayerSyncService.OnRunCleaningUp();
+        CardModificationStateService.OnRunCleaningUp();
     }
 }
