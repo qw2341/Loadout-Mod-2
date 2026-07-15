@@ -40,6 +40,10 @@ public partial class NCardModificationScreen : Control
     private const float ActionButtonWidth = 318f;
     private const float CardEditButtonWidth = 246f;
     private const float ActionButtonHeight = 42f;
+    private const float KeywordToggleHeight = 44f;
+    private const float KeywordRowSeparation = 2f;
+    private const int KeywordColumns = 2;
+    private const int KeywordVisibleRows = 6;
     private const float HoverTipCardGap = 22f;
     private const float HoverTipViewportMargin = 24f;
     private const float HoverTipWidth = 360f;
@@ -704,19 +708,45 @@ public partial class NCardModificationScreen : Control
 
         _rightControls.AddChild(CreateSectionLabel(LocMan.Loc("FILTER_GROUP_KEYWORD", "Keyword")));
 
+        IReadOnlyList<CardKeyword> availableKeywords = GetAvailableKeywords(_item.Model);
+        int rowCount = (availableKeywords.Count + KeywordColumns - 1) / KeywordColumns;
+        bool needsScrolling = rowCount > KeywordVisibleRows;
+        float visibleHeight = GetKeywordGridHeight(Math.Min(rowCount, KeywordVisibleRows));
+        float gridWidth = needsScrolling ? 406f : 426f;
+        float toggleWidth = (gridWidth - 8f) / KeywordColumns;
+
         GridContainer grid = new()
         {
-            Columns = 2,
-            CustomMinimumSize = new Vector2(426f, 0f),
+            Columns = KeywordColumns,
+            CustomMinimumSize = new Vector2(gridWidth, GetKeywordGridHeight(rowCount)),
             SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
             MouseFilter = MouseFilterEnum.Ignore
         };
         grid.AddThemeConstantOverride("h_separation", 8);
-        grid.AddThemeConstantOverride("v_separation", 2);
-        _rightControls.AddChild(grid);
+        grid.AddThemeConstantOverride("v_separation", (int)KeywordRowSeparation);
+
+        if (needsScrolling)
+        {
+            ScrollContainer scroll = new()
+            {
+                Name = "KeywordScroll",
+                CustomMinimumSize = new Vector2(426f, visibleHeight),
+                SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+                ClipContents = true,
+                MouseFilter = MouseFilterEnum.Stop,
+                HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+                VerticalScrollMode = ScrollContainer.ScrollMode.Auto
+            };
+            scroll.AddChild(grid);
+            _rightControls.AddChild(scroll);
+        }
+        else
+        {
+            _rightControls.AddChild(grid);
+        }
 
         IReadOnlySet<CardKeyword> localKeywords = _item.Model.GetKeywordsWithSources(KeywordSources.Local);
-        foreach (CardKeyword keyword in GetAvailableKeywords(_item.Model))
+        foreach (CardKeyword keyword in availableKeywords)
         {
             CardKeyword localKeyword = keyword;
             string key = LoadoutKeywords.GetStorageKey(localKeyword);
@@ -726,7 +756,7 @@ public partial class NCardModificationScreen : Control
 
             NLoadoutToggle toggle = new()
             {
-                CustomMinimumSize = new Vector2(206f, 44f),
+                CustomMinimumSize = new Vector2(toggleWidth, KeywordToggleHeight),
                 SizeFlagsHorizontal = SizeFlags.ShrinkBegin
             };
             toggle.SetHoverTipsFactory(() => GetKeywordHoverTips(localKeyword));
@@ -739,6 +769,13 @@ public partial class NCardModificationScreen : Control
             };
             grid.AddChild(toggle);
         }
+    }
+
+    private static float GetKeywordGridHeight(int rowCount)
+    {
+        return rowCount <= 0
+            ? 0f
+            : (rowCount * KeywordToggleHeight) + ((rowCount - 1) * KeywordRowSeparation);
     }
 
     private void AddAttachmentEditor<TModel>(
