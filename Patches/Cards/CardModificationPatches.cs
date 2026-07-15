@@ -264,15 +264,20 @@ public static class PlayerPopulateDeckCardModificationPatch
 public static class CardModelTitleCardModificationPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(CardModel __instance)
+    public static void Prefix(CardModel __instance, out bool __state)
     {
-        CardModificationStateService.PushLocStringContext(__instance);
+        __state = CardModificationStateService.HasCustomTextOverrides(__instance);
+        if (__state)
+            CardModificationStateService.PushLocStringContext(__instance);
     }
 
     [HarmonyFinalizer]
-    public static void Finalizer()
+    public static Exception? Finalizer(bool __state, Exception? __exception)
     {
-        CardModificationStateService.PopLocStringContext();
+        if (__state)
+            CardModificationStateService.PopLocStringContext();
+
+        return __exception;
     }
 }
 
@@ -280,15 +285,20 @@ public static class CardModelTitleCardModificationPatch
 public static class CardModelDescriptionCardModificationPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(CardModel __instance)
+    public static void Prefix(CardModel __instance, out bool __state)
     {
-        CardModificationStateService.PushLocStringContext(__instance);
+        __state = CardModificationStateService.HasCustomTextOverrides(__instance);
+        if (__state)
+            CardModificationStateService.PushLocStringContext(__instance);
     }
 
     [HarmonyFinalizer]
-    public static void Finalizer()
+    public static Exception? Finalizer(bool __state, Exception? __exception)
     {
-        CardModificationStateService.PopLocStringContext();
+        if (__state)
+            CardModificationStateService.PopLocStringContext();
+
+        return __exception;
     }
 }
 
@@ -296,15 +306,20 @@ public static class CardModelDescriptionCardModificationPatch
 public static class CardModelUpgradeDescriptionCardModificationPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(CardModel __instance)
+    public static void Prefix(CardModel __instance, out bool __state)
     {
-        CardModificationStateService.PushLocStringContext(__instance);
+        __state = CardModificationStateService.HasCustomTextOverrides(__instance);
+        if (__state)
+            CardModificationStateService.PushLocStringContext(__instance);
     }
 
     [HarmonyFinalizer]
-    public static void Finalizer()
+    public static Exception? Finalizer(bool __state, Exception? __exception)
     {
-        CardModificationStateService.PopLocStringContext();
+        if (__state)
+            CardModificationStateService.PopLocStringContext();
+
+        return __exception;
     }
 }
 
@@ -314,6 +329,9 @@ public static class LocStringRawTextCardModificationPatch
     [HarmonyPostfix]
     public static void Postfix(LocString __instance, ref string __result)
     {
+        if (!CardModificationStateService.HasActiveLocStringContext)
+            return;
+
         if (CardModificationStateService.TryGetCustomRawLocString(__instance, out string customRawText))
             __result = customRawText;
     }
@@ -325,6 +343,9 @@ public static class CardModelPortraitPathCardModificationPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref string __result)
     {
+        if (!CardModificationStateService.HasPortraitOverrides(__instance))
+            return;
+
         if (CardModificationStateService.TryGetPortraitPath(__instance, beta: false, currentPath: __result, out string portraitPath))
             __result = portraitPath;
     }
@@ -336,6 +357,9 @@ public static class CardModelBetaPortraitPathCardModificationPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref string __result)
     {
+        if (!CardModificationStateService.HasPortraitOverrides(__instance))
+            return;
+
         if (CardModificationStateService.TryGetPortraitPath(__instance, beta: true, currentPath: __result, out string portraitPath))
             __result = portraitPath;
     }

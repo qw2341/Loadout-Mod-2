@@ -84,6 +84,7 @@ public static class CardModificationStateService
     private static readonly Dictionary<string, CachedDisplayCard> DisplayCardCache = new(StringComparer.Ordinal);
     private static readonly ConditionalWeakTable<CardModel, LocalCatalogDisplayCardMarker> LocalCatalogDisplayCards = new();
     private static readonly ConditionalWeakTable<CardModel, PreviewCardStateHolder> PreviewCardStates = new();
+    private static readonly ConditionalWeakTable<CardModel, RuntimeFeatureHolder> RuntimeFeatures = new();
     private static readonly ConditionalWeakTable<CardModel, EffectiveStateCacheHolder> EffectiveStateCache = new();
     private static readonly ConcurrentDictionary<string, int> PermanentCardRevisions = new(StringComparer.Ordinal);
     private static bool _registered;
@@ -247,6 +248,23 @@ public static class CardModificationStateService
 
         title = string.Empty;
         return false;
+    }
+
+    public static bool HasActiveLocStringContext => _locStringContext is { Count: > 0 };
+
+    public static bool HasCustomTextOverrides(CardModel card)
+    {
+        return HasRuntimeFeature(card, CardRuntimeFeature.CustomText);
+    }
+
+    public static bool HasPortraitOverrides(CardModel card)
+    {
+        return HasRuntimeFeature(card, CardRuntimeFeature.Portrait);
+    }
+
+    public static bool HasInfiniteUpgradeOverride(CardModel card)
+    {
+        return HasRuntimeFeature(card, CardRuntimeFeature.InfiniteUpgrade);
     }
 
     public static void PushLocStringContext(CardModel card)
@@ -573,6 +591,7 @@ public static class CardModificationStateService
             return;
 
         CardModificationState state = GetEffectiveStateForCardReadOnly(card);
+        SetRuntimeFeatures(card, state);
         if (state.IsEmpty)
             return;
 
@@ -587,6 +606,7 @@ public static class CardModificationStateService
     {
         ClearPreviewState(item.Model);
         CardModificationState state = GetEffectiveState(item);
+        SetRuntimeFeatures(item.Model, state);
         bool hasCardMutation = ApplyStateTransitionToCard(item.Model, state, previousState, includeAffliction: true);
 
         if (refreshLiveVisuals
@@ -615,6 +635,7 @@ public static class CardModificationStateService
         normalized.Normalize();
 
         ResetCardToCanonicalBaseline(item.Model, resetAttachments: true, resetUpgrade: true);
+        SetRuntimeFeatures(item.Model, normalized);
         if (!normalized.IsEmpty)
             ApplyStateToCard(item.Model, normalized);
 
@@ -878,6 +899,8 @@ public static class CardModificationStateService
             return;
         }
 
+        SetRuntimeFeatures(card, state);
+
         try
         {
             if (state.EnergyCost.HasValue && !card.EnergyCost.CostsX)
@@ -968,6 +991,7 @@ public static class CardModificationStateService
                 ForceApplyAffliction(preview, canonicalAffliction, Math.Max(1, card.Affliction.Amount));
             }
 
+            SetRuntimeFeatures(preview, normalized);
             PrepareCardForState(preview, normalized, includeAffliction: true);
             ApplyStateToCard(preview, normalized);
             SetPreviewState(preview, normalized);
@@ -1007,6 +1031,7 @@ public static class CardModificationStateService
                 return cached.Card;
         }
 
+        SetRuntimeFeatures(card, state);
         if (!HasCardMutations(state))
             return card;
 
@@ -1014,6 +1039,7 @@ public static class CardModificationStateService
         {
             CardModel preview = card.ToMutable();
             MarkLocalCatalogDisplayCard(preview);
+            SetRuntimeFeatures(preview, state);
             PrepareCardForState(preview, state, includeAffliction: true);
             ApplyStateToCard(preview, state);
             lock (SyncRoot)
@@ -2084,6 +2110,8 @@ public static class CardModificationStateService
         if (card.IsCanonical)
             return;
 
+        SetRuntimeFeatures(card, state);
+
         lock (SyncRoot)
         {
             PreviewCardStates.Remove(card);
@@ -2739,6 +2767,67 @@ public static class CardModificationStateService
     private static string GetRunPath(long runStartTime)
     {
         return SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, runStartTime);
+    }
+
+    [Flags]
+    private enum CardRuntimeFeature
+    {
+        None = 0,
+        CustomText = 1 << 0,
+        Portrait = 1 << 1,
+        InfiniteUpgrade = 1 << 2
+    }
+
+    private static bool HasRuntimeFeature(CardModel card, CardRuntimeFeature feature)
+    {
+        return RuntimeFeatures.TryGetValue(card, out RuntimeFeatureHolder? holder)
+               && ((CardRuntimeFeature)Volatile.Read(ref holder.Features) & feature) != 0;
+    }
+
+    private static void SetRuntimeFeatures(CardModel card, CardModificationState? state)
+    {
+        CardRuntimeFeature features = GetRuntimeFeatures(state);
+        if (features == CardRuntimeFeature.None)
+        {
+            RuntimeFeatures.Remove(card);
+            return;
+        }
+
+        RuntimeFeatureHolder holder = RuntimeFeatures.GetValue(card, static _ => new RuntimeFeatureHolder());
+        Volatile.Write(ref holder.Features, (int)features);
+    }
+
+    private static CardRuntimeFeature GetRuntimeFeatures(CardModificationState? state)
+    {
+        if (state is null)
+            return CardRuntimeFeature.None;
+
+        CardRuntimeFeature features = CardRuntimeFeature.None;
+        if (!string.IsNullOrWhiteSpace(state.CustomTitle)
+            || !string.IsNullOrWhiteSpace(state.CustomDescription))
+        {
+            features |= CardRuntimeFeature.CustomText;
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.PortraitPath)
+            || !string.IsNullOrWhiteSpace(state.BetaPortraitPath)
+            || !string.IsNullOrWhiteSpace(state.PoolId))
+        {
+            features |= CardRuntimeFeature.Portrait;
+        }
+
+        if (state.KeywordOverrides.TryGetValue(LoadoutKeywords.InfiniteUpgradeKey, out bool infiniteUpgrade)
+            && infiniteUpgrade)
+        {
+            features |= CardRuntimeFeature.InfiniteUpgrade;
+        }
+
+        return features;
+    }
+
+    private sealed class RuntimeFeatureHolder
+    {
+        public int Features;
     }
 
     private sealed class LocalCatalogDisplayCardMarker
