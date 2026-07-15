@@ -227,12 +227,22 @@ public static class RelicModificationStateService
     private static bool _registered;
     private static bool _savePending;
     private static int _stateRevision;
+    private static int _knownFeatureFlags;
     private static readonly ConditionalWeakTable<RelicModel, EffectiveStateCache> EffectiveStates = new();
     private static readonly ConditionalWeakTable<LocString, LocStringOwner> LocStringOwners = new();
     [ThreadStatic] private static Stack<(RelicModel Relic, string Kind)>? _locContext;
 
     public static event Action? StateChanged;
     public static event Action<ModelId>? PermanentRelicDisplayChanged;
+
+    // These flags keep optional Harmony patches on a near-zero-cost path until
+    // the corresponding relic-modifier feature is actually present. Flags are
+    // sticky for the current profile session so preview/temporary instances
+    // cannot accidentally lose their behavior due to lifetime bookkeeping.
+    public static bool HasRarityOverrides => HasKnownFeature(RelicModificationFeature.Rarity);
+    public static bool HasCustomTextOverrides => HasKnownFeature(RelicModificationFeature.CustomText);
+    public static bool HasNeverMeltOverrides => HasKnownFeature(RelicModificationFeature.NeverMelt);
+    public static bool HasNeverUsedOverrides => HasKnownFeature(RelicModificationFeature.NeverUsed);
 
     public static void Register()
     {
@@ -263,6 +273,7 @@ public static class RelicModificationStateService
             _permanent.Relics ??= new Dictionary<string, RelicModificationState>(StringComparer.Ordinal);
             _permanent.Relics = new Dictionary<string, RelicModificationState>(_permanent.Relics, StringComparer.Ordinal);
             foreach (RelicModificationState state in _permanent.Relics.Values) state.Normalize();
+            MarkFeaturePresence(_permanent.Relics.Values);
             _loaded = true;
         }
     }
@@ -311,6 +322,7 @@ public static class RelicModificationStateService
         RelicModel relic = item.Model;
         RelicModificationState state = requested?.Clone() ?? new RelicModificationState();
         state.Normalize();
+        MarkFeaturePresence(state);
 
         switch (operation)
         {
@@ -401,6 +413,7 @@ public static class RelicModificationStateService
 
         RelicModificationState normalized = state.Clone();
         normalized.Normalize();
+        MarkFeaturePresence(normalized);
         if (normalized.IsEmpty) return;
 
         RelicModificationAttachment attachment = RelicModificationInstanceState.Get(relic);
@@ -428,12 +441,14 @@ public static class RelicModificationStateService
         // RelicModel.FromSerializable fills SavedProperties after ToMutable. Any cache
         // created by clone propagation must be discarded before reading attached state.
         RelicModificationInstanceState.Invalidate(relic);
+        MarkFeaturePresence(RelicModificationInstanceState.GetStateReadOnly(relic));
         EffectiveStates.Remove(relic);
         ApplyPermanentToRelic(relic);
     }
 
     public static RelicModel CreatePreviewRelic(RelicModel source, RelicModificationState state)
     {
+        MarkFeaturePresence(state);
         RelicModel preview = (RelicModel)source.ClonePreservingMutability();
         RelicModificationAttachment attachment = RelicModificationInstanceState.Get(preview);
         attachment.State = state.Clone();
@@ -532,6 +547,7 @@ public static class RelicModificationStateService
     public static void SetHostPermanentOverlay(string json)
     {
         Dictionary<string, RelicModificationState>? states = JsonSerializer.Deserialize<Dictionary<string, RelicModificationState>>(json);
+        if (states is not null) MarkFeaturePresence(states.Values);
         string[] changedKeys;
         RestoreAllOverlayBaselines();
         lock (Gate)
@@ -567,6 +583,7 @@ public static class RelicModificationStateService
     {
         Dictionary<string, RelicModificationState>? states = JsonSerializer.Deserialize<Dictionary<string, RelicModificationState>>(json);
         if (states is null) return;
+        MarkFeaturePresence(states.Values);
         lock (Gate)
         {
             if (!merge) _permanent.Relics.Clear();
@@ -807,6 +824,7 @@ public static class RelicModificationStateService
     private static void OnProfileChanged(int _)
     {
         FlushSave();
+        Volatile.Write(ref _knownFeatureFlags, 0);
         lock (Gate) { _loaded = false; _permanent = new PermanentSaveData(); _hostOverlay.Clear(); _hasHostOverlay = false; }
         EnsureLoaded();
     }
@@ -868,6 +886,59 @@ public static class RelicModificationStateService
         [JsonPropertyName("relics")] public Dictionary<string, RelicModificationState> Relics { get; set; } = new(StringComparer.Ordinal);
         public readonly PermanentSaveData Clone() => new() { SchemaVersion = SchemaVersion, Relics = Relics.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal) };
         public readonly void GetObjectData(SerializationInfo info, StreamingContext context) { info.AddValue(nameof(SchemaVersion), SchemaVersion); info.AddValue(nameof(Relics), Relics); }
+    }
+
+    [Flags]
+    private enum RelicModificationFeature
+    {
+        None = 0,
+        Rarity = 1 << 0,
+        CustomText = 1 << 1,
+        NeverMelt = 1 << 2,
+        NeverUsed = 1 << 3
+    }
+
+    private static bool HasKnownFeature(RelicModificationFeature feature)
+        => (Volatile.Read(ref _knownFeatureFlags) & (int)feature) != 0;
+
+    private static RelicModificationFeature GetFeatures(RelicModificationState state)
+    {
+        RelicModificationFeature features = RelicModificationFeature.None;
+        if (!string.IsNullOrWhiteSpace(state.Rarity)) features |= RelicModificationFeature.Rarity;
+        if (!string.IsNullOrWhiteSpace(state.CustomTitle)
+            || !string.IsNullOrWhiteSpace(state.CustomDescription)
+            || !string.IsNullOrWhiteSpace(state.CustomFlavor))
+            features |= RelicModificationFeature.CustomText;
+        if (state.NeverMelt == true) features |= RelicModificationFeature.NeverMelt;
+        if (state.NeverUsed == true) features |= RelicModificationFeature.NeverUsed;
+        return features;
+    }
+
+    private static void MarkFeaturePresence(RelicModificationState state)
+        => MarkFeaturePresence(GetFeatures(state));
+
+    private static void MarkFeaturePresence(IEnumerable<RelicModificationState> states)
+    {
+        RelicModificationFeature features = RelicModificationFeature.None;
+        foreach (RelicModificationState state in states)
+            features |= GetFeatures(state);
+        MarkFeaturePresence(features);
+    }
+
+    private static void MarkFeaturePresence(RelicModificationFeature features)
+    {
+        int added = (int)features;
+        if (added == 0) return;
+
+        int current;
+        int updated;
+        do
+        {
+            current = Volatile.Read(ref _knownFeatureFlags);
+            updated = current | added;
+            if (updated == current) return;
+        }
+        while (Interlocked.CompareExchange(ref _knownFeatureFlags, updated, current) != current);
     }
 
     private sealed class EffectiveStateCache { public EffectiveStateEntry? Entry; }

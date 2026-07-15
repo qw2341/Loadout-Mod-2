@@ -137,6 +137,7 @@ public static class RelicRarityModificationPatch
     [HarmonyPostfix]
     public static void Postfix(RelicModel __instance, ref RelicRarity __result)
     {
+        if (!RelicModificationStateService.HasRarityOverrides) return;
         if (RelicModificationStateService.TryGetRarity(__instance, out RelicRarity rarity))
             __result = rarity;
     }
@@ -154,6 +155,7 @@ public static class RelicIsUsedUpModificationPatch
     [HarmonyPostfix]
     public static void Postfix(RelicModel __instance, ref bool __result)
     {
+        if (!RelicModificationStateService.HasNeverUsedOverrides) return;
         if (RelicModificationStateService.ShouldNeverUse(__instance)) __result = false;
     }
 }
@@ -164,6 +166,7 @@ public static class RelicStatusModificationPatch
     [HarmonyPrefix]
     public static void Prefix(RelicModel __instance, ref RelicStatus value)
     {
+        if (!RelicModificationStateService.HasNeverUsedOverrides) return;
         if (value == RelicStatus.Disabled && RelicModificationStateService.ShouldNeverUse(__instance))
             value = RelicStatus.Normal;
     }
@@ -175,6 +178,7 @@ public static class RelicMeltModificationPatch
     [HarmonyPrefix]
     public static bool Prefix(RelicModel relic, ref Task __result)
     {
+        if (!RelicModificationStateService.HasNeverMeltOverrides) return true;
         if (!RelicModificationStateService.ShouldNeverMelt(relic)) return true;
         __result = Task.CompletedTask;
         return false;
@@ -184,17 +188,49 @@ public static class RelicMeltModificationPatch
 [HarmonyPatch(typeof(RelicModel), nameof(RelicModel.Title), MethodType.Getter)]
 public static class RelicTitleModificationPatch
 {
-    [HarmonyPrefix] public static void Prefix(RelicModel __instance) => RelicModificationStateService.PushLocStringContext(__instance, "title");
-    [HarmonyPostfix] public static void Postfix(RelicModel __instance, LocString __result) => RelicModificationStateService.AssociateLocString(__instance, __result, "title");
-    [HarmonyFinalizer] public static Exception? Finalizer(Exception? __exception) { RelicModificationStateService.PopLocStringContext(); return __exception; }
+    [HarmonyPrefix]
+    public static void Prefix(RelicModel __instance, out bool __state)
+    {
+        __state = RelicModificationStateService.HasCustomTextOverrides;
+        if (__state) RelicModificationStateService.PushLocStringContext(__instance, "title");
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(RelicModel __instance, LocString __result, bool __state)
+    {
+        if (__state) RelicModificationStateService.AssociateLocString(__instance, __result, "title");
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, bool __state)
+    {
+        if (__state) RelicModificationStateService.PopLocStringContext();
+        return __exception;
+    }
 }
 
 [HarmonyPatch(typeof(RelicModel), nameof(RelicModel.Flavor), MethodType.Getter)]
 public static class RelicFlavorModificationPatch
 {
-    [HarmonyPrefix] public static void Prefix(RelicModel __instance) => RelicModificationStateService.PushLocStringContext(__instance, "flavor");
-    [HarmonyPostfix] public static void Postfix(RelicModel __instance, LocString __result) => RelicModificationStateService.AssociateLocString(__instance, __result, "flavor");
-    [HarmonyFinalizer] public static Exception? Finalizer(Exception? __exception) { RelicModificationStateService.PopLocStringContext(); return __exception; }
+    [HarmonyPrefix]
+    public static void Prefix(RelicModel __instance, out bool __state)
+    {
+        __state = RelicModificationStateService.HasCustomTextOverrides;
+        if (__state) RelicModificationStateService.PushLocStringContext(__instance, "flavor");
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(RelicModel __instance, LocString __result, bool __state)
+    {
+        if (__state) RelicModificationStateService.AssociateLocString(__instance, __result, "flavor");
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, bool __state)
+    {
+        if (__state) RelicModificationStateService.PopLocStringContext();
+        return __exception;
+    }
 }
 
 [HarmonyPatch(typeof(LocString), nameof(LocString.GetRawText))]
@@ -203,6 +239,7 @@ public static class RelicLocStringRawTextModificationPatch
     [HarmonyPostfix]
     public static void Postfix(LocString __instance, ref string __result)
     {
+        if (!RelicModificationStateService.HasCustomTextOverrides) return;
         if (RelicModificationStateService.TryGetCustomRawLocString(__instance, out string text)) __result = text;
     }
 }
@@ -210,7 +247,23 @@ public static class RelicLocStringRawTextModificationPatch
 [HarmonyPatch(typeof(RelicModel), nameof(RelicModel.DynamicDescription), MethodType.Getter)]
 public static class RelicDescriptionModificationPatch
 {
-    [HarmonyPrefix] public static void Prefix(RelicModel __instance) => RelicModificationStateService.PushLocStringContext(__instance, "description");
-    [HarmonyPostfix] public static void Postfix(RelicModel __instance, LocString __result) => RelicModificationStateService.AssociateLocString(__instance, __result, "description");
-    [HarmonyFinalizer] public static Exception? Finalizer(Exception? __exception) { RelicModificationStateService.PopLocStringContext(); return __exception; }
+    [HarmonyPrefix]
+    public static void Prefix(RelicModel __instance, out bool __state)
+    {
+        __state = RelicModificationStateService.HasCustomTextOverrides;
+        if (__state) RelicModificationStateService.PushLocStringContext(__instance, "description");
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(RelicModel __instance, LocString __result, bool __state)
+    {
+        if (__state) RelicModificationStateService.AssociateLocString(__instance, __result, "description");
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception, bool __state)
+    {
+        if (__state) RelicModificationStateService.PopLocStringContext();
+        return __exception;
+    }
 }
