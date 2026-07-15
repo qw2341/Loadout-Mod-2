@@ -54,7 +54,7 @@ public static class RelicModifier
             {
                 builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
                 builder.Materialization(SelectMaterializationMode.Lazy);
-                builder.HiddenPrewarm(false);
+                builder.HiddenPrewarm(true);
                 builder.Layout(10, new Vector2(68f, 68f), 32, 32);
                 builder.ActionButton(
                     "host_relic_permamods",
@@ -70,7 +70,11 @@ public static class RelicModifier
             {
                 modifierScreen = screen;
                 LoadoutTargetService.UpsertTargetDropdown(screen, TargetDropdownName, TargetKey, LoadoutTargetMode.PlayersOnly, refresh);
-            });
+            },
+            selectScreenScenePath: CommonHelpers.RelicSelectScreenScenePath,
+            reconcileModelsOnEveryOpen: false,
+            refreshModelsAfterActivation: false,
+            syncChangesWhileHidden: true);
     }
 
     internal static IReadOnlyList<LoadoutOwnedItem<RelicModel>> GetSelectedTargetRelics()
@@ -111,7 +115,14 @@ public static class RelicModifier
 
     private static void RefreshOwnedItem(NGenericSelectScreen? screen, LoadoutOwnedItem<RelicModel> item, Control fallbackView, LoadoutOwnedItem<RelicModel> fallbackItem)
     {
-        if (screen?.RefreshItemView(CommonHelpers.OwnedItemId(item)) == true)
+        string itemId = CommonHelpers.OwnedItemId(item);
+        bool refreshed = screen switch
+        {
+            NRelicSelectScreen relicScreen => relicScreen.RefreshItemById(itemId),
+            not null => screen.RefreshItemView(itemId),
+            _ => false
+        };
+        if (refreshed)
             return;
 
         if (SameOwnedItem(item, fallbackItem) && GodotObject.IsInstanceValid(fallbackView))

@@ -405,7 +405,8 @@ public partial class NLoadoutPanel : Panel
 			LocMan.Loc("LOADOUTBAG_DESC", "Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action."),
 			HandleAddRelicActivatedAsync,
 			LastActionService.LoadoutBagKey,
-			ReplayLoadoutBagLastActionAsync);
+			ReplayLoadoutBagLastActionAsync,
+			selectScreenScenePath: CommonHelpers.RelicSelectScreenScenePath);
 		_loadoutBagRelicScreen = loadoutBagItem.BoundScreen;
 		_loadoutBagRelicScreen.VisibilityChanged += () =>
 		{
@@ -442,7 +443,11 @@ public partial class NLoadoutPanel : Panel
 				RemoveRelicTargetDropdownName,
 				RemoveRelicTargetKey,
 				LoadoutTargetMode.PlayersOnly,
-				refresh));
+				refresh),
+			selectScreenScenePath: CommonHelpers.RelicSelectScreenScenePath,
+			reconcileModelsOnEveryOpen: false,
+			refreshModelsAfterActivation: false,
+			syncChangesWhileHidden: true);
 		//03 - RELIC MODIFIER
 		RelicModifier.Initialize();
 		//04 - LOADOUT CAULDRON
@@ -845,16 +850,7 @@ public partial class NLoadoutPanel : Panel
 
 		Callable.From(() =>
 		{
-			if (!IsInstanceValid(screen) || !screen.IsInsideTree())
-				return;
-
-			screen.ForEachVisibleItemView((item, view) =>
-			{
-				if (item.UntypedModel is RelicModel relic && relic.Id.Equals(relicId))
-					RefreshRelicGridItem(view, relic);
-			});
-
-			if (screen.IsVisibleInTree())
+			if (IsInstanceValid(screen) && screen.IsInsideTree() && screen.IsVisibleInTree())
 				RefreshPendingPermanentRelics(screen);
 		}).CallDeferred();
 	}
@@ -869,9 +865,19 @@ public partial class NLoadoutPanel : Panel
 			return;
 		}
 
+		string[] changedIds = _pendingPermanentRelicRefreshIds.ToArray();
 		_pendingPermanentRelicRefreshIds.Clear();
-		// Rarity is both presentation and layout state in this catalog, so a permanent
-		// change must rerun the existing filters/grouping rather than only swap the icon.
+
+		if (screen is NRelicSelectScreen relicScreen)
+		{
+			relicScreen.RefreshItemsById(changedIds);
+			// Rarity can move a relic between groups. Recompute membership/order, but
+			// do not call UpdateView on every retained relic holder.
+			relicScreen.RefreshLayout(resetScroll: false, updateExistingViews: false);
+			return;
+		}
+
+		// Compatibility fallback for a custom scene that still uses the generic screen.
 		screen.RefreshNow(resetScroll: false);
 	}
 

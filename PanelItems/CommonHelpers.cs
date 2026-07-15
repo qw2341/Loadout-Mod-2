@@ -42,6 +42,9 @@ public class CommonHelpers
     private const string BaseGameModName = "Slay the Spire 2";
     private const int DynamicRelayoutAnimationItemLimit = 60;
 
+    public const string GenericSelectScreenScenePath = "res://UI/Screens/GenericSelectScreen.tscn";
+    public const string RelicSelectScreenScenePath = NRelicSelectScreen.ScenePath;
+
     public const string FavoriteModeAllKey = "all";
     public const string FavoriteModeFavoritesKey = "favorites";
 
@@ -58,10 +61,11 @@ public class CommonHelpers
         string description,
         CommonHelpers.SelectActivationHandler onActivated = null,
         string lastActionItemKey = null,
-        Func<Task> replayQuickAction = null)
+        Func<Task> replayQuickAction = null,
+        string selectScreenScenePath = GenericSelectScreenScenePath)
     {
         var item = new NLoadoutPanelItem(textureFileName, title, description);
-        var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+        var scene = GD.Load<PackedScene>(selectScreenScenePath);
         var screen = scene.Instantiate<NGenericSelectScreen>();
         bool activationInFlight = false;
         LastActionCaptureSession captureSession = null;
@@ -132,12 +136,17 @@ public class CommonHelpers
 		string title,
 		string description,
 		Action<NGenericSelectScreen, Action>? afterConfigure = null,
-		Action<NGenericSelectScreen, IGenericSelectItem>? afterActivationRefresh = null)
+		Action<NGenericSelectScreen, IGenericSelectItem>? afterActivationRefresh = null,
+		string selectScreenScenePath = GenericSelectScreenScenePath,
+		bool reconcileModelsOnEveryOpen = true,
+		bool refreshModelsAfterActivation = true,
+		bool syncChangesWhileHidden = false)
 	{
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
-		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+		var scene = GD.Load<PackedScene>(selectScreenScenePath);
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool activationInFlight = false;
+		bool hiddenSyncScheduled = false;
 		List<LoadoutRunContentChangedEventArgs> pendingRunContentChanges = [];
 		object? configuredRunState = null;
 
@@ -182,6 +191,12 @@ public class CommonHelpers
 			configuredRunState = currentRunState;
 		}
 
+		void RefreshAfterActivation(NGenericSelectScreen target, IGenericSelectItem _)
+		{
+			if (refreshModelsAfterActivation)
+				RefreshCurrentModels(target, animateRelayout: false);
+		}
+
 		bool TryHandleTargetedRunContentChange(NGenericSelectScreen target, LoadoutRunContentChangedEventArgs change)
 		{
 			Type modelType = typeof(TModel);
@@ -193,18 +208,36 @@ public class CommonHelpers
 					if (change.ChangedRelics.Count == 0)
 						return true;
 
-					HashSet<(ulong OwnerNetId, int Index, string ModelId)> changedRelics = change.ChangedRelics
-						.Select(changed => (changed.OwnerNetId, changed.Index, changed.ModelId.ToString()))
-						.ToHashSet();
-					foreach (IGenericSelectItem item in target.VisibleItems)
+					foreach (LoadoutChangedRelic changed in change.ChangedRelics)
 					{
-						if (item.UntypedModel is not LoadoutOwnedItem<RelicModel> ownedRelic)
-							continue;
-						if (!changedRelics.Contains((ownedRelic.OwnerNetId, ownedRelic.Index, ownedRelic.Model.Id.ToString())))
-							continue;
+						IGenericSelectItem? soleMatch = null;
+						IGenericSelectItem? indexMatch = null;
+						int matchCount = 0;
+						foreach (IGenericSelectItem candidate in target.Items)
+						{
+							if (candidate.UntypedModel is not LoadoutOwnedItem<RelicModel> owned
+							    || owned.OwnerNetId != changed.OwnerNetId
+							    || !owned.Model.Id.Equals(changed.ModelId))
+							{
+								continue;
+							}
 
-						target.RefreshItemView(item);
+							matchCount++;
+							soleMatch = candidate;
+							if (owned.Index == changed.Index)
+								indexMatch = candidate;
+						}
+
+						IGenericSelectItem? matched = matchCount == 1 ? soleMatch : indexMatch;
+						if (matched is null)
+							return false;
+
+						if (target is NRelicSelectScreen relicScreen)
+							relicScreen.RefreshItemById(matched.Id);
+						else
+							target.RefreshItemView(matched);
 					}
+
 					return true;
 				}
 
@@ -219,7 +252,7 @@ public class CommonHelpers
 					object? relicRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
 					IReadOnlyList<TModel> relicModels = getModels();
 					string? removedRelicItemId = change.ChangedRelics
-						.Select(changed => target.VisibleItems.FirstOrDefault(item => item.UntypedModel is LoadoutOwnedItem<RelicModel> owned && MatchesChangedRelic(owned, changed))?.Id)
+						.Select(changed => target.Items.FirstOrDefault(item => item.UntypedModel is LoadoutOwnedItem<RelicModel> owned && MatchesChangedRelic(owned, changed))?.Id)
 						.FirstOrDefault(id => id is not null);
 					if (!target.TryApplySingleItemRemoval(relicModels, adapter, relicModels.Count <= DynamicRelayoutAnimationItemLimit, updateExistingViews: false, expectedRemovedItemId: removedRelicItemId))
 						return false;
@@ -306,17 +339,96 @@ public class CommonHelpers
 			return true;
 		}
 
+		void ApplyPendingRunContentChanges(NGenericSelectScreen target, bool animateRelayout)
+		{
+			if (pendingRunContentChanges.Count == 0)
+				return;
+
+			List<LoadoutRunContentChangedEventArgs> pending = pendingRunContentChanges.ToList();
+			pendingRunContentChanges.Clear();
+
+			// Structural changes are coalesced into one preserving snapshot. Applying
+			// several add/remove events independently would enumerate the same relic
+			// collection and relayout it multiple times before the player sees it.
+			if (pending.Any(change => change.Mode != LoadoutRunContentChangeMode.Update))
+			{
+				RefreshCurrentModels(target, animateRelayout, updateExistingViews: false);
+				return;
+			}
+
+			foreach (LoadoutRunContentChangedEventArgs change in pending)
+			{
+				if (TryHandleTargetedRunContentChange(target, change))
+					continue;
+
+				RefreshCurrentModels(target, animateRelayout, updateExistingViews: false);
+				return;
+			}
+		}
+
+		async Task SyncPendingChangesWhileHiddenAsync()
+		{
+			if (hiddenSyncScheduled)
+				return;
+
+			hiddenSyncScheduled = true;
+			try
+			{
+				if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
+					return;
+
+				SceneTree tree = screen.GetTree();
+				await screen.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+				if (!GodotObject.IsInstanceValid(screen)
+				    || !screen.IsInsideTree()
+				    || screen.IsVisibleInTree()
+				    || pendingRunContentChanges.Count == 0)
+				{
+					return;
+				}
+
+				ApplyPendingRunContentChanges(screen, animateRelayout: false);
+				if (screen is NRelicSelectScreen relicScreen)
+					await relicScreen.PrewarmForFirstOpenAsync();
+			}
+			catch (Exception exception)
+			{
+				GD.PushWarning($"Loadout hidden select-screen synchronization failed for '{title}': {exception}");
+			}
+			finally
+			{
+				hiddenSyncScheduled = false;
+				if (syncChangesWhileHidden
+				    && GodotObject.IsInstanceValid(screen)
+				    && screen.IsInsideTree()
+				    && !screen.IsVisibleInTree()
+				    && pendingRunContentChanges.Count > 0)
+				{
+					_ = SyncPendingChangesWhileHiddenAsync();
+				}
+			}
+		}
+
 		void RefreshDynamicScreenForOpen(NGenericSelectScreen target)
 		{
 			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
 			if (!target.IsConfiguredForCurrentLocale || !ReferenceEquals(configuredRunState, currentRunState))
 			{
 				ConfigureCurrentModels(target);
+				pendingRunContentChanges.Clear();
 				return;
 			}
 
 			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
-			RefreshCurrentModels(target, resetScroll: true);
+			if (reconcileModelsOnEveryOpen)
+			{
+				RefreshCurrentModels(target, resetScroll: true);
+				pendingRunContentChanges.Clear();
+				return;
+			}
+
+			ApplyPendingRunContentChanges(target, animateRelayout: false);
 		}
 
 		ConfigureCurrentModels(screen);
@@ -324,23 +436,15 @@ public class CommonHelpers
 		{
 			SelectScreenUiState state = screen.CaptureUiState();
 			ConfigureCurrentModels(screen, preserveViews: false);
+			pendingRunContentChanges.Clear();
 			screen.RestoreUiState(state);
 		};
 		screen.VisibilityChanged += () =>
 		{
-			if (!screen.Visible || pendingRunContentChanges.Count == 0)
+			if (!screen.Visible)
 				return;
 
-			List<LoadoutRunContentChangedEventArgs> pending = pendingRunContentChanges.ToList();
-			pendingRunContentChanges.Clear();
-			foreach (LoadoutRunContentChangedEventArgs change in pending)
-			{
-				if (!TryHandleTargetedRunContentChange(screen, change))
-				{
-					RefreshCurrentModels(screen, animateRelayout: true, updateExistingViews: false);
-					break;
-				}
-			}
+			ApplyPendingRunContentChanges(screen, animateRelayout: true);
 		};
 		LoadoutRunContentChangeService.Changed += change =>
 		{
@@ -350,6 +454,8 @@ public class CommonHelpers
 			if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsVisibleInTree())
 			{
 				pendingRunContentChanges.Add(change);
+				if (syncChangesWhileHidden)
+					_ = SyncPendingChangesWhileHiddenAsync();
 				return;
 			}
 
@@ -370,16 +476,12 @@ public class CommonHelpers
 				screen,
 				selectItem,
 				onActivated,
-				afterActivationRefresh ?? ((target, _) => RefreshCurrentModels(target, animateRelayout: false)),
+				afterActivationRefresh ?? RefreshAfterActivation,
 				() => activationInFlight = false);
 		};
 
 		item.BoundScreen = screen;
-		item.BeforeOpen = target =>
-		{
-			RefreshDynamicScreenForOpen(target);
-			pendingRunContentChanges.Clear();
-		};
+		item.BeforeOpen = RefreshDynamicScreenForOpen;
 
 		NLoadoutPanel.ItemsContainer.AddChild(item);
 	}

@@ -199,6 +199,16 @@ public partial class NGenericSelectScreen : Control
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
     public IReadOnlyDictionary<string, int> SelectedAmounts => _selectedAmounts;
+
+    /// <summary>
+    /// Lightweight specialization hooks. Derived screens can adapt materialization
+    /// and lookup policy without duplicating generic filtering/grouping/layout code.
+    /// </summary>
+    protected int ConfiguredItemCount => _items.Count;
+    protected IReadOnlyList<IGenericSelectItem> ConfiguredItems => _items;
+    protected IReadOnlyList<IGenericSelectItem> ConfiguredLayoutItems => _itemLayoutOrder;
+    protected SelectMaterializationMode CurrentMaterializationMode => _materializationMode;
+    protected float CurrentViewportLayoutWidth => GetRawViewportWidth();
     public bool IsConfiguredForCurrentLocale => string.Equals(_configuredLocaleLanguage, GetCurrentLocaleLanguage(), StringComparison.Ordinal);
     public bool IsFirstOpenPrewarmed => _hiddenPrewarmCompleted;
 
@@ -365,6 +375,7 @@ public partial class NGenericSelectScreen : Control
             index++;
         }
 
+        OnItemsConfigured();
         _isConfigured = true;
         _configuredLocaleLanguage = GetCurrentLocaleLanguage();
         RefreshNow(resetScroll: true);
@@ -410,6 +421,9 @@ public partial class NGenericSelectScreen : Control
             ClearActivationBinding(staleView);
             QueueFreeItemViewSafely(staleView);
         }
+
+        OnItemsConfigured();
+        _hiddenPrewarmCompleted = false;
 
         bool shouldAnimateRelayout = animateRelayout && IsInsideTree() && IsVisibleInTree();
         if (shouldAnimateRelayout)
@@ -518,6 +532,9 @@ public partial class NGenericSelectScreen : Control
         foreach (string staleSelectionId in _selectedAmounts.Keys.Where(id => !currentItemIds.Contains(id)).ToList())
             _selectedAmounts.Remove(staleSelectionId);
 
+        OnItemsConfigured();
+        _hiddenPrewarmCompleted = false;
+
         bool shouldAnimateRelayout = animateRelayout && IsInsideTree() && IsVisibleInTree();
         if (shouldAnimateRelayout)
             LockRelayoutPositions(relayoutStartPositions);
@@ -568,6 +585,8 @@ public partial class NGenericSelectScreen : Control
         HashSet<string> currentItemIds = _items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
         foreach (string staleSelectionId in _selectedAmounts.Keys.Where(id => !currentItemIds.Contains(id)).ToList())
             _selectedAmounts.Remove(staleSelectionId);
+
+        OnItemsConfigured();
 
         bool shouldAnimateRelayout = animateRelayout && IsInsideTree() && IsVisibleInTree();
         if (shouldAnimateRelayout)
@@ -677,7 +696,7 @@ public partial class NGenericSelectScreen : Control
         foreach (IGenericSelectItem item in _items)
         {
             if (item.View is not null && GodotObject.IsInstanceValid(item.View))
-                item.View.Visible = false;
+                SetLayoutNodeActive(item.View, active: false);
         }
 
         float measuredWidth = GetActiveGroupDefinition() is { } group
@@ -691,7 +710,7 @@ public partial class NGenericSelectScreen : Control
         ScrollToTop();
     }
 
-    private int GetHiddenPrewarmBatchSize()
+    protected virtual int GetHiddenPrewarmBatchSize()
     {
         string screenName = Name.ToString();
         if (screenName.Contains("BottledMonster", StringComparison.Ordinal))
@@ -703,7 +722,7 @@ public partial class NGenericSelectScreen : Control
         return DefaultHiddenPrewarmBatchSize;
     }
 
-    private IReadOnlyList<IGenericSelectItem> BuildHiddenPrewarmItemList()
+    protected virtual IReadOnlyList<IGenericSelectItem> BuildHiddenPrewarmItemList()
     {
         if (_materializationMode == SelectMaterializationMode.Eager)
             return _itemLayoutOrder.ToList();
@@ -1058,6 +1077,16 @@ public partial class NGenericSelectScreen : Control
 
     public void RefreshNow(bool resetScroll = false)
     {
+        RefreshLayout(resetScroll, updateExistingViews: true);
+    }
+
+    /// <summary>
+    /// Recomputes search/filter/sort/group layout while optionally leaving already
+    /// materialized native views untouched. Specialized screens use this when only
+    /// membership or ordering changed.
+    /// </summary>
+    public void RefreshLayout(bool resetScroll = false, bool updateExistingViews = false)
+    {
         if (!_isConfigured)
             return;
 
@@ -1070,7 +1099,11 @@ public partial class NGenericSelectScreen : Control
         _refreshPendingWhileHidden = false;
         bool effectiveResetScroll = resetScroll || _pendingResetScroll;
         _pendingResetScroll = false;
-        RebuildCurrentLayout(effectiveResetScroll, updateExistingViews: true);
+        RebuildCurrentLayout(effectiveResetScroll, updateExistingViews);
+    }
+
+    protected virtual void OnItemsConfigured()
+    {
     }
 
     private void RequestRefreshWhenVisible(bool resetScroll)
@@ -1130,7 +1163,7 @@ public partial class NGenericSelectScreen : Control
         UpdateViewportCulling(force: true);
     }
 
-    private void ApplyRetainedItemLayouts()
+    protected virtual void ApplyRetainedItemLayouts()
     {
         foreach ((Control view, IGenericSelectItem item) in _activationItemsByView.ToArray())
         {
@@ -1142,7 +1175,7 @@ public partial class NGenericSelectScreen : Control
 
             if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
             {
-                view.Visible = false;
+                SetLayoutNodeActive(view, active: false);
                 continue;
             }
 
@@ -1169,7 +1202,7 @@ public partial class NGenericSelectScreen : Control
         foreach (IGenericSelectItem item in _items)
         {
             if (item.View is not null && GodotObject.IsInstanceValid(item.View))
-                item.View.Visible = false;
+                SetLayoutNodeActive(item.View, active: false);
         }
 
         float measuredWidth = GetActiveGroupDefinition() is { } group
@@ -3522,13 +3555,22 @@ public partial class NGenericSelectScreen : Control
 
             float top = control.Position.Y;
             float bottom = top + Math.Max(controlSize.Y, control.CustomMinimumSize.Y);
-            control.Visible = bottom >= cullTop && top <= cullBottom;
+            SetLayoutNodeActive(control, bottom >= cullTop && top <= cullBottom);
         }
 
         RecycleDistantItemViews();
     }
 
-    private void RecycleDistantItemViews()
+    /// <summary>
+    /// Lets specialized screens suspend expensive native controls when they are
+    /// outside the viewport. The generic screen preserves the original behavior.
+    /// </summary>
+    protected virtual void SetLayoutNodeActive(Control control, bool active)
+    {
+        control.Visible = active;
+    }
+
+    protected virtual void RecycleDistantItemViews()
     {
         if (_materializationMode != SelectMaterializationMode.Lazy || _itemGrid is null)
             return;
@@ -4199,6 +4241,7 @@ public interface IGenericSelectItem
 public sealed class GenericSelectItem<TModel> : IGenericSelectItem
 {
     private readonly SelectItemAdapter<TModel> _adapter;
+    private readonly string _normalizedSearchText;
 
     public GenericSelectItem(TModel model, SelectItemAdapter<TModel> adapter, int originalIndex)
     {
@@ -4210,6 +4253,7 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
         SearchText = adapter.GetSearchTextFromName?.Invoke(model, Name)
                      ?? adapter.GetSearchText?.Invoke(model)
                      ?? Name;
+        _normalizedSearchText = SelectText.Normalize(SearchText);
     }
 
     public TModel Model { get; }
@@ -4247,7 +4291,7 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
         if (_adapter.MatchesSearch is not null)
             return _adapter.MatchesSearch(Model, normalizedQuery);
 
-        return SelectText.Normalize(SearchText).Contains(normalizedQuery, StringComparison.Ordinal);
+        return _normalizedSearchText.Contains(normalizedQuery, StringComparison.Ordinal);
     }
 
     public bool TryBindActivation(Action activate, out Action? unbind)
