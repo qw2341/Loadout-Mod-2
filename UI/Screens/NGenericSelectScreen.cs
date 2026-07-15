@@ -120,6 +120,8 @@ public partial class NGenericSelectScreen : Control
     private readonly List<Control> _generatedGroupContainers = new();
     private readonly List<Control> _visibleLayoutNodes = new();
     private readonly HashSet<Control> _visibleLayoutNodeSet = new();
+    private readonly List<Control> _nonItemLayoutNodes = new();
+    private readonly HashSet<Control> _nonItemLayoutNodeSet = new();
     private readonly Dictionary<IGenericSelectItem, SelectItemLayout> _itemLayouts = new();
     private readonly List<IGenericSelectItem> _itemLayoutOrder = new();
     private readonly HashSet<IGenericSelectItem> _itemsUpdatedForCurrentLayout = new();
@@ -209,6 +211,9 @@ public partial class NGenericSelectScreen : Control
     protected IReadOnlyList<IGenericSelectItem> ConfiguredLayoutItems => _itemLayoutOrder;
     protected SelectMaterializationMode CurrentMaterializationMode => _materializationMode;
     protected float CurrentViewportLayoutWidth => GetRawViewportWidth();
+    protected float CurrentScrollOffset => _scrollY;
+    protected float TargetScrollOffset => _targetScrollY;
+    protected bool IsScrollMotionSettled => Mathf.Abs(_scrollY - _targetScrollY) < 0.5f;
     public bool IsConfiguredForCurrentLocale => string.Equals(_configuredLocaleLanguage, GetCurrentLocaleLanguage(), StringComparison.Ordinal);
     public bool IsFirstOpenPrewarmed => _hiddenPrewarmCompleted;
 
@@ -722,6 +727,14 @@ public partial class NGenericSelectScreen : Control
         return DefaultHiddenPrewarmBatchSize;
     }
 
+    protected virtual int GetInitialMaterializeBudget() => InitialMaterializeBudget;
+    protected virtual int GetRemovalMaterializeBudget() => RemovalMaterializeBudget;
+    protected virtual int GetScrollMaterializeBudget() => ScrollMaterializeBudget;
+    protected virtual float GetMaterializeRowsBehind() => MaterializeRowsBehind;
+    protected virtual float GetMaterializeRowsAhead() => MaterializeRowsAhead;
+    protected virtual float GetRecycleRowsBehind() => RecycleRowsBehind;
+    protected virtual float GetRecycleRowsAhead() => RecycleRowsAhead;
+
     protected virtual IReadOnlyList<IGenericSelectItem> BuildHiddenPrewarmItemList()
     {
         if (_materializationMode == SelectMaterializationMode.Eager)
@@ -729,13 +742,13 @@ public partial class NGenericSelectScreen : Control
 
         Rect2 materializeRect = BuildViewportMaterializeRect(
             _targetScrollY,
-            MaterializeRowsBehind,
-            MaterializeRowsAhead);
+            GetMaterializeRowsBehind(),
+            GetMaterializeRowsAhead());
 
         return _itemLayoutOrder
             .Where(item => _itemLayouts.TryGetValue(item, out SelectItemLayout layout)
                            && new Rect2(layout.Position, layout.Size).Intersects(materializeRect, includeBorders: true))
-            .Take(InitialMaterializeBudget)
+            .Take(GetInitialMaterializeBudget())
             .ToList();
     }
 
@@ -1152,7 +1165,7 @@ public partial class NGenericSelectScreen : Control
 
         if (_materializationMode == SelectMaterializationMode.Lazy)
         {
-            MaterializeViewportItemViews(InitialMaterializeBudget, updateExistingViews: false);
+            MaterializeViewportItemViews(GetInitialMaterializeBudget(), updateExistingViews: false);
         }
         else if (_itemLayoutOrder.Any(item => item.View is null || !GodotObject.IsInstanceValid(item.View)))
         {
@@ -1219,7 +1232,7 @@ public partial class NGenericSelectScreen : Control
             ScrollToTop();
 
         if (_materializationMode == SelectMaterializationMode.Lazy)
-            MaterializeViewportItemViews(InitialMaterializeBudget, updateExistingViews);
+            MaterializeViewportItemViews(GetInitialMaterializeBudget(), updateExistingViews);
         else
             StartThreadedPreloadThenMaterializeAll();
 
@@ -1252,7 +1265,7 @@ public partial class NGenericSelectScreen : Control
         ApplyLayoutToExistingItemViews(updateExistingViews);
 
         if (_materializationMode == SelectMaterializationMode.Lazy)
-            MaterializeViewportItemViews(RemovalMaterializeBudget, updateExistingViews);
+            MaterializeViewportItemViews(GetRemovalMaterializeBudget(), updateExistingViews);
         else
             MaterializeAllItemViews(updateExistingViews);
 
@@ -1891,6 +1904,8 @@ public partial class NGenericSelectScreen : Control
     {
         _visibleLayoutNodes.Clear();
         _visibleLayoutNodeSet.Clear();
+        _nonItemLayoutNodes.Clear();
+        _nonItemLayoutNodeSet.Clear();
         _itemLayouts.Clear();
         _itemLayoutOrder.Clear();
         _itemsUpdatedForCurrentLayout.Clear();
@@ -2487,8 +2502,12 @@ public partial class NGenericSelectScreen : Control
 
     private void TrackVisibleLayoutNode(Control control)
     {
-        if (_visibleLayoutNodeSet.Add(control))
-            _visibleLayoutNodes.Add(control);
+        if (!_visibleLayoutNodeSet.Add(control))
+            return;
+
+        _visibleLayoutNodes.Add(control);
+        if (!_activationItemsByView.ContainsKey(control) && _nonItemLayoutNodeSet.Add(control))
+            _nonItemLayoutNodes.Add(control);
     }
 
     private void UntrackVisibleLayoutNode(Control control)
@@ -2497,6 +2516,8 @@ public partial class NGenericSelectScreen : Control
             return;
 
         _visibleLayoutNodes.Remove(control);
+        if (_nonItemLayoutNodeSet.Remove(control))
+            _nonItemLayoutNodes.Remove(control);
         _lastCullNodeCount = -1;
     }
 
@@ -2515,7 +2536,7 @@ public partial class NGenericSelectScreen : Control
         if (materialized >= maxCount)
             return materialized;
 
-        materialized += MaterializeLayoutWindow(BuildViewportMaterializeRect(_targetScrollY, MaterializeRowsBehind, MaterializeRowsAhead), maxCount - materialized, updateExistingViews);
+        materialized += MaterializeLayoutWindow(BuildViewportMaterializeRect(_targetScrollY, GetMaterializeRowsBehind(), GetMaterializeRowsAhead()), maxCount - materialized, updateExistingViews);
         return materialized;
     }
 
@@ -2590,6 +2611,100 @@ public partial class NGenericSelectScreen : Control
 
             if (materialized >= maxCount)
                 break;
+        }
+
+        return materialized;
+    }
+
+    /// <summary>
+    /// Allows a specialized screen to incrementally warm a bounded layout window
+    /// without exposing the generic screen's layout dictionaries.
+    /// </summary>
+    protected int MaterializeSpecializationWindow(
+        float scrollY,
+        float rowsBehind,
+        float rowsAhead,
+        int maxCount,
+        bool updateExistingViews = false)
+    {
+        if (maxCount <= 0 || _itemLayoutOrder.Count == 0)
+            return 0;
+
+        Rect2 materializeRect = BuildViewportMaterializeRect(scrollY, rowsBehind, rowsAhead);
+        float top = materializeRect.Position.Y;
+        float bottom = materializeRect.End.Y;
+        int materialized = 0;
+
+        for (int i = FindFirstLayoutIndexAtOrAfter(top); i < _itemLayoutOrder.Count; i++)
+        {
+            IGenericSelectItem item = _itemLayoutOrder[i];
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                continue;
+
+            if (layout.Position.Y > bottom)
+                break;
+
+            if (layout.Position.Y + layout.Size.Y < top)
+                continue;
+
+            bool needsView = item.View is null || !GodotObject.IsInstanceValid(item.View);
+            bool needsStateUpdate = updateExistingViews || !_itemsUpdatedForCurrentLayout.Contains(item);
+            if (!needsView && !needsStateUpdate)
+                continue;
+
+            if (!MaterializeItemView(item, layout, updateExistingViews))
+                continue;
+
+            if (needsView)
+            {
+                if (item.View is Control view && GodotObject.IsInstanceValid(view))
+                    SetLayoutNodeActive(view, IsLayoutNearViewport(layout));
+
+                materialized++;
+                if (materialized >= maxCount)
+                    break;
+            }
+        }
+
+        return materialized;
+    }
+
+    /// <summary>
+    /// Incrementally walks the ordered layout and materializes at most maxCount
+    /// missing views. The cursor survives between frames and wraps at the end.
+    /// </summary>
+    protected int MaterializeSpecializationFromCursor(
+        ref int cursor,
+        int maxCount,
+        bool updateExistingViews = false)
+    {
+        if (maxCount <= 0 || _itemLayoutOrder.Count == 0)
+            return 0;
+
+        cursor = Math.Clamp(cursor, 0, Math.Max(0, _itemLayoutOrder.Count - 1));
+        int materialized = 0;
+        int scanned = 0;
+        int itemCount = _itemLayoutOrder.Count;
+
+        while (scanned < itemCount && materialized < maxCount)
+        {
+            IGenericSelectItem item = _itemLayoutOrder[cursor];
+            cursor = (cursor + 1) % itemCount;
+            scanned++;
+
+            if (item.View is not null && GodotObject.IsInstanceValid(item.View))
+                continue;
+
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                continue;
+
+            if (MaterializeItemView(item, layout, updateExistingViews))
+            {
+                if (item.View is Control view && GodotObject.IsInstanceValid(view))
+                    SetLayoutNodeActive(view, IsLayoutNearViewport(layout));
+
+                materialized++;
+            }
         }
 
         return materialized;
@@ -2930,8 +3045,8 @@ public partial class NGenericSelectScreen : Control
         float rowHeight = Math.Max(1f, layout.Size.Y + ItemVerticalGap);
         float scrollTop = Math.Min(_scrollY, _targetScrollY);
         float scrollBottom = Math.Max(_scrollY, _targetScrollY);
-        float behindBuffer = rowHeight * MaterializeRowsBehind;
-        float aheadBuffer = rowHeight * MaterializeRowsAhead;
+        float behindBuffer = rowHeight * GetMaterializeRowsBehind();
+        float aheadBuffer = rowHeight * GetMaterializeRowsAhead();
         Rect2 materializeRect = new(
             new Vector2(0f, scrollTop - behindBuffer),
             new Vector2(_itemGrid.Size.X, scrollBottom - scrollTop + viewportHeight + behindBuffer + aheadBuffer));
@@ -3539,6 +3654,17 @@ public partial class NGenericSelectScreen : Control
         float cullTop = _scrollY - rowHeight * CullRetentionRows;
         float cullBottom = _scrollY + viewportHeight + rowHeight * CullRetentionRows;
 
+        ApplyViewportCulling(cullTop, cullBottom);
+        RecycleDistantItemViews();
+    }
+
+    /// <summary>
+    /// Default culling walks every materialized layout node. Heavy specialized
+    /// screens may override this and use the ordered layout helpers below so the
+    /// work remains proportional to the viewport rather than the retained cache.
+    /// </summary>
+    protected virtual void ApplyViewportCulling(float cullTop, float cullBottom)
+    {
         for (int i = _visibleLayoutNodes.Count - 1; i >= 0; i--)
         {
             Control control = _visibleLayoutNodes[i];
@@ -3546,19 +3672,76 @@ public partial class NGenericSelectScreen : Control
             {
                 _visibleLayoutNodes.RemoveAt(i);
                 _visibleLayoutNodeSet.Remove(control);
+                _nonItemLayoutNodeSet.Remove(control);
+                _nonItemLayoutNodes.Remove(control);
                 continue;
             }
 
-            Vector2 controlSize = control.Size;
-            if (controlSize.Y <= 0f)
-                controlSize = control.GetCombinedMinimumSize();
-
-            float top = control.Position.Y;
-            float bottom = top + Math.Max(controlSize.Y, control.CustomMinimumSize.Y);
-            SetLayoutNodeActive(control, bottom >= cullTop && top <= cullBottom);
+            SetLayoutNodeActive(control, IsControlInsideVerticalWindow(control, cullTop, cullBottom));
         }
+    }
 
-        RecycleDistantItemViews();
+    /// <summary>
+    /// Culls only generated headers and other non-item layout controls. Specialized
+    /// item screens can combine this with CollectMaterializedItemViewsInWindow.
+    /// </summary>
+    protected void CullNonItemLayoutNodes(float cullTop, float cullBottom)
+    {
+        for (int i = _nonItemLayoutNodes.Count - 1; i >= 0; i--)
+        {
+            Control control = _nonItemLayoutNodes[i];
+            if (!GodotObject.IsInstanceValid(control))
+            {
+                _nonItemLayoutNodes.RemoveAt(i);
+                _nonItemLayoutNodeSet.Remove(control);
+                _visibleLayoutNodeSet.Remove(control);
+                _visibleLayoutNodes.Remove(control);
+                continue;
+            }
+
+            SetLayoutNodeActive(control, IsControlInsideVerticalWindow(control, cullTop, cullBottom));
+        }
+    }
+
+    /// <summary>
+    /// Collects only already-created item views whose queued layout intersects the
+    /// requested vertical window. The binary-search start keeps retained-screen
+    /// culling proportional to visible rows even after hundreds of views exist.
+    /// </summary>
+    protected void CollectMaterializedItemViewsInWindow(
+        float cullTop,
+        float cullBottom,
+        ISet<Control> destination)
+    {
+        if (_itemLayoutOrder.Count == 0)
+            return;
+
+        for (int i = FindFirstLayoutIndexAtOrAfter(cullTop); i < _itemLayoutOrder.Count; i++)
+        {
+            IGenericSelectItem item = _itemLayoutOrder[i];
+            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                continue;
+
+            if (layout.Position.Y > cullBottom)
+                break;
+
+            if (layout.Position.Y + layout.Size.Y < cullTop)
+                continue;
+
+            if (item.View is Control view && GodotObject.IsInstanceValid(view))
+                destination.Add(view);
+        }
+    }
+
+    private static bool IsControlInsideVerticalWindow(Control control, float cullTop, float cullBottom)
+    {
+        Vector2 controlSize = control.Size;
+        if (controlSize.Y <= 0f)
+            controlSize = control.GetCombinedMinimumSize();
+
+        float top = control.Position.Y;
+        float bottom = top + Math.Max(controlSize.Y, control.CustomMinimumSize.Y);
+        return bottom >= cullTop && top <= cullBottom;
     }
 
     /// <summary>
@@ -3575,7 +3758,7 @@ public partial class NGenericSelectScreen : Control
         if (_materializationMode != SelectMaterializationMode.Lazy || _itemGrid is null)
             return;
 
-        Rect2 retentionRect = BuildViewportMaterializeRect(_targetScrollY, RecycleRowsBehind, RecycleRowsAhead);
+        Rect2 retentionRect = BuildViewportMaterializeRect(_targetScrollY, GetRecycleRowsBehind(), GetRecycleRowsAhead());
         foreach (IGenericSelectItem item in _itemLayoutOrder.ToArray())
         {
             if (item.View is not Control view || !GodotObject.IsInstanceValid(view))
@@ -3707,7 +3890,7 @@ public partial class NGenericSelectScreen : Control
 
         if (_materializationMode == SelectMaterializationMode.Lazy)
         {
-            MaterializeViewportItemViews(ScrollMaterializeBudget);
+            MaterializeViewportItemViews(GetScrollMaterializeBudget());
             UpdateViewportCulling();
         }
     }
@@ -4234,6 +4417,7 @@ public interface IGenericSelectItem
     void NotifyViewReady(Control renderedView);
     void UpdateView(SelectItemState state);
     bool MatchesSearch(string normalizedQuery);
+    void RefreshMetadata();
     bool TryBindActivation(Action activate, out Action? unbind);
     void SetView(Control? view);
 }
@@ -4241,7 +4425,7 @@ public interface IGenericSelectItem
 public sealed class GenericSelectItem<TModel> : IGenericSelectItem
 {
     private readonly SelectItemAdapter<TModel> _adapter;
-    private readonly string _normalizedSearchText;
+    private string _normalizedSearchText = string.Empty;
 
     public GenericSelectItem(TModel model, SelectItemAdapter<TModel> adapter, int originalIndex)
     {
@@ -4249,18 +4433,14 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
         _adapter = adapter;
         OriginalIndex = originalIndex;
         Id = adapter.GetId(model);
-        Name = adapter.GetName(model);
-        SearchText = adapter.GetSearchTextFromName?.Invoke(model, Name)
-                     ?? adapter.GetSearchText?.Invoke(model)
-                     ?? Name;
-        _normalizedSearchText = SelectText.Normalize(SearchText);
+        RefreshMetadata();
     }
 
     public TModel Model { get; }
     public object UntypedModel => Model!;
     public string Id { get; }
-    public string Name { get; }
-    public string SearchText { get; }
+    public string Name { get; private set; } = string.Empty;
+    public string SearchText { get; private set; } = string.Empty;
     public int OriginalIndex { get; }
     public Control? View { get; private set; }
     public bool HasPreloadResources => _adapter.PreloadResources is not null;
@@ -4292,6 +4472,15 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
             return _adapter.MatchesSearch(Model, normalizedQuery);
 
         return _normalizedSearchText.Contains(normalizedQuery, StringComparison.Ordinal);
+    }
+
+    public void RefreshMetadata()
+    {
+        Name = _adapter.GetName(Model);
+        SearchText = _adapter.GetSearchTextFromName?.Invoke(Model, Name)
+                     ?? _adapter.GetSearchText?.Invoke(Model)
+                     ?? Name;
+        _normalizedSearchText = SelectText.Normalize(SearchText);
     }
 
     public bool TryBindActivation(Action activate, out Action? unbind)

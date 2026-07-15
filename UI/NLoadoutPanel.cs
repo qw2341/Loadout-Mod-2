@@ -528,7 +528,11 @@ public partial class NLoadoutPanel : Panel
 				RemoveCardTargetKey,
 				LoadoutTargetMode.PlayersOnly,
 				refresh),
-			(_, _) => { });
+			(_, _) => { },
+			selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath,
+			reconcileModelsOnEveryOpen: false,
+			refreshModelsAfterActivation: false,
+			syncChangesWhileHidden: true);
 		//07 - CARD MODIFIER
 		CardModifier.Initialize();
 				

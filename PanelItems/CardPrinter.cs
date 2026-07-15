@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -144,6 +144,27 @@ public class CardPrinter
 				    return;
 			    }
 
+			    if (screen is NCardSelectScreen cardScreen)
+			    {
+				    bool layoutDirty = false;
+				    foreach (string cardId in cardIds)
+				    {
+					    layoutDirty |= cardScreen.RefreshItemById(
+						    cardId,
+						    (item, view) =>
+						    {
+							    if (item.UntypedModel is CardModel card)
+								    ForceRefreshCardVisuals(view, card);
+						    },
+						    refreshMetadata: true,
+						    refreshLayout: false);
+				    }
+
+				    if (layoutDirty)
+					    cardScreen.RefreshLayout(resetScroll: false, updateExistingViews: false);
+				    return;
+			    }
+
 			    screen.ForEachVisibleItemView((item, view) =>
 			    {
 				    if (item.UntypedModel is CardModel card && MatchesCardRefreshId(card, cardIds))
@@ -164,7 +185,8 @@ public class CardPrinter
 			LocMan.Loc("CARDPRINTER_DESC", "Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action."),
 			HandleAddCardActivatedAsync,
 			LastActionService.CardPrinterKey,
-			ReplayCardPrinterLastActionAsync);
+			ReplayCardPrinterLastActionAsync,
+			selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath);
     }
 
     private static Task<IReadOnlyList<LastActionEntry>> HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)

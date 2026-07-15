@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 #nullable enable annotations
 
 using System.Collections.Generic;
@@ -44,6 +44,7 @@ public class CommonHelpers
 
     public const string GenericSelectScreenScenePath = "res://UI/Screens/GenericSelectScreen.tscn";
     public const string RelicSelectScreenScenePath = NRelicSelectScreen.ScenePath;
+    public const string CardSelectScreenScenePath = NCardSelectScreen.ScenePath;
 
     public const string FavoriteModeAllKey = "all";
     public const string FavoriteModeFavoritesKey = "favorites";
@@ -145,6 +146,9 @@ public class CommonHelpers
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>(selectScreenScenePath);
 		var screen = scene.Instantiate<NGenericSelectScreen>();
+		if (screen is NCardSelectScreen cardSelectScreen)
+			cardSelectScreen.UseDynamicOwnedCardPolicy();
+
 		bool activationInFlight = false;
 		bool hiddenSyncScheduled = false;
 		List<LoadoutRunContentChangedEventArgs> pendingRunContentChanges = [];
@@ -282,13 +286,35 @@ public class CommonHelpers
 						}
 					}
 
-					foreach (IGenericSelectItem item in target.VisibleItems)
+					bool layoutDirty = false;
+					foreach (IGenericSelectItem item in target.Items)
 					{
-						if (item.UntypedModel is not LoadoutOwnedItem<CardModel> ownedCard || item.View is not { } view)
+						if (item.UntypedModel is not LoadoutOwnedItem<CardModel> ownedCard)
 							continue;
 
 						var key = (ownedCard.OwnerNetId, ownedCard.Index, ownedCard.Model.Id.ToString());
 						if (!changedByIdentity.TryGetValue(key, out LoadoutCardVisualRefreshKind refreshKind))
+							continue;
+
+						layoutDirty = true;
+						item.RefreshMetadata();
+						if (target is NCardSelectScreen cardScreen)
+						{
+							cardScreen.RefreshItemById(
+								item.Id,
+								(_, view) =>
+								{
+									if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
+										CardPrinter.ReloadCardVisuals(view, ownedCard.Model);
+									else
+										CardPrinter.RefreshCardVisuals(view, ownedCard.Model);
+								},
+								refreshMetadata: false,
+								refreshLayout: false);
+							continue;
+						}
+
+						if (item.View is not { } view)
 							continue;
 
 						if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
@@ -296,6 +322,9 @@ public class CommonHelpers
 						else
 							CardPrinter.RefreshCardVisuals(view, ownedCard.Model);
 					}
+
+					if (layoutDirty)
+						target.RefreshLayout(resetScroll: false, updateExistingViews: false);
 
 					return true;
 				}
@@ -389,8 +418,8 @@ public class CommonHelpers
 				}
 
 				ApplyPendingRunContentChanges(screen, animateRelayout: false);
-				if (screen is NRelicSelectScreen relicScreen)
-					await relicScreen.PrewarmForFirstOpenAsync();
+				if (screen is NRelicSelectScreen or NCardSelectScreen)
+					await screen.PrewarmForFirstOpenAsync();
 			}
 			catch (Exception exception)
 			{

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
@@ -72,7 +72,11 @@ public class CardModifier
                     LoadoutTargetMode.PlayersOnly,
                     refresh);
             },
-            (_, _) => { });
+            (_, _) => { },
+            selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath,
+            reconcileModelsOnEveryOpen: false,
+            refreshModelsAfterActivation: false,
+            syncChangesWhileHidden: true);
 
     }
 
@@ -135,6 +139,17 @@ public class CardModifier
         LoadoutOwnedItem<CardModel> fallbackItem,
         bool forceReload)
     {
+        if (selectScreen is NCardSelectScreen cardScreen
+            && GodotObject.IsInstanceValid(cardScreen)
+            && cardScreen.RefreshItemById(
+                CommonHelpers.OwnedItemId(item),
+                (_, view) => RefreshCardModifierView(view, item.Model, forceReload),
+                refreshMetadata: true,
+                refreshLayout: true))
+        {
+            return;
+        }
+
         if (selectScreen is not null && GodotObject.IsInstanceValid(selectScreen))
         {
             bool refreshed = false;
