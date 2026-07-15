@@ -110,7 +110,7 @@ public partial class NRelicModificationScreen : Control
         if (what == NotificationResized && !_isClosing)
         {
             ApplyFullRectLayout(this);
-            RefreshPreview();
+            QueuePreviewRefresh();
         }
 
         if (what == NotificationVisibilityChanged)
@@ -118,7 +118,7 @@ public partial class NRelicModificationScreen : Control
             RefreshNativeButtonState();
             if (Visible && IsInsideTree() && _item is not null && !_isClosing)
             {
-                Callable.From(RefreshPreview).CallDeferred();
+                QueuePreviewRefresh();
             }
             else if (!Visible)
             {
@@ -787,11 +787,25 @@ public partial class NRelicModificationScreen : Control
         if (rebuildControls)
             Callable.From(RebuildControls).CallDeferred();
 
+        QueuePreviewRefresh();
+    }
+
+    private void QueuePreviewRefresh()
+    {
         if (_previewRefreshQueued)
             return;
 
         _previewRefreshQueued = true;
-        Callable.From(RefreshPreview).CallDeferred();
+        Callable.From(FlushQueuedPreviewRefresh).CallDeferred();
+    }
+
+    private void FlushQueuedPreviewRefresh()
+    {
+        if (!_previewRefreshQueued)
+            return;
+
+        _previewRefreshQueued = false;
+        RefreshPreview();
     }
 
     private void RefreshPreview()

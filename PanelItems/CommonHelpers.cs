@@ -198,12 +198,12 @@ public class CommonHelpers
 						.ToHashSet();
 					foreach (IGenericSelectItem item in target.VisibleItems)
 					{
-						if (item.UntypedModel is not LoadoutOwnedItem<RelicModel> ownedRelic || item.View is not { } view)
+						if (item.UntypedModel is not LoadoutOwnedItem<RelicModel> ownedRelic)
 							continue;
 						if (!changedRelics.Contains((ownedRelic.OwnerNetId, ownedRelic.Index, ownedRelic.Model.Id.ToString())))
 							continue;
-						if (TryFindDescendantOrSelf(view, out NRelicBasicHolder holder) && holder.Relic is { } relicView)
-							relicView.Model = ownedRelic.Model;
+
+						target.RefreshItemView(item);
 					}
 					return true;
 				}

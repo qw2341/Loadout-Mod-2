@@ -459,7 +459,12 @@ public partial class NGenericSelectScreen : Control
     public bool RefreshItemView(string itemId)
     {
         IGenericSelectItem? item = _items.FirstOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
-        if (item is null || item.View is null || !GodotObject.IsInstanceValid(item.View))
+        return item is not null && RefreshItemView(item);
+    }
+
+    internal bool RefreshItemView(IGenericSelectItem item)
+    {
+        if (item.View is null || !GodotObject.IsInstanceValid(item.View))
             return false;
 
         item.UpdateView(BuildState(item, _visibleItems.IndexOf(item)));
@@ -4162,6 +4167,7 @@ public sealed class SelectItemAdapter<TModel>
     public required Func<TModel, string> GetId { get; init; }
     public required Func<TModel, string> GetName { get; init; }
     public Func<TModel, string>? GetSearchText { get; init; }
+    public Func<TModel, string, string>? GetSearchTextFromName { get; init; }
     public required Func<TModel, SelectItemState, Control> CreateView { get; init; }
     public Action<TModel, CancellationToken>? PreloadResources { get; init; }
     public Action<TModel, Control>? ViewReady { get; init; }
@@ -4201,7 +4207,9 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
         OriginalIndex = originalIndex;
         Id = adapter.GetId(model);
         Name = adapter.GetName(model);
-        SearchText = adapter.GetSearchText?.Invoke(model) ?? Name;
+        SearchText = adapter.GetSearchTextFromName?.Invoke(model, Name)
+                     ?? adapter.GetSearchText?.Invoke(model)
+                     ?? Name;
     }
 
     public TModel Model { get; }

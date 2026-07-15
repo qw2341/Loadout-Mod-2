@@ -5,6 +5,7 @@ namespace Loadout.PanelItems;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Godot;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
@@ -20,6 +21,15 @@ public static class RelicModifier
     public const string TargetKey = "relic_modifier";
     private const string TargetDropdownName = "RelicModifierTargetDropdown";
     private const string CounterLabelName = "LoadoutRelicModifierCounterLabel";
+    private static readonly ConditionalWeakTable<NRelic, RelicCounterViewState> CounterViewStates = new();
+
+    private sealed class RelicCounterViewState
+    {
+        public MegaLabel? Label;
+        public bool HasSnapshot;
+        public bool ShowCounter;
+        public int DisplayAmount;
+    }
 
     public static void Initialize()
     {
@@ -28,7 +38,7 @@ public static class RelicModifier
         {
             GetId = CommonHelpers.OwnedItemId,
             GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
-            GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)}",
+            GetSearchTextFromName = (item, name) => $"{item.Model.Id} {name}",
             CreateView = (item, _) => NLoadoutPanel.CreateOwnedRelicGridItem(item.Model),
             ViewReady = (item, view) => RefreshView(view, item.Model),
             UpdateView = (item, view, _) => RefreshView(view, item.Model),
@@ -101,29 +111,31 @@ public static class RelicModifier
 
     private static void RefreshOwnedItem(NGenericSelectScreen? screen, LoadoutOwnedItem<RelicModel> item, Control fallbackView, LoadoutOwnedItem<RelicModel> fallbackItem)
     {
-        bool refreshed = false;
-        screen?.ForEachVisibleItemView((selectItem, view) =>
-        {
-            if (refreshed || selectItem.UntypedModel is not LoadoutOwnedItem<RelicModel> visible || !SameOwnedItem(visible, item)) return;
-            RefreshView(view, item.Model);
-            refreshed = true;
-        });
-        if (!refreshed && SameOwnedItem(item, fallbackItem) && GodotObject.IsInstanceValid(fallbackView)) RefreshView(fallbackView, item.Model);
+        if (screen?.RefreshItemView(CommonHelpers.OwnedItemId(item)) == true)
+            return;
+
+        if (SameOwnedItem(item, fallbackItem) && GodotObject.IsInstanceValid(fallbackView))
+            RefreshView(fallbackView, item.Model);
     }
 
     private static void RefreshView(Control view, RelicModel model)
     {
-        if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder holder) && holder.Relic is { } relicView)
+        if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder holder)
+            || holder.Relic is not { } relicView)
         {
-            relicView.Model = model;
-            RelicModificationStateService.RefreshRelic(model);
-            RefreshCounterLabel(relicView, model);
+            return;
         }
+
+        if (!ReferenceEquals(relicView.Model, model))
+            relicView.Model = model;
+
+        RefreshCounterLabel(relicView, model);
     }
 
     private static void RefreshCounterLabel(NRelic relicView, RelicModel model)
     {
-        MegaLabel? label = relicView.GetNodeOrNull<MegaLabel>(CounterLabelName);
+        RelicCounterViewState state = CounterViewStates.GetValue(relicView, static _ => new RelicCounterViewState());
+
         bool showCounter;
         int displayAmount;
         try
@@ -137,46 +149,85 @@ public static class RelicModifier
             displayAmount = 0;
         }
 
+        bool snapshotMatches = state.HasSnapshot
+                               && state.ShowCounter == showCounter
+                               && (!showCounter || state.DisplayAmount == displayAmount);
+        if (snapshotMatches)
+        {
+            if (!showCounter)
+                return;
+
+            MegaLabel? current = ResolveCounterLabel(relicView, state);
+            if (current is { Visible: true })
+                return;
+        }
+
+        state.HasSnapshot = true;
+        state.ShowCounter = showCounter;
+        state.DisplayAmount = showCounter ? displayAmount : 0;
+
+        MegaLabel? label = ResolveCounterLabel(relicView, state);
         if (!showCounter)
         {
-            if (label is not null)
+            if (label is { Visible: true })
                 label.Visible = false;
             return;
         }
 
         if (label is null)
         {
-            label = new MegaLabel
-            {
-                Name = CounterLabelName,
-                AutoSizeEnabled = false,
-                MinFontSize = 12,
-                MaxFontSize = 18,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-                FocusMode = Control.FocusModeEnum.None
-            };
-            label.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
-            label.OffsetLeft = -36f;
-            label.OffsetTop = -33f;
-            label.OffsetRight = -4f;
-            label.OffsetBottom = -1f;
-            label.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
-            label.AddThemeFontSizeOverride("font_size", 18);
-            label.AddThemeColorOverride("font_color", new Color(1f, 0.965f, 0.886f));
-            label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.19f));
-            label.AddThemeColorOverride("font_outline_color", new Color(0.15f, 0.141f, 0.111f));
-            label.AddThemeConstantOverride("shadow_offset_x", 2);
-            label.AddThemeConstantOverride("shadow_offset_y", 2);
-            label.AddThemeConstantOverride("outline_size", 10);
-            label.AddThemeConstantOverride("shadow_outline_size", 10);
+            label = CreateCounterLabel();
             relicView.AddChild(label);
+            state.Label = label;
         }
 
         label.Text = displayAmount.ToString(CultureInfo.InvariantCulture);
-        label.Visible = true;
-        relicView.MoveChild(label, relicView.GetChildCount() - 1);
+        if (!label.Visible)
+            label.Visible = true;
+    }
+
+    private static MegaLabel? ResolveCounterLabel(NRelic relicView, RelicCounterViewState state)
+    {
+        if (state.Label is { } cached
+            && GodotObject.IsInstanceValid(cached)
+            && cached.GetParent() == relicView)
+        {
+            return cached;
+        }
+
+        MegaLabel? existing = relicView.GetNodeOrNull<MegaLabel>(CounterLabelName);
+        state.Label = existing;
+        return existing;
+    }
+
+    private static MegaLabel CreateCounterLabel()
+    {
+        MegaLabel label = new()
+        {
+            Name = CounterLabelName,
+            AutoSizeEnabled = false,
+            MinFontSize = 12,
+            MaxFontSize = 18,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            FocusMode = Control.FocusModeEnum.None
+        };
+        label.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
+        label.OffsetLeft = -36f;
+        label.OffsetTop = -33f;
+        label.OffsetRight = -4f;
+        label.OffsetBottom = -1f;
+        label.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
+        label.AddThemeFontSizeOverride("font_size", 18);
+        label.AddThemeColorOverride("font_color", new Color(1f, 0.965f, 0.886f));
+        label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.19f));
+        label.AddThemeColorOverride("font_outline_color", new Color(0.15f, 0.141f, 0.111f));
+        label.AddThemeConstantOverride("shadow_offset_x", 2);
+        label.AddThemeConstantOverride("shadow_offset_y", 2);
+        label.AddThemeConstantOverride("outline_size", 10);
+        label.AddThemeConstantOverride("shadow_outline_size", 10);
+        return label;
     }
 
     private static void OpenHostPermamodConflictScreen()
