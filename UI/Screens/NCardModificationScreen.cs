@@ -42,6 +42,7 @@ public partial class NCardModificationScreen : Control
     private const float ActionButtonHeight = 42f;
     private const float KeywordToggleHeight = 44f;
     private const float KeywordRowSeparation = 2f;
+    private const float KeywordScrollbarWidth = 48f;
     private const int KeywordColumns = 2;
     private const int KeywordVisibleRows = 6;
     private const float HoverTipCardGap = 22f;
@@ -116,6 +117,32 @@ public partial class NCardModificationScreen : Control
         BindSceneNodes();
         BindRunContentEvents();
         RebuildScreen();
+    }
+
+    public override void _Input(InputEvent inputEvent)
+    {
+        if (!IsVisibleInTree()
+            || _isClosing
+            || _textEditorOverlay is not null
+            || inputEvent is not InputEventKey { Pressed: true, Echo: false } keyEvent
+            || keyEvent.CtrlPressed
+            || keyEvent.AltPressed
+            || keyEvent.MetaPressed)
+        {
+            return;
+        }
+
+        int direction = keyEvent.Keycode switch
+        {
+            Key.Left => -1,
+            Key.Right => 1,
+            _ => 0
+        };
+        if (direction == 0)
+            return;
+
+        SwitchCard(direction);
+        GetViewport().SetInputAsHandled();
     }
 
     public override void _Notification(int what)
@@ -712,7 +739,7 @@ public partial class NCardModificationScreen : Control
         int rowCount = (availableKeywords.Count + KeywordColumns - 1) / KeywordColumns;
         bool needsScrolling = rowCount > KeywordVisibleRows;
         float visibleHeight = GetKeywordGridHeight(Math.Min(rowCount, KeywordVisibleRows));
-        float gridWidth = needsScrolling ? 406f : 426f;
+        float gridWidth = needsScrolling ? 426f - KeywordScrollbarWidth : 426f;
         float toggleWidth = (gridWidth - 8f) / KeywordColumns;
 
         GridContainer grid = new()
@@ -727,18 +754,44 @@ public partial class NCardModificationScreen : Control
 
         if (needsScrolling)
         {
-            ScrollContainer scroll = new()
+            NScrollableContainer scroll = new()
             {
                 Name = "KeywordScroll",
                 CustomMinimumSize = new Vector2(426f, visibleHeight),
                 SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-                ClipContents = true,
-                MouseFilter = MouseFilterEnum.Stop,
-                HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-                VerticalScrollMode = ScrollContainer.ScrollMode.Auto
+                MouseFilter = MouseFilterEnum.Stop
             };
-            scroll.AddChild(grid);
+
+            Control mask = new()
+            {
+                Name = "Mask",
+                ClipContents = true,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            mask.SetAnchorsPreset(LayoutPreset.FullRect);
+            mask.OffsetRight = -KeywordScrollbarWidth;
+            scroll.AddChild(mask);
+
+            grid.Name = "Content";
+            grid.SetAnchorsPreset(LayoutPreset.TopWide);
+            mask.AddChild(grid);
+
+            NScrollbar scrollbar = CreateGameScrollbar();
+            scrollbar.Name = "Scrollbar";
+            scrollbar.CustomMinimumSize = new Vector2(KeywordScrollbarWidth, 0f);
+            scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
+            scrollbar.OffsetLeft = -KeywordScrollbarWidth;
+            scrollbar.OffsetTop = 8f;
+            scrollbar.OffsetRight = 0f;
+            scrollbar.OffsetBottom = -8f;
+            scroll.AddChild(scrollbar);
+            scroll.DisableScrollingIfContentFits();
             _rightControls.AddChild(scroll);
+            Callable.From(() =>
+            {
+                if (GodotObject.IsInstanceValid(scroll) && GodotObject.IsInstanceValid(grid))
+                    scroll.SetContent(grid);
+            }).CallDeferred();
         }
         else
         {
@@ -776,6 +829,85 @@ public partial class NCardModificationScreen : Control
         return rowCount <= 0
             ? 0f
             : (rowCount * KeywordToggleHeight) + ((rowCount - 1) * KeywordRowSeparation);
+    }
+
+    private static NScrollbar CreateGameScrollbar()
+    {
+        NScrollbar scrollbar = new()
+        {
+            MinValue = 0,
+            MaxValue = 100,
+            Step = 1,
+            MouseFilter = MouseFilterEnum.Stop
+        };
+
+        TextureRect trackBody = new()
+        {
+            Name = "TrackBody",
+            Modulate = new Color(0.164706f, 0.290196f, 0.321569f, 1f),
+            Texture = LoadScrollbarTexture("res://images/atlases/ui_atlas.sprites/scrollbar_track_center.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        trackBody.SetAnchorsPreset(LayoutPreset.FullRect);
+        scrollbar.AddChild(trackBody);
+
+        TextureRect trackTop = new()
+        {
+            Name = "TrackTop",
+            Modulate = trackBody.Modulate,
+            Texture = LoadScrollbarTexture("res://images/atlases/ui_atlas.sprites/scrollbar_track_edge2.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        trackTop.SetAnchorsPreset(LayoutPreset.TopWide);
+        trackTop.OffsetTop = -48f;
+        scrollbar.AddChild(trackTop);
+
+        TextureRect trackBottom = new()
+        {
+            Name = "TrackBot",
+            Modulate = trackBody.Modulate,
+            Texture = trackTop.Texture,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            FlipV = true,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        trackBottom.SetAnchorsPreset(LayoutPreset.BottomWide);
+        trackBottom.OffsetBottom = 48f;
+        scrollbar.AddChild(trackBottom);
+
+        TextureRect handle = new()
+        {
+            Name = "Handle",
+            UniqueNameInOwner = true,
+            Texture = LoadScrollbarTexture("res://images/atlases/ui_atlas.sprites/scrollbar_train_large.tres"),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            PivotOffset = new Vector2(36f, 36f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        handle.SetAnchorsPreset(LayoutPreset.TopLeft);
+        handle.Position = new Vector2(-12f, -36f);
+        handle.Size = new Vector2(72f, 72f);
+        scrollbar.AddChild(handle);
+
+        AssignOwnerRecursive(scrollbar, scrollbar);
+        return scrollbar;
+    }
+
+    private static Texture2D? LoadScrollbarTexture(string path)
+    {
+        return ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
+    }
+
+    private static void AssignOwnerRecursive(Node root, Node owner)
+    {
+        foreach (Node child in root.GetChildren())
+        {
+            child.Owner = owner;
+            AssignOwnerRecursive(child, owner);
+        }
     }
 
     private void AddAttachmentEditor<TModel>(
