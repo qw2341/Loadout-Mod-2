@@ -1,5 +1,7 @@
 #nullable enable
 
+using Loadout.Patches.Cards;
+
 namespace Loadout.Services.RelicModification;
 
 using System;

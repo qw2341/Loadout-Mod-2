@@ -9,9 +9,8 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
-using Loadout.Keywords;
 using Loadout.Services.Actions;
-using Loadout.Services.CardModification;
+using Loadout.Patches.Cards;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Commands;
@@ -107,7 +106,6 @@ public static class LoadoutApplyService
 
         List<CardModel> oldCards = deckCards.ToList();
         List<CardModel> newCards = [];
-        Dictionary<CardModel, CardModificationState> stateByCard = new(ReferenceEqualityComparer.Instance);
 
         foreach (SavedCardLoadoutEntry entry in entries)
         {
@@ -131,23 +129,17 @@ public static class LoadoutApplyService
                     continue;
 
                 newCards.Add(card);
-                if (entry.ModificationState is not null && !entry.ModificationState.IsEmpty)
-                    stateByCard[card] = entry.ModificationState.Clone();
             }
         }
 
         try
         {
             ReplacePlayerDeckDirect(targetPlayer, deckCards, oldCards, newCards);
-            CardModificationStateService.ReplaceTemporaryStatesForPlayer(targetPlayer, stateByCard);
             return oldCards.Count > 0 || newCards.Count > 0;
         }
         catch (Exception exception)
         {
             Warn($"Loadout: failed replacing deck for player {targetPlayer.NetId}. {exception.Message}");
-            CardModificationStateService.ReplaceTemporaryStatesForPlayer(
-                targetPlayer,
-                new Dictionary<CardModel, CardModificationState>(ReferenceEqualityComparer.Instance));
             return oldCards.Count > 0;
         }
     }
@@ -203,14 +195,10 @@ public static class LoadoutApplyService
             if (isStartingDeck)
                 card.FloorAddedToDeck = 1;
 
-            if (HasEnabledInfiniteUpgrade(modificationState)
-                && !LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade))
-            {
-                card.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
-            }
+            if (modificationState is not null && !modificationState.IsEmpty)
+                CardModificationPatcher.ApplyLoadoutTemporaryState(card, modificationState);
 
             ApplyLoadoutUpgradeLevelDirect(card, upgradeLevel);
-            CardModificationStateService.ApplyPermanentToCard(card);
             return card;
         }
         catch (Exception exception)
@@ -228,23 +216,6 @@ public static class LoadoutApplyService
             card.UpgradeInternal();
             card.FinalizeUpgradeInternal();
         }
-    }
-
-    private static bool HasEnabledInfiniteUpgrade(CardModificationState? state)
-    {
-        if (state is null)
-            return false;
-
-        foreach ((string rawKeyword, bool enabled) in state.KeywordOverrides)
-        {
-            if (LoadoutKeywords.TryResolve(rawKeyword, out CardKeyword keyword)
-                && keyword.Equals(LoadoutKeywords.InfiniteUpgrade))
-            {
-                return enabled;
-            }
-        }
-
-        return false;
     }
 
     private static bool TryGetDeckBackingList(Player targetPlayer, out List<CardModel> deckCards)

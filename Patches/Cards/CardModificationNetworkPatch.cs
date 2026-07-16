@@ -1,6 +1,6 @@
 #nullable enable
 
-namespace Loadout.Services.CardModification;
+namespace Loadout.Patches.Cards;
 
 using System;
 using System.Collections.Generic;
@@ -24,7 +24,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 
-public static class CardModificationMultiplayerSyncService
+public static class CardModificationNetworkPatch
 {
     private const int MaxStateJsonLength = 256 * 1024;
 
@@ -56,7 +56,7 @@ public static class CardModificationMultiplayerSyncService
         RegisteredLobbies.Clear();
         LobbyConnectedHandlers.Clear();
         UnregisterRunNetService(clearClientOverlay: true);
-        CardModificationStateService.ClearHostPermanentOverlay();
+        CardModificationPatcher.ClearHostPermanentOverlay();
         ClearPendingHostPermanentSnapshot();
         _registered = false;
     }
@@ -96,7 +96,7 @@ public static class CardModificationMultiplayerSyncService
 
         if (clearClientOverlay && lobby.NetService.Type == NetGameType.Client)
         {
-            CardModificationStateService.ClearHostPermanentOverlay();
+            CardModificationPatcher.ClearHostPermanentOverlay();
             ClearPendingHostPermanentSnapshot();
         }
     }
@@ -125,7 +125,7 @@ public static class CardModificationMultiplayerSyncService
             if (netService.Type == NetGameType.Host)
                 BroadcastPermanentSnapshot();
             else if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
-                CardModificationStateService.ClearHostPermanentOverlay();
+                CardModificationPatcher.ClearHostPermanentOverlay();
         }
         catch (Exception exception)
         {
@@ -135,7 +135,7 @@ public static class CardModificationMultiplayerSyncService
 
     public static void OnRunCleaningUp()
     {
-        CardModificationStateService.FlushPendingSaves();
+        CardModificationPatcher.FlushPendingSaves();
         UnregisterRunNetService(clearClientOverlay: true);
         lock (OperationSequenceGate)
         {
@@ -163,7 +163,7 @@ public static class CardModificationMultiplayerSyncService
 
             if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
             {
-                CardModificationStateService.ApplySynchronizedOperation(
+                CardModificationPatcher.ApplySynchronizedOperation(
                     operation,
                     item.Model.Id,
                     LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
@@ -268,7 +268,7 @@ public static class CardModificationMultiplayerSyncService
             return;
         }
 
-        CardModificationStateService.ApplyHostPermanentDelta(message.CardId, state);
+        CardModificationPatcher.ApplyHostPermanentDelta(message.CardId, state);
     }
 
     public static void BroadcastPermanentDelta(ModelId cardId, CardModificationState state)
@@ -393,7 +393,7 @@ public static class CardModificationMultiplayerSyncService
             return;
         }
 
-        CardModificationStateService.ApplySynchronizedOperation(
+        CardModificationPatcher.ApplySynchronizedOperation(
             payload.Operation,
             cardId,
             LoadoutTargetSelection.ForPlayer(payload.OwnerNetId),
@@ -469,7 +469,7 @@ public static class CardModificationMultiplayerSyncService
 
     public static void BroadcastPermanentSnapshot()
     {
-        string payload = CardModificationStateService.ExportPermanentSnapshotJson();
+        string payload = CardModificationPatcher.ExportPermanentSnapshotJson();
         LoadoutCardModificationPermanentSyncMessage message = CreatePermanentSnapshotMessage(payload);
 
         foreach (StartRunLobby lobby in RegisteredLobbies)
@@ -550,7 +550,7 @@ public static class CardModificationMultiplayerSyncService
 
         if (clearClientOverlay && type == NetGameType.Client)
         {
-            CardModificationStateService.ClearHostPermanentOverlay();
+            CardModificationPatcher.ClearHostPermanentOverlay();
             ClearPendingHostPermanentSnapshot();
         }
     }
@@ -599,7 +599,7 @@ public static class CardModificationMultiplayerSyncService
             return;
 
         lobby.NetService.SendMessage(
-            CreatePermanentSnapshotMessage(CardModificationStateService.ExportPermanentSnapshotJson()),
+            CreatePermanentSnapshotMessage(CardModificationPatcher.ExportPermanentSnapshotJson()),
             playerId);
     }
 
@@ -613,7 +613,7 @@ public static class CardModificationMultiplayerSyncService
         HostPermanentSnapshotApplyMode applyMode = RunManager.Instance.IsInProgress
             ? HostPermanentSnapshotApplyMode.LiveDecks
             : HostPermanentSnapshotApplyMode.CatalogOnly;
-        CardModificationStateService.ApplyHostPermanentSnapshotJson(
+        CardModificationPatcher.ApplyHostPermanentSnapshotJson(
             message.payload,
             applyMode);
     }
@@ -636,7 +636,7 @@ public static class CardModificationMultiplayerSyncService
             }
         }
 
-        CardModificationStateService.ApplyRemoteTemporaryState(
+        CardModificationPatcher.ApplyRemoteTemporaryState(
             message.ownerNetId,
             message.deckIndex,
             message.cardId,
@@ -676,7 +676,7 @@ public static class CardModificationMultiplayerSyncService
     {
         string? snapshot = _pendingHostPermanentSnapshotJson;
         ClearPendingHostPermanentSnapshot();
-        return CardModificationStateService.ApplyPermanentSnapshotToProfile(snapshot, mode);
+        return CardModificationPatcher.ApplyPermanentSnapshotToProfile(snapshot, mode);
     }
 
     public static void ClearPendingHostPermanentSnapshot()
@@ -732,7 +732,7 @@ public struct LoadoutCardModificationOperationRequestMessage : ICustomMessage
 
     public void HandleMessage(ulong senderId)
     {
-        CardModificationMultiplayerSyncService.HandleOperationRequest(this, senderId);
+        CardModificationNetworkPatch.HandleOperationRequest(this, senderId);
     }
 
     public void Serialize(PacketWriter writer)
@@ -756,7 +756,7 @@ public struct LoadoutCardModificationOperationApplyMessage : ICustomMessage
 
     public void HandleMessage(ulong senderId)
     {
-        CardModificationMultiplayerSyncService.HandleOperationApply(this, senderId);
+        CardModificationNetworkPatch.HandleOperationApply(this, senderId);
     }
 
     public void Serialize(PacketWriter writer)
@@ -783,7 +783,7 @@ public struct LoadoutCardModificationPermanentDeltaMessage : ICustomMessage
 
     public void HandleMessage(ulong senderId)
     {
-        CardModificationMultiplayerSyncService.HandlePermanentDelta(this, senderId);
+        CardModificationNetworkPatch.HandlePermanentDelta(this, senderId);
     }
 
     public void Serialize(PacketWriter writer)

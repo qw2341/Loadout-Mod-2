@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
-using Loadout.Services.CardModification;
+using Loadout.Patches.Cards;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
 using Loadout.UI;
@@ -211,7 +211,7 @@ public class CardModifier
 
     private static void OpenHostPermamodConflictScreen()
     {
-        if (!CardModificationMultiplayerSyncService.HasPendingHostPermanentSnapshot)
+        if (!CardModificationNetworkPatch.HasPendingHostPermanentSnapshot)
         {
             GD.PushWarning("CardModifier: no host permamod snapshot is available to download.");
             return;

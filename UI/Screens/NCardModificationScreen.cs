@@ -8,7 +8,7 @@ using System.Linq;
 using Godot;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
-using Loadout.Services.CardModification;
+using Loadout.Patches.Cards;
 using Loadout.Keywords;
 using Loadout.Services.Targets;
 using Loadout.UI.Managers;
@@ -212,13 +212,13 @@ public partial class NCardModificationScreen : Control
                 if (!MatchesChangedCard(_item, changed))
                     continue;
 
-                CardModificationState effectiveState = CardModificationStateService.GetEffectiveState(_item);
-                if (CardModificationStateService.StatesEquivalent(effectiveState, _workingState))
+                CardModificationState effectiveState = CardModificationPatcher.GetEffectiveState(_item);
+                if (CardModificationPatcher.StatesEquivalent(effectiveState, _workingState))
                 {
                     // This is the confirmation for the state already displayed by this
                     // editor. Refresh only the source card slot; rebuilding the entire
                     // editor and preview here caused the close-screen hitch.
-                    _temporaryState = CardModificationStateService.GetTemporaryState(_item);
+                    _temporaryState = CardModificationPatcher.GetTemporaryState(_item);
                     _lastAppliedState = effectiveState.Clone();
                     RefreshParentView(changed.RefreshKind == LoadoutCardVisualRefreshKind.Reload);
                     return;
@@ -462,8 +462,8 @@ public partial class NCardModificationScreen : Control
     private void LoadItem(LoadoutOwnedItem<CardModel> item)
     {
         _item = item;
-        _workingState = CardModificationStateService.GetEffectiveState(item);
-        _temporaryState = CardModificationStateService.GetTemporaryState(item);
+        _workingState = CardModificationPatcher.GetEffectiveState(item);
+        _temporaryState = CardModificationPatcher.GetTemporaryState(item);
         // The live deck card already contains its effective attached/permanent
         // state. Do not allocate and fully rebuild another mutable card merely to
         // open or close the editor. A detached preview clone is created lazily only
@@ -1077,7 +1077,7 @@ public partial class NCardModificationScreen : Control
             _item,
             permanentState);
         if (!requestedPermanent)
-            CardModificationStateService.CommitPermanent(_item, permanentState);
+            CardModificationPatcher.CommitPermanent(_item, permanentState);
 
         _temporaryState = new CardModificationState();
         _workingState = permanentState.Clone();
@@ -1096,10 +1096,10 @@ public partial class NCardModificationScreen : Control
         SuppressStateRefreshThisFrame();
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetTemporaryToBasic, _item);
         if (!requested)
-            CardModificationStateService.ResetTemporaryToBasic(_item);
+            CardModificationPatcher.ResetTemporaryToBasic(_item);
         _temporaryState = new CardModificationState();
-        _workingState = CardModificationStateService.GetEffectivePermanentState(_item.Model.Id);
-        _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, _workingState);
+        _workingState = CardModificationPatcher.GetEffectivePermanentState(_item.Model.Id);
+        _previewDisplayModel = CardModificationPatcher.CreatePreviewCard(_item.Model, _workingState);
         _lastAppliedState = _workingState.Clone();
         RefreshParentView(forceReload: true);
         RebuildControls();
@@ -1115,10 +1115,10 @@ public partial class NCardModificationScreen : Control
         SuppressStateRefreshThisFrame();
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);
         if (!requested)
-            CardModificationStateService.ResetPermanentToBasic(_item);
+            CardModificationPatcher.ResetPermanentToBasic(_item);
         _workingState = new CardModificationState();
         _temporaryState = new CardModificationState();
-        _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, _workingState);
+        _previewDisplayModel = CardModificationPatcher.CreatePreviewCard(_item.Model, _workingState);
         _lastAppliedState = _workingState.Clone();
         RefreshParentView(forceReload: true);
         RebuildControls();
@@ -1151,7 +1151,7 @@ public partial class NCardModificationScreen : Control
         CardModificationState previewState = _workingState.Clone();
         previewState.Normalize();
         bool forceReload = HasStructuralVisualChange(previousState, previewState);
-        _previewDisplayModel = CardModificationStateService.CreatePreviewCard(_item.Model, previewState);
+        _previewDisplayModel = CardModificationPatcher.CreatePreviewCard(_item.Model, previewState);
 
         _lastAppliedState = previewState.Clone();
         _hasPendingTemporaryCommit = true;
@@ -1175,7 +1175,7 @@ public partial class NCardModificationScreen : Control
             return true;
         }
 
-        CardModificationStateService.SaveTemporary(_item, state);
+        CardModificationPatcher.SaveTemporary(_item, state);
         return true;
     }
 
@@ -1187,7 +1187,7 @@ public partial class NCardModificationScreen : Control
 
     private static bool HasStructuralVisualChange(CardModificationState previousState, CardModificationState nextState)
     {
-        return CardModificationStateService.GetVisualRefreshKind(previousState, nextState)
+        return CardModificationPatcher.GetVisualRefreshKind(previousState, nextState)
                == LoadoutCardVisualRefreshKind.Reload;
     }
 

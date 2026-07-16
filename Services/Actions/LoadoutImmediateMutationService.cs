@@ -11,7 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
-using Loadout.Services.CardModification;
+using Loadout.Patches.Cards;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Morphing;
 using Loadout.Services.Networking;
@@ -294,7 +294,7 @@ public static class LoadoutImmediateMutationService
         // Card modifications have their own compact delta protocol. Keeping them out
         // of the generic mutation payload avoids serializing unrelated fields and
         // prevents the old global refresh/snapshot cascade.
-        return CardModificationMultiplayerSyncService.RequestOperation(operation, item, state);
+        return CardModificationNetworkPatch.RequestOperation(operation, item, state);
     }
 
     public static bool RequestApplyLoadout(LoadoutKind kind, string encodedPayload, LoadoutTargetSelection target)
@@ -1271,8 +1271,8 @@ public static class LoadoutImmediateMutationService
             try
             {
                 // RunState.CloneCard duplicates the complete mutable card state without
-                // assigning CardModel._cloneOf. BaseLib's SavedSpireField CopyOnClone
-                // callback also carries the per-copy temporary modification snapshot.
+                // assigning CardModel._cloneOf. The AbstractModel.MutableClone postfix
+                // carries only sparse temporary/custom metadata for modified copies.
                 cards.Add(targetPlayer.RunState.CloneCard(sourceCard));
             }
             catch (Exception exception)
@@ -1501,7 +1501,7 @@ public static class LoadoutImmediateMutationService
                 // One native command lets the card-modification postfix process the
                 // entire batch with one materialization, one owner index map, and one
                 // coalesced UI update instead of N separate command/event chains.
-                using (CardModificationStateService.BeginTargetedUpgradeRefresh())
+                using (CardModificationPatcher.BeginTargetedUpgradeRefresh())
                     CardCmd.Upgrade(upgradableCards, CardPreviewStyle.None);
             }
         }
@@ -1515,7 +1515,7 @@ public static class LoadoutImmediateMutationService
             try
             {
                 int previousUpgradeLevel = card.CurrentUpgradeLevel;
-                using (CardModificationStateService.BeginTargetedUpgradeRefresh())
+                using (CardModificationPatcher.BeginTargetedUpgradeRefresh())
                     CardCmd.Upgrade(card, CardPreviewStyle.None);
                 if (card.CurrentUpgradeLevel <= previousUpgradeLevel && card.IsUpgradable && !CombatManager.Instance.IsEnding)
                 {
@@ -1610,7 +1610,7 @@ public static class LoadoutImmediateMutationService
             }
         }
 
-        CardModificationStateService.ApplySynchronizedOperation(
+        CardModificationPatcher.ApplySynchronizedOperation(
             payload.CardModificationOperation,
             payload.ModelId,
             payload.Target,

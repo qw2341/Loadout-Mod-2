@@ -48,7 +48,7 @@ using System.Text.RegularExpressions;
 using HarmonyLib;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
-using Loadout.Services.CardModification;
+using Loadout.Patches.Cards;
 using Loadout.Services.LastActions;
 using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;

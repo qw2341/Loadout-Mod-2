@@ -1,5 +1,7 @@
 #nullable enable
 
+using Loadout.Patches.Cards;
+
 namespace Loadout.Services.Loadouts;
 
 using System;
@@ -176,7 +178,7 @@ public static class LoadoutSerializationService
 
         foreach (CardModel card in player.Deck.Cards)
         {
-            CardModificationState state = CardModificationStateService.GetEffectiveStateForCard(card);
+            CardModificationState state = CardModificationPatcher.GetEffectiveStateForCard(card);
             if (!state.IsEmpty)
             {
                 cards.Add(new SavedCardLoadoutEntry

@@ -6,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
-using Loadout.Services.CardModification;
+using Loadout.Patches.Cards;
 using Loadout.Services.RelicModification;
 
 public enum LoadoutKind

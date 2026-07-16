@@ -5,7 +5,7 @@ namespace Loadout.UI.Screens;
 using System;
 using Godot;
 using Loadout.PanelItems;
-using Loadout.Services.CardModification;
+using Loadout.Patches.Cards;
 using Loadout.Services.RelicModification;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
@@ -97,7 +97,7 @@ public partial class NHostPermamodConflictScreen : Control
     private void Apply(CardModificationPermanentImportMode mode)
     {
         if (_relicMode) RelicModificationMultiplayerSyncService.ApplyPendingHostPermanentSnapshot(mode);
-        else CardModificationMultiplayerSyncService.ApplyPendingHostPermanentSnapshot(mode);
+        else CardModificationNetworkPatch.ApplyPendingHostPermanentSnapshot(mode);
         Close();
     }
 

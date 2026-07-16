@@ -11,7 +11,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
-using Loadout.Services.CardModification;
+using Loadout.Patches.Cards;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
@@ -87,7 +87,7 @@ public static class InfiniteUpgradeMaxLevelPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref int __result)
     {
-        if (CardModificationStateService.HasInfiniteUpgradeOverride(__instance))
+        if (CardModificationFields.HasInfiniteUpgrade(__instance))
         {
             __result = int.MaxValue;
             return;
