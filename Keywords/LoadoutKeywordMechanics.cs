@@ -87,7 +87,7 @@ public static class InfiniteUpgradeMaxLevelPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref int __result)
     {
-        if (CardModificationStateService.HasInfiniteUpgradeOverride(__instance))
+        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade))
         {
             __result = int.MaxValue;
             return;

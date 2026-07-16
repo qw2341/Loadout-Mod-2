@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
 using Loadout.Services.CardModification;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
@@ -176,7 +177,7 @@ public static class LoadoutSerializationService
 
         foreach (CardModel card in player.Deck.Cards)
         {
-            CardModificationState state = CardModificationStateService.GetEffectiveStateForCard(card);
+            CardModificationSpec state = CardModificationRuntime.GetEffectiveSpec(card);
             if (!state.IsEmpty)
             {
                 cards.Add(new SavedCardLoadoutEntry

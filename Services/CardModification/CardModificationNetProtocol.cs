@@ -20,11 +20,12 @@ using Loadout.Services.Targets;
 using Loadout.Services.Actions;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Networking;
+using Loadout.Patches.Cards.CardModification;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 
-public static class CardModificationMultiplayerSyncService
+public static class CardModificationNetProtocol
 {
     private const int MaxStateJsonLength = 256 * 1024;
 
@@ -56,7 +57,7 @@ public static class CardModificationMultiplayerSyncService
         RegisteredLobbies.Clear();
         LobbyConnectedHandlers.Clear();
         UnregisterRunNetService(clearClientOverlay: true);
-        CardModificationStateService.ClearHostPermanentOverlay();
+        PermanentCardModificationStore.ClearHostOverlay();
         ClearPendingHostPermanentSnapshot();
         _registered = false;
     }
@@ -96,7 +97,7 @@ public static class CardModificationMultiplayerSyncService
 
         if (clearClientOverlay && lobby.NetService.Type == NetGameType.Client)
         {
-            CardModificationStateService.ClearHostPermanentOverlay();
+            PermanentCardModificationStore.ClearHostOverlay();
             ClearPendingHostPermanentSnapshot();
         }
     }
@@ -125,7 +126,7 @@ public static class CardModificationMultiplayerSyncService
             if (netService.Type == NetGameType.Host)
                 BroadcastPermanentSnapshot();
             else if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
-                CardModificationStateService.ClearHostPermanentOverlay();
+                PermanentCardModificationStore.ClearHostOverlay();
         }
         catch (Exception exception)
         {
@@ -135,7 +136,7 @@ public static class CardModificationMultiplayerSyncService
 
     public static void OnRunCleaningUp()
     {
-        CardModificationStateService.FlushPendingSaves();
+        PermanentCardModificationStore.FlushPendingSave();
         UnregisterRunNetService(clearClientOverlay: true);
         lock (OperationSequenceGate)
         {
@@ -149,7 +150,7 @@ public static class CardModificationMultiplayerSyncService
     public static bool RequestOperation(
         CardModificationOperation operation,
         LoadoutOwnedItem<CardModel> item,
-        CardModificationState? state = null)
+        CardModificationSpec? state = null)
     {
         if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
             return false;
@@ -163,7 +164,7 @@ public static class CardModificationMultiplayerSyncService
 
             if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
             {
-                CardModificationStateService.ApplySynchronizedOperation(
+                CardModificationRuntime.ApplySynchronizedOperation(
                     operation,
                     item.Model.Id,
                     LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
@@ -182,7 +183,9 @@ public static class CardModificationMultiplayerSyncService
                 OwnerNetId = item.OwnerNetId,
                 DeckIndex = item.Index,
                 CardId = item.Model.Id.ToString(),
-                StateJson = state is null ? string.Empty : JsonSerializer.Serialize(state)
+                StateJson = state is null || state.IsEmpty
+                    ? string.Empty
+                    : CardModificationCodec.Serialize(state)
             };
             if (!IsValidOperationPayload(payload))
                 return false;
@@ -262,16 +265,21 @@ public static class CardModificationMultiplayerSyncService
 
         if (string.IsNullOrWhiteSpace(message.CardId)
             || message.StateJson?.Length > MaxStateJsonLength
-            || !TryDeserializeState(message.StateJson, out CardModificationState? state))
+            || !TryDeserializeState(message.StateJson, out CardModificationSpec? state))
         {
             GD.PushWarning("CardModification: ignored malformed permanent delta from host.");
             return;
         }
 
-        CardModificationStateService.ApplyHostPermanentDelta(message.CardId, state);
+        if (!LoadoutModelRegistry.TryResolveWireId(message.CardId, out ModelId cardId))
+            return;
+
+        CardModificationSpec previous = PermanentCardModificationStore.Get(cardId);
+        if (PermanentCardModificationStore.ApplyHostDelta(cardId, state))
+            CardModificationRuntime.RetrofitLiveDeckCopies(cardId, previous);
     }
 
-    public static void BroadcastPermanentDelta(ModelId cardId, CardModificationState state)
+    public static void BroadcastPermanentDelta(ModelId cardId, CardModificationSpec? state)
     {
         try
         {
@@ -281,7 +289,9 @@ public static class CardModificationMultiplayerSyncService
             LoadoutCardModificationPermanentDeltaMessage message = new()
             {
                 CardId = cardId.ToString(),
-                StateJson = state.IsEmpty ? string.Empty : JsonSerializer.Serialize(state)
+                StateJson = state is null || state.IsEmpty
+                    ? string.Empty
+                    : CardModificationCodec.Serialize(state)
             };
             INetGameService netService = RunManager.Instance.NetService;
             LoadoutNetworkBroadcast.SendToRunClients(
@@ -387,13 +397,13 @@ public static class CardModificationMultiplayerSyncService
         if (actionPlayer is null)
             return;
 
-        if (!TryDeserializeState(payload.StateJson, out CardModificationState? state))
+        if (!TryDeserializeState(payload.StateJson, out CardModificationSpec? state))
         {
             GD.PushWarning($"CardModification: ignored invalid state JSON for {payload.Operation}.");
             return;
         }
 
-        CardModificationStateService.ApplySynchronizedOperation(
+        CardModificationRuntime.ApplySynchronizedOperation(
             payload.Operation,
             cardId,
             LoadoutTargetSelection.ForPlayer(payload.OwnerNetId),
@@ -418,7 +428,7 @@ public static class CardModificationMultiplayerSyncService
                && (payload.StateJson?.Length ?? 0) <= MaxStateJsonLength;
     }
 
-    private static bool TryDeserializeState(string? stateJson, out CardModificationState? state)
+    private static bool TryDeserializeState(string? stateJson, out CardModificationSpec? state)
     {
         state = null;
         if (string.IsNullOrWhiteSpace(stateJson))
@@ -429,8 +439,7 @@ public static class CardModificationMultiplayerSyncService
 
         try
         {
-            state = JsonSerializer.Deserialize<CardModificationState>(stateJson);
-            return state is not null;
+            return CardModificationCodec.TryDeserialize(stateJson, out state);
         }
         catch (Exception exception)
         {
@@ -467,9 +476,20 @@ public static class CardModificationMultiplayerSyncService
         }
     }
 
+    private static Dictionary<ModelId, CardModificationSpec> CaptureCurrentPermanentSpecs()
+    {
+        Dictionary<ModelId, CardModificationSpec> result = new();
+        foreach (CardModel card in ModelDb.AllCards)
+        {
+            if (PermanentCardModificationStore.TryGet(card.Id, out CardModificationSpec? spec))
+                result[card.Id] = spec.Clone();
+        }
+        return result;
+    }
+
     public static void BroadcastPermanentSnapshot()
     {
-        string payload = CardModificationStateService.ExportPermanentSnapshotJson();
+        string payload = PermanentCardModificationStore.ExportEffectiveSnapshotJson();
         LoadoutCardModificationPermanentSyncMessage message = CreatePermanentSnapshotMessage(payload);
 
         foreach (StartRunLobby lobby in RegisteredLobbies)
@@ -501,7 +521,7 @@ public static class CardModificationMultiplayerSyncService
         }
     }
 
-    public static void BroadcastTemporary(LoadoutOwnedItem<CardModel> item, CardModificationState state)
+    public static void BroadcastTemporary(LoadoutOwnedItem<CardModel> item, CardModificationSpec? next)
     {
         try
         {
@@ -513,7 +533,9 @@ public static class CardModificationMultiplayerSyncService
                 ownerNetId = item.OwnerNetId,
                 deckIndex = item.Index,
                 cardId = item.Model.Id.ToString(),
-                stateJson = state.IsEmpty ? string.Empty : JsonSerializer.Serialize(state)
+                stateJson = next is null || next.IsEmpty
+                    ? string.Empty
+                    : CardModificationCodec.Serialize(next)
             };
             INetGameService netService = RunManager.Instance.NetService;
             LoadoutNetworkBroadcast.SendToRunClients(
@@ -550,7 +572,7 @@ public static class CardModificationMultiplayerSyncService
 
         if (clearClientOverlay && type == NetGameType.Client)
         {
-            CardModificationStateService.ClearHostPermanentOverlay();
+            PermanentCardModificationStore.ClearHostOverlay();
             ClearPendingHostPermanentSnapshot();
         }
     }
@@ -599,7 +621,7 @@ public static class CardModificationMultiplayerSyncService
             return;
 
         lobby.NetService.SendMessage(
-            CreatePermanentSnapshotMessage(CardModificationStateService.ExportPermanentSnapshotJson()),
+            CreatePermanentSnapshotMessage(PermanentCardModificationStore.ExportEffectiveSnapshotJson()),
             playerId);
     }
 
@@ -613,9 +635,10 @@ public static class CardModificationMultiplayerSyncService
         HostPermanentSnapshotApplyMode applyMode = RunManager.Instance.IsInProgress
             ? HostPermanentSnapshotApplyMode.LiveDecks
             : HostPermanentSnapshotApplyMode.CatalogOnly;
-        CardModificationStateService.ApplyHostPermanentSnapshotJson(
-            message.payload,
-            applyMode);
+        Dictionary<ModelId, CardModificationSpec> previous = CaptureCurrentPermanentSpecs();
+        IReadOnlyList<ModelId> changed = PermanentCardModificationStore.ApplyHostSnapshot(message.payload);
+        if (applyMode == HostPermanentSnapshotApplyMode.LiveDecks)
+            CardModificationRuntime.RetrofitChangedPermanentCards(changed, previous);
     }
 
     private static void HandleTemporarySync(LoadoutCardModificationTemporarySyncMessage message, ulong senderId)
@@ -623,20 +646,14 @@ public static class CardModificationMultiplayerSyncService
         if (IsHostSession() || !IsExpectedHostSender(senderId))
             return;
 
-        CardModificationState? state = null;
-        if (!string.IsNullOrWhiteSpace(message.stateJson))
+        if ((message.stateJson?.Length ?? 0) > MaxStateJsonLength
+            || !TryDeserializeState(message.stateJson, out CardModificationSpec? state))
         {
-            try
-            {
-                state = JsonSerializer.Deserialize<CardModificationState>(message.stateJson);
-            }
-            catch (Exception exception)
-            {
-                GD.PushWarning($"CardModification: failed to deserialize temporary multiplayer state. {exception.Message}");
-            }
+            GD.PushWarning("CardModification: ignored malformed temporary multiplayer state.");
+            return;
         }
 
-        CardModificationStateService.ApplyRemoteTemporaryState(
+        CardModificationRuntime.ApplyRemoteTemporaryState(
             message.ownerNetId,
             message.deckIndex,
             message.cardId,
@@ -676,7 +693,11 @@ public static class CardModificationMultiplayerSyncService
     {
         string? snapshot = _pendingHostPermanentSnapshotJson;
         ClearPendingHostPermanentSnapshot();
-        return CardModificationStateService.ApplyPermanentSnapshotToProfile(snapshot, mode);
+        Dictionary<ModelId, CardModificationSpec> previous = CaptureCurrentPermanentSpecs();
+        IReadOnlyList<ModelId> changed = PermanentCardModificationStore.ImportSnapshotToProfile(snapshot, mode);
+        if (RunManager.Instance.IsInProgress)
+            CardModificationRuntime.RetrofitChangedPermanentCards(changed, previous);
+        return changed;
     }
 
     public static void ClearPendingHostPermanentSnapshot()
@@ -732,7 +753,7 @@ public struct LoadoutCardModificationOperationRequestMessage : ICustomMessage
 
     public void HandleMessage(ulong senderId)
     {
-        CardModificationMultiplayerSyncService.HandleOperationRequest(this, senderId);
+        CardModificationNetProtocol.HandleOperationRequest(this, senderId);
     }
 
     public void Serialize(PacketWriter writer)
@@ -756,7 +777,7 @@ public struct LoadoutCardModificationOperationApplyMessage : ICustomMessage
 
     public void HandleMessage(ulong senderId)
     {
-        CardModificationMultiplayerSyncService.HandleOperationApply(this, senderId);
+        CardModificationNetProtocol.HandleOperationApply(this, senderId);
     }
 
     public void Serialize(PacketWriter writer)
@@ -783,7 +804,7 @@ public struct LoadoutCardModificationPermanentDeltaMessage : ICustomMessage
 
     public void HandleMessage(ulong senderId)
     {
-        CardModificationMultiplayerSyncService.HandlePermanentDelta(this, senderId);
+        CardModificationNetProtocol.HandlePermanentDelta(this, senderId);
     }
 
     public void Serialize(PacketWriter writer)

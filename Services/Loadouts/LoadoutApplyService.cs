@@ -12,6 +12,7 @@ using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Commands;
@@ -107,7 +108,7 @@ public static class LoadoutApplyService
 
         List<CardModel> oldCards = deckCards.ToList();
         List<CardModel> newCards = [];
-        Dictionary<CardModel, CardModificationState> stateByCard = new(ReferenceEqualityComparer.Instance);
+        Dictionary<CardModel, CardModificationSpec> stateByCard = new(ReferenceEqualityComparer.Instance);
 
         foreach (SavedCardLoadoutEntry entry in entries)
         {
@@ -139,15 +140,15 @@ public static class LoadoutApplyService
         try
         {
             ReplacePlayerDeckDirect(targetPlayer, deckCards, oldCards, newCards);
-            CardModificationStateService.ReplaceTemporaryStatesForPlayer(targetPlayer, stateByCard);
+            CardModificationRuntime.ReplaceTemporaryStatesForPlayer(targetPlayer, stateByCard);
             return oldCards.Count > 0 || newCards.Count > 0;
         }
         catch (Exception exception)
         {
             Warn($"Loadout: failed replacing deck for player {targetPlayer.NetId}. {exception.Message}");
-            CardModificationStateService.ReplaceTemporaryStatesForPlayer(
+            CardModificationRuntime.ReplaceTemporaryStatesForPlayer(
                 targetPlayer,
-                new Dictionary<CardModel, CardModificationState>(ReferenceEqualityComparer.Instance));
+                new Dictionary<CardModel, CardModificationSpec>(ReferenceEqualityComparer.Instance));
             return oldCards.Count > 0;
         }
     }
@@ -194,7 +195,7 @@ public static class LoadoutApplyService
         Player targetPlayer,
         CardModel canonical,
         int upgradeLevel,
-        CardModificationState? modificationState,
+        CardModificationSpec? modificationState,
         bool isStartingDeck)
     {
         try
@@ -210,7 +211,6 @@ public static class LoadoutApplyService
             }
 
             ApplyLoadoutUpgradeLevelDirect(card, upgradeLevel);
-            CardModificationStateService.ApplyPermanentToCard(card);
             return card;
         }
         catch (Exception exception)
@@ -230,7 +230,7 @@ public static class LoadoutApplyService
         }
     }
 
-    private static bool HasEnabledInfiniteUpgrade(CardModificationState? state)
+    private static bool HasEnabledInfiniteUpgrade(CardModificationSpec? state)
     {
         if (state is null)
             return false;

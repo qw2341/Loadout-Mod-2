@@ -11,6 +11,7 @@ using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
@@ -20,6 +21,8 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
@@ -29,58 +32,21 @@ using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
-[HarmonyPatch(typeof(RunState), nameof(RunState.CreateCard), typeof(CardModel), typeof(Player))]
-public static class RunStateCreateCardPatch
-{
-    [HarmonyPostfix]
-    public static void Postfix(CardModel __result)
-    {
-        CardModificationStateService.ApplyPermanentToCard(__result);
-    }
-}
-
-[HarmonyPatch(typeof(CombatState), nameof(CombatState.CreateCard), typeof(CardModel), typeof(Player))]
-public static class CombatStateCreateCardPatch
-{
-    [HarmonyPostfix]
-    public static void Postfix(CardModel __result)
-    {
-        CardModificationStateService.ApplyPermanentToCard(__result);
-    }
-}
-
 [HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.MutableClone))]
-public static class CardModelMutableCloneModificationStatePatch
+public static class CardModelMutableCloneCardModificationPatch
 {
     [HarmonyPostfix]
     public static void Postfix(AbstractModel __instance, AbstractModel __result)
     {
-        if (NInspectCardScreenCloneStatePatch.IsActive
-            && __instance is CardModel source
-            && __result is CardModel clone)
-            CardModificationStateService.CarryEffectiveStateToClone(source, clone);
-    }
-}
-
-[HarmonyPatch(typeof(NInspectCardScreen), "UpdateCardDisplay")]
-public static class NInspectCardScreenCloneStatePatch
-{
-    [ThreadStatic]
-    private static int _depth;
-
-    internal static bool IsActive => _depth > 0;
-
-    [HarmonyPrefix]
-    public static void Prefix()
-    {
-        _depth++;
-    }
-
-    [HarmonyFinalizer]
-    public static Exception? Finalizer(Exception? __exception)
-    {
-        _depth = Math.Max(0, _depth - 1);
-        return __exception;
+        if (__instance is CardModel { IsCanonical: true }
+            && __result is CardModel result)
+        {
+            CardModificationRuntime.ApplyPermanentAtCreation(result);
+        }
+        else if (__instance is CardModel source && __result is CardModel clone)
+        {
+            CardModificationFields.Copy(source, clone);
+        }
     }
 }
 
@@ -98,9 +64,11 @@ public static class CardCmdUpgradeCardModificationPatch
     [HarmonyPostfix]
     public static void Postfix(List<CardModel> __state)
     {
-        CardModificationStateService.ReapplyEffectiveStateAfterUpgrade(__state);
         if (__state.Count == 0)
             return;
+
+        foreach (CardModel card in __state)
+            CardModificationFields.CaptureUpgradedValues(card);
 
         HashSet<ulong> changedPlayers = [];
         List<LoadoutChangedCard> changedCards = [];
@@ -119,9 +87,9 @@ public static class CardCmdUpgradeCardModificationPatch
                 if (!deckIndices.TryGetValue(card, out int index))
                     continue;
 
-                CardModificationState state = CardModificationStateService.GetEffectiveStateForCard(card);
-                LoadoutCardVisualRefreshKind refreshKind = CardModificationStateService.GetVisualRefreshKind(
-                    new CardModificationState(),
+                CardModificationSpec state = CardModificationRuntime.GetEffectiveSpec(card);
+                LoadoutCardVisualRefreshKind refreshKind = CardModificationRuntime.GetVisualRefreshKind(
+                    new CardModificationSpec(),
                     state);
                 changedPlayers.Add(owner.NetId);
                 changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, refreshKind));
@@ -232,31 +200,60 @@ public static class CardPileRemoveCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(RunState), nameof(RunState.LoadCard), typeof(SerializableCard), typeof(Player))]
-public static class RunStateLoadCardPatch
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.ToSerializable))]
+[HarmonyAfter("BaseLib")]
+public static class CardModelToSerializableCardModificationPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(CardModel __result)
+    public static void Postfix(CardModel __instance, SerializableCard __result)
     {
-        CardModificationStateService.ApplyPermanentToCard(__result);
+        CardModificationPersistence.Export(__instance, __result);
     }
 }
 
-[HarmonyPatch]
-public static class PlayerPopulateDeckCardModificationPatch
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.FromSerializable), typeof(SerializableCard))]
+[HarmonyAfter("BaseLib")]
+public static class CardModelFromSerializableCardModificationPatch
 {
-    public static MethodBase TargetMethod()
+    [HarmonyPrefix]
+    public static void Prefix(SerializableCard save, out CardModificationSpec? __state)
     {
-        return AccessTools.Method(
-            typeof(Player),
-            "PopulateDeck",
-            [typeof(IEnumerable<CardModel>), typeof(bool)]);
+        __state = CardModificationPersistence.ReadSpec(save);
+        // An owned attachment is reconstructed by the permanent/temporary spec.
+        // Prevent the native saved copy from being stacked underneath it first.
+        if (save.Id is { } cardId
+            && ((PermanentCardModificationStore.TryGet(cardId, out CardModificationSpec? permanent)
+                 && permanent.Enchantment is not null)
+                || __state?.Enchantment is not null))
+        {
+            save.Enchantment = null;
+        }
     }
 
     [HarmonyPostfix]
-    public static void Postfix(Player __instance)
+    public static void Postfix(
+        SerializableCard save,
+        CardModel __result,
+        CardModificationSpec? __state)
     {
-        CardModificationStateService.ApplySavedRunStateToPlayerDeck(__instance);
+        CardModificationPersistence.Import(save, __result, __state);
+    }
+}
+
+[HarmonyPatch(typeof(ChecksumTracker), "ObtainAndTrackChecksum")]
+public static class ChecksumTrackerCardModificationSerializationPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(out IDisposable __state)
+    {
+        __state = CardModificationPersistence.BeginChecksumSerialization();
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(IDisposable __state, Exception? __exception)
+    {
+        __state.Dispose();
+        return __exception;
     }
 }
 
@@ -266,16 +263,16 @@ public static class CardModelTitleCardModificationPatch
     [HarmonyPrefix]
     public static void Prefix(CardModel __instance, out bool __state)
     {
-        __state = CardModificationStateService.HasCustomTextOverrides(__instance);
+        __state = CardModificationRuntime.HasCustomTextOverrides(__instance);
         if (__state)
-            CardModificationStateService.PushLocStringContext(__instance);
+            CardModificationRuntime.PushLocStringContext(__instance);
     }
 
     [HarmonyFinalizer]
     public static Exception? Finalizer(bool __state, Exception? __exception)
     {
         if (__state)
-            CardModificationStateService.PopLocStringContext();
+            CardModificationRuntime.PopLocStringContext();
 
         return __exception;
     }
@@ -287,16 +284,16 @@ public static class CardModelDescriptionCardModificationPatch
     [HarmonyPrefix]
     public static void Prefix(CardModel __instance, out bool __state)
     {
-        __state = CardModificationStateService.HasCustomTextOverrides(__instance);
+        __state = CardModificationRuntime.HasCustomTextOverrides(__instance);
         if (__state)
-            CardModificationStateService.PushLocStringContext(__instance);
+            CardModificationRuntime.PushLocStringContext(__instance);
     }
 
     [HarmonyFinalizer]
     public static Exception? Finalizer(bool __state, Exception? __exception)
     {
         if (__state)
-            CardModificationStateService.PopLocStringContext();
+            CardModificationRuntime.PopLocStringContext();
 
         return __exception;
     }
@@ -308,16 +305,16 @@ public static class CardModelUpgradeDescriptionCardModificationPatch
     [HarmonyPrefix]
     public static void Prefix(CardModel __instance, out bool __state)
     {
-        __state = CardModificationStateService.HasCustomTextOverrides(__instance);
+        __state = CardModificationRuntime.HasCustomTextOverrides(__instance);
         if (__state)
-            CardModificationStateService.PushLocStringContext(__instance);
+            CardModificationRuntime.PushLocStringContext(__instance);
     }
 
     [HarmonyFinalizer]
     public static Exception? Finalizer(bool __state, Exception? __exception)
     {
         if (__state)
-            CardModificationStateService.PopLocStringContext();
+            CardModificationRuntime.PopLocStringContext();
 
         return __exception;
     }
@@ -329,10 +326,10 @@ public static class LocStringRawTextCardModificationPatch
     [HarmonyPostfix]
     public static void Postfix(LocString __instance, ref string __result)
     {
-        if (!CardModificationStateService.HasActiveLocStringContext)
+        if (!CardModificationRuntime.HasActiveLocStringContext)
             return;
 
-        if (CardModificationStateService.TryGetCustomRawLocString(__instance, out string customRawText))
+        if (CardModificationRuntime.TryGetCustomRawLocString(__instance, out string customRawText))
             __result = customRawText;
     }
 }
@@ -343,10 +340,10 @@ public static class CardModelPortraitPathCardModificationPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref string __result)
     {
-        if (!CardModificationStateService.HasPortraitOverrides(__instance))
+        if (!CardModificationRuntime.HasPortraitOverrides(__instance))
             return;
 
-        if (CardModificationStateService.TryGetPortraitPath(__instance, beta: false, currentPath: __result, out string portraitPath))
+        if (CardModificationRuntime.TryGetPortraitPath(__instance, beta: false, currentPath: __result, out string portraitPath))
             __result = portraitPath;
     }
 }
@@ -357,10 +354,10 @@ public static class CardModelBetaPortraitPathCardModificationPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref string __result)
     {
-        if (!CardModificationStateService.HasPortraitOverrides(__instance))
+        if (!CardModificationRuntime.HasPortraitOverrides(__instance))
             return;
 
-        if (CardModificationStateService.TryGetPortraitPath(__instance, beta: true, currentPath: __result, out string portraitPath))
+        if (CardModificationRuntime.TryGetPortraitPath(__instance, beta: true, currentPath: __result, out string portraitPath))
             __result = portraitPath;
     }
 }
@@ -371,7 +368,7 @@ public static class NCardCreateCardModificationPatch
     [HarmonyPrefix]
     public static void Prefix(ref CardModel card)
     {
-        card = CardModificationStateService.CreatePermanentPreviewCard(card);
+        card = CardModificationRuntime.GetPermanentCardForDisplay(card);
     }
 }
 
@@ -381,7 +378,7 @@ public static class NCardHolderReassignCardModificationPatch
     [HarmonyPrefix]
     public static void Prefix(ref CardModel cardModel)
     {
-        cardModel = CardModificationStateService.GetEffectivePermanentCardForDisplay(cardModel);
+        cardModel = CardModificationRuntime.GetPermanentCardForDisplay(cardModel);
     }
 }
 
@@ -397,7 +394,7 @@ public static class NCardLibraryGridFilterCardModificationPatch
             return true;
 
         List<CardModel> cards = allCards
-            .Select(CardModificationStateService.GetEffectivePermanentCardForDisplay)
+            .Select(CardModificationRuntime.GetPermanentCardForDisplay)
             .Where(filter)
             .ToList();
         __instance.SetCards(cards, PileType.None, sortingPriority, Task.CompletedTask);
@@ -448,7 +445,7 @@ public static class StartRunLobbyCardModificationConstructorPatch
     [HarmonyPostfix]
     public static void Postfix(StartRunLobby __instance)
     {
-        CardModificationMultiplayerSyncService.RegisterLobby(__instance);
+        CardModificationNetProtocol.RegisterLobby(__instance);
         RelicModificationMultiplayerSyncService.RegisterLobby(__instance);
     }
 }
@@ -459,7 +456,7 @@ public static class StartRunLobbyCardModificationCleanUpPatch
     [HarmonyPrefix]
     public static void Prefix(StartRunLobby __instance, bool disconnectSession)
     {
-        CardModificationMultiplayerSyncService.UnregisterLobby(__instance, disconnectSession);
+        CardModificationNetProtocol.UnregisterLobby(__instance, disconnectSession);
         RelicModificationMultiplayerSyncService.UnregisterLobby(__instance, disconnectSession);
     }
 }
@@ -471,9 +468,8 @@ public static class RunManagerLaunchCardModificationPatch
     public static void Postfix()
     {
         LoadoutImmediateMutationService.OnRunLaunched();
-        CardModificationMultiplayerSyncService.OnRunLaunched();
+        CardModificationNetProtocol.OnRunLaunched();
         RelicModificationMultiplayerSyncService.OnRunLaunched();
-        CardModificationStateService.ApplySavedRunStateToLiveDecks();
     }
 }
 
@@ -484,7 +480,7 @@ public static class RunManagerCleanUpCardModificationPatch
     public static void Prefix()
     {
         LoadoutImmediateMutationService.OnRunCleaningUp();
-        CardModificationMultiplayerSyncService.OnRunCleaningUp();
+        CardModificationNetProtocol.OnRunCleaningUp();
         RelicModificationMultiplayerSyncService.OnRunCleaningUp();
     }
 }

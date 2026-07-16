@@ -97,7 +97,7 @@ public partial class NHostPermamodConflictScreen : Control
     private void Apply(CardModificationPermanentImportMode mode)
     {
         if (_relicMode) RelicModificationMultiplayerSyncService.ApplyPendingHostPermanentSnapshot(mode);
-        else CardModificationMultiplayerSyncService.ApplyPendingHostPermanentSnapshot(mode);
+        else CardModificationNetProtocol.ApplyPendingHostPermanentSnapshot(mode);
         Close();
     }
 

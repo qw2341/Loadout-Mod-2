@@ -8,6 +8,7 @@ using BaseLib.Config;
 using BaseLib.Config.UI;
 using Godot;
 using Loadout.Services.CardModification;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.Configuration;
 
 public enum LoadoutSkin
@@ -91,8 +92,8 @@ public sealed class LoadoutModConfig : SimpleModConfig
     {
         try
         {
-            int removedCount = CardModificationStateService.GetPermanentModificationCount();
-            CardModificationStateService.ResetAllPermanent();
+            int removedCount = CardModificationRuntime.GetPermanentModificationCount();
+            CardModificationRuntime.ResetAllPermanent();
             status.Text = GetLabelText(removedCount > 0
                 ? "ResetStatusSucceeded"
                 : "ResetStatusNothingToReset");

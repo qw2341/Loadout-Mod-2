@@ -211,7 +211,7 @@ public class CardModifier
 
     private static void OpenHostPermamodConflictScreen()
     {
-        if (!CardModificationMultiplayerSyncService.HasPendingHostPermanentSnapshot)
+        if (!CardModificationNetProtocol.HasPendingHostPermanentSnapshot)
         {
             GD.PushWarning("CardModifier: no host permamod snapshot is available to download.");
             return;

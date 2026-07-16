@@ -91,7 +91,7 @@ public sealed class SavedCardLoadoutEntry
     public int Count { get; set; } = 1;
 
     [JsonPropertyName("state")]
-    public CardModificationState? ModificationState { get; set; }
+    public CardModificationSpec? ModificationState { get; set; }
 
     [JsonIgnore]
     public bool HasModificationState => ModificationState is not null && !ModificationState.IsEmpty;

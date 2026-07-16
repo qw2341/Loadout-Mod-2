@@ -6,6 +6,7 @@ using Godot;
 using Loadout.Helpers;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
 using Loadout.UI;
@@ -53,7 +54,7 @@ public class CardPrinter
 	    void BuildCardPrinterScreen(SelectScreenBuilder<CardModel> builder)
 	    {
 		    IReadOnlyList<CardModel> effectiveCards = allCards
-			    .Select(CardModificationStateService.GetEffectivePermanentCardForDisplay)
+			    .Select(CardModificationRuntime.GetPermanentCardForDisplay)
 			    .ToList();
 
 		    builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
@@ -173,7 +174,7 @@ public class CardPrinter
 		    }).CallDeferred();
 	    }
 
-	    CardModificationStateService.PermanentCardDisplayChanged += RefreshCardPrinterCard;
+	    CardModificationRuntime.PermanentCardDisplayChanged += RefreshCardPrinterCard;
 
 		CommonHelpers.CreateAndAddLoadoutItem(
 			allCards,
@@ -241,7 +242,7 @@ public class CardPrinter
 
     public static Control CreateCardGridItem(CardModel model, SelectItemState state)
     {
-	    CardModel displayModel = CardModificationStateService.GetEffectivePermanentCardForDisplay(model);
+	    CardModel displayModel = CardModificationRuntime.GetPermanentCardForDisplay(model);
 	    var card = NCard.Create(displayModel);
 	    if (card is null)
 	    {
@@ -275,7 +276,7 @@ public class CardPrinter
 			    builder.Filter(
 			    CommonHelpers.PoolFilterId("card", localPool),
 			    CommonHelpers.GetPoolLabel(localPool),
-			    card => CommonHelpers.SamePool(CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Pool, localPool),
+			    card => CommonHelpers.SamePool(CardModificationRuntime.GetPermanentCardForDisplay(card).Pool, localPool),
 			    "class");
 	    }
     }
@@ -290,7 +291,7 @@ public class CardPrinter
 		    CardType localType = type;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_type", localType), GetCardTypeLabel(localType),
-			    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Type == localType,
+			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Type == localType,
 			    "type");
 	    }
     }
@@ -307,7 +308,7 @@ public class CardPrinter
 		    CardRarity localRarity = rarity;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_rarity", localRarity), GetCardRarityLabel(localRarity),
-			    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Rarity == localRarity,
+			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Rarity == localRarity,
 			    "rarity");
 	    }
     }
@@ -330,7 +331,7 @@ public class CardPrinter
 		    CardKeyword localKeyword = keyword;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_keyword", localKeyword), GetCardKeywordLabel(localKeyword),
-			    card => Enumerable.Contains(GetLocalCardKeywords(CardModificationStateService.GetEffectivePermanentCardForDisplay(card)), localKeyword),
+			    card => Enumerable.Contains(GetLocalCardKeywords(CardModificationRuntime.GetPermanentCardForDisplay(card)), localKeyword),
 			    "keyword");
 	    }
     }
@@ -358,7 +359,7 @@ public class CardPrinter
 		    CardTag localTag = tag;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_tag", localTag), GetCardTagLabel(localTag),
-			    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).Tags.Contains(localTag),
+			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Tags.Contains(localTag),
 			    "tag");
 	    }
     }
@@ -369,27 +370,27 @@ public class CardPrinter
 	    builder.FilterGroup("energy_cost", LocMan.Loc("FILTER_GROUP_COST", "Cost"));
 	    builder.Filter(
 		    $"card_energy_cost_0", "0",
-		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.Canonical == 0 && !CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.CostsX,
+		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.Canonical == 0 && !CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.CostsX,
 		    "energy_cost");
 	    for (int i = 1; i < 3; i++)
 	    {
 		    int localI = i;
 		    builder.Filter(
-            		    $"card_energy_cost_{localI}", localI.ToString(),
-            		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.Canonical == localI,
-            		    "energy_cost");
+			    $"card_energy_cost_{localI}", localI.ToString(),
+			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.Canonical == localI,
+			    "energy_cost");
 	    }
 	    builder.Filter(
 		    $"card_energy_cost_3+", "3+",
-		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.Canonical >= 3,
+		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.Canonical >= 3,
 		    "energy_cost");
 	    builder.Filter(
 		    $"card_energy_cost_X", "X",
-		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.CostsX,
+		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.CostsX,
 		    "energy_cost");
 	    builder.Filter(
 		    $"card_energy_cost_unplayable", CommonLoc.Unplayable,
-		    card => CardModificationStateService.GetEffectivePermanentCardForDisplay(card).EnergyCost.Canonical < 0,
+		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.Canonical < 0,
 		    "energy_cost");
     }
 
@@ -397,7 +398,7 @@ public class CardPrinter
     {
 	    return CommonHelpers.BuildOrderedPools(
 		    ModelDb.AllCards
-			    .Select(CardModificationStateService.GetEffectivePermanentCardForDisplay)
+			    .Select(CardModificationRuntime.GetPermanentCardForDisplay)
 			    .Select(card => card.Pool),
 		    ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
 		    pool => !CommonHelpers.IsInternalPool(pool));
@@ -524,7 +525,7 @@ public class CardPrinter
     {
 	    return model is null
 		    ? null
-		    : CardModificationStateService.GetEffectivePermanentCardForDisplay(model);
+		    : CardModificationRuntime.GetPermanentCardForDisplay(model);
     }
 
     public static Action? BindCardActivationWithCleanup(Control view, Action activate)
@@ -612,8 +613,8 @@ public class CardPrinter
     
     private static int CompareCardLibraryOrder(CardModel left, CardModel right, IReadOnlyList<CardPoolModel> orderedPools)
     {
-	    left = CardModificationStateService.GetEffectivePermanentCardForDisplay(left);
-	    right = CardModificationStateService.GetEffectivePermanentCardForDisplay(right);
+	    left = CardModificationRuntime.GetPermanentCardForDisplay(left);
+	    right = CardModificationRuntime.GetPermanentCardForDisplay(right);
 
 	    int pool = GetCardPoolSortIndex(left.Pool, orderedPools).CompareTo(GetCardPoolSortIndex(right.Pool, orderedPools));
 	    if (pool != 0)
@@ -636,8 +637,8 @@ public class CardPrinter
 
     private static int CompareEffectiveCardCost(CardModel left, CardModel right)
     {
-	    left = CardModificationStateService.GetEffectivePermanentCardForDisplay(left);
-	    right = CardModificationStateService.GetEffectivePermanentCardForDisplay(right);
+	    left = CardModificationRuntime.GetPermanentCardForDisplay(left);
+	    right = CardModificationRuntime.GetPermanentCardForDisplay(right);
 	    int cost = left.EnergyCost.GetResolved().CompareTo(right.EnergyCost.GetResolved());
 	    return cost != 0 ? cost : string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
     }
