@@ -21,7 +21,7 @@ using MegaCrit.Sts2.Core.Saves;
 /// </summary>
 public static class PermanentCardModificationStore
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const string PermanentPath = "loadout/services/card_modifications/permanent.json";
 
     private static readonly object Gate = new();
@@ -32,10 +32,10 @@ public static class PermanentCardModificationStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private static Dictionary<string, CardModificationSpec> _profileCards = new(StringComparer.Ordinal);
-    private static Dictionary<string, CardModificationSpec> _hostCards = new(StringComparer.Ordinal);
-    private static Dictionary<ModelId, CardModificationSpec> _profileLookup = new();
-    private static Dictionary<ModelId, CardModificationSpec> _hostLookup = new();
+    private static Dictionary<string, CardModificationDelta> _profileCards = new(StringComparer.Ordinal);
+    private static Dictionary<string, CardModificationDelta> _hostCards = new(StringComparer.Ordinal);
+    private static Dictionary<ModelId, CardModificationDelta> _profileLookup = new();
+    private static Dictionary<ModelId, CardModificationDelta> _hostLookup = new();
     private static bool _useHostCards;
     private static bool _loaded;
     private static bool _registered;
@@ -78,9 +78,21 @@ public static class PermanentCardModificationStore
 
     public static bool TryGet(ModelId cardId, out CardModificationSpec spec)
     {
+        if (TryGetDelta(cardId, out CardModificationDelta delta))
+        {
+            spec = CardModificationRuntime.MaterializePermanentSpec(cardId, delta);
+            return true;
+        }
+
+        spec = null!;
+        return false;
+    }
+
+    public static bool TryGetDelta(ModelId cardId, out CardModificationDelta delta)
+    {
         EnsureLoaded();
-        Dictionary<ModelId, CardModificationSpec> snapshot = _useHostCards ? _hostLookup : _profileLookup;
-        return snapshot.TryGetValue(cardId, out spec!);
+        Dictionary<ModelId, CardModificationDelta> snapshot = _useHostCards ? _hostLookup : _profileLookup;
+        return snapshot.TryGetValue(cardId, out delta!);
     }
 
     public static CardModificationSpec Get(ModelId cardId)
@@ -99,15 +111,39 @@ public static class PermanentCardModificationStore
         }
     }
 
+    public static bool HasAnyCustomText
+    {
+        get
+        {
+            EnsureLoaded();
+            return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta => delta.HasCustomText);
+        }
+    }
+
+    public static bool HasAnyPortraitOverrides
+    {
+        get
+        {
+            EnsureLoaded();
+            return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta => delta.HasPortraitOverride);
+        }
+    }
+
     public static bool SetProfile(ModelId cardId, CardModificationSpec? value)
     {
+        return SetProfileDelta(cardId, CardModificationRuntime.CreatePermanentDelta(cardId, value));
+    }
+
+    public static bool SetProfileDelta(ModelId cardId, CardModificationDelta? value)
+    {
         EnsureLoaded();
-        CardModificationSpec normalized = Normalize(value);
+        CardModificationDelta normalized = value?.Clone() ?? new CardModificationDelta();
+        normalized.Normalize();
         string key = cardId.ToString();
         bool changed;
         lock (Gate)
         {
-            Dictionary<string, CardModificationSpec> next = CloneDictionary(_profileCards);
+            Dictionary<string, CardModificationDelta> next = CloneDictionary(_profileCards);
             changed = SetInDictionary(next, key, normalized);
             if (!changed)
                 return false;
@@ -132,8 +168,8 @@ public static class PermanentCardModificationStore
 
         lock (Gate)
         {
-            _profileCards = new Dictionary<string, CardModificationSpec>(StringComparer.Ordinal);
-            _profileLookup = new Dictionary<ModelId, CardModificationSpec>();
+            _profileCards = new Dictionary<string, CardModificationDelta>(StringComparer.Ordinal);
+            _profileLookup = new Dictionary<ModelId, CardModificationDelta>();
             QueueSaveLocked();
         }
 
@@ -145,7 +181,7 @@ public static class PermanentCardModificationStore
     public static string ExportEffectiveSnapshotJson()
     {
         EnsureLoaded();
-        Dictionary<string, CardModificationSpec> source = _useHostCards ? _hostCards : _profileCards;
+        Dictionary<string, CardModificationDelta> source = _useHostCards ? _hostCards : _profileCards;
         return JsonSerializer.Serialize(new PermanentSaveData
         {
             SchemaVersion = CurrentSchemaVersion,
@@ -155,10 +191,10 @@ public static class PermanentCardModificationStore
 
     public static IReadOnlyList<ModelId> ApplyHostSnapshot(string? json)
     {
-        if (!TryDeserializeSnapshot(json, out Dictionary<string, CardModificationSpec> next))
+        if (!TryDeserializeSnapshot(json, out Dictionary<string, CardModificationDelta> next))
             return [];
 
-        Dictionary<string, CardModificationSpec> previous = _useHostCards ? _hostCards : _profileCards;
+        Dictionary<string, CardModificationDelta> previous = _useHostCards ? _hostCards : _profileCards;
         List<ModelId> changed = GetChangedIds(previous, next);
         _hostCards = next;
         _hostLookup = BuildLookup(next);
@@ -170,9 +206,16 @@ public static class PermanentCardModificationStore
 
     public static bool ApplyHostDelta(ModelId cardId, CardModificationSpec? value)
     {
+        return ApplyHostDelta(cardId, CardModificationRuntime.CreatePermanentDelta(cardId, value));
+    }
+
+    public static bool ApplyHostDelta(ModelId cardId, CardModificationDelta? value)
+    {
         EnsureLoaded();
-        Dictionary<string, CardModificationSpec> next = CloneDictionary(_useHostCards ? _hostCards : _profileCards);
-        bool changed = SetInDictionary(next, cardId.ToString(), Normalize(value));
+        CardModificationDelta normalized = value?.Clone() ?? new CardModificationDelta();
+        normalized.Normalize();
+        Dictionary<string, CardModificationDelta> next = CloneDictionary(_useHostCards ? _hostCards : _profileCards);
+        bool changed = SetInDictionary(next, cardId.ToString(), normalized);
         _hostCards = next;
         _hostLookup = BuildLookup(next);
         _useHostCards = true;
@@ -187,8 +230,8 @@ public static class PermanentCardModificationStore
             return [];
 
         List<ModelId> changed = GetChangedIds(_hostCards, _profileCards);
-        _hostCards = new Dictionary<string, CardModificationSpec>(StringComparer.Ordinal);
-        _hostLookup = new Dictionary<ModelId, CardModificationSpec>();
+        _hostCards = new Dictionary<string, CardModificationDelta>(StringComparer.Ordinal);
+        _hostLookup = new Dictionary<ModelId, CardModificationDelta>();
         _useHostCards = false;
         foreach (ModelId id in changed)
             CardChanged?.Invoke(id);
@@ -200,18 +243,18 @@ public static class PermanentCardModificationStore
         CardModificationPermanentImportMode mode)
     {
         EnsureLoaded();
-        if (!TryDeserializeSnapshot(json, out Dictionary<string, CardModificationSpec> incoming))
+        if (!TryDeserializeSnapshot(json, out Dictionary<string, CardModificationDelta> incoming))
             return [];
 
         if (mode == CardModificationPermanentImportMode.KeepMine)
             return [];
 
-        Dictionary<string, CardModificationSpec> next = mode == CardModificationPermanentImportMode.UseHost
+        Dictionary<string, CardModificationDelta> next = mode == CardModificationPermanentImportMode.UseHost
             ? CloneDictionary(incoming)
             : CloneDictionary(_profileCards);
         if (mode == CardModificationPermanentImportMode.MergeNonConflicting)
         {
-            foreach ((string key, CardModificationSpec spec) in incoming)
+            foreach ((string key, CardModificationDelta spec) in incoming)
             {
                 if (!next.ContainsKey(key))
                     next[key] = spec.Clone();
@@ -259,8 +302,8 @@ public static class PermanentCardModificationStore
         {
             _loaded = false;
             _useHostCards = false;
-            _hostCards = new Dictionary<string, CardModificationSpec>(StringComparer.Ordinal);
-            _hostLookup = new Dictionary<ModelId, CardModificationSpec>();
+            _hostCards = new Dictionary<string, CardModificationDelta>(StringComparer.Ordinal);
+            _hostLookup = new Dictionary<ModelId, CardModificationDelta>();
             LoadProfileLocked();
         }
 
@@ -269,9 +312,9 @@ public static class PermanentCardModificationStore
 
     private static void LoadProfileLocked()
     {
-        SaveUtility.LoadResult<PermanentSaveData> loaded =
-            SaveUtility.LoadProfileJson(PermanentPath, new PermanentSaveData());
-        _profileCards = NormalizeDictionary(loaded.Value.Cards);
+        SaveUtility.LoadResult<PermanentRawData> loaded =
+            SaveUtility.LoadProfileJson(PermanentPath, new PermanentRawData());
+        _profileCards = DeserializeCards(loaded.Value);
         _profileLookup = BuildLookup(_profileCards);
         _loaded = true;
         if (loaded.Loaded && loaded.Value.SchemaVersion != CurrentSchemaVersion)
@@ -293,23 +336,16 @@ public static class PermanentCardModificationStore
         Reload();
     }
 
-    private static CardModificationSpec Normalize(CardModificationSpec? value)
-    {
-        CardModificationSpec normalized = value?.Clone() ?? new CardModificationSpec();
-        normalized.Normalize();
-        return normalized;
-    }
-
     private static bool SetInDictionary(
-        Dictionary<string, CardModificationSpec> dictionary,
+        Dictionary<string, CardModificationDelta> dictionary,
         string key,
-        CardModificationSpec value)
+        CardModificationDelta value)
     {
         if (value.IsEmpty)
             return dictionary.Remove(key);
 
-        if (dictionary.TryGetValue(key, out CardModificationSpec? current)
-            && CardModificationCodec.Serialize(current) == CardModificationCodec.Serialize(value))
+        if (dictionary.TryGetValue(key, out CardModificationDelta? current)
+            && CardModificationCodec.SerializeDelta(current) == CardModificationCodec.SerializeDelta(value))
         {
             return false;
         }
@@ -320,67 +356,78 @@ public static class PermanentCardModificationStore
 
     private static bool TryDeserializeSnapshot(
         string? json,
-        out Dictionary<string, CardModificationSpec> snapshot)
+        out Dictionary<string, CardModificationDelta> snapshot)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
-            snapshot = new Dictionary<string, CardModificationSpec>(StringComparer.Ordinal);
+            snapshot = new Dictionary<string, CardModificationDelta>(StringComparer.Ordinal);
             return true;
         }
 
         try
         {
-            PermanentSaveData save = JsonSerializer.Deserialize<PermanentSaveData>(json, JsonOptions);
-            snapshot = NormalizeDictionary(save.Cards);
+            PermanentRawData save = JsonSerializer.Deserialize<PermanentRawData>(json, JsonOptions);
+            snapshot = DeserializeCards(save);
             return true;
         }
         catch (Exception exception)
         {
             GD.PushWarning($"CardModification: ignored invalid permanent snapshot. {exception.Message}");
-            snapshot = new Dictionary<string, CardModificationSpec>(StringComparer.Ordinal);
+            snapshot = new Dictionary<string, CardModificationDelta>(StringComparer.Ordinal);
             return false;
         }
     }
 
-    private static Dictionary<string, CardModificationSpec> NormalizeDictionary(
-        Dictionary<string, CardModificationSpec>? source)
+    private static Dictionary<string, CardModificationDelta> DeserializeCards(PermanentRawData save)
     {
-        Dictionary<string, CardModificationSpec> result = new(StringComparer.Ordinal);
-        if (source is null)
+        Dictionary<string, CardModificationDelta> result = new(StringComparer.Ordinal);
+        if (save.Cards is null)
             return result;
 
-        foreach ((string key, CardModificationSpec? spec) in source)
+        foreach ((string key, JsonElement element) in save.Cards)
         {
-            if (string.IsNullOrWhiteSpace(key) || spec is null)
+            if (string.IsNullOrWhiteSpace(key))
                 continue;
 
-            CardModificationSpec normalized = Normalize(spec);
-            if (!normalized.IsEmpty)
-                result[key] = normalized;
+            CardModificationDelta? delta;
+            if (save.SchemaVersion >= CurrentSchemaVersion)
+            {
+                delta = element.Deserialize<CardModificationDelta>(JsonOptions);
+            }
+            else
+            {
+                CardModificationSpec? legacy = element.Deserialize<CardModificationSpec>(JsonOptions);
+                delta = TryResolveId(key, out ModelId id)
+                    ? CardModificationRuntime.CreatePermanentDelta(id, legacy)
+                    : null;
+            }
+
+            delta?.Normalize();
+            if (delta is { IsEmpty: false }) result[key] = delta;
         }
 
         return result;
     }
 
-    private static Dictionary<string, CardModificationSpec> CloneDictionary(
-        IReadOnlyDictionary<string, CardModificationSpec> source)
+    private static Dictionary<string, CardModificationDelta> CloneDictionary(
+        IReadOnlyDictionary<string, CardModificationDelta> source)
     {
         return source.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal);
     }
 
     private static List<ModelId> GetChangedIds(
-        IReadOnlyDictionary<string, CardModificationSpec> previous,
-        IReadOnlyDictionary<string, CardModificationSpec> next)
+        IReadOnlyDictionary<string, CardModificationDelta> previous,
+        IReadOnlyDictionary<string, CardModificationDelta> next)
     {
         HashSet<string> keys = new(previous.Keys, StringComparer.Ordinal);
         keys.UnionWith(next.Keys);
         return ResolveIds(keys.Where(key =>
         {
-            previous.TryGetValue(key, out CardModificationSpec? left);
-            next.TryGetValue(key, out CardModificationSpec? right);
+            previous.TryGetValue(key, out CardModificationDelta? left);
+            next.TryGetValue(key, out CardModificationDelta? right);
             return !string.Equals(
-                left is null ? string.Empty : CardModificationCodec.Serialize(left),
-                right is null ? string.Empty : CardModificationCodec.Serialize(right),
+                left is null ? string.Empty : CardModificationCodec.SerializeDelta(left),
+                right is null ? string.Empty : CardModificationCodec.SerializeDelta(right),
                 StringComparison.Ordinal);
         }));
     }
@@ -394,16 +441,16 @@ public static class PermanentCardModificationStore
             .ToList();
     }
 
-    private static Dictionary<ModelId, CardModificationSpec> BuildLookup(
-        IReadOnlyDictionary<string, CardModificationSpec> source)
+    private static Dictionary<ModelId, CardModificationDelta> BuildLookup(
+        IReadOnlyDictionary<string, CardModificationDelta> source)
     {
-        Dictionary<ModelId, CardModificationSpec> result = new();
+        Dictionary<ModelId, CardModificationDelta> result = new();
         if (source.Count == 0)
             return result;
 
         foreach (CardModel card in ModelDb.AllCards)
         {
-            if (source.TryGetValue(card.Id.ToString(), out CardModificationSpec? spec))
+            if (source.TryGetValue(card.Id.ToString(), out CardModificationDelta? spec))
                 result[card.Id] = spec;
         }
         return result;
@@ -419,12 +466,36 @@ public static class PermanentCardModificationStore
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
         [JsonPropertyName("cards")]
-        public Dictionary<string, CardModificationSpec> Cards { get; set; } = new(StringComparer.Ordinal);
+        public Dictionary<string, CardModificationDelta> Cards { get; set; } = new(StringComparer.Ordinal);
 
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             info.AddValue(nameof(SchemaVersion), SchemaVersion);
             info.AddValue(nameof(Cards), Cards);
         }
+    }
+
+    private struct PermanentRawData
+    {
+        [JsonPropertyName("schemaVersion")]
+        public int SchemaVersion { get; set; }
+
+        [JsonPropertyName("cards")]
+        public Dictionary<string, JsonElement> Cards { get; set; }
+    }
+
+    private static bool TryResolveId(string key, out ModelId id)
+    {
+        foreach (CardModel card in ModelDb.AllCards)
+        {
+            if (string.Equals(card.Id.ToString(), key, StringComparison.Ordinal)
+                || string.Equals(card.Id.Entry, key, StringComparison.OrdinalIgnoreCase))
+            {
+                id = card.Id;
+                return true;
+            }
+        }
+        id = ModelId.none;
+        return false;
     }
 }

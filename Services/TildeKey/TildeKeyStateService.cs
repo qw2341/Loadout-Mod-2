@@ -16,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
+using Loadout.Patches.TildeKey;
 using Loadout.Services.Actions;
 using Loadout.Services.Saving;
 using Loadout.Services.RelicModification;
@@ -135,6 +136,7 @@ public static class TildeKeyStateService
     private static readonly FieldInfo? MaxHpChangedField = AccessTools.Field(typeof(Creature), "MaxHpChanged");
     private static readonly FieldInfo? BlockChangedField = AccessTools.Field(typeof(Creature), "BlockChanged");
     private static readonly FieldInfo? TurnNumberField = AccessTools.Field(typeof(PlayerCombatState), "<TurnNumber>k__BackingField");
+    private static readonly FieldInfo? CombatStatePlayerField = AccessTools.Field(typeof(PlayerCombatState), "_player");
     private static readonly MethodInfo? RelicDisplayAmountChangedMethod = AccessTools.Method(typeof(RelicModel), "InvokeDisplayAmountChanged");
     private static readonly FieldInfo? CreatureStateDisplayField = AccessTools.Field(typeof(NCreature), "_stateDisplay");
     private static readonly MethodInfo? CreatureStateDisplayRefreshValuesMethod = AccessTools.Method(typeof(NCreatureStateDisplay), "RefreshValues");
@@ -190,6 +192,9 @@ public static class TildeKeyStateService
     private static NMapScreen? _lastMapScreen;
     private static bool _lastDesiredDebugTravel;
 
+    [ThreadStatic]
+    private static int _lockReapplyDepth;
+
     public static event Action? StateChanged;
 
     public static IReadOnlyList<TildeKeyStatDefinition> StatDefinitions => Definitions;
@@ -206,6 +211,7 @@ public static class TildeKeyStateService
         CombatManager.Instance.CombatSetUp += OnCombatSetUp;
         CombatManager.Instance.TurnStarted += OnTurnStarted;
         EnsureLoaded();
+        RefreshDynamicLockPatches();
     }
 
     public static void Unregister()
@@ -217,6 +223,7 @@ public static class TildeKeyStateService
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp -= OnCombatSetUp;
         CombatManager.Instance.TurnStarted -= OnTurnStarted;
+        TildeKeyDynamicLockPatches.Reset();
         _registered = false;
     }
 
@@ -225,27 +232,139 @@ public static class TildeKeyStateService
         ReloadRunIfNeeded();
     }
 
-    public static void Process(float _)
+    public static void OnRunCleaningUp()
     {
-        if (!RunManager.Instance.IsInProgress)
+        lock (SyncRoot)
         {
-            SyncMapDebugTravel(force: false);
-            lock (SyncRoot)
+            _runLoaded = false;
+            _loadedRunStartTime = null;
+            _run = new RunSaveData();
+            VirtualStats.Clear();
+        }
+        _lastMapScreen = null;
+        _lastDesiredDebugTravel = false;
+        TildeKeyDynamicLockPatches.Reset();
+    }
+
+    internal static void ReassertCreatureLocks(Creature creature)
+    {
+        if (_lockReapplyDepth > 0 || creature.Player is not { } player) return;
+        ReassertLocks(player, "current_hp", "max_hp", "block");
+    }
+
+    internal static void ReassertPlayerLocks(Player player)
+    {
+        if (_lockReapplyDepth > 0) return;
+        ReassertLocks(player, "gold", "max_energy", "base_orb_slots");
+    }
+
+    internal static void ReassertCombatLocks(PlayerCombatState combatState)
+    {
+        if (_lockReapplyDepth > 0 || CombatStatePlayerField?.GetValue(combatState) is not Player player) return;
+        if (IsPlayerToggleEnabled(player.NetId, InfiniteEnergyToggleId))
+            ReassertLocks(player, "turn_number");
+        else
+            ReassertLocks(player, "combat_energy", "stars", "turn_number");
+    }
+
+    internal static void ReassertExtraFieldLocks(ExtraPlayerFields fields)
+    {
+        if (_lockReapplyDepth > 0 || GetCurrentRunStateOrNull() is not { } runState) return;
+        Player? player = runState.Players.FirstOrDefault(candidate => ReferenceEquals(candidate.ExtraFields, fields));
+        if (player is not null)
+            ReassertLocks(player, "extra_card_shop_removals", "extra_wongo_points", "extra_damage_dealt", "extra_debuffs_applied");
+    }
+
+    internal static void ReassertRelicCounterLock(RelicModel relic)
+    {
+        if (_lockReapplyDepth > 0 || relic.Owner is null) return;
+        int index = FindRelicIndex(relic.Owner.Relics, relic);
+        if (index < 0 || !TryGetRelicCounterMember(relic, out string member)) return;
+        string key = RelicCounterKey(index, RelicIdKey(relic), member);
+        int? desired = null;
+        lock (SyncRoot)
+        {
+            if (GetPlayerStateLocked(relic.Owner.NetId, create: false, out TildeKeyPlayerState? state)
+                && state?.RelicCounterLocks.TryGetValue(key, out TildeKeyRelicCounterLock? saved) == true)
+                desired = saved.Value;
+        }
+        if (!desired.HasValue) return;
+        _lockReapplyDepth++;
+        try { TrySetRelicCounterValue(relic, member, desired.Value); }
+        finally { _lockReapplyDepth--; }
+    }
+
+    internal static void RefreshMapDebugTravel() => SyncMapDebugTravel(force: true);
+
+    private static void RefreshDynamicLockPatches()
+    {
+        bool creature = false;
+        bool player = false;
+        bool combat = false;
+        bool extra = false;
+        bool relic = false;
+        lock (SyncRoot)
+        {
+            foreach (TildeKeyPlayerState state in _run.Players.Values)
             {
-                _runLoaded = false;
-                _loadedRunStartTime = null;
-                _run = new RunSaveData();
-                VirtualStats.Clear();
+                relic |= state.RelicCounterLocks.Count > 0;
+                foreach ((string id, TildeKeySavedStat saved) in state.Stats)
+                {
+                    if (!saved.Locked)
+                        continue;
+
+                    switch (id)
+                    {
+                        case "current_hp":
+                        case "max_hp":
+                        case "block":
+                            creature = true;
+                            break;
+                        case "gold":
+                        case "max_energy":
+                        case "base_orb_slots":
+                            player = true;
+                            break;
+                        case "combat_energy":
+                        case "stars":
+                        case "turn_number":
+                            combat = true;
+                            break;
+                        case "extra_card_shop_removals":
+                        case "extra_wongo_points":
+                        case "extra_damage_dealt":
+                        case "extra_debuffs_applied":
+                            extra = true;
+                            break;
+                    }
+                }
             }
-            return;
         }
 
-        if (!_runLoaded)
-            ReloadRunIfNeeded();
+        TildeKeyDynamicLockPatches.Configure(creature, player, combat, extra, relic);
+    }
 
-        ApplyLockedStatsForCurrentRun();
-        ApplyLockedRelicCountersForCurrentRun();
-        SyncMapDebugTravel(force: false);
+    private static void ReassertLocks(Player player, params string[] statIds)
+    {
+        List<(TildeKeyStatDefinition Definition, int Value)> values = [];
+        lock (SyncRoot)
+        {
+            if (!GetPlayerStateLocked(player.NetId, create: false, out TildeKeyPlayerState? state) || state is null) return;
+            foreach (string statId in statIds)
+            {
+                if (state.Stats.TryGetValue(statId, out TildeKeySavedStat? saved)
+                    && saved.Locked
+                    && DefinitionById.TryGetValue(statId, out TildeKeyStatDefinition? definition))
+                    values.Add((definition, saved.Value));
+            }
+        }
+        if (values.Count == 0) return;
+        _lockReapplyDepth++;
+        try
+        {
+            foreach ((TildeKeyStatDefinition definition, int value) in values) ApplyStat(definition, player, value);
+        }
+        finally { _lockReapplyDepth--; }
     }
 
     public static int GetDisplayValue(TildeKeyStatDefinition definition, LoadoutTargetSelection target)
@@ -335,8 +454,8 @@ public static class TildeKeyStateService
         bool savedValueChanged = false;
         foreach (Player player in players)
         {
-            ApplyStat(definition, player, value);
             savedValueChanged |= UpdateSavedValueAfterSet(player.NetId, definition.Id, value);
+            ApplyStat(definition, player, value);
         }
 
         if (savedValueChanged)
@@ -365,12 +484,12 @@ public static class TildeKeyStateService
         IReadOnlyList<Player> players = ResolveTargetPlayers(target, requester);
         foreach (Player player in players)
         {
+            SetSavedLockState(player.NetId, definition.Id, value, payload.Enabled);
             if (payload.Enabled)
                 ApplyStat(definition, player, value);
-
-            SetSavedLockState(player.NetId, definition.Id, value, payload.Enabled);
         }
 
+        RefreshDynamicLockPatches();
         RefreshCombatPreviewsForStatChange(definition.Id, players);
         SaveRunState();
         RaiseStateChanged();
@@ -639,7 +758,15 @@ public static class TildeKeyStateService
             || payload is null || string.IsNullOrWhiteSpace(payload.CounterMember)) return;
         if (ResolveRelicTarget(target, requester, ownedItemIndex, expectedModelId) is not { } relic) return;
         RelicModificationStateService.PrepareRuntimeCounterMutation(relic);
-        if (!TrySetRelicCounterValue(relic, payload.CounterMember, value)) return;
+        _lockReapplyDepth++;
+        try
+        {
+            if (!TrySetRelicCounterValue(relic, payload.CounterMember, value)) return;
+        }
+        finally
+        {
+            _lockReapplyDepth--;
+        }
         RelicModificationStateService.RecordRuntimeCounterValue(relic, payload.CounterMember, value);
         lock (SyncRoot)
         {
@@ -674,8 +801,16 @@ public static class TildeKeyStateService
         if (payload.Enabled)
         {
             RelicModificationStateService.PrepareRuntimeCounterMutation(relic);
-            if (!TrySetRelicCounterValue(relic, payload.CounterMember, value))
-                return;
+            _lockReapplyDepth++;
+            try
+            {
+                if (!TrySetRelicCounterValue(relic, payload.CounterMember, value))
+                    return;
+            }
+            finally
+            {
+                _lockReapplyDepth--;
+            }
 
             RelicModificationStateService.RecordRuntimeCounterValue(relic, payload.CounterMember, value);
 
@@ -705,6 +840,7 @@ public static class TildeKeyStateService
             }
         }
 
+        RefreshDynamicLockPatches();
         SaveRunState();
         RefreshRelicCounterLockBadgeForRelic(relic);
     }
@@ -772,21 +908,24 @@ public static class TildeKeyStateService
             }
         }
 
-        foreach ((ulong netId, string statId, int value) in locks)
+        _lockReapplyDepth++;
+        try
         {
-            Player? player = runState.GetPlayer(netId);
-            if (player is null || !DefinitionById.TryGetValue(statId, out TildeKeyStatDefinition? definition))
-                continue;
-
-            if (IsPlayerToggleEnabled(netId, InfiniteEnergyToggleId)
-                && (string.Equals(statId, "combat_energy", StringComparison.Ordinal)
-                    || string.Equals(statId, "stars", StringComparison.Ordinal)))
+            foreach ((ulong netId, string statId, int value) in locks)
             {
-                continue;
-            }
+                Player? player = runState.GetPlayer(netId);
+                if (player is null || !DefinitionById.TryGetValue(statId, out TildeKeyStatDefinition? definition))
+                    continue;
 
-            ApplyStat(definition, player, value);
+                if (IsPlayerToggleEnabled(netId, InfiniteEnergyToggleId)
+                    && (string.Equals(statId, "combat_energy", StringComparison.Ordinal)
+                        || string.Equals(statId, "stars", StringComparison.Ordinal)))
+                    continue;
+
+                ApplyStat(definition, player, value);
+            }
         }
+        finally { _lockReapplyDepth--; }
     }
 
     private static void ApplyLockedRelicCountersForCurrentRun()
@@ -808,18 +947,23 @@ public static class TildeKeyStateService
             }
         }
 
-        foreach ((ulong netId, TildeKeyRelicCounterLock saved) in locks)
+        _lockReapplyDepth++;
+        try
         {
-            Player? player = runState.GetPlayer(netId);
-            if (player is null || saved.RelicIndex < 0 || saved.RelicIndex >= player.Relics.Count)
-                continue;
+            foreach ((ulong netId, TildeKeyRelicCounterLock saved) in locks)
+            {
+                Player? player = runState.GetPlayer(netId);
+                if (player is null || saved.RelicIndex < 0 || saved.RelicIndex >= player.Relics.Count)
+                    continue;
 
-            RelicModel relic = player.Relics[saved.RelicIndex];
-            if (!RelicIdMatches(relic, saved.RelicId))
-                continue;
+                RelicModel relic = player.Relics[saved.RelicIndex];
+                if (!RelicIdMatches(relic, saved.RelicId))
+                    continue;
 
-            TrySetRelicCounterValue(relic, saved.CounterMember, saved.Value);
+                TrySetRelicCounterValue(relic, saved.CounterMember, saved.Value);
+            }
         }
+        finally { _lockReapplyDepth--; }
     }
 
     private static void ApplyInfiniteEnergy(Player player)
@@ -1717,7 +1861,10 @@ public static class TildeKeyStateService
         }
 
         ReloadRun();
+        RefreshDynamicLockPatches();
         ApplySavedGodmodeToPlayers();
+        ApplyLockedStatsForCurrentRun();
+        ApplyLockedRelicCountersForCurrentRun();
         SyncMapDebugTravel(force: true);
     }
 
@@ -1732,6 +1879,7 @@ public static class TildeKeyStateService
         }
 
         EnsureLoaded();
+        RefreshDynamicLockPatches();
         SyncMapDebugTravel(force: true);
     }
 
@@ -1742,6 +1890,7 @@ public static class TildeKeyStateService
 
         ApplySavedGodmodeToPlayers(combatState.Players);
         ApplyLockedStatsForCurrentRun();
+        ApplyLockedRelicCountersForCurrentRun();
         foreach (Player player in combatState.Players)
         {
             if (IsPlayerToggleEnabled(player.NetId, InfiniteEnergyToggleId))
@@ -1755,7 +1904,10 @@ public static class TildeKeyStateService
             return;
 
         foreach (Player player in combatState.Players)
+        {
+            if (player.PlayerCombatState is not null) ReassertCombatLocks(player.PlayerCombatState);
             RequestDrawTillHandLimitForLocalPlayer(player);
+        }
     }
 
     private static void ApplySavedGodmodeToPlayers(IEnumerable<Player>? players = null)

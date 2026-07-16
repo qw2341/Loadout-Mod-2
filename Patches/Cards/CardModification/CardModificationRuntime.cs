@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Godot;
 using HarmonyLib;
 using Loadout.Keywords;
@@ -36,6 +37,7 @@ public static class CardModificationRuntime
     private static readonly MethodInfo? NCardFindOnTableByCard = AccessTools.Method(typeof(NCard), nameof(NCard.FindOnTable), [typeof(CardModel)]);
     private static readonly MethodInfo? NCardFindOnTableByCardAndPile = AccessTools.Method(typeof(NCard), nameof(NCard.FindOnTable), [typeof(CardModel), typeof(PileType)]);
     private static readonly Dictionary<ModelId, CardModel> DisplayCards = new();
+    private static ConditionalWeakTable<CardModel, CardModificationDelta> PreviewDeltas = new();
 
     [ThreadStatic]
     private static int _suppressPermanentApplyDepth;
@@ -57,10 +59,11 @@ public static class CardModificationRuntime
             return;
 
         _registered = true;
-        CardModificationPersistence.Initialize();
         PermanentCardModificationStore.CardChanged += OnPermanentCardChanged;
         PermanentCardModificationStore.Reloaded += OnPermanentStoreReloaded;
         PermanentCardModificationStore.Register();
+        if (PermanentCardModificationStore.HasAnyCustomText) CardModificationDynamicPatches.EnableTextPatches();
+        if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
         CardModificationNetProtocol.Register();
     }
 
@@ -74,6 +77,8 @@ public static class CardModificationRuntime
         PermanentCardModificationStore.CardChanged -= OnPermanentCardChanged;
         PermanentCardModificationStore.Reloaded -= OnPermanentStoreReloaded;
         DisplayCards.Clear();
+        PreviewDeltas = new ConditionalWeakTable<CardModel, CardModificationDelta>();
+        CardModificationDynamicPatches.ClearAll();
         _registered = false;
     }
 
@@ -86,7 +91,7 @@ public static class CardModificationRuntime
     {
         CardModificationSpec effective = PermanentCardModificationStore.Get(card.Id);
         if (CardModificationFields.TryGet(card, out CardModificationCardData data))
-            effective.MergeFrom(data.Spec);
+            effective.MergeFrom(MaterializeTemporarySpec(card, data.Delta));
         effective.Normalize();
         return effective;
     }
@@ -108,19 +113,23 @@ public static class CardModificationRuntime
 
     public static bool HasCustomTextOverrides(CardModel card)
     {
-        if (CardModificationFields.TryGet(card, out CardModificationCardData data) && data.Spec.HasCustomText)
+        if (PreviewDeltas.TryGetValue(card, out CardModificationDelta? preview) && preview.HasCustomText)
+            return true;
+        if (CardModificationFields.TryGet(card, out CardModificationCardData data) && data.Delta.HasCustomText)
             return true;
 
-        return PermanentCardModificationStore.TryGet(card.Id, out CardModificationSpec? permanent)
+        return PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? permanent)
                && permanent.HasCustomText;
     }
 
     public static bool HasPortraitOverrides(CardModel card)
     {
-        if (CardModificationFields.TryGet(card, out CardModificationCardData data) && data.Spec.HasPortraitOverride)
+        if (PreviewDeltas.TryGetValue(card, out CardModificationDelta? preview) && preview.HasPortraitOverride)
+            return true;
+        if (CardModificationFields.TryGet(card, out CardModificationCardData data) && data.Delta.HasPortraitOverride)
             return true;
 
-        return PermanentCardModificationStore.TryGet(card.Id, out CardModificationSpec? permanent)
+        return PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? permanent)
                && permanent.HasPortraitOverride;
     }
 
@@ -168,14 +177,20 @@ public static class CardModificationRuntime
         string? direct = null;
         string? regular = null;
         string? poolId = null;
+        if (PreviewDeltas.TryGetValue(card, out CardModificationDelta? preview))
+        {
+            direct = beta ? preview.BetaPortraitPath : preview.PortraitPath;
+            regular = preview.PortraitPath;
+            poolId = preview.PoolId;
+        }
         if (CardModificationFields.TryGet(card, out CardModificationCardData data))
         {
-            direct = beta ? data.Spec.BetaPortraitPath : data.Spec.PortraitPath;
-            regular = data.Spec.PortraitPath;
-            poolId = data.Spec.PoolId;
+            direct = beta ? data.Delta.BetaPortraitPath : data.Delta.PortraitPath;
+            regular = data.Delta.PortraitPath;
+            poolId = data.Delta.PoolId;
         }
 
-        if (PermanentCardModificationStore.TryGet(card.Id, out CardModificationSpec? permanent))
+        if (PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? permanent))
         {
             direct ??= beta ? permanent.BetaPortraitPath : permanent.PortraitPath;
             regular ??= permanent.PortraitPath;
@@ -224,14 +239,14 @@ public static class CardModificationRuntime
         return string.Equals(a, b, StringComparison.Ordinal);
     }
 
-    /// <summary>Called by the AbstractModel.MutableClone postfix for canonical cards.</summary>
+    /// <summary>Called once by the CardModel.ToMutable postfix.</summary>
     public static void ApplyPermanentAtCreation(CardModel card)
     {
         if (card.IsCanonical || IsPermanentApplicationSuppressed)
             return;
 
-        if (PermanentCardModificationStore.TryGet(card.Id, out CardModificationSpec? permanent))
-            ApplySpecToCard(card, permanent);
+        if (PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? permanent))
+            ApplyDeltaToCard(card, permanent);
     }
 
     public static void ApplySpecToCard(CardModel? card, CardModificationSpec? spec, bool includeAffliction = true)
@@ -272,6 +287,173 @@ public static class CardModificationRuntime
         }
     }
 
+    public static void ApplyDeltaToCard(CardModel? card, CardModificationDelta? delta, bool includeAffliction = true)
+    {
+        if (card is null || delta is null || delta.IsEmpty || card.IsCanonical) return;
+        try
+        {
+            if (!card.EnergyCost.CostsX)
+            {
+                if (delta.EnergyOverride.HasValue) SetEnergyCost(card, delta.EnergyOverride.Value);
+                else if (delta.EnergyDelta.HasValue) SetEnergyCost(card, card.EnergyCost.Canonical + delta.EnergyDelta.Value);
+            }
+            if (delta.BaseReplayCountDelta.HasValue)
+                card.BaseReplayCount += delta.BaseReplayCountDelta.Value;
+            if (delta.BaseStarCostDelta.HasValue)
+                SetBaseStarCost(card, card.BaseStarCost + delta.BaseStarCostDelta.Value);
+            foreach ((string name, decimal value) in delta.DynamicVarDeltas)
+            {
+                if (card.DynamicVars.TryGetValue(name, out var dynamicVar)) dynamicVar.BaseValue += value;
+            }
+
+            if (TryResolveModel(delta.PoolId, ModelDb.AllCardPools, out CardPoolModel? pool)) CardPoolField?.SetValue(card, pool);
+            if (TryParseEnum(delta.Type, out CardType type)) CardTypeField?.SetValue(card, type);
+            if (TryParseEnum(delta.Rarity, out CardRarity rarity)) CardRarityField?.SetValue(card, rarity);
+            ApplyKeywordOverrides(card, delta.KeywordOverrides);
+            LoadoutKeywordMechanics.SynchronizeEnergyCost(card, delta.KeywordOverrides, delta.EnergyOverride);
+            ApplyEnchantmentSpec(card, delta.Enchantment);
+            if (includeAffliction) ApplyAfflictionSpec(card, delta.Affliction);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed applying delta to '{card.Id}'. {exception.Message}");
+        }
+    }
+
+    public static CardModificationDelta CreatePermanentDelta(ModelId cardId, CardModificationSpec? desired)
+    {
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(cardId);
+        return canonical is null ? new CardModificationDelta() : CreateDelta(canonical, desired, null);
+    }
+
+    public static CardModificationDelta CreateTemporaryDelta(CardModel card, CardModificationSpec? desired)
+    {
+        if (desired is null || desired.IsEmpty) return new CardModificationDelta();
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
+        if (canonical is null) return new CardModificationDelta();
+        CardModificationSpec permanent = PermanentCardModificationStore.Get(card.Id);
+        CardModel baseline = CreateBaseline(canonical, card.CurrentUpgradeLevel, permanent);
+        return CreateDelta(baseline, desired, permanent);
+    }
+
+    public static CardModificationSpec MaterializePermanentSpec(ModelId cardId, CardModificationDelta delta)
+    {
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(cardId);
+        return canonical is null ? new CardModificationSpec() : MaterializeSpec(canonical, delta);
+    }
+
+    public static CardModificationSpec MaterializeTemporarySpec(CardModel card, CardModificationDelta delta)
+    {
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
+        if (canonical is null) return new CardModificationSpec();
+        CardModel baseline = CreateBaseline(canonical, card.CurrentUpgradeLevel, PermanentCardModificationStore.Get(card.Id));
+        return MaterializeSpec(baseline, delta);
+    }
+
+    public static void ReapplyTemporaryDelta(CardModel card)
+    {
+        if (!CardModificationFields.TryGet(card, out CardModificationCardData data)) return;
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
+        if (canonical is null) return;
+        CardModificationSpec previous = GetEffectiveSpec(card);
+        CardModel baseline = CreateBaseline(canonical, card.CurrentUpgradeLevel, PermanentCardModificationStore.Get(card.Id));
+        CardModificationSpec desired = MaterializeSpec(baseline, data.Delta);
+        CopyNativeFields(baseline, card, previous, desired);
+        ApplySpecToCard(card, desired);
+    }
+
+    private static CardModificationDelta CreateDelta(
+        CardModel baseline,
+        CardModificationSpec? desired,
+        CardModificationSpec? structuralBaseline)
+    {
+        CardModificationDelta delta = new();
+        if (desired is null) return delta;
+        if (desired.EnergyCost.HasValue)
+        {
+            int difference = desired.EnergyCost.Value - baseline.EnergyCost.Canonical;
+            if (baseline.EnergyCost.CostsX || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.XCostKey))
+                delta.EnergyOverride = desired.EnergyCost.Value;
+            else if (difference != 0) delta.EnergyDelta = difference;
+        }
+        if (desired.BaseReplayCount.HasValue)
+        {
+            int difference = desired.BaseReplayCount.Value - baseline.BaseReplayCount;
+            if (difference != 0) delta.BaseReplayCountDelta = difference;
+        }
+        if (desired.BaseStarCost.HasValue)
+        {
+            int difference = desired.BaseStarCost.Value - baseline.BaseStarCost;
+            if (difference != 0) delta.BaseStarCostDelta = difference;
+        }
+        foreach ((string name, decimal value) in desired.DynamicVars)
+        {
+            if (baseline.DynamicVars.TryGetValue(name, out var baselineVar))
+            {
+                decimal difference = value - baselineVar.BaseValue;
+                if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
+            }
+        }
+        if (!SameStructuralValue(desired.PoolId, structuralBaseline?.PoolId)
+            && !string.Equals(desired.PoolId, baseline.Pool.Id.ToString(), StringComparison.Ordinal))
+            delta.PoolId = desired.PoolId;
+        if (!SameStructuralValue(desired.Type, structuralBaseline?.Type)
+            && !string.Equals(desired.Type, baseline.Type.ToString(), StringComparison.OrdinalIgnoreCase))
+            delta.Type = desired.Type;
+        if (!SameStructuralValue(desired.Rarity, structuralBaseline?.Rarity)
+            && !string.Equals(desired.Rarity, baseline.Rarity.ToString(), StringComparison.OrdinalIgnoreCase))
+            delta.Rarity = desired.Rarity;
+        if (!SameStructuralValue(desired.CustomTitle, structuralBaseline?.CustomTitle)) delta.CustomTitle = desired.CustomTitle;
+        if (!SameStructuralValue(desired.CustomDescription, structuralBaseline?.CustomDescription)) delta.CustomDescription = desired.CustomDescription;
+        if (!SameStructuralValue(desired.PortraitPath, structuralBaseline?.PortraitPath)) delta.PortraitPath = desired.PortraitPath;
+        if (!SameStructuralValue(desired.BetaPortraitPath, structuralBaseline?.BetaPortraitPath)) delta.BetaPortraitPath = desired.BetaPortraitPath;
+        foreach ((string key, bool value) in desired.KeywordOverrides)
+        {
+            if (structuralBaseline?.KeywordOverrides.TryGetValue(key, out bool baselineValue) != true || baselineValue != value)
+                delta.KeywordOverrides[key] = value;
+        }
+        if (!AttachmentEquals(desired.Enchantment, structuralBaseline?.Enchantment)) delta.Enchantment = desired.Enchantment?.Clone();
+        if (!AttachmentEquals(desired.Affliction, structuralBaseline?.Affliction)) delta.Affliction = desired.Affliction?.Clone();
+        delta.Normalize();
+        return delta;
+    }
+
+    private static bool AttachmentEquals(CardAttachmentSpec? left, CardAttachmentSpec? right)
+    {
+        if (left is null || left.IsEmpty) return right is null || right.IsEmpty;
+        if (right is null || right.IsEmpty) return false;
+        return left.Clear == right.Clear
+               && left.Amount == right.Amount
+               && string.Equals(left.ModelId, right.ModelId, StringComparison.Ordinal);
+    }
+
+    private static CardModificationSpec MaterializeSpec(CardModel baseline, CardModificationDelta delta)
+    {
+        CardModificationSpec spec = new()
+        {
+            EnergyCost = delta.EnergyOverride ?? (delta.EnergyDelta.HasValue ? baseline.EnergyCost.Canonical + delta.EnergyDelta.Value : null),
+            BaseReplayCount = delta.BaseReplayCountDelta.HasValue ? baseline.BaseReplayCount + delta.BaseReplayCountDelta.Value : null,
+            BaseStarCost = delta.BaseStarCostDelta.HasValue ? baseline.BaseStarCost + delta.BaseStarCostDelta.Value : null,
+            PoolId = delta.PoolId,
+            Type = delta.Type,
+            Rarity = delta.Rarity,
+            CustomTitle = delta.CustomTitle,
+            CustomDescription = delta.CustomDescription,
+            PortraitPath = delta.PortraitPath,
+            BetaPortraitPath = delta.BetaPortraitPath,
+            KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
+            Enchantment = delta.Enchantment?.Clone(),
+            Affliction = delta.Affliction?.Clone()
+        };
+        foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
+        {
+            if (baseline.DynamicVars.TryGetValue(name, out var baselineVar))
+                spec.DynamicVars[name] = baselineVar.BaseValue + difference;
+        }
+        spec.Normalize();
+        return spec;
+    }
+
     public static CardModel CreatePreviewCard(CardModel source, CardModificationSpec state)
     {
         try
@@ -280,8 +462,16 @@ public static class CardModificationRuntime
             if (canonical is null)
                 return source;
 
-            CardModel preview = CreateBaseline(canonical, source.CurrentUpgradeLevel, state);
-            CardModificationFields.Set(preview, state);
+            CardModificationSpec permanent = PermanentCardModificationStore.Get(source.Id);
+            CardModel preview = CreateBaseline(canonical, source.CurrentUpgradeLevel, permanent);
+            CardModificationDelta temporary = CreateDelta(preview, state, permanent);
+            ApplyDeltaToCard(preview, temporary);
+            if (temporary.HasCustomText || temporary.HasPortraitOverride)
+            {
+                PreviewDeltas.Add(preview, temporary);
+                if (temporary.HasCustomText) CardModificationDynamicPatches.EnableTextPatches();
+                if (temporary.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+            }
             return preview;
         }
         catch (Exception exception)
@@ -436,6 +626,42 @@ public static class CardModificationRuntime
         }
     }
 
+    public static void ApplySynchronizedDeltaOperation(
+        CardModificationOperation operation,
+        ModelId modelId,
+        LoadoutTargetSelection target,
+        int deckIndex,
+        ModelId expectedModelId,
+        CardModificationDelta? delta,
+        Player actionPlayer,
+        bool authoritativeRemote = false)
+    {
+        LoadoutOwnedItem<CardModel>? resolved = TryResolveOwnedDeckCard(
+            target,
+            deckIndex,
+            expectedModelId,
+            actionPlayer);
+        if (resolved is not { } item)
+            return;
+
+        switch (operation)
+        {
+            case CardModificationOperation.SaveTemporary:
+                ApplyTemporaryDeltaWithoutBroadcast(item, delta);
+                break;
+            case CardModificationOperation.ResetTemporary:
+            case CardModificationOperation.ResetTemporaryToBasic:
+                ApplyTemporaryDeltaWithoutBroadcast(item, null);
+                break;
+            case CardModificationOperation.ApplyPermanent:
+                ApplyPermanentDeltaWithoutBroadcast(item, modelId, delta, authoritativeRemote);
+                break;
+            case CardModificationOperation.ResetPermanentToBasic:
+                ApplyPermanentDeltaWithoutBroadcast(item, modelId, null, authoritativeRemote);
+                break;
+        }
+    }
+
     public static void ApplyRemoteTemporaryState(
         ulong ownerNetId,
         int deckIndex,
@@ -447,6 +673,19 @@ public static class CardModificationRuntime
             return;
 
         ApplyTemporaryWithoutBroadcast(item, state);
+    }
+
+    public static void ApplyRemoteTemporaryDelta(
+        ulong ownerNetId,
+        int deckIndex,
+        string cardId,
+        CardModificationDelta? delta)
+    {
+        if (!TryResolveLiveDeckCard(ownerNetId, deckIndex, cardId, out LoadoutOwnedItem<CardModel>? item)
+            || item is null)
+            return;
+
+        ApplyTemporaryDeltaWithoutBroadcast(item, delta);
     }
 
     public static bool ReplaceTemporaryStatesForPlayer(
@@ -560,6 +799,19 @@ public static class CardModificationRuntime
         NotifyCardUpdated(item, previous, GetEffectiveSpec(item.Model));
     }
 
+    private static void ApplyTemporaryDeltaWithoutBroadcast(
+        LoadoutOwnedItem<CardModel> item,
+        CardModificationDelta? delta)
+    {
+        CardModificationSpec previous = GetEffectiveSpec(item.Model);
+        bool changed = CardModificationFields.SetDelta(item.Model, delta);
+        if (!changed)
+            return;
+
+        RebuildOwnedCard(item, previous);
+        NotifyCardUpdated(item, previous, GetEffectiveSpec(item.Model));
+    }
+
     private static void ApplyPermanentWithoutBroadcast(
         LoadoutOwnedItem<CardModel> item,
         ModelId cardId,
@@ -574,6 +826,32 @@ public static class CardModificationRuntime
             permanentChanged = PermanentCardModificationStore.ApplyHostDelta(cardId, state);
         else if (IsPermanentAuthority())
             permanentChanged = PermanentCardModificationStore.SetProfile(cardId, state);
+        else
+            permanentChanged = false;
+
+        if (permanentChanged)
+            RetrofitLiveDeckCopies(cardId, previousPermanent, item.Model, selectedPrevious);
+        else if (temporaryChanged)
+        {
+            RebuildOwnedCard(item, selectedPrevious);
+            NotifyCardUpdated(item, selectedPrevious, GetEffectiveSpec(item.Model));
+        }
+    }
+
+    private static void ApplyPermanentDeltaWithoutBroadcast(
+        LoadoutOwnedItem<CardModel> item,
+        ModelId cardId,
+        CardModificationDelta? delta,
+        bool authoritativeRemote)
+    {
+        CardModificationSpec previousPermanent = PermanentCardModificationStore.Get(cardId);
+        CardModificationSpec selectedPrevious = GetEffectiveSpec(item.Model);
+        bool temporaryChanged = CardModificationFields.Clear(item.Model);
+        bool permanentChanged;
+        if (authoritativeRemote)
+            permanentChanged = PermanentCardModificationStore.ApplyHostDelta(cardId, delta);
+        else if (IsPermanentAuthority())
+            permanentChanged = PermanentCardModificationStore.SetProfileDelta(cardId, delta);
         else
             permanentChanged = false;
 
@@ -845,12 +1123,22 @@ public static class CardModificationRuntime
 
     private static bool TryGetEffectiveValue(
         CardModel card,
-        Func<CardModificationSpec, string?> selector,
+        Func<CardModificationDelta, string?> selector,
         out string value)
     {
+        if (PreviewDeltas.TryGetValue(card, out CardModificationDelta? preview))
+        {
+            string? previewValue = selector(preview);
+            if (!string.IsNullOrWhiteSpace(previewValue))
+            {
+                value = previewValue;
+                return true;
+            }
+        }
+
         if (CardModificationFields.TryGet(card, out CardModificationCardData data))
         {
-            string? attached = selector(data.Spec);
+            string? attached = selector(data.Delta);
             if (!string.IsNullOrWhiteSpace(attached))
             {
                 value = attached;
@@ -858,7 +1146,7 @@ public static class CardModificationRuntime
             }
         }
 
-        if (PermanentCardModificationStore.TryGet(card.Id, out CardModificationSpec? permanent))
+        if (PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? permanent))
         {
             string? stored = selector(permanent);
             if (!string.IsNullOrWhiteSpace(stored))
@@ -1013,6 +1301,11 @@ public static class CardModificationRuntime
 
     private static void OnPermanentCardChanged(ModelId cardId)
     {
+        if (PermanentCardModificationStore.TryGetDelta(cardId, out CardModificationDelta? delta))
+        {
+            if (delta.HasCustomText) CardModificationDynamicPatches.EnableTextPatches();
+            if (delta.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+        }
         DisplayCards.Remove(cardId);
         PermanentCardDisplayChanged?.Invoke(cardId);
     }
@@ -1020,6 +1313,8 @@ public static class CardModificationRuntime
     private static void OnPermanentStoreReloaded()
     {
         DisplayCards.Clear();
+        if (PermanentCardModificationStore.HasAnyCustomText) CardModificationDynamicPatches.EnableTextPatches();
+        if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
     }
 
     private sealed class PermanentSuppressionScope : IDisposable

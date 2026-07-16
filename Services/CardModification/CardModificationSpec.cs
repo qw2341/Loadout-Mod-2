@@ -248,3 +248,158 @@ public sealed class CardModificationSpec
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 }
+
+/// <summary>
+/// Sparse runtime/persistence representation. Numeric members are arithmetic
+/// differences from the applicable canonical baseline; structural members are
+/// replacements. This is the only per-card modification state stored at runtime.
+/// </summary>
+public sealed class CardModificationDelta
+{
+    [JsonPropertyName("e")]
+    public int? EnergyDelta { get; set; }
+
+    [JsonPropertyName("E")]
+    public int? EnergyOverride { get; set; }
+
+    [JsonPropertyName("r")]
+    public int? BaseReplayCountDelta { get; set; }
+
+    [JsonPropertyName("s")]
+    public int? BaseStarCostDelta { get; set; }
+
+    [JsonPropertyName("d")]
+    public Dictionary<string, decimal> DynamicVarDeltas { get; set; } = new(StringComparer.Ordinal);
+
+    [JsonPropertyName("p")]
+    public string? PoolId { get; set; }
+
+    [JsonPropertyName("t")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("y")]
+    public string? Rarity { get; set; }
+
+    [JsonPropertyName("n")]
+    public string? CustomTitle { get; set; }
+
+    [JsonPropertyName("x")]
+    public string? CustomDescription { get; set; }
+
+    [JsonPropertyName("o")]
+    public string? PortraitPath { get; set; }
+
+    [JsonPropertyName("b")]
+    public string? BetaPortraitPath { get; set; }
+
+    [JsonPropertyName("k")]
+    public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
+
+    [JsonPropertyName("q")]
+    public CardAttachmentSpec? Enchantment { get; set; }
+
+    [JsonPropertyName("f")]
+    public CardAttachmentSpec? Affliction { get; set; }
+
+    [JsonIgnore]
+    public bool IsEmpty =>
+        EnergyDelta is null
+        && EnergyOverride is null
+        && BaseReplayCountDelta is null
+        && BaseStarCostDelta is null
+        && DynamicVarDeltas.Count == 0
+        && string.IsNullOrWhiteSpace(PoolId)
+        && string.IsNullOrWhiteSpace(Type)
+        && string.IsNullOrWhiteSpace(Rarity)
+        && string.IsNullOrWhiteSpace(CustomTitle)
+        && string.IsNullOrWhiteSpace(CustomDescription)
+        && string.IsNullOrWhiteSpace(PortraitPath)
+        && string.IsNullOrWhiteSpace(BetaPortraitPath)
+        && KeywordOverrides.Count == 0
+        && (Enchantment is null || Enchantment.IsEmpty)
+        && (Affliction is null || Affliction.IsEmpty);
+
+    [JsonIgnore]
+    public bool HasNativeMutations =>
+        EnergyDelta.HasValue
+        || EnergyOverride.HasValue
+        || BaseReplayCountDelta.HasValue
+        || BaseStarCostDelta.HasValue
+        || DynamicVarDeltas.Count > 0
+        || !string.IsNullOrWhiteSpace(PoolId)
+        || !string.IsNullOrWhiteSpace(Type)
+        || !string.IsNullOrWhiteSpace(Rarity)
+        || KeywordOverrides.Count > 0
+        || Enchantment is not null
+        || Affliction is not null;
+
+    [JsonIgnore]
+    public bool HasCustomText =>
+        !string.IsNullOrWhiteSpace(CustomTitle)
+        || !string.IsNullOrWhiteSpace(CustomDescription);
+
+    [JsonIgnore]
+    public bool HasPortraitOverride =>
+        !string.IsNullOrWhiteSpace(PortraitPath)
+        || !string.IsNullOrWhiteSpace(BetaPortraitPath)
+        || !string.IsNullOrWhiteSpace(PoolId);
+
+    public CardModificationDelta Clone()
+    {
+        return new CardModificationDelta
+        {
+            EnergyDelta = EnergyDelta,
+            EnergyOverride = EnergyOverride,
+            BaseReplayCountDelta = BaseReplayCountDelta,
+            BaseStarCostDelta = BaseStarCostDelta,
+            DynamicVarDeltas = new Dictionary<string, decimal>(DynamicVarDeltas, StringComparer.Ordinal),
+            PoolId = PoolId,
+            Type = Type,
+            Rarity = Rarity,
+            CustomTitle = CustomTitle,
+            CustomDescription = CustomDescription,
+            PortraitPath = PortraitPath,
+            BetaPortraitPath = BetaPortraitPath,
+            KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
+            Enchantment = Enchantment?.Clone(),
+            Affliction = Affliction?.Clone()
+        };
+    }
+
+    public void Normalize()
+    {
+        if (EnergyDelta == 0) EnergyDelta = null;
+        if (BaseReplayCountDelta == 0) BaseReplayCountDelta = null;
+        if (BaseStarCostDelta == 0) BaseStarCostDelta = null;
+        DynamicVarDeltas = DynamicVarDeltas
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value != 0m)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        KeywordOverrides = KeywordOverrides
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        PoolId = NormalizeText(PoolId);
+        Type = NormalizeText(Type);
+        Rarity = NormalizeText(Rarity);
+        CustomTitle = NormalizeText(CustomTitle);
+        CustomDescription = NormalizeText(CustomDescription);
+        PortraitPath = NormalizeText(PortraitPath);
+        BetaPortraitPath = NormalizeText(BetaPortraitPath);
+        CardAttachmentSpec? enchantment = Enchantment;
+        NormalizeAttachment(ref enchantment);
+        Enchantment = enchantment;
+        CardAttachmentSpec? affliction = Affliction;
+        NormalizeAttachment(ref affliction);
+        Affliction = affliction;
+    }
+
+    private static string? NormalizeText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static void NormalizeAttachment(ref CardAttachmentSpec? spec)
+    {
+        if (spec is null) return;
+        spec.ModelId = NormalizeText(spec.ModelId);
+        spec.Amount = Math.Max(1, spec.Amount);
+        if (spec.IsEmpty) spec = null;
+    }
+}

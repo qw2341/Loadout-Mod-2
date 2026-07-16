@@ -5,28 +5,27 @@ namespace Loadout.Patches.Cards.CardModification;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using BaseLib.Utils;
+using HarmonyLib;
 using Loadout.Services.CardModification;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class CardModificationPersistence
 {
+    public const string V4FieldName = "loadout_card_modification_delta_v4";
     public const string V3FieldName = "loadout_card_modification_v3";
     public const string LegacyV2FieldName = "loadout_card_modification_state_v2";
 
     [ThreadStatic]
     private static int _checksumDepth;
 
-    // Register the custom property name with BaseLib/game packet serialization.
-    // Values live in CardModificationFields and are exported manually so checksum
-    // snapshots can carry only the fixed-size fingerprint.
-    private static readonly SavedSpireField<CardModel, string> V3Registration =
-        new(() => (string?)null, V3FieldName);
-
-    public static void Initialize()
+    internal static void RegisterPacketPropertyName()
     {
-        _ = V3Registration.Name;
+        Type? patchType = AccessTools.TypeByName("BaseLib.Patches.Utils.SavedSpireFieldPatch");
+        if (patchType is null) return;
+        AccessTools.Method(patchType, "InjectNameIntoBaseGameCache")?.Invoke(null, [V4FieldName]);
     }
 
     public static IDisposable BeginChecksumSerialization()
@@ -37,18 +36,29 @@ internal static class CardModificationPersistence
 
     public static void Export(CardModel card, SerializableCard save)
     {
-        RemoveOwnedFields(save.Props);
         if (!CardModificationFields.TryGet(card, out CardModificationCardData data))
             return;
 
         save.Props ??= new SavedProperties();
         save.Props.strings ??= [];
-        string value = _checksumDepth > 0 ? data.Fingerprint : data.Serialized;
-        save.Props.strings.Add(new SavedProperties.SavedProperty<string>(V3FieldName, value));
+        string value = _checksumDepth > 0 ? $"h:{data.Fingerprint}" : data.Serialized;
+        save.Props.strings.Add(new SavedProperties.SavedProperty<string>(V4FieldName, value));
     }
 
-    public static CardModificationSpec? ReadSpec(SerializableCard save)
+    public static CardModificationLoadData? Read(SerializableCard save)
     {
+        string? v4Payload = FindString(save.Props, V4FieldName);
+        if (!string.IsNullOrWhiteSpace(v4Payload))
+        {
+            if (v4Payload.StartsWith("h:", StringComparison.Ordinal)) return null;
+            if (CardModificationCodec.TryDeserializeDelta(v4Payload, out CardModificationDelta delta)
+                && !delta.IsEmpty)
+            {
+                return new CardModificationLoadData(delta, null);
+            }
+            return null;
+        }
+
         string? v3Payload = FindString(save.Props, V3FieldName);
         string? payload = v3Payload ?? FindString(save.Props, LegacyV2FieldName);
         if (string.IsNullOrWhiteSpace(payload)
@@ -58,26 +68,20 @@ internal static class CardModificationPersistence
             return null;
         }
 
-        return spec;
+        return new CardModificationLoadData(null, spec);
     }
 
     public static void Import(
         SerializableCard save,
         CardModel card,
-        CardModificationSpec? preloadedSpec)
+        CardModificationLoadData? loaded)
     {
-        string? v3Payload = FindString(save.Props, V3FieldName);
-        // BaseLib registration exists only to teach packet serialization these names;
-        // the compact CardModificationCardData holder remains the sole runtime state.
-        if (v3Payload is not null)
-            V3Registration.Set(card, null);
-        if (preloadedSpec is null)
-            return;
+        if (loaded is null) return;
 
-        CardModificationFields.Set(card, preloadedSpec);
-        // FromSerializable has already replayed native upgrades. Applying once here
-        // restores the exact per-copy result saved after those upgrades.
-        CardModificationRuntime.ApplySpecToCard(card, preloadedSpec);
+        CardModificationDelta delta = loaded.Value.Delta
+                                      ?? CardModificationRuntime.CreateTemporaryDelta(card, loaded.Value.LegacyAbsolute);
+        CardModificationFields.SetDelta(card, delta);
+        CardModificationRuntime.ApplyDeltaToCard(card, delta);
     }
 
     private static string? FindString(SavedProperties? props, string name)
@@ -93,18 +97,6 @@ internal static class CardModificationPersistence
         return null;
     }
 
-    private static void RemoveOwnedFields(SavedProperties? props)
-    {
-        if (props?.strings is null)
-            return;
-
-        props.strings.RemoveAll(entry =>
-            string.Equals(entry.name, V3FieldName, StringComparison.Ordinal)
-            || string.Equals(entry.name, LegacyV2FieldName, StringComparison.Ordinal));
-        if (props.strings.Count == 0)
-            props.strings = null;
-    }
-
     private sealed class ChecksumScope : IDisposable
     {
         private bool _disposed;
@@ -117,4 +109,27 @@ internal static class CardModificationPersistence
             _checksumDepth = Math.Max(0, _checksumDepth - 1);
         }
     }
+}
+
+public readonly record struct CardModificationLoadData(
+    CardModificationDelta? Delta,
+    CardModificationSpec? LegacyAbsolute);
+
+/// <summary>
+/// Registers one packet property name after BaseLib's sorted registration pass,
+/// without creating a SavedSpireField exporter or any per-card state.
+/// </summary>
+[HarmonyPatch]
+internal static class CardModificationSavedFieldRegistrationPatch
+{
+    public static System.Reflection.MethodBase TargetMethod()
+    {
+        Type type = AccessTools.TypeByName("BaseLib.Patches.Utils.SavedSpireFieldPatch")
+                    ?? throw new TypeLoadException("BaseLib.Patches.Utils.SavedSpireFieldPatch");
+        return AccessTools.Method(type, "AddFieldsSorted")
+               ?? throw new MissingMethodException(type.FullName, "AddFieldsSorted");
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix() => CardModificationPersistence.RegisterPacketPropertyName();
 }

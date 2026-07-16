@@ -23,8 +23,130 @@ using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
+
+public static class TildeKeyCreatureLockBoundaryPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        foreach (string name in new[]
+                 {
+                     nameof(Creature.LoseHpInternal), nameof(Creature.HealInternal),
+                     nameof(Creature.SetCurrentHpInternal), nameof(Creature.SetMaxHpInternal),
+                     nameof(Creature.GainBlockInternal), nameof(Creature.LoseBlockInternal)
+                 })
+        {
+            MethodInfo? method = AccessTools.Method(typeof(Creature), name);
+            if (method is not null) yield return method;
+        }
+    }
+
+    public static void Postfix(Creature __instance) => TildeKeyStateService.ReassertCreatureLocks(__instance);
+}
+
+public static class TildeKeyPlayerLockBoundaryPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        foreach (string name in new[] { nameof(Player.Gold), nameof(Player.MaxEnergy), nameof(Player.BaseOrbSlotCount) })
+        {
+            MethodInfo? setter = AccessTools.PropertySetter(typeof(Player), name);
+            if (setter is not null) yield return setter;
+        }
+    }
+
+    public static void Postfix(Player __instance) => TildeKeyStateService.ReassertPlayerLocks(__instance);
+}
+
+public static class TildeKeyCombatStatLockBoundaryPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        foreach (string name in new[] { nameof(PlayerCombatState.Energy), nameof(PlayerCombatState.Stars) })
+        {
+            MethodInfo? setter = AccessTools.PropertySetter(typeof(PlayerCombatState), name);
+            if (setter is not null) yield return setter;
+        }
+    }
+
+    public static void Postfix(PlayerCombatState __instance) => TildeKeyStateService.ReassertCombatLocks(__instance);
+}
+
+public static class TildeKeyExtraStatLockBoundaryPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        foreach (string name in new[]
+                 {
+                     nameof(ExtraPlayerFields.CardShopRemovalsUsed), nameof(ExtraPlayerFields.WongoPoints),
+                     "DamageDealt", "DebuffsApplied"
+                 })
+        {
+            MethodInfo? setter = AccessTools.PropertySetter(typeof(ExtraPlayerFields), name);
+            if (setter is not null) yield return setter;
+        }
+    }
+
+    public static void Postfix(ExtraPlayerFields __instance) => TildeKeyStateService.ReassertExtraFieldLocks(__instance);
+}
+
+[HarmonyPatch(typeof(NMapScreen), "_Ready")]
+public static class TildeKeyMapReadyPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix() => TildeKeyStateService.RefreshMapDebugTravel();
+}
+
+public static class TildeKeyRelicCounterLockBoundaryPatch
+{
+    public static MethodBase TargetMethod() =>
+        AccessTools.Method(typeof(RelicModel), "InvokeDisplayAmountChanged")
+        ?? throw new MissingMethodException(typeof(RelicModel).FullName, "InvokeDisplayAmountChanged");
+
+    public static void Postfix(RelicModel __instance) => TildeKeyStateService.ReassertRelicCounterLock(__instance);
+}
+
+internal static class TildeKeyDynamicLockPatches
+{
+    private const string HarmonyId = "Loadout.TildeKey.DynamicLocks";
+    private static readonly Harmony Harmony = new(HarmonyId);
+    private static int _configuration;
+
+    public static void Configure(bool creature, bool player, bool combat, bool extra, bool relic)
+    {
+        int next = (creature ? 1 : 0)
+                   | (player ? 2 : 0)
+                   | (combat ? 4 : 0)
+                   | (extra ? 8 : 0)
+                   | (relic ? 16 : 0);
+        if (next == _configuration)
+            return;
+
+        Harmony.UnpatchAll(HarmonyId);
+        _configuration = next;
+        if (creature) PatchAll(TildeKeyCreatureLockBoundaryPatch.TargetMethods(), typeof(TildeKeyCreatureLockBoundaryPatch));
+        if (player) PatchAll(TildeKeyPlayerLockBoundaryPatch.TargetMethods(), typeof(TildeKeyPlayerLockBoundaryPatch));
+        if (combat) PatchAll(TildeKeyCombatStatLockBoundaryPatch.TargetMethods(), typeof(TildeKeyCombatStatLockBoundaryPatch));
+        if (extra) PatchAll(TildeKeyExtraStatLockBoundaryPatch.TargetMethods(), typeof(TildeKeyExtraStatLockBoundaryPatch));
+        if (relic)
+        {
+            Harmony.Patch(
+                TildeKeyRelicCounterLockBoundaryPatch.TargetMethod(),
+                postfix: new HarmonyMethod(typeof(TildeKeyRelicCounterLockBoundaryPatch), nameof(TildeKeyRelicCounterLockBoundaryPatch.Postfix)));
+        }
+    }
+
+    public static void Reset() => Configure(false, false, false, false, false);
+
+    private static void PatchAll(IEnumerable<MethodBase> targets, Type patchType)
+    {
+        HarmonyMethod postfix = new(patchType, "Postfix");
+        foreach (MethodBase target in targets)
+            Harmony.Patch(target, postfix: postfix);
+    }
+}
 
 [HarmonyPatch(typeof(Hook), nameof(Hook.ModifyHandDraw))]
 public static class TildeKeyModifyHandDrawPatch

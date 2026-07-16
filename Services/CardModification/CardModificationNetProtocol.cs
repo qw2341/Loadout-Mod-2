@@ -183,9 +183,7 @@ public static class CardModificationNetProtocol
                 OwnerNetId = item.OwnerNetId,
                 DeckIndex = item.Index,
                 CardId = item.Model.Id.ToString(),
-                StateJson = state is null || state.IsEmpty
-                    ? string.Empty
-                    : CardModificationCodec.Serialize(state)
+                StateJson = SerializeOperationDelta(operation, item, state)
             };
             if (!IsValidOperationPayload(payload))
                 return false;
@@ -265,7 +263,7 @@ public static class CardModificationNetProtocol
 
         if (string.IsNullOrWhiteSpace(message.CardId)
             || message.StateJson?.Length > MaxStateJsonLength
-            || !TryDeserializeState(message.StateJson, out CardModificationSpec? state))
+            || !TryDeserializeDelta(message.StateJson, out CardModificationDelta? delta))
         {
             GD.PushWarning("CardModification: ignored malformed permanent delta from host.");
             return;
@@ -275,7 +273,7 @@ public static class CardModificationNetProtocol
             return;
 
         CardModificationSpec previous = PermanentCardModificationStore.Get(cardId);
-        if (PermanentCardModificationStore.ApplyHostDelta(cardId, state))
+        if (PermanentCardModificationStore.ApplyHostDelta(cardId, delta))
             CardModificationRuntime.RetrofitLiveDeckCopies(cardId, previous);
     }
 
@@ -289,9 +287,7 @@ public static class CardModificationNetProtocol
             LoadoutCardModificationPermanentDeltaMessage message = new()
             {
                 CardId = cardId.ToString(),
-                StateJson = state is null || state.IsEmpty
-                    ? string.Empty
-                    : CardModificationCodec.Serialize(state)
+                StateJson = SerializePermanentDelta(cardId, state)
             };
             INetGameService netService = RunManager.Instance.NetService;
             LoadoutNetworkBroadcast.SendToRunClients(
@@ -397,19 +393,19 @@ public static class CardModificationNetProtocol
         if (actionPlayer is null)
             return;
 
-        if (!TryDeserializeState(payload.StateJson, out CardModificationSpec? state))
+        if (!TryDeserializeDelta(payload.StateJson, out CardModificationDelta? delta))
         {
             GD.PushWarning($"CardModification: ignored invalid state JSON for {payload.Operation}.");
             return;
         }
 
-        CardModificationRuntime.ApplySynchronizedOperation(
+        CardModificationRuntime.ApplySynchronizedDeltaOperation(
             payload.Operation,
             cardId,
             LoadoutTargetSelection.ForPlayer(payload.OwnerNetId),
             payload.DeckIndex,
             cardId,
-            state,
+            delta,
             actionPlayer,
             authoritativeRemote);
     }
@@ -428,9 +424,9 @@ public static class CardModificationNetProtocol
                && (payload.StateJson?.Length ?? 0) <= MaxStateJsonLength;
     }
 
-    private static bool TryDeserializeState(string? stateJson, out CardModificationSpec? state)
+    private static bool TryDeserializeDelta(string? stateJson, out CardModificationDelta? delta)
     {
-        state = null;
+        delta = null;
         if (string.IsNullOrWhiteSpace(stateJson))
             return true;
 
@@ -439,13 +435,41 @@ public static class CardModificationNetProtocol
 
         try
         {
-            return CardModificationCodec.TryDeserialize(stateJson, out state);
+            if (!CardModificationCodec.TryDeserializeDelta(stateJson, out CardModificationDelta parsed))
+                return false;
+            delta = parsed.IsEmpty ? null : parsed;
+            return true;
         }
         catch (Exception exception)
         {
             GD.PushWarning($"CardModification: failed to deserialize state delta. {exception.Message}");
             return false;
         }
+    }
+
+    private static string SerializeOperationDelta(
+        CardModificationOperation operation,
+        LoadoutOwnedItem<CardModel> item,
+        CardModificationSpec? state)
+    {
+        if (state is null || state.IsEmpty)
+            return string.Empty;
+
+        CardModificationDelta delta = operation switch
+        {
+            CardModificationOperation.SaveTemporary => CardModificationRuntime.CreateTemporaryDelta(item.Model, state),
+            CardModificationOperation.ApplyPermanent => CardModificationRuntime.CreatePermanentDelta(item.Model.Id, state),
+            _ => new CardModificationDelta()
+        };
+        return delta.IsEmpty ? string.Empty : CardModificationCodec.SerializeDelta(delta);
+    }
+
+    private static string SerializePermanentDelta(ModelId cardId, CardModificationSpec? state)
+    {
+        if (state is null || state.IsEmpty)
+            return string.Empty;
+        CardModificationDelta delta = CardModificationRuntime.CreatePermanentDelta(cardId, state);
+        return delta.IsEmpty ? string.Empty : CardModificationCodec.SerializeDelta(delta);
     }
 
     private static Player? GetLocalRunPlayer()
@@ -533,9 +557,9 @@ public static class CardModificationNetProtocol
                 ownerNetId = item.OwnerNetId,
                 deckIndex = item.Index,
                 cardId = item.Model.Id.ToString(),
-                stateJson = next is null || next.IsEmpty
-                    ? string.Empty
-                    : CardModificationCodec.Serialize(next)
+                stateJson = CardModificationFields.TryGet(item.Model, out CardModificationCardData data)
+                    ? data.Serialized
+                    : string.Empty
             };
             INetGameService netService = RunManager.Instance.NetService;
             LoadoutNetworkBroadcast.SendToRunClients(
@@ -647,17 +671,17 @@ public static class CardModificationNetProtocol
             return;
 
         if ((message.stateJson?.Length ?? 0) > MaxStateJsonLength
-            || !TryDeserializeState(message.stateJson, out CardModificationSpec? state))
+            || !TryDeserializeDelta(message.stateJson, out CardModificationDelta? delta))
         {
             GD.PushWarning("CardModification: ignored malformed temporary multiplayer state.");
             return;
         }
 
-        CardModificationRuntime.ApplyRemoteTemporaryState(
+        CardModificationRuntime.ApplyRemoteTemporaryDelta(
             message.ownerNetId,
             message.deckIndex,
             message.cardId,
-            state);
+            delta);
     }
 
     private static bool IsHostSession()

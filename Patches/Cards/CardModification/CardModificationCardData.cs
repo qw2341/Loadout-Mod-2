@@ -21,15 +21,15 @@ using MegaCrit.Sts2.Core.Models;
 /// </summary>
 internal sealed class CardModificationCardData
 {
-    public CardModificationCardData(CardModificationSpec spec)
+    public CardModificationCardData(CardModificationDelta delta)
     {
-        Spec = spec.Clone();
-        Spec.Normalize();
-        Serialized = CardModificationCodec.Serialize(Spec);
+        Delta = delta.Clone();
+        Delta.Normalize();
+        Serialized = CardModificationCodec.SerializeDelta(Delta);
         Fingerprint = CardModificationCodec.Fingerprint(Serialized);
     }
 
-    public CardModificationSpec Spec { get; }
+    public CardModificationDelta Delta { get; }
 
     public string Serialized { get; }
 
@@ -56,25 +56,32 @@ internal static class CardModificationFields
     public static CardModificationSpec GetSpec(CardModel card)
     {
         return TryGet(card, out CardModificationCardData data)
-            ? data.Spec.Clone()
+            ? CardModificationRuntime.MaterializeTemporarySpec(card, data.Delta)
             : new CardModificationSpec();
     }
 
     public static bool Set(CardModel card, CardModificationSpec? spec)
     {
-        CardModificationSpec normalized = spec?.Clone() ?? new CardModificationSpec();
+        return SetDelta(card, CardModificationRuntime.CreateTemporaryDelta(card, spec));
+    }
+
+    public static bool SetDelta(CardModel card, CardModificationDelta? delta)
+    {
+        CardModificationDelta normalized = delta?.Clone() ?? new CardModificationDelta();
         normalized.Normalize();
-        if (normalized.IsEmpty)
-            return Clear(card);
+        if (normalized.IsEmpty) return Clear(card);
 
         if (TryGet(card, out CardModificationCardData current)
-            && string.Equals(current.Serialized, CardModificationCodec.Serialize(normalized), StringComparison.Ordinal))
+            && string.Equals(current.Serialized, CardModificationCodec.SerializeDelta(normalized), StringComparison.Ordinal))
         {
             return false;
         }
 
         Data.Remove(card);
         Data.Add(card, new CardModificationCardData(normalized));
+        CardModificationDynamicPatches.EnableTemporaryPatches();
+        if (normalized.HasCustomText) CardModificationDynamicPatches.EnableTextPatches();
+        if (normalized.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
         return true;
     }
 
@@ -97,64 +104,6 @@ internal static class CardModificationFields
         Data.Add(destination, data);
     }
 
-    /// <summary>
-    /// Native upgrades mutate the CardModel directly. Keep only the already-declared
-    /// temporary fields synchronized so subsequent save/load reproduces that result.
-    /// </summary>
-    public static void CaptureUpgradedValues(CardModel card)
-    {
-        if (!TryGet(card, out CardModificationCardData data))
-            return;
-
-        CardModificationSpec next = data.Spec.Clone();
-        if (next.EnergyCost.HasValue && !card.EnergyCost.CostsX)
-            next.EnergyCost = card.EnergyCost.Canonical;
-        if (next.BaseReplayCount.HasValue)
-            next.BaseReplayCount = card.BaseReplayCount;
-        if (next.BaseStarCost.HasValue)
-            next.BaseStarCost = card.BaseStarCost;
-
-        foreach (string name in new List<string>(next.DynamicVars.Keys))
-        {
-            if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
-                next.DynamicVars[name] = dynamicVar.BaseValue;
-        }
-
-        foreach (string rawKeyword in new List<string>(next.KeywordOverrides.Keys))
-        {
-            if (LoadoutKeywords.TryResolve(rawKeyword, out CardKeyword keyword))
-                next.KeywordOverrides[rawKeyword] = LoadoutKeywords.Has(card, keyword);
-        }
-
-        if (next.PoolId is not null)
-            next.PoolId = card.Pool.Id.ToString();
-        if (next.Type is not null)
-            next.Type = card.Type.ToString();
-        if (next.Rarity is not null)
-            next.Rarity = card.Rarity.ToString();
-        if (next.Enchantment is not null)
-        {
-            next.Enchantment = card.Enchantment is null
-                ? new CardAttachmentSpec { Clear = true }
-                : new CardAttachmentSpec
-                {
-                    ModelId = card.Enchantment.Id.ToString(),
-                    Amount = Math.Max(1, card.Enchantment.Amount)
-                };
-        }
-        if (next.Affliction is not null)
-        {
-            next.Affliction = card.Affliction is null
-                ? new CardAttachmentSpec { Clear = true }
-                : new CardAttachmentSpec
-                {
-                    ModelId = card.Affliction.Id.ToString(),
-                    Amount = Math.Max(1, card.Affliction.Amount)
-                };
-        }
-
-        Set(card, next);
-    }
 }
 
 internal static class CardModificationCodec
@@ -169,6 +118,29 @@ internal static class CardModificationCodec
     public static string Serialize(CardModificationSpec spec)
     {
         return JsonSerializer.Serialize(CompactSpec.FromSpec(spec), JsonOptions);
+    }
+
+    public static string SerializeDelta(CardModificationDelta delta)
+    {
+        return JsonSerializer.Serialize(delta, JsonOptions);
+    }
+
+    public static bool TryDeserializeDelta(string? payload, out CardModificationDelta delta)
+    {
+        delta = new CardModificationDelta();
+        if (string.IsNullOrWhiteSpace(payload)) return true;
+        try
+        {
+            delta = JsonSerializer.Deserialize<CardModificationDelta>(payload, JsonOptions)
+                    ?? new CardModificationDelta();
+            delta.Normalize();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: ignored invalid delta data. {exception.Message}");
+            return false;
+        }
     }
 
     public static bool TryDeserialize(string? payload, out CardModificationSpec spec)

@@ -1522,7 +1522,7 @@ public static class LoadoutImmediateMutationService
                     card.FinalizeUpgradeInternal();
                 }
 
-                CardModificationFields.CaptureUpgradedValues(card);
+            CardModificationRuntime.ReapplyTemporaryDelta(card);
 
                 changed |= card.CurrentUpgradeLevel > previousUpgradeLevel;
             }

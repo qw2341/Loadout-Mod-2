@@ -13,6 +13,7 @@ using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
+using Loadout.Services.TildeKey;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -32,25 +33,26 @@ using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
-[HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.MutableClone))]
 public static class CardModelMutableCloneCardModificationPatch
 {
     [HarmonyPostfix]
     public static void Postfix(AbstractModel __instance, AbstractModel __result)
     {
-        if (__instance is CardModel { IsCanonical: true }
-            && __result is CardModel result)
-        {
-            CardModificationRuntime.ApplyPermanentAtCreation(result);
-        }
-        else if (__instance is CardModel source && __result is CardModel clone)
-        {
+        if (__instance is CardModel source && __result is CardModel clone)
             CardModificationFields.Copy(source, clone);
-        }
     }
 }
 
-[HarmonyPatch(typeof(CardCmd), nameof(CardCmd.Upgrade), typeof(IEnumerable<CardModel>), typeof(CardPreviewStyle))]
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.ToMutable))]
+public static class CardModelToMutableCardModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(CardModel __result)
+    {
+        CardModificationRuntime.ApplyPermanentAtCreation(__result);
+    }
+}
+
 public static class CardCmdUpgradeCardModificationPatch
 {
     [HarmonyPrefix]
@@ -68,7 +70,7 @@ public static class CardCmdUpgradeCardModificationPatch
             return;
 
         foreach (CardModel card in __state)
-            CardModificationFields.CaptureUpgradedValues(card);
+            CardModificationRuntime.ReapplyTemporaryDelta(card);
 
         HashSet<ulong> changedPlayers = [];
         List<LoadoutChangedCard> changedCards = [];
@@ -200,8 +202,6 @@ public static class CardPileRemoveCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.ToSerializable))]
-[HarmonyAfter("BaseLib")]
 public static class CardModelToSerializableCardModificationPatch
 {
     [HarmonyPostfix]
@@ -216,15 +216,16 @@ public static class CardModelToSerializableCardModificationPatch
 public static class CardModelFromSerializableCardModificationPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(SerializableCard save, out CardModificationSpec? __state)
+    public static void Prefix(SerializableCard save, out CardModificationLoadData? __state)
     {
-        __state = CardModificationPersistence.ReadSpec(save);
+        __state = CardModificationPersistence.Read(save);
         // An owned attachment is reconstructed by the permanent/temporary spec.
         // Prevent the native saved copy from being stacked underneath it first.
         if (save.Id is { } cardId
             && ((PermanentCardModificationStore.TryGet(cardId, out CardModificationSpec? permanent)
                  && permanent.Enchantment is not null)
-                || __state?.Enchantment is not null))
+                || __state?.Delta?.Enchantment is not null
+                || __state?.LegacyAbsolute?.Enchantment is not null))
         {
             save.Enchantment = null;
         }
@@ -234,13 +235,12 @@ public static class CardModelFromSerializableCardModificationPatch
     public static void Postfix(
         SerializableCard save,
         CardModel __result,
-        CardModificationSpec? __state)
+        CardModificationLoadData? __state)
     {
         CardModificationPersistence.Import(save, __result, __state);
     }
 }
 
-[HarmonyPatch(typeof(ChecksumTracker), "ObtainAndTrackChecksum")]
 public static class ChecksumTrackerCardModificationSerializationPatch
 {
     [HarmonyPrefix]
@@ -257,7 +257,6 @@ public static class ChecksumTrackerCardModificationSerializationPatch
     }
 }
 
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.Title), MethodType.Getter)]
 public static class CardModelTitleCardModificationPatch
 {
     [HarmonyPrefix]
@@ -278,7 +277,6 @@ public static class CardModelTitleCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.GetDescriptionForPile), typeof(PileType), typeof(Creature))]
 public static class CardModelDescriptionCardModificationPatch
 {
     [HarmonyPrefix]
@@ -299,7 +297,6 @@ public static class CardModelDescriptionCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.GetDescriptionForUpgradePreview))]
 public static class CardModelUpgradeDescriptionCardModificationPatch
 {
     [HarmonyPrefix]
@@ -320,7 +317,6 @@ public static class CardModelUpgradeDescriptionCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(LocString), nameof(LocString.GetRawText))]
 public static class LocStringRawTextCardModificationPatch
 {
     [HarmonyPostfix]
@@ -334,7 +330,6 @@ public static class LocStringRawTextCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.PortraitPath), MethodType.Getter)]
 public static class CardModelPortraitPathCardModificationPatch
 {
     [HarmonyPostfix]
@@ -348,7 +343,6 @@ public static class CardModelPortraitPathCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.BetaPortraitPath), MethodType.Getter)]
 public static class CardModelBetaPortraitPathCardModificationPatch
 {
     [HarmonyPostfix]
@@ -362,23 +356,11 @@ public static class CardModelBetaPortraitPathCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(NCard), nameof(NCard.Create), typeof(CardModel), typeof(ModelVisibility))]
-public static class NCardCreateCardModificationPatch
+public static class CardCmdDowngradeCardModificationPatch
 {
-    [HarmonyPrefix]
-    public static void Prefix(ref CardModel card)
+    public static void Postfix(CardModel card)
     {
-        card = CardModificationRuntime.GetPermanentCardForDisplay(card);
-    }
-}
-
-[HarmonyPatch(typeof(NCardHolder), nameof(NCardHolder.ReassignToCard))]
-public static class NCardHolderReassignCardModificationPatch
-{
-    [HarmonyPrefix]
-    public static void Prefix(ref CardModel cardModel)
-    {
-        cardModel = CardModificationRuntime.GetPermanentCardForDisplay(cardModel);
+        CardModificationRuntime.ReapplyTemporaryDelta(card);
     }
 }
 
@@ -479,6 +461,8 @@ public static class RunManagerCleanUpCardModificationPatch
     [HarmonyPrefix]
     public static void Prefix()
     {
+        CardModificationDynamicPatches.ResetRunPatches();
+        TildeKeyStateService.OnRunCleaningUp();
         LoadoutImmediateMutationService.OnRunCleaningUp();
         CardModificationNetProtocol.OnRunCleaningUp();
         RelicModificationMultiplayerSyncService.OnRunCleaningUp();

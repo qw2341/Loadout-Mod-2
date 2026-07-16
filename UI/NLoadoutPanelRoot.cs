@@ -5,7 +5,6 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System.Collections.Generic;
 using Loadout.PanelItems;
-using Loadout.Services.TildeKey;
 using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
@@ -80,7 +79,6 @@ public partial class NLoadoutPanelRoot : Control
 
 	public override void _Process(double delta)
 	{
-		TildeKeyStateService.Process((float)delta);
 		if (HasOpenScreen)
 			AdoptGameHoverTips();
 	}
