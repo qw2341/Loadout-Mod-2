@@ -45,7 +45,7 @@ public partial class NCardModificationScreen : Control
     private const float KeywordRowSeparation = 2f;
     private const float KeywordScrollbarWidth = 48f;
     private const int KeywordColumns = 2;
-    private const int KeywordVisibleRows = 6;
+    private const int KeywordVisibleRows = 7;
     private const float HoverTipCardGap = 22f;
     private const float HoverTipViewportMargin = 24f;
     private const float HoverTipWidth = 360f;
