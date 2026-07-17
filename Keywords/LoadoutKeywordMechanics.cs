@@ -12,9 +12,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using BaseLib.Utils.Patching;
 using Godot;
 using HarmonyLib;
 using Loadout.Services.CardModification;
@@ -70,22 +68,22 @@ internal static class LoadoutKeywordRuntimePatches
     private const string XCostHarmonyId = "Loadout.Keyword.XCost";
     private const string StickyHarmonyId = "Loadout.Keyword.Sticky";
     private const string CardResultHarmonyId = "Loadout.Keyword.CardResultLocation";
-    private const string LividHarmonyId = "Loadout.Keyword.Livid";
     private const string InevitableHarmonyId = "Loadout.Keyword.Inevitable";
+    private const string LividHarmonyId = "Loadout.Keyword.Livid";
 
     private static readonly Harmony InfiniteHarmony = new(InfiniteHarmonyId);
     private static readonly Harmony XCostHarmony = new(XCostHarmonyId);
     private static readonly Harmony StickyHarmony = new(StickyHarmonyId);
     private static readonly Harmony CardResultHarmony = new(CardResultHarmonyId);
-    private static readonly Harmony LividHarmony = new(LividHarmonyId);
     private static readonly Harmony InevitableHarmony = new(InevitableHarmonyId);
+    private static readonly Harmony LividHarmony = new(LividHarmonyId);
 
     public static bool InfiniteUpgradeEnabled { get; private set; }
     public static bool XCostEnabled { get; private set; }
     public static bool StickyEnabled { get; private set; }
     public static bool PassingEnabled { get; private set; }
-    public static bool LividEnabled { get; private set; }
     public static bool InevitableEnabled { get; private set; }
+    public static bool LividEnabled { get; private set; }
     private static bool CardResultLocationEnabled { get; set; }
 
     public static void EnableFromDelta(CardModificationDelta delta)
@@ -98,10 +96,10 @@ internal static class LoadoutKeywordRuntimePatches
             SetStickyEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.PassingKey))
             SetPassingEnabled(true);
-        if (IsEnabled(delta, LoadoutKeywords.LividKey))
-            SetLividEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.InevitableKey))
             SetInevitableEnabled(true);
+        if (IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid)))
+            SetLividEnabled(true);
     }
 
     public static void Reconcile()
@@ -111,8 +109,8 @@ internal static class LoadoutKeywordRuntimePatches
         SetXCostEnabled(required.XCost);
         SetStickyEnabled(required.Sticky);
         SetPassingEnabled(required.Passing);
-        SetLividEnabled(required.Livid);
         SetInevitableEnabled(required.Inevitable);
+        SetLividEnabled(required.Livid);
     }
 
     public static void ResetRunPatches()
@@ -121,8 +119,8 @@ internal static class LoadoutKeywordRuntimePatches
         SetXCostEnabled(false);
         SetStickyEnabled(false);
         SetPassingEnabled(false);
-        SetLividEnabled(false);
         SetInevitableEnabled(false);
+        SetLividEnabled(false);
     }
 
     private static KeywordFeatureState GetRequiredFeatures()
@@ -163,8 +161,8 @@ internal static class LoadoutKeywordRuntimePatches
         state.XCost |= IsEnabled(delta, LoadoutKeywords.XCostKey);
         state.Sticky |= IsEnabled(delta, LoadoutKeywords.StickyKey);
         state.Passing |= IsEnabled(delta, LoadoutKeywords.PassingKey);
-        state.Livid |= IsEnabled(delta, LoadoutKeywords.LividKey);
         state.Inevitable |= IsEnabled(delta, LoadoutKeywords.InevitableKey);
+        state.Livid |= IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid));
     }
 
     private static void AddCardFeatures(IEnumerable<CardModel> cards, ref KeywordFeatureState state)
@@ -175,8 +173,8 @@ internal static class LoadoutKeywordRuntimePatches
             state.XCost |= LoadoutKeywords.Has(card, LoadoutKeywords.XCost);
             state.Sticky |= LoadoutKeywords.Has(card, LoadoutKeywords.Sticky);
             state.Passing |= LoadoutKeywords.Has(card, LoadoutKeywords.Passing);
-            state.Livid |= LoadoutKeywords.Has(card, LoadoutKeywords.Livid);
             state.Inevitable |= LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable);
+            state.Livid |= LoadoutKeywords.Has(card, LoadoutKeywords.Livid);
             if (state.All)
                 return;
         }
@@ -303,25 +301,6 @@ internal static class LoadoutKeywordRuntimePatches
             () => CardResultLocationEnabled = true);
     }
 
-    private static void SetLividEnabled(bool enabled)
-    {
-        if (enabled == LividEnabled)
-            return;
-
-        if (!enabled)
-        {
-            LividHarmony.UnpatchAll(LividHarmonyId);
-            LividEnabled = false;
-            return;
-        }
-
-        TryEnable(LividHarmony, LividHarmonyId, () =>
-            LividHarmony.Patch(
-                LividPlaySequencePatch.TargetMethod(),
-                transpiler: new HarmonyMethod(typeof(LividPlaySequencePatch), nameof(LividPlaySequencePatch.Transpiler))),
-            () => LividEnabled = true);
-    }
-
     private static void SetInevitableEnabled(bool enabled)
     {
         if (enabled == InevitableEnabled)
@@ -344,6 +323,26 @@ internal static class LoadoutKeywordRuntimePatches
                     [typeof(IEnumerable<CardTransformation>), typeof(Rng), typeof(CardPreviewStyle)])!,
                 prefix: new HarmonyMethod(typeof(InevitableTransformPatch), nameof(InevitableTransformPatch.Prefix)));
         }, () => InevitableEnabled = true);
+    }
+
+    private static void SetLividEnabled(bool enabled)
+    {
+        if (enabled == LividEnabled)
+            return;
+        if (!enabled)
+        {
+            LividHarmony.UnpatchAll(LividHarmonyId);
+            LividEnabled = false;
+            return;
+        }
+
+        TryEnable(LividHarmony, LividHarmonyId, () =>
+            LividHarmony.Patch(
+                Sts2Compatibility.CardOnPlayWrapperMoveNextMethod,
+                transpiler: new HarmonyMethod(
+                    typeof(LividCardOnPlayPatch),
+                    nameof(LividCardOnPlayPatch.Transpiler))),
+            () => LividEnabled = true);
     }
 
     private static void TryEnable(Harmony harmony, string harmonyId, Action patch, Action markEnabled)
@@ -389,9 +388,9 @@ internal static class LoadoutKeywordRuntimePatches
         public bool XCost;
         public bool Sticky;
         public bool Passing;
-        public bool Livid;
         public bool Inevitable;
-        public readonly bool All => InfiniteUpgrade && XCost && Sticky && Passing && Livid && Inevitable;
+        public bool Livid;
+        public readonly bool All => InfiniteUpgrade && XCost && Sticky && Passing && Inevitable && Livid;
     }
 }
 
@@ -728,65 +727,68 @@ public static class CardResultLocationKeywordPatch
     }
 }
 
-public static class LividPlaySequencePatch
+public static class LividCardOnPlayPatch
 {
-    private static readonly MethodInfo CardOnPlayMethod =
-        AccessTools.Method(
-            typeof(CardModel),
-            "OnPlay",
-            [typeof(PlayerChoiceContext), typeof(CardPlay)])
-        ?? throw new MissingMethodException(typeof(CardModel).FullName, "OnPlay(PlayerChoiceContext, CardPlay)");
-
-    private static readonly MethodInfo AddCopiesMethod =
-        AccessTools.Method(typeof(LividPlaySequencePatch), nameof(AddCopiesAfterCardOnPlay))
-        ?? throw new MissingMethodException(typeof(LividPlaySequencePatch).FullName, nameof(AddCopiesAfterCardOnPlay));
-
-    public static MethodBase TargetMethod()
-    {
-        MethodInfo playSequence = AccessTools.Method(typeof(CardModel), "PlaySequence")
-                                  ?? throw new MissingMethodException(typeof(CardModel).FullName, "PlaySequence");
-        Type stateMachine = playSequence.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType
-                            ?? throw new MissingMemberException(typeof(CardModel).FullName, "PlaySequence async state machine");
-        return AccessTools.Method(stateMachine, "MoveNext")
-               ?? throw new MissingMethodException(stateMachine.FullName, "MoveNext");
-    }
+    private static readonly MethodInfo WrapTaskMethod =
+        AccessTools.Method(typeof(LividCardOnPlayPatch), nameof(WrapCardOnPlayTask))
+        ?? throw new MissingMethodException(
+            typeof(LividCardOnPlayPatch).FullName,
+            nameof(WrapCardOnPlayTask));
 
     [HarmonyTranspiler]
-    public static IEnumerable<CodeInstruction> Transpiler(
-        ILGenerator generator,
-        IEnumerable<CodeInstruction> instructions,
-        MethodBase original)
+    public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
     {
-        // Insert one awaited call after CardModel.OnPlay and before
-        // EnchantmentModel.OnPlay, matching OUTRAGE's native timing.
-        return AsyncMethodCall.Create(
-            generator,
-            instructions,
-            original,
-            AddCopiesMethod,
-            afterState: CardOnPlayMethod);
-    }
+        List<CodeInstruction> codes = instructions.ToList();
+        int onPlayCallIndex = codes.FindIndex(instruction =>
+            instruction.Calls(Sts2Compatibility.CardOnPlayMethod));
 
-    public static Task AddCopiesAfterCardOnPlay(CardModel __instance)
-    {
-        return LoadoutKeywords.Has(__instance, LoadoutKeywords.Livid)
-            ? AddCopies(__instance)
-            : Task.CompletedTask;
-    }
-
-    private static async Task AddCopies(CardModel source)
-    {
-        ICombatState? combatState = source.CombatState;
-        if (combatState is null
-            || source.Owner.Creature.IsDead
-            || CombatManager.Instance.IsOverOrEnding)
+        if (onPlayCallIndex < 0)
         {
-            return;
+            throw new InvalidOperationException(
+                "Loadout Livid: CardModel.OnPlay call was not found in CardModel.OnPlayWrapper.MoveNext.");
         }
 
-        // OUTRAGE uses this exact native clone/add/preview path inside OnPlay.
-        // At this boundary the card's own mutations are present, while a
-        // one-use enchantment has not yet disabled itself.
+        if (codes.Skip(onPlayCallIndex + 1).Any(instruction =>
+                instruction.Calls(Sts2Compatibility.CardOnPlayMethod)))
+        {
+            throw new InvalidOperationException(
+                "Loadout Livid: multiple CardModel.OnPlay calls were found in CardModel.OnPlayWrapper.MoveNext.");
+        }
+
+        // The original stack contains the Task returned by CardModel.OnPlay.
+        // Append the source CardModel and replace that Task with our wrapper Task.
+        // OnPlayWrapper then awaits the wrapper before InvokeExecutionFinished,
+        // enchantment OnPlay, affliction OnPlay, and AfterCardPlayed.
+        codes.InsertRange(onPlayCallIndex + 1,
+        [
+            new CodeInstruction(OpCodes.Ldarg_0),
+            new CodeInstruction(OpCodes.Ldfld, Sts2Compatibility.CardOnPlayWrapperSourceField),
+            new CodeInstruction(OpCodes.Call, WrapTaskMethod)
+        ]);
+
+        return codes;
+    }
+
+    public static Task WrapCardOnPlayTask(Task originalOnPlay, CardModel source)
+    {
+        // Snapshot the keyword when the native OnPlay task is created. Returning
+        // the original task for non-Livid cards avoids an async allocation.
+        return LoadoutKeywords.Has(source, LoadoutKeywords.Livid)
+            ? AddCopiesAfterCardOnPlay(originalOnPlay, source)
+            : originalOnPlay;
+    }
+
+    private static async Task AddCopiesAfterCardOnPlay(Task originalOnPlay, CardModel source)
+    {
+        await originalOnPlay;
+
+        ICombatState? combatState = source.CombatState;
+        if (combatState is null)
+            return;
+
+        // Mirrors OUTRAGE.OnPlay in 0.109: every living player on the owner's
+        // team receives a clone in discard, using the native synchronized
+        // generated-card command and the same preview settings.
         foreach (Creature teammate in combatState.GetTeammatesOf(source.Owner.Creature))
         {
             Player? player = teammate.Player;
@@ -797,8 +799,12 @@ public static class LividPlaySequencePatch
             CardPileAddResult result = await CardPileCmd.AddGeneratedCardToCombat(
                 copy,
                 PileType.Discard,
-                source.Owner);
-            CardCmd.PreviewCardPileAdd(result, 2.2f);
+                source.Owner,
+                CardPilePosition.Bottom);
+            CardCmd.PreviewCardPileAdd(
+                result,
+                2.2f,
+                CardPreviewStyle.HorizontalLayout);
         }
     }
 }

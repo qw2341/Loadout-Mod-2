@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
@@ -76,6 +77,13 @@ internal static class Sts2Compatibility
     internal static bool UsesNewCardLocation { get; } =
         string.Equals(StickyCardPlayResultMethod.Name, "ModifyCardPlayResultLocation", StringComparison.Ordinal);
 
+    internal static MethodInfo CardOnPlayMethod { get; } = ResolveCardOnPlayMethod();
+    private static readonly Type CardOnPlayWrapperStateMachineType = ResolveCardOnPlayWrapperStateMachineType();
+    internal static MethodInfo CardOnPlayWrapperMoveNextMethod { get; } =
+        ResolveCardOnPlayWrapperMoveNextMethod();
+    internal static FieldInfo CardOnPlayWrapperSourceField { get; } =
+        ResolveCardOnPlayWrapperSourceField();
+
     internal static MethodInfo MultiTargetDamageMethod { get; } = ResolveMultiTargetDamageMethod();
     internal static bool UsesNewMultiTargetDamage { get; } =
         MultiTargetDamageMethod.GetParameters().Length == 7;
@@ -114,6 +122,7 @@ internal static class Sts2Compatibility
             $"CreatureCmd.Damage multi-target={(UsesNewMultiTargetDamage ? "newer" : "0.107")}, " +
             $"MegaAnimationState animations={(SetAnimationMethod.ReturnType == typeof(void) ? "newer" : "0.107")}, " +
             $"card result hook={(UsesNewCardLocation ? "newer" : "0.107")}, " +
+            $"card OnPlay wrapper=resolved, " +
             $"mod assemblies={(NewModAssembliesField is not null ? "newer" : "0.107")}.");
     }
 
@@ -227,6 +236,63 @@ internal static class Sts2Compatibility
             typeof(CardPileCmd).FullName,
             "Add(IEnumerable<CardModel>, CardPile, CardPilePosition, AbstractModel, bool, bool) " +
             "or 0.107 Add(IEnumerable<CardModel>, CardPile, CardPilePosition, AbstractModel, bool)");
+    }
+
+    private static MethodInfo ResolveCardOnPlayMethod()
+    {
+        return AccessTools.Method(
+                   typeof(CardModel),
+                   "OnPlay",
+                   [typeof(PlayerChoiceContext), typeof(CardPlay)])
+               ?? throw new MissingMethodException(
+                   typeof(CardModel).FullName,
+                   "OnPlay(PlayerChoiceContext, CardPlay)");
+    }
+
+    private static Type ResolveCardOnPlayWrapperStateMachineType()
+    {
+        MethodInfo wrapper = AccessTools.Method(
+                                 typeof(CardModel),
+                                 "OnPlayWrapper",
+                                 [
+                                     typeof(PlayerChoiceContext),
+                                     typeof(Creature),
+                                     typeof(bool),
+                                     typeof(ResourceInfo),
+                                     typeof(bool)
+                                 ])
+                             ?? throw new MissingMethodException(
+                                 typeof(CardModel).FullName,
+                                 "OnPlayWrapper(PlayerChoiceContext, Creature, bool, ResourceInfo, bool)");
+
+        return wrapper.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType
+               ?? throw new MissingMemberException(
+                   typeof(CardModel).FullName,
+                   "OnPlayWrapper async state machine");
+    }
+
+    private static MethodInfo ResolveCardOnPlayWrapperMoveNextMethod()
+    {
+        return AccessTools.Method(CardOnPlayWrapperStateMachineType, "MoveNext")
+               ?? throw new MissingMethodException(
+                   CardOnPlayWrapperStateMachineType.FullName,
+                   "MoveNext()");
+    }
+
+    private static FieldInfo ResolveCardOnPlayWrapperSourceField()
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        FieldInfo? sourceField = CardOnPlayWrapperStateMachineType.GetField("<>4__this", flags);
+        if (sourceField?.FieldType == typeof(CardModel))
+            return sourceField;
+
+        sourceField = CardOnPlayWrapperStateMachineType
+            .GetFields(flags)
+            .SingleOrDefault(field => field.FieldType == typeof(CardModel));
+
+        return sourceField ?? throw new MissingFieldException(
+            CardOnPlayWrapperStateMachineType.FullName,
+            "<>4__this (CardModel)");
     }
 
     private static BatchCardAddInvoker CreateBatchCardAddInvoker()
