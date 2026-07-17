@@ -38,7 +38,7 @@ public class EventfulCompass
 			{
 				GetId = eventModel => eventModel.Id.ToString(),
 				GetName = eventModel => CommonHelpers.FormatEventTitle(eventModel),
-				GetSearchText = eventModel => $"{eventModel.Id} {CommonHelpers.FormatEventTitle(eventModel)} {eventModel.InitialDescription}",
+				GetSearchText = eventModel => $"{eventModel.Id} {CommonHelpers.FormatEventTitle(eventModel)}",
 				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
 			}, builder =>
 			{
