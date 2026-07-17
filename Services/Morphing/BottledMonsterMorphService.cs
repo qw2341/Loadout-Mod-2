@@ -26,6 +26,7 @@ using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -53,6 +54,8 @@ public static class BottledMonsterMorphService
     private static readonly Dictionary<ulong, int> RestSiteRevisions = new();
     private static readonly Dictionary<ulong, MorphVisualRuntime> ActiveVisuals = new();
     private static readonly Dictionary<ulong, MorphAudioProfile> ActiveAudioProfiles = new();
+    private static readonly Dictionary<ulong, AbstractModel> MorphModelsByPlayer = new();
+    private static readonly HashSet<string> DescriptionTitleWarnings = new(StringComparer.Ordinal);
     private static readonly FieldInfo? VisualsField = AccessTools.Field(typeof(NCreature), "<Visuals>k__BackingField");
     private static readonly FieldInfo? SpineAnimatorField = AccessTools.Field(typeof(NCreature), "_spineAnimator");
     private static readonly MethodInfo? ConnectAnimatorSignalsMethod = AccessTools.Method(typeof(NCreature), "ConnectSpineAnimatorSignals");
@@ -139,6 +142,7 @@ public static class BottledMonsterMorphService
         if (reset)
         {
             changed = _state.Players.Remove(playerKey);
+            MorphModelsByPlayer.Remove(player.NetId);
         }
         else
         {
@@ -147,6 +151,7 @@ public static class BottledMonsterMorphService
                       || !string.Equals(currentModelKey, modelKey, StringComparison.Ordinal);
             if (changed)
                 _state.Players[playerKey] = modelKey;
+            MorphModelsByPlayer[player.NetId] = model;
         }
 
         if (!changed)
@@ -346,6 +351,76 @@ public static class BottledMonsterMorphService
             GD.PushWarning(
                 $"BottledMonsterMorph: could not play death SFX for '{profile.Model.Id}', using the original character SFX. {exception.Message}");
             return false;
+        }
+    }
+
+    public static LocString ResolveMorphOwnerDescriptionName(LocString nativeName, PowerModel power)
+    {
+        return TryGetMorphedPlayerTitle(power.Owner?.Player, out LocString title) ? title : nativeName;
+    }
+
+    public static string ResolveMorphApplierDescriptionName(string nativeName, PowerModel power)
+    {
+        return TryGetMorphedPlayerTitle(power.Applier?.Player, out LocString title)
+            ? FormatMorphDescriptionTitle(title, nativeName)
+            : nativeName;
+    }
+
+    public static string ResolveMorphTargetDescriptionName(string nativeName, PowerModel power)
+    {
+        return TryGetMorphedPlayerTitle(power.Target?.Player, out LocString title)
+            ? FormatMorphDescriptionTitle(title, nativeName)
+            : nativeName;
+    }
+
+    private static bool TryGetMorphedPlayerTitle(Player? player, out LocString title)
+    {
+        title = null!;
+        if (player is null || !MorphModelsByPlayer.TryGetValue(player.NetId, out AbstractModel? model))
+            return false;
+
+        try
+        {
+            title = model switch
+            {
+                MonsterModel monster => monster.Title,
+                CharacterModel character => character.Title,
+                _ => null!
+            };
+            return title is not null;
+        }
+        catch (Exception exception)
+        {
+            WarnDescriptionTitleFailureOnce(model, exception);
+            return false;
+        }
+    }
+
+    private static string FormatMorphDescriptionTitle(LocString title, string nativeName)
+    {
+        try
+        {
+            return title.GetFormattedText();
+        }
+        catch (Exception exception)
+        {
+            string titleKey = $"{title.LocTable}:{title.LocEntryKey}";
+            if (DescriptionTitleWarnings.Add(titleKey))
+            {
+                GD.PushWarning(
+                    $"BottledMonsterMorph: could not format morph title '{titleKey}' for a power description; using the native name. {exception.Message}");
+            }
+            return nativeName;
+        }
+    }
+
+    private static void WarnDescriptionTitleFailureOnce(AbstractModel model, Exception exception)
+    {
+        string modelId = model.Id.ToString();
+        if (DescriptionTitleWarnings.Add(modelId))
+        {
+            GD.PushWarning(
+                $"BottledMonsterMorph: could not resolve morph title '{modelId}' for a power description; using the native name. {exception.Message}");
         }
     }
 
@@ -1299,6 +1374,7 @@ public static class BottledMonsterMorphService
         if (!runStartTime.HasValue)
         {
             _state = new MorphRunSaveData();
+            MorphModelsByPlayer.Clear();
             return;
         }
 
@@ -1315,6 +1391,20 @@ public static class BottledMonsterMorphService
         {
             if (!validPlayers.Contains(key) || ResolveMorphModel(_state.Players[key]) is null)
                 _state.Players.Remove(key);
+        }
+        RebuildMorphModelCache();
+    }
+
+    private static void RebuildMorphModelCache()
+    {
+        MorphModelsByPlayer.Clear();
+        foreach ((string playerKey, string modelId) in _state.Players)
+        {
+            if (ulong.TryParse(playerKey, out ulong playerNetId)
+                && ResolveMorphModel(modelId) is { } model)
+            {
+                MorphModelsByPlayer[playerNetId] = model;
+            }
         }
     }
 
@@ -1460,6 +1550,7 @@ public static class BottledMonsterMorphService
                 if (ResolveMorphModel(_state.Players[key]) is null)
                     _state.Players.Remove(key);
             }
+            RebuildMorphModelCache();
 
             foreach (ulong playerNetId in affectedPlayers)
             {
@@ -1483,6 +1574,8 @@ public static class BottledMonsterMorphService
         RestSiteRevisions.Clear();
         ActiveVisuals.Clear();
         ActiveAudioProfiles.Clear();
+        MorphModelsByPlayer.Clear();
+        DescriptionTitleWarnings.Clear();
         FakeMerchantVisuals.Clear();
         _activeFakeMerchant = null;
         RestSiteVisuals.Clear();
