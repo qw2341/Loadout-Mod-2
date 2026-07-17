@@ -8,7 +8,7 @@
   "LOADOUT-INFINITE_UPGRADE.title": "Infinite Upgrade",
   "LOADOUT-INFINITE_UPGRADE.description": "Can be upgraded indefinitely.",
   "LOADOUT-PASSING.title": "Passing",
-  "LOADOUT-PASSING.description": "After being played, this card is shuffled into a random living ally's [gold]Draw Pile[/gold]. If there is no other living ally, it goes to your [gold]Discard Pile[/gold] normally. [gold]Sticky[/gold] returns it to your [gold]Hand[/gold] instead.",
+  "LOADOUT-PASSING.description": "This card is shuffled into a random ally's [gold]Draw Pile[/gold] after being played.",
   "LOADOUT-LIVID.title": "Livid",
-  "LOADOUT-LIVID.description": "When played, adds a copy of itself to every living player's [gold]Discard Pile[/gold] before its enchantment triggers."
+  "LOADOUT-LIVID.description": "Adds a copy of itself to every player's [gold]Discard Pile[/gold] when played."
 }

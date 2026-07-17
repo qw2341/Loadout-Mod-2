@@ -8,7 +8,7 @@
   "LOADOUT-INFINITE_UPGRADE.title": "无限升级",
   "LOADOUT-INFINITE_UPGRADE.description": "可以无限次升级。",
   "LOADOUT-PASSING.title": "传递",
-  "LOADOUT-PASSING.description": "打出后，将此牌洗入一名随机存活队友的[gold]抽牌堆[/gold]。若没有其他存活队友，则照常进入你的[gold]弃牌堆[/gold]。若它拥有[gold]黏手[/gold]，则改为返回你的[gold]手牌[/gold]。",
+  "LOADOUT-PASSING.description": "打出后，将此牌洗入一名随机队友的[gold]抽牌堆[/gold]。",
   "LOADOUT-LIVID.title": "盛怒",
-  "LOADOUT-LIVID.description": "打出时，在附魔触发前，将自身的一张复制牌加入每名存活玩家的[gold]弃牌堆[/gold]。"
+  "LOADOUT-LIVID.description": "打出时，将自身的一张复制牌加入每名玩家的[gold]弃牌堆[/gold]。"
 }

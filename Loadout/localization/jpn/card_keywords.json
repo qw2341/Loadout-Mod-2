@@ -8,7 +8,7 @@
   "LOADOUT-INFINITE_UPGRADE.title": "無限アップグレード",
   "LOADOUT-INFINITE_UPGRADE.description": "何度でもアップグレードできる。",
   "LOADOUT-PASSING.title": "パス",
-  "LOADOUT-PASSING.description": "プレイ後、このカードをランダムな生存中の味方の[gold]山札[/gold]へシャッフルする。他に生存中の味方がいない場合、通常通り自分の[gold]捨て札[/gold]へ移動する。[gold]粘着[/gold]がある場合、代わりに自分の[gold]手札[/gold]へ戻る。",
+  "LOADOUT-PASSING.description": "プレイ後、このカードをランダムな味方の[gold]山札[/gold]へシャッフルする。",
   "LOADOUT-LIVID.title": "激怒",
-  "LOADOUT-LIVID.description": "プレイ時、エンチャントが発動する前に、生存中の各プレイヤーの[gold]捨て札[/gold]へ自身のコピーを1枚追加する。"
+  "LOADOUT-LIVID.description": "プレイ時、各プレイヤーの[gold]捨て札[/gold]へ自身のコピーを1枚追加する。"
 }

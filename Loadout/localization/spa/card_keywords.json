@@ -8,7 +8,7 @@
   "LOADOUT-INFINITE_UPGRADE.title": "Mejora infinita",
   "LOADOUT-INFINITE_UPGRADE.description": "Puede mejorarse indefinidamente.",
   "LOADOUT-PASSING.title": "Pase",
-  "LOADOUT-PASSING.description": "Después de jugarse, esta carta se baraja en la [gold]Pila de robo[/gold] de un aliado vivo al azar. Si no hay otro aliado vivo, va normalmente a tu [gold]Pila de descarte[/gold]. Si es [gold]Pegajosa[/gold], vuelve a tu [gold]Mano[/gold] en su lugar.",
+  "LOADOUT-PASSING.description": "Esta carta se baraja en la [gold]Pila de robo[/gold] de un aliado al azar después de jugarse.",
   "LOADOUT-LIVID.title": "Furiosa",
-  "LOADOUT-LIVID.description": "Al jugarse, añade una copia de sí misma a la [gold]Pila de descarte[/gold] de cada jugador vivo antes de que se active su encantamiento."
+  "LOADOUT-LIVID.description": "Añade una copia de sí misma a la [gold]Pila de descarte[/gold] de cada jugador al jugarse."
 }
