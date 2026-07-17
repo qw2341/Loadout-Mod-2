@@ -4530,7 +4530,8 @@ public interface IGenericSelectItem
 public sealed class GenericSelectItem<TModel> : IGenericSelectItem
 {
     private readonly SelectItemAdapter<TModel> _adapter;
-    private string _normalizedSearchText = string.Empty;
+    private string? _searchText;
+    private string? _normalizedSearchText;
 
     public GenericSelectItem(TModel model, SelectItemAdapter<TModel> adapter, int originalIndex)
     {
@@ -4545,7 +4546,7 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
     public object UntypedModel => Model!;
     public string Id { get; }
     public string Name { get; private set; } = string.Empty;
-    public string SearchText { get; private set; } = string.Empty;
+    public string SearchText => EnsureSearchText();
     public int OriginalIndex { get; }
     public Control? View { get; private set; }
     public bool HasPreloadResources => _adapter.PreloadResources is not null;
@@ -4576,16 +4577,39 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
         if (_adapter.MatchesSearch is not null)
             return _adapter.MatchesSearch(Model, normalizedQuery);
 
-        return _normalizedSearchText.Contains(normalizedQuery, StringComparison.Ordinal);
+        EnsureSearchText();
+        return _normalizedSearchText!.Contains(normalizedQuery, StringComparison.Ordinal);
     }
 
     public void RefreshMetadata()
     {
         Name = _adapter.GetName(Model);
-        SearchText = _adapter.GetSearchTextFromName?.Invoke(Model, Name)
-                     ?? _adapter.GetSearchText?.Invoke(Model)
-                     ?? Name;
-        _normalizedSearchText = SelectText.Normalize(SearchText);
+        _searchText = null;
+        _normalizedSearchText = null;
+    }
+
+    private string EnsureSearchText()
+    {
+        if (_searchText is not null)
+            return _searchText;
+
+        try
+        {
+            _searchText = _adapter.GetSearchTextFromName?.Invoke(Model, Name)
+                          ?? _adapter.GetSearchText?.Invoke(Model)
+                          ?? Name;
+        }
+        catch (Exception exception)
+        {
+            // Some canonical models cannot build dynamic descriptions until the game has
+            // initialized their runtime state. Keep the item usable and searchable by its
+            // stable metadata instead of allowing one model to abort screen construction.
+            GD.PushWarning($"{nameof(NGenericSelectScreen)}: could not create search text for item '{Id}'. Falling back to its id and name. {exception.GetType().Name}: {exception.Message}");
+            _searchText = $"{Id} {Name}";
+        }
+
+        _normalizedSearchText = SelectText.Normalize(_searchText);
+        return _searchText;
     }
 
     public bool TryReplaceModel(TModel model)
