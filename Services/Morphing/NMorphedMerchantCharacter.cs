@@ -3,6 +3,7 @@
 namespace Loadout.Services.Morphing;
 
 using Godot;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
@@ -52,7 +53,10 @@ public partial class NMorphedMerchantCharacter : NMerchantCharacter
             if (!spine.HasAnimation(candidate))
                 continue;
 
-            spine.GetAnimationState().SetAnimation(candidate, loop || !animation.Equals("die", System.StringComparison.OrdinalIgnoreCase));
+            Sts2Compatibility.SetAnimation(
+                spine.GetAnimationState(),
+                candidate,
+                loop || !animation.Equals("die", System.StringComparison.OrdinalIgnoreCase));
             return;
         }
     }

@@ -3,6 +3,7 @@
 namespace Loadout.Services.Morphing;
 
 using Godot;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 
@@ -43,7 +44,7 @@ public partial class NMorphedRestSiteCharacter : Node2D
         if (_visuals?.SpineBody is not { } spine || !spine.HasAnimation("_tracks/light_off"))
             return;
 
-        spine.GetAnimationState().SetAnimation("_tracks/light_off", true, 1);
+        Sts2Compatibility.SetAnimation(spine.GetAnimationState(), "_tracks/light_off", true, 1);
     }
 
     private void PlayIdle()
@@ -56,7 +57,7 @@ public partial class NMorphedRestSiteCharacter : Node2D
             if (!spine.HasAnimation(animation))
                 continue;
 
-            spine.GetAnimationState().SetAnimation(animation, true);
+            Sts2Compatibility.SetAnimation(spine.GetAnimationState(), animation, true);
             return;
         }
     }

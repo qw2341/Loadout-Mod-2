@@ -9,6 +9,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.ControllerInput;
@@ -59,6 +60,18 @@ internal static class Sts2Compatibility
     internal static bool UsesNewModifyDamage { get; } = ModifyDamageMethod.GetParameters().Length == 11;
     private static readonly ModifyDamageInvoker InvokeModifyDamage = CreateModifyDamageInvoker();
 
+    private static readonly MethodInfo SetAnimationMethod = ResolveAnimationMethod(
+        nameof(MegaAnimationState.SetAnimation),
+        [typeof(string), typeof(bool), typeof(int)]);
+    private static readonly Action<MegaAnimationState, string, bool, int> InvokeSetAnimation =
+        CreateAnimationInvoker<Action<MegaAnimationState, string, bool, int>>(SetAnimationMethod);
+
+    private static readonly MethodInfo AddAnimationMethod = ResolveAnimationMethod(
+        nameof(MegaAnimationState.AddAnimation),
+        [typeof(string), typeof(float), typeof(bool), typeof(int)]);
+    private static readonly Action<MegaAnimationState, string, float, bool, int> InvokeAddAnimation =
+        CreateAnimationInvoker<Action<MegaAnimationState, string, float, bool, int>>(AddAnimationMethod);
+
     internal static MethodInfo StickyCardPlayResultMethod { get; } = ResolveStickyCardPlayResultMethod();
     internal static bool UsesNewCardLocation { get; } =
         string.Equals(StickyCardPlayResultMethod.Name, "ModifyCardPlayResultLocation", StringComparison.Ordinal);
@@ -99,6 +112,7 @@ internal static class Sts2Compatibility
             $"CardPileCmd.Add={(UsesNewBatchCardAdd ? "newer" : "0.107")}, " +
             $"Hook.ModifyDamage={(UsesNewModifyDamage ? "newer" : "0.107")}, " +
             $"CreatureCmd.Damage multi-target={(UsesNewMultiTargetDamage ? "newer" : "0.107")}, " +
+            $"MegaAnimationState animations={(SetAnimationMethod.ReturnType == typeof(void) ? "newer" : "0.107")}, " +
             $"card result hook={(UsesNewCardLocation ? "newer" : "0.107")}, " +
             $"mod assemblies={(NewModAssembliesField is not null ? "newer" : "0.107")}.");
     }
@@ -148,6 +162,25 @@ internal static class Sts2Compatibility
             cardPlay,
             modifyDamageHookType,
             previewMode);
+    }
+
+    internal static void SetAnimation(
+        MegaAnimationState animationState,
+        string animation,
+        bool loop = true,
+        int track = 0)
+    {
+        InvokeSetAnimation(animationState, animation, loop, track);
+    }
+
+    internal static void AddAnimation(
+        MegaAnimationState animationState,
+        string animation,
+        float delay = 0f,
+        bool loop = true,
+        int track = 0)
+    {
+        InvokeAddAnimation(animationState, animation, delay, loop, track);
     }
 
     internal static IEnumerable<Assembly> GetModAssemblies(Mod mod)
@@ -380,6 +413,39 @@ internal static class Sts2Compatibility
             typeof(CreatureCmd).FullName,
             "Damage(PlayerChoiceContext, IEnumerable<Creature>, decimal, ValueProp, Creature, CardModel, CardPlay) " +
             "or 0.107 Damage(PlayerChoiceContext, IEnumerable<Creature>, decimal, ValueProp, Creature, CardModel)");
+    }
+
+    private static MethodInfo ResolveAnimationMethod(string methodName, Type[] parameterTypes)
+    {
+        MethodInfo? method = AccessTools.Method(typeof(MegaAnimationState), methodName, parameterTypes);
+        if (method is null)
+        {
+            throw new MissingMethodException(
+                typeof(MegaAnimationState).FullName,
+                $"{methodName}({string.Join(", ", parameterTypes.Select(type => type.Name))}) " +
+                "returning void (newer) or MegaTrackEntry (0.107 compatibility fallback)");
+        }
+
+        // Maintained newer API returns void. The 0.107-only compatibility fallback
+        // returns MegaTrackEntry; the cached delegate intentionally discards it.
+        return method;
+    }
+
+    private static TDelegate CreateAnimationInvoker<TDelegate>(MethodInfo method)
+        where TDelegate : Delegate
+    {
+        MethodInfo invokeMethod = typeof(TDelegate).GetMethod(nameof(Action.Invoke))
+                                  ?? throw new MissingMethodException(typeof(TDelegate).FullName, nameof(Action.Invoke));
+        ParameterInfo[] delegateParameters = invokeMethod.GetParameters();
+        ParameterExpression[] parameters = delegateParameters
+            .Select(parameter => Expression.Parameter(parameter.ParameterType, parameter.Name))
+            .ToArray();
+        MethodCallExpression call = Expression.Call(parameters[0], method, parameters.Skip(1));
+        Expression body = method.ReturnType == typeof(void)
+            ? call
+            // 0.107-only compatibility fallback; remove or replace when 0.107 support is dropped.
+            : Expression.Block(call, Expression.Empty());
+        return Expression.Lambda<TDelegate>(body, parameters).Compile();
     }
 
     private static string ResolveControllerAction(string newerFieldName, string legacyFieldName)

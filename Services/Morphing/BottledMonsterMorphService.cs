@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Networking;
 using Loadout.Services.Saving;
 using Loadout.Services.Targets;
@@ -762,7 +763,7 @@ public static class BottledMonsterMorphService
             root.RunWhenSpineReady(spine, animationState =>
             {
                 if (spine.HasAnimation(animation))
-                    animationState.SetAnimation(animation, true, track);
+                    Sts2Compatibility.SetAnimation(animationState, animation, true, track);
             });
         }
     }
@@ -917,7 +918,7 @@ public static class BottledMonsterMorphService
             if (!spine.HasAnimation(animation))
                 continue;
 
-            spine.GetAnimationState().SetAnimation(animation, true);
+            Sts2Compatibility.SetAnimation(spine.GetAnimationState(), animation, true);
             return;
         }
     }
@@ -1167,14 +1168,14 @@ public static class BottledMonsterMorphService
     private static void PlayLoopingAnimationOnce(MorphVisualRuntime runtime, string animation)
     {
         MegaAnimationState animationState = runtime.Spine.GetAnimationState();
-        animationState.SetAnimation(animation, false);
+        Sts2Compatibility.SetAnimation(animationState, animation, false);
 
         foreach (string idleAnimation in new[] { "idle_loop", "idle", "relaxed_loop" })
         {
             if (!runtime.Spine.HasAnimation(idleAnimation))
                 continue;
 
-            animationState.AddAnimation(idleAnimation, 0f, true);
+            Sts2Compatibility.AddAnimation(animationState, idleAnimation, 0f, true);
             return;
         }
     }
@@ -1261,7 +1262,7 @@ public static class BottledMonsterMorphService
             if (!runtime.Spine.HasAnimation(animation))
                 continue;
 
-            runtime.Spine.GetAnimationState().SetAnimation(animation, true);
+            Sts2Compatibility.SetAnimation(runtime.Spine.GetAnimationState(), animation, true);
             return;
         }
     }
