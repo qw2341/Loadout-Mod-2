@@ -8,5 +8,7 @@
   "LOADOUT-INFINITE_UPGRADE.title": "Amélioration infinie",
   "LOADOUT-INFINITE_UPGRADE.description": "Peut être améliorée indéfiniment.",
   "LOADOUT-PASSING.title": "Passage",
-  "LOADOUT-PASSING.description": "Après avoir été jouée, cette carte est donnée à un allié vivant aléatoire. Si elle est [gold]Collante[/gold], elle revient dans votre [gold]Main[/gold] à la place."
+  "LOADOUT-PASSING.description": "Après avoir été jouée, cette carte est mélangée dans la [gold]Pioche[/gold] d'un allié vivant aléatoire. S'il n'y a aucun autre allié vivant, elle va normalement dans votre [gold]Défausse[/gold]. [gold]Collante[/gold] la renvoie dans votre [gold]Main[/gold] à la place.",
+  "LOADOUT-LIVID.title": "Furieuse",
+  "LOADOUT-LIVID.description": "Lorsqu'elle est jouée, ajoute une copie d'elle-même à la [gold]Défausse[/gold] de chaque joueur vivant avant le déclenchement de son enchantement."
 }
