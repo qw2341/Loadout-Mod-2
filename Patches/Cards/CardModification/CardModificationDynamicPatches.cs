@@ -14,8 +14,8 @@ using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 
 /// <summary>
-/// Installs optional card hooks only when their state can exist. Numeric
-/// permanent-only runs therefore pay only the CardModel.ToMutable lookup.
+/// Installs optional per-copy hooks only when temporary state can exist.
+/// Numeric permanent-only runs do not install any clone/serialization hook.
 /// </summary>
 internal static class CardModificationDynamicPatches
 {
@@ -127,4 +127,45 @@ internal static class CardModificationDynamicPatches
         Harmony.Patch(target,
             prefix: new HarmonyMethod(patchType, prefix),
             postfix: new HarmonyMethod(patchType, postfix));
+}
+
+internal static class CardModificationPermanentPatches
+{
+    private const string HarmonyId = "Loadout.CardModification.Permanent";
+    private static readonly Harmony Harmony = new(HarmonyId);
+    private static int _configuration;
+
+    public static void Configure(bool creationResidual, bool canonicalStarGetter)
+    {
+        int next = (creationResidual ? 1 : 0) | (canonicalStarGetter ? 2 : 0);
+        if (next == _configuration)
+            return;
+
+        Harmony.UnpatchAll(HarmonyId);
+        _configuration = next;
+        if (creationResidual)
+        {
+            Harmony.Patch(
+                AccessTools.Method(typeof(CardModel), nameof(CardModel.ToMutable))
+                ?? throw new MissingMethodException(typeof(CardModel).FullName, nameof(CardModel.ToMutable)),
+                postfix: new HarmonyMethod(typeof(CardModelToMutableCardModificationPatch), nameof(CardModelToMutableCardModificationPatch.Postfix)));
+        }
+        if (canonicalStarGetter)
+        {
+            Harmony.Patch(
+                AccessTools.PropertyGetter(typeof(CardModel), nameof(CardModel.BaseStarCost))
+                ?? throw new MissingMethodException(typeof(CardModel).FullName, $"get_{nameof(CardModel.BaseStarCost)}"),
+                postfix: new HarmonyMethod(typeof(CardModelBaseStarCostCardModificationPatch), nameof(CardModelBaseStarCostCardModificationPatch.Postfix)));
+            Harmony.Patch(
+                AccessTools.Method(typeof(CardModel), "DowngradeInternal")
+                ?? throw new MissingMethodException(typeof(CardModel).FullName, "DowngradeInternal"),
+                postfix: new HarmonyMethod(typeof(CardModelDowngradePermanentStarCostPatch), nameof(CardModelDowngradePermanentStarCostPatch.Postfix)));
+        }
+    }
+
+    public static void Reset()
+    {
+        Harmony.UnpatchAll(HarmonyId);
+        _configuration = 0;
+    }
 }

@@ -224,6 +224,7 @@ public static class TildeKeyStateService
         CombatManager.Instance.CombatSetUp -= OnCombatSetUp;
         CombatManager.Instance.TurnStarted -= OnTurnStarted;
         TildeKeyDynamicLockPatches.Reset();
+        TildeKeyDynamicDrawPatches.Reset();
         _registered = false;
     }
 
@@ -244,6 +245,7 @@ public static class TildeKeyStateService
         _lastMapScreen = null;
         _lastDesiredDebugTravel = false;
         TildeKeyDynamicLockPatches.Reset();
+        TildeKeyDynamicDrawPatches.Reset();
     }
 
     internal static void ReassertCreatureLocks(Creature creature)
@@ -303,11 +305,16 @@ public static class TildeKeyStateService
         bool combat = false;
         bool extra = false;
         bool relic = false;
+        bool drawPerTurn = false;
+        bool drawTillHandLimit = false;
         lock (SyncRoot)
         {
+            drawPerTurn = VirtualStats.Values.Any(stats => stats.ContainsKey(DrawPerTurnStatId));
             foreach (TildeKeyPlayerState state in _run.Players.Values)
             {
                 relic |= state.RelicCounterLocks.Count > 0;
+                drawPerTurn |= state.Stats.ContainsKey(DrawPerTurnStatId);
+                drawTillHandLimit |= state.Toggles.TryGetValue(DrawTillHandLimitToggleId, out bool enabled) && enabled;
                 foreach ((string id, TildeKeySavedStat saved) in state.Stats)
                 {
                     if (!saved.Locked)
@@ -342,6 +349,7 @@ public static class TildeKeyStateService
         }
 
         TildeKeyDynamicLockPatches.Configure(creature, player, combat, extra, relic);
+        TildeKeyDynamicDrawPatches.Configure(drawPerTurn, drawTillHandLimit);
     }
 
     private static void ReassertLocks(Player player, params string[] statIds)
@@ -461,6 +469,7 @@ public static class TildeKeyStateService
         if (savedValueChanged)
             SaveRunState();
 
+        RefreshDynamicLockPatches();
         RefreshCombatPreviewsForStatChange(definition.Id, players);
         RaiseStateChanged();
     }
@@ -543,6 +552,7 @@ public static class TildeKeyStateService
                 RequestDrawTillHandLimitForLocalPlayer(player);
         }
 
+        RefreshDynamicLockPatches();
         SaveRunState();
         RaiseStateChanged();
     }

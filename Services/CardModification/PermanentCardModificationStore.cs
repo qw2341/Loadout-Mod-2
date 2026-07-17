@@ -129,6 +129,23 @@ public static class PermanentCardModificationStore
         }
     }
 
+    public static bool HasAnyCreationResidual
+    {
+        get
+        {
+            EnsureLoaded();
+            return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta =>
+                delta.Enchantment is not null || delta.Affliction is not null);
+        }
+    }
+
+    internal static IReadOnlyDictionary<ModelId, CardModificationDelta> GetEffectiveDeltasSnapshot()
+    {
+        EnsureLoaded();
+        Dictionary<ModelId, CardModificationDelta> source = _useHostCards ? _hostLookup : _profileLookup;
+        return source.ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
+    }
+
     public static bool SetProfile(ModelId cardId, CardModificationSpec? value)
     {
         return SetProfileDelta(cardId, CardModificationRuntime.CreatePermanentDelta(cardId, value));

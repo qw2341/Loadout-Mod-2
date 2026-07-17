@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -148,7 +149,6 @@ internal static class TildeKeyDynamicLockPatches
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.ModifyHandDraw))]
 public static class TildeKeyModifyHandDrawPatch
 {
     [HarmonyPostfix]
@@ -255,39 +255,83 @@ public static class TildeKeyModifyDamagePatch
 
 
 /// <summary>
-/// Queues the refill only after a real synchronized PlayCardAction completes.
-///
-/// Do not draw directly from CardModel.OnPlayWrapper: that method is also used
-/// by nested/automatic card plays, and its PlayerChoiceContext belongs to the
-/// card action that is already finishing. A direct CardPileCmd.Draw there makes
-/// every peer independently calculate and execute an extra hook-heavy draw
-/// inside the original action.
-///
-/// Requesting a separate networked draw action gives the refill its own action
-/// boundary, player-choice context, hook IDs, and post-action checksum. The
-/// IsLocalPlayer gate in RequestDrawTillHandLimitForLocalPlayer ensures exactly
-/// one peer requests it; the host then broadcasts the same action to everyone.
+/// Dynamically installed only while a draw-to-limit toggle exists. Patching the
+/// generated completion boundary avoids replacing every PlayCardAction Task.
 /// </summary>
-[HarmonyPatch]
-public static class TildeKeyDrawTillHandLimitAfterPlayCardActionPatch
+public static class TildeKeyDrawTillHandLimitAfterPlayCardMoveNextPatch
 {
-    public static MethodBase TargetMethod()
+    private static FieldInfo? _stateField;
+    private static FieldInfo? _actionField;
+    private static FieldInfo? _builderField;
+
+    public static MethodInfo TargetMethod()
     {
-        return AccessTools.Method(typeof(PlayCardAction), "ExecuteAction")
-               ?? throw new MissingMethodException(typeof(PlayCardAction).FullName, "ExecuteAction");
+        MethodInfo execute = AccessTools.Method(typeof(PlayCardAction), "ExecuteAction")
+                             ?? throw new MissingMethodException(typeof(PlayCardAction).FullName, "ExecuteAction");
+        Type stateMachine = execute.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType
+                            ?? throw new MissingMemberException(typeof(PlayCardAction).FullName, "ExecuteAction async state machine");
+        _stateField = AccessTools.Field(stateMachine, "<>1__state")
+                      ?? throw new MissingFieldException(stateMachine.FullName, "<>1__state");
+        _actionField = AccessTools.Field(stateMachine, "<>4__this")
+                       ?? throw new MissingFieldException(stateMachine.FullName, "<>4__this");
+        _builderField = AccessTools.Field(stateMachine, "<>t__builder")
+                        ?? throw new MissingFieldException(stateMachine.FullName, "<>t__builder");
+        return AccessTools.Method(stateMachine, "MoveNext")
+               ?? throw new MissingMethodException(stateMachine.FullName, "MoveNext");
     }
 
-    [HarmonyPostfix]
-    public static void Postfix(PlayCardAction __instance, ref Task __result)
+    public static void Prefix(object __instance, out int __state)
     {
-        __result = RequestRefillAfterPlayActionAsync(__result, __instance.Player);
+        __state = _stateField?.GetValue(__instance) as int? ?? int.MinValue;
     }
 
-    private static async Task RequestRefillAfterPlayActionAsync(Task original, Player owner)
+    public static void Postfix(object __instance, int __state)
     {
-        await original;
-        TildeKeyStateService.RequestDrawTillHandLimitForLocalPlayer(owner);
+        if (__state == -2
+            || (_stateField?.GetValue(__instance) as int?) != -2
+            || _builderField?.GetValue(__instance) is not AsyncTaskMethodBuilder builder
+            || !builder.Task.IsCompletedSuccessfully
+            || _actionField?.GetValue(__instance) is not PlayCardAction action)
+        {
+            return;
+        }
+
+        TildeKeyStateService.RequestDrawTillHandLimitForLocalPlayer(action.Player);
     }
+}
+
+internal static class TildeKeyDynamicDrawPatches
+{
+    private const string HarmonyId = "Loadout.TildeKey.DynamicDraw";
+    private static readonly Harmony Harmony = new(HarmonyId);
+    private static int _configuration;
+
+    public static void Configure(bool drawPerTurn, bool drawTillHandLimit)
+    {
+        int next = (drawPerTurn ? 1 : 0) | (drawTillHandLimit ? 2 : 0);
+        if (next == _configuration)
+            return;
+
+        Harmony.UnpatchAll(HarmonyId);
+        _configuration = next;
+        if (drawPerTurn)
+        {
+            Harmony.Patch(
+                AccessTools.Method(typeof(Hook), nameof(Hook.ModifyHandDraw))
+                ?? throw new MissingMethodException(typeof(Hook).FullName, nameof(Hook.ModifyHandDraw)),
+                postfix: new HarmonyMethod(typeof(TildeKeyModifyHandDrawPatch), nameof(TildeKeyModifyHandDrawPatch.Postfix)));
+        }
+
+        if (drawTillHandLimit)
+        {
+            Harmony.Patch(
+                TildeKeyDrawTillHandLimitAfterPlayCardMoveNextPatch.TargetMethod(),
+                prefix: new HarmonyMethod(typeof(TildeKeyDrawTillHandLimitAfterPlayCardMoveNextPatch), nameof(TildeKeyDrawTillHandLimitAfterPlayCardMoveNextPatch.Prefix)),
+                postfix: new HarmonyMethod(typeof(TildeKeyDrawTillHandLimitAfterPlayCardMoveNextPatch), nameof(TildeKeyDrawTillHandLimitAfterPlayCardMoveNextPatch.Postfix)));
+        }
+    }
+
+    public static void Reset() => Configure(false, false);
 }
 
 

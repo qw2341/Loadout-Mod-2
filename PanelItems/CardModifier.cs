@@ -125,65 +125,16 @@ public class CardModifier
 
         NCardModificationScreen modificationScreen = NCardModificationScreen.Create();
         modificationScreen.Name = $"CardModification_{CommonHelpers.MakeSafeNodeName(CommonHelpers.OwnedItemId(item))}";
+        SelectScrollOffsetState parentScroll = selectScreen.CaptureScrollOffset();
         modificationScreen.Init(
             item,
             GetSelectedTargetDeckCardsForModifier(),
-            (currentItem, forceReload) => RefreshCardModifierItemView(selectScreen, currentItem, sourceView, item, forceReload));
-        root.OpenScreen(modificationScreen);
-    }
-
-    private static void RefreshCardModifierItemView(
-        NGenericSelectScreen selectScreen,
-        LoadoutOwnedItem<CardModel> item,
-        Control fallbackView,
-        LoadoutOwnedItem<CardModel> fallbackItem,
-        bool forceReload)
-    {
-        if (selectScreen is NCardSelectScreen cardScreen
-            && GodotObject.IsInstanceValid(cardScreen)
-            && cardScreen.RefreshItemById(
-                CommonHelpers.OwnedItemId(item),
-                (_, view) => RefreshCardModifierView(view, item.Model, forceReload),
-                refreshMetadata: true,
-                refreshLayout: true))
-        {
-            return;
-        }
-
-        if (selectScreen is not null && GodotObject.IsInstanceValid(selectScreen))
-        {
-            bool refreshed = false;
-            selectScreen.ForEachVisibleItemView((selectItem, view) =>
+            () =>
             {
-                if (refreshed
-                    || selectItem.UntypedModel is not LoadoutOwnedItem<CardModel> visibleItem
-                    || !SameOwnedItem(visibleItem, item))
-                {
-                    return;
-                }
-
-                RefreshCardModifierView(view, item.Model, forceReload);
-                refreshed = true;
+                if (GodotObject.IsInstanceValid(selectScreen))
+                    selectScreen.RestoreScrollOffset(parentScroll);
             });
-
-            if (refreshed)
-                return;
-        }
-
-        if (SameOwnedItem(item, fallbackItem)
-            && GodotObject.IsInstanceValid(fallbackView)
-            && fallbackView.IsInsideTree())
-        {
-            RefreshCardModifierView(fallbackView, item.Model, forceReload);
-        }
-    }
-
-    private static void RefreshCardModifierView(Control view, CardModel model, bool forceReload)
-    {
-        if (forceReload)
-            CardPrinter.ReloadCardVisuals(view, model);
-        else
-            CardPrinter.RefreshCardVisuals(view, model);
+        root.OpenScreen(modificationScreen);
     }
 
     private static LoadoutOwnedItem<CardModel> ResolveCurrentItem(

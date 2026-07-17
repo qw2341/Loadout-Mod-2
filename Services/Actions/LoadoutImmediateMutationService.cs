@@ -1272,8 +1272,8 @@ public static class LoadoutImmediateMutationService
             try
             {
                 // RunState.CloneCard duplicates the complete mutable card state without
-                // assigning CardModel._cloneOf. BaseLib's SavedSpireField CopyOnClone
-                // callback also carries the per-copy temporary modification snapshot.
+                // assigning CardModel._cloneOf. The dynamically enabled mutable-clone
+                // postfix carries sparse per-copy modification metadata when present.
                 cards.Add(targetPlayer.RunState.CloneCard(sourceCard));
             }
             catch (Exception exception)

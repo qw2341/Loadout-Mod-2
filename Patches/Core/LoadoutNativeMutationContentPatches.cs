@@ -31,6 +31,12 @@ public static class LoadoutNativeDeckAddContentPatch
         CardPile newPile,
         ref Task<IReadOnlyList<CardPileAddResult>> __result)
     {
+        // CardPileCmd.Draw and ordinary play/discard/exhaust movement all funnel
+        // through this overload. Do not replace their native Task merely to
+        // discover after awaiting it that the destination was not the run deck.
+        if (newPile.Type != PileType.Deck)
+            return;
+
         __result = PublishAfterAddAsync(__result, newPile);
     }
 
@@ -39,8 +45,6 @@ public static class LoadoutNativeDeckAddContentPatch
         CardPile newPile)
     {
         IReadOnlyList<CardPileAddResult> results = await original;
-        if (newPile.Type != PileType.Deck)
-            return results;
 
         List<LoadoutChangedCard> changedCards = [];
         HashSet<ulong> changedPlayers = [];

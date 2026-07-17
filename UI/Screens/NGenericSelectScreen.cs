@@ -183,6 +183,7 @@ public partial class NGenericSelectScreen : Control
     private ulong _scheduledVisibleRefreshGeneration = ulong.MaxValue;
     private bool _refreshPendingWhileHidden;
     private bool _pendingResetScroll;
+    private SelectScrollOffsetState? _pendingScrollRestore;
     private ulong _lastEagerMismatchWarningGeneration;
     private Control? _multiplierBadge;
     private MegaLabel? _multiplierBadgeLabel;
@@ -812,6 +813,20 @@ public partial class NGenericSelectScreen : Control
             _targetScrollY);
     }
 
+    public SelectScrollOffsetState CaptureScrollOffset() => new(_scrollY, _targetScrollY);
+
+    public void RestoreScrollOffset(SelectScrollOffsetState state)
+    {
+        _pendingResetScroll = false;
+        _pendingScrollRestore = state;
+        if (_itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
+            return;
+
+        UpdateScrollBounds();
+        ApplyPendingScrollRestore();
+        UpdateViewportCulling(force: true);
+    }
+
     public void RestoreUiState(SelectScreenUiState state)
     {
         _query = state.Query ?? string.Empty;
@@ -915,6 +930,7 @@ public partial class NGenericSelectScreen : Control
         _isConfigured = false;
         _refreshPendingWhileHidden = false;
         _pendingResetScroll = false;
+        _pendingScrollRestore = null;
         _hiddenPrewarmCompleted = false;
         _hiddenPrewarmEnabled = true;
         _lastMeasuredItemWidth = -1f;
@@ -1160,7 +1176,8 @@ public partial class NGenericSelectScreen : Control
 
         ApplyLayoutSettings();
         UpdateScrollBounds();
-        ClampScrollToBounds();
+        if (!ApplyPendingScrollRestore())
+            ClampScrollToBounds();
         ApplyRetainedItemLayouts();
 
         if (_materializationMode == SelectMaterializationMode.Lazy)
@@ -1229,7 +1246,14 @@ public partial class NGenericSelectScreen : Control
         UpdateScrollBounds();
 
         if (resetScroll)
+        {
+            _pendingScrollRestore = null;
             ScrollToTop();
+        }
+        else if (!ApplyPendingScrollRestore())
+        {
+            ClampScrollToBounds();
+        }
 
         if (_materializationMode == SelectMaterializationMode.Lazy)
             MaterializeViewportItemViews(GetInitialMaterializeBudget(), updateExistingViews);
@@ -3911,6 +3935,21 @@ public partial class NGenericSelectScreen : Control
             _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0 : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
     }
 
+    private bool ApplyPendingScrollRestore()
+    {
+        if (_pendingScrollRestore is not { } state)
+            return false;
+
+        _pendingScrollRestore = null;
+        _scrollY = Mathf.Clamp(state.Current, 0f, _maxScrollY);
+        _targetScrollY = Mathf.Clamp(state.Target, 0f, _maxScrollY);
+        if (_itemGrid is not null)
+            _itemGrid.Position = new Vector2(_itemGrid.Position.X, -_scrollY);
+        if (_scrollbar is not null)
+            _scrollbar.SetValueWithoutAnimation(_maxScrollY <= 0f ? 0f : Mathf.Clamp(_scrollY / _maxScrollY, 0f, 1f) * 100f);
+        return true;
+    }
+
     private void ScrollToTop()
     {
         _scrollY = 0f;
@@ -4537,6 +4576,8 @@ public sealed class SelectScreenUiState
     public IReadOnlyDictionary<string, bool> SortDescendingStates { get; }
     public float ScrollY { get; }
 }
+
+public readonly record struct SelectScrollOffsetState(float Current, float Target);
 
 public sealed class SelectLayoutDefinition
 {

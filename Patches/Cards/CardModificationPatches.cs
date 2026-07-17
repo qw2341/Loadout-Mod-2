@@ -43,13 +43,33 @@ public static class CardModelMutableCloneCardModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.ToMutable))]
 public static class CardModelToMutableCardModificationPatch
 {
     [HarmonyPostfix]
     public static void Postfix(CardModel __result)
     {
-        CardModificationRuntime.ApplyPermanentAtCreation(__result);
+        CardModificationRuntime.ApplyPermanentResidualAtCreation(__result);
+    }
+}
+
+public static class CardModelBaseStarCostCardModificationPatch
+{
+    public static void Postfix(CardModel __instance, ref int __result)
+    {
+        if (CanonicalCardModificationRegistry.TryGetCanonicalStarCost(__instance, out int value))
+            __result = value;
+    }
+}
+
+public static class CardModelDowngradePermanentStarCostPatch
+{
+    private static readonly MethodInfo? BaseStarCostSetter =
+        AccessTools.PropertySetter(typeof(CardModel), nameof(CardModel.BaseStarCost));
+
+    public static void Postfix(CardModel __instance)
+    {
+        if (CanonicalCardModificationRegistry.TryGetModifiedStarCost(__instance.Id, out int value))
+            BaseStarCostSetter?.Invoke(__instance, [value]);
     }
 }
 

@@ -55,7 +55,7 @@ public partial class NCardModificationScreen : Control
     private LoadoutOwnedItem<CardModel>? _item;
     private List<LoadoutOwnedItem<CardModel>> _items = [];
     private int _itemIndex;
-    private Action<LoadoutOwnedItem<CardModel>, bool>? _parentRefresh;
+    private Action? _parentScrollRestore;
     private CardModificationSpec _workingState = new();
     private CardModificationSpec _temporaryState = new();
     private CardModificationSpec _lastAppliedState = new();
@@ -82,6 +82,8 @@ public partial class NCardModificationScreen : Control
     private bool _hasPendingTemporaryCommit;
     private bool _suppressStateRefreshThisFrame;
     private bool _isClosing;
+    private bool _hasBeenVisible;
+    private bool _awaitingResetConfirmation;
 
     public static NCardModificationScreen Create()
     {
@@ -99,11 +101,11 @@ public partial class NCardModificationScreen : Control
     public void Init(
         LoadoutOwnedItem<CardModel> item,
         IReadOnlyList<LoadoutOwnedItem<CardModel>>? items = null,
-        Action<LoadoutOwnedItem<CardModel>, bool>? parentRefresh = null)
+        Action? parentScrollRestore = null)
     {
         _items = items?.Count > 0 ? items.ToList() : [item];
         _itemIndex = Math.Max(0, _items.FindIndex(candidate => SameOwnedItem(candidate, item)));
-        _parentRefresh = parentRefresh;
+        _parentScrollRestore = parentScrollRestore;
         LoadItem(_items[_itemIndex]);
 
         if (IsNodeReady())
@@ -159,12 +161,15 @@ public partial class NCardModificationScreen : Control
             RefreshNativeButtonState();
             if (Visible && IsInsideTree() && _item is not null && !_isClosing)
             {
+                _hasBeenVisible = true;
                 Callable.From(() => RefreshPreview(forceReload: false)).CallDeferred();
             }
             else if (!Visible)
             {
                 CloseTextEditor();
                 ClearHoverTips();
+                if (_hasBeenVisible && _parentScrollRestore is not null)
+                    Callable.From(_parentScrollRestore).CallDeferred();
             }
         }
     }
@@ -200,9 +205,14 @@ public partial class NCardModificationScreen : Control
             || _item is null
             || !change.AffectsPlayer(_item.OwnerNetId)
             || !IsInsideTree()
-            || _isClosing
-            || change.Mode == LoadoutRunContentChangeMode.Add)
+            || _isClosing)
         {
+            return;
+        }
+
+        if (change.Mode == LoadoutRunContentChangeMode.Add)
+        {
+            Callable.From(RefreshItemsAfterAdd).CallDeferred();
             return;
         }
 
@@ -213,6 +223,18 @@ public partial class NCardModificationScreen : Control
                 if (!MatchesChangedCard(_item, changed))
                     continue;
 
+                if (_awaitingResetConfirmation)
+                {
+                    _awaitingResetConfirmation = false;
+                    LoadoutCardVisualRefreshKind confirmedRefreshKind = changed.RefreshKind;
+                    Callable.From(() =>
+                    {
+                        if (!_isClosing)
+                            RefreshTargetedCardUpdate(confirmedRefreshKind);
+                    }).CallDeferred();
+                    return;
+                }
+
                 CardModificationSpec effectiveState = CardModificationRuntime.GetEffectiveSpec(_item);
                 if (CardModificationRuntime.SpecsEquivalent(effectiveState, _workingState))
                 {
@@ -221,7 +243,6 @@ public partial class NCardModificationScreen : Control
                     // editor and preview here caused the close-screen hitch.
                     _temporaryState = CardModificationRuntime.GetTemporarySpec(_item);
                     _lastAppliedState = effectiveState.Clone();
-                    RefreshParentView(changed.RefreshKind == LoadoutCardVisualRefreshKind.Reload);
                     return;
                 }
 
@@ -271,7 +292,6 @@ public partial class NCardModificationScreen : Control
 
         LoadItem(refreshed);
         bool forceReload = refreshKind == LoadoutCardVisualRefreshKind.Reload;
-        RefreshParentView(forceReload);
         RebuildControls();
         RefreshPreview(forceReload);
     }
@@ -310,9 +330,31 @@ public partial class NCardModificationScreen : Control
         _items = refreshedItems;
         _itemIndex = refreshedIndex;
         LoadItem(_items[_itemIndex]);
-        RefreshParentView(forceReload: true);
         RebuildControls();
         RefreshPreview(forceReload: true);
+    }
+
+    private void RefreshItemsAfterAdd()
+    {
+        if (_isClosing || _item is null || !IsInsideTree())
+            return;
+
+        List<Player> owners = _items
+            .Select(candidate => candidate.Owner)
+            .Append(_item.Owner)
+            .Distinct()
+            .ToList();
+        List<LoadoutOwnedItem<CardModel>> refreshed = owners
+            .SelectMany(owner => owner.Deck.Cards.Select((card, index) => new LoadoutOwnedItem<CardModel>(owner, index, card)))
+            .ToList();
+        int selectedIndex = refreshed.FindIndex(candidate => ReferenceEquals(candidate.Model, _item.Model));
+        if (selectedIndex < 0)
+            return;
+
+        _items = refreshed;
+        _itemIndex = selectedIndex;
+        _item = refreshed[selectedIndex];
+        LayoutPreviewNavigation();
     }
 
     private void RebuildScreen()
@@ -463,6 +505,7 @@ public partial class NCardModificationScreen : Control
     private void LoadItem(LoadoutOwnedItem<CardModel> item)
     {
         _item = item;
+        _awaitingResetConfirmation = false;
         _workingState = CardModificationRuntime.GetEffectiveSpec(item);
         _temporaryState = CardModificationRuntime.GetTemporarySpec(item);
         // The live deck card already contains its effective attached/permanent
@@ -1094,17 +1137,10 @@ public partial class NCardModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
-        SuppressStateRefreshThisFrame();
+        _awaitingResetConfirmation = true;
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetTemporaryToBasic, _item);
         if (!requested)
             CardModificationRuntime.ResetTemporaryToBasic(_item);
-        _temporaryState = new CardModificationSpec();
-        _workingState = CardModificationRuntime.GetPermanentSpec(_item.Model.Id);
-        _previewDisplayModel = CardModificationRuntime.CreatePreviewCard(_item.Model, _workingState);
-        _lastAppliedState = _workingState.Clone();
-        RefreshParentView(forceReload: true);
-        RebuildControls();
-        RefreshPreview(forceReload: true);
     }
 
     private void ResetPermanent()
@@ -1113,17 +1149,10 @@ public partial class NCardModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
-        SuppressStateRefreshThisFrame();
+        _awaitingResetConfirmation = true;
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);
         if (!requested)
             CardModificationRuntime.ResetPermanentToBasic(_item);
-        _workingState = new CardModificationSpec();
-        _temporaryState = new CardModificationSpec();
-        _previewDisplayModel = CardModificationRuntime.CreatePreviewCard(_item.Model, _workingState);
-        _lastAppliedState = _workingState.Clone();
-        RefreshParentView(forceReload: true);
-        RebuildControls();
-        RefreshPreview(forceReload: true);
     }
 
     private void AddCopiesToDeck()
@@ -1292,21 +1321,6 @@ public partial class NCardModificationScreen : Control
             lineEdit.GrabFocus();
         else if (input is TextEdit textEdit)
             textEdit.GrabFocus();
-    }
-
-    private void RefreshParentView(bool forceReload = false)
-    {
-        if (_parentRefresh is null || _item is null)
-            return;
-
-        try
-        {
-            _parentRefresh.Invoke(_item, forceReload);
-        }
-        catch (ObjectDisposedException)
-        {
-            // The originating select-screen slot can be recycled after deck mutations.
-        }
     }
 
     private Control CreateTextInput(TextEditTarget target)
