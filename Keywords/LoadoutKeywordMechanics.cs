@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Godot;
 using HarmonyLib;
 using Loadout.Services.CardModification;
 using MegaCrit.Sts2.Core.Commands;
@@ -56,7 +57,266 @@ public static class LoadoutKeywordMechanics
     }
 }
 
-[HarmonyPatch]
+internal static class LoadoutKeywordRuntimePatches
+{
+    private const string InfiniteHarmonyId = "Loadout.Keyword.InfiniteUpgrade";
+    private const string XCostHarmonyId = "Loadout.Keyword.XCost";
+    private const string StickyHarmonyId = "Loadout.Keyword.Sticky";
+    private const string InevitableHarmonyId = "Loadout.Keyword.Inevitable";
+
+    private static readonly Harmony InfiniteHarmony = new(InfiniteHarmonyId);
+    private static readonly Harmony XCostHarmony = new(XCostHarmonyId);
+    private static readonly Harmony StickyHarmony = new(StickyHarmonyId);
+    private static readonly Harmony InevitableHarmony = new(InevitableHarmonyId);
+
+    public static bool InfiniteUpgradeEnabled { get; private set; }
+    public static bool XCostEnabled { get; private set; }
+    public static bool StickyEnabled { get; private set; }
+    public static bool InevitableEnabled { get; private set; }
+
+    public static void EnableFromDelta(CardModificationDelta delta)
+    {
+        if (IsEnabled(delta, LoadoutKeywords.InfiniteUpgradeKey))
+            SetInfiniteUpgradeEnabled(true);
+        if (IsEnabled(delta, LoadoutKeywords.XCostKey))
+            SetXCostEnabled(true);
+        if (IsEnabled(delta, LoadoutKeywords.StickyKey))
+            SetStickyEnabled(true);
+        if (IsEnabled(delta, LoadoutKeywords.InevitableKey))
+            SetInevitableEnabled(true);
+    }
+
+    public static void Reconcile()
+    {
+        KeywordFeatureState required = GetRequiredFeatures();
+        SetInfiniteUpgradeEnabled(required.InfiniteUpgrade);
+        SetXCostEnabled(required.XCost);
+        SetStickyEnabled(required.Sticky);
+        SetInevitableEnabled(required.Inevitable);
+    }
+
+    public static void ResetRunPatches()
+    {
+        SetInfiniteUpgradeEnabled(false);
+        SetXCostEnabled(false);
+        SetStickyEnabled(false);
+        SetInevitableEnabled(false);
+    }
+
+    private static KeywordFeatureState GetRequiredFeatures()
+    {
+        KeywordFeatureState state = default;
+        foreach (CardModificationDelta delta in PermanentCardModificationStore.GetEffectiveDeltasSnapshot().Values)
+            AddDeltaFeatures(delta, ref state);
+
+        try
+        {
+            if (!RunManager.Instance.IsInProgress)
+                return state;
+
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            if (runState is null)
+                return state;
+            foreach (Player player in runState.Players)
+            {
+                AddCardFeatures(player.Deck.Cards, ref state);
+                if (player.PlayerCombatState is { } combatState)
+                    AddCardFeatures(combatState.AllCards, ref state);
+
+                if (state.All)
+                    return state;
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Loadout keywords: failed reconciling live feature patches. {exception.Message}");
+        }
+
+        return state;
+    }
+
+    private static void AddDeltaFeatures(CardModificationDelta delta, ref KeywordFeatureState state)
+    {
+        state.InfiniteUpgrade |= IsEnabled(delta, LoadoutKeywords.InfiniteUpgradeKey);
+        state.XCost |= IsEnabled(delta, LoadoutKeywords.XCostKey);
+        state.Sticky |= IsEnabled(delta, LoadoutKeywords.StickyKey);
+        state.Inevitable |= IsEnabled(delta, LoadoutKeywords.InevitableKey);
+    }
+
+    private static void AddCardFeatures(IEnumerable<CardModel> cards, ref KeywordFeatureState state)
+    {
+        foreach (CardModel card in cards)
+        {
+            state.InfiniteUpgrade |= LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
+            state.XCost |= LoadoutKeywords.Has(card, LoadoutKeywords.XCost);
+            state.Sticky |= LoadoutKeywords.Has(card, LoadoutKeywords.Sticky);
+            state.Inevitable |= LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable);
+            if (state.All)
+                return;
+        }
+    }
+
+    private static bool IsEnabled(CardModificationDelta delta, string key) =>
+        delta.KeywordOverrides.TryGetValue(key, out bool enabled) && enabled;
+
+    private static void SetInfiniteUpgradeEnabled(bool enabled)
+    {
+        if (enabled == InfiniteUpgradeEnabled)
+            return;
+
+        if (!enabled)
+        {
+            InfiniteHarmony.UnpatchAll(InfiniteHarmonyId);
+            InfiniteUpgradeEnabled = false;
+            return;
+        }
+
+        TryEnable(InfiniteHarmony, InfiniteHarmonyId, () =>
+        {
+            HarmonyMethod maxLevelPostfix = new(typeof(InfiniteUpgradeMaxLevelPatch), nameof(InfiniteUpgradeMaxLevelPatch.Postfix));
+            foreach (MethodBase target in InfiniteUpgradeMaxLevelPatch.TargetMethods())
+                InfiniteHarmony.Patch(target, postfix: maxLevelPostfix);
+
+            PatchPrefixFinalizer(InfiniteHarmony,
+                AccessTools.Method(typeof(CardModel), "UpgradeInternal")!,
+                typeof(InfiniteUpgradeContextPatch),
+                nameof(InfiniteUpgradeContextPatch.Prefix),
+                nameof(InfiniteUpgradeContextPatch.Finalizer));
+            PatchPrefix(InfiniteHarmony,
+                AccessTools.Method(typeof(DynamicVarSet), nameof(DynamicVarSet.RecalculateForUpgradeOrEnchant))!,
+                typeof(InfiniteUpgradeRecalculationBoundaryPatch),
+                nameof(InfiniteUpgradeRecalculationBoundaryPatch.Prefix));
+            PatchPrefix(InfiniteHarmony,
+                AccessTools.Method(typeof(DynamicVar), nameof(DynamicVar.UpgradeValueBy))!,
+                typeof(InfiniteUpgradeDynamicValuePatch),
+                nameof(InfiniteUpgradeDynamicValuePatch.Prefix));
+            PatchPrefixFinalizer(InfiniteHarmony,
+                AccessTools.Method(typeof(CardModel), nameof(CardModel.FromSerializable), [typeof(SerializableCard)])!,
+                typeof(InfiniteUpgradeDeserializationPatch),
+                nameof(InfiniteUpgradeDeserializationPatch.Prefix),
+                nameof(InfiniteUpgradeDeserializationPatch.Finalizer));
+        }, () => InfiniteUpgradeEnabled = true);
+    }
+
+    private static void SetXCostEnabled(bool enabled)
+    {
+        if (enabled == XCostEnabled)
+            return;
+        if (!enabled)
+        {
+            XCostHarmony.UnpatchAll(XCostHarmonyId);
+            XCostEnabled = false;
+            return;
+        }
+
+        TryEnable(XCostHarmony, XCostHarmonyId, () =>
+            XCostHarmony.Patch(
+                XCostPlayCountPatch.TargetMethod(),
+                postfix: new HarmonyMethod(typeof(XCostPlayCountPatch), nameof(XCostPlayCountPatch.Postfix))),
+            () => XCostEnabled = true);
+    }
+
+    private static void SetStickyEnabled(bool enabled)
+    {
+        if (enabled == StickyEnabled)
+            return;
+        if (!enabled)
+        {
+            StickyHarmony.UnpatchAll(StickyHarmonyId);
+            StickyEnabled = false;
+            return;
+        }
+
+        TryEnable(StickyHarmony, StickyHarmonyId, () =>
+        {
+            StickyHarmony.Patch(
+                AccessTools.Method(typeof(Hook), nameof(Hook.ModifyCardPlayResultPileTypeAndPosition))!,
+                postfix: new HarmonyMethod(typeof(StickyPlayedCardResultPilePatch), nameof(StickyPlayedCardResultPilePatch.Postfix)));
+            PatchPrefixPostfix(StickyHarmony,
+                AccessTools.Method(typeof(CardCmd), nameof(CardCmd.DiscardAndDraw),
+                    [typeof(PlayerChoiceContext), typeof(IEnumerable<CardModel>), typeof(int)])!,
+                typeof(StickyDiscardPatch),
+                nameof(StickyDiscardPatch.Prefix),
+                nameof(StickyDiscardPatch.Postfix));
+            PatchPrefixPostfix(StickyHarmony,
+                StickyFlushPlayerHandPatch.TargetMethod(),
+                typeof(StickyFlushPlayerHandPatch),
+                nameof(StickyFlushPlayerHandPatch.Prefix),
+                nameof(StickyFlushPlayerHandPatch.Postfix));
+        }, () => StickyEnabled = true);
+    }
+
+    private static void SetInevitableEnabled(bool enabled)
+    {
+        if (enabled == InevitableEnabled)
+            return;
+        if (!enabled)
+        {
+            InevitableHarmony.UnpatchAll(InevitableHarmonyId);
+            InevitableEnabled = false;
+            return;
+        }
+
+        TryEnable(InevitableHarmony, InevitableHarmonyId, () =>
+        {
+            InevitableHarmony.Patch(
+                AccessTools.Method(typeof(CardCmd), nameof(CardCmd.Exhaust),
+                    [typeof(PlayerChoiceContext), typeof(CardModel), typeof(bool), typeof(bool)])!,
+                postfix: new HarmonyMethod(typeof(InevitableExhaustPatch), nameof(InevitableExhaustPatch.Postfix)));
+            InevitableHarmony.Patch(
+                AccessTools.Method(typeof(CardCmd), nameof(CardCmd.Transform),
+                    [typeof(IEnumerable<CardTransformation>), typeof(Rng), typeof(CardPreviewStyle)])!,
+                prefix: new HarmonyMethod(typeof(InevitableTransformPatch), nameof(InevitableTransformPatch.Prefix)));
+        }, () => InevitableEnabled = true);
+    }
+
+    private static void TryEnable(Harmony harmony, string harmonyId, Action patch, Action markEnabled)
+    {
+        try
+        {
+            patch();
+            markEnabled();
+        }
+        catch (Exception exception)
+        {
+            harmony.UnpatchAll(harmonyId);
+            GD.PushWarning($"Loadout keywords: failed enabling Harmony group '{harmonyId}'. {exception.Message}");
+        }
+    }
+
+    private static void PatchPrefix(Harmony harmony, MethodBase target, Type patchType, string prefix) =>
+        harmony.Patch(target, prefix: new HarmonyMethod(patchType, prefix));
+
+    private static void PatchPrefixFinalizer(
+        Harmony harmony,
+        MethodBase target,
+        Type patchType,
+        string prefix,
+        string finalizer) =>
+        harmony.Patch(target,
+            prefix: new HarmonyMethod(patchType, prefix),
+            finalizer: new HarmonyMethod(patchType, finalizer));
+
+    private static void PatchPrefixPostfix(
+        Harmony harmony,
+        MethodBase target,
+        Type patchType,
+        string prefix,
+        string postfix) =>
+        harmony.Patch(target,
+            prefix: new HarmonyMethod(patchType, prefix),
+            postfix: new HarmonyMethod(patchType, postfix));
+
+    private struct KeywordFeatureState
+    {
+        public bool InfiniteUpgrade;
+        public bool XCost;
+        public bool Sticky;
+        public bool Inevitable;
+        public readonly bool All => InfiniteUpgrade && XCost && Sticky && Inevitable;
+    }
+}
+
 public static class InfiniteUpgradeMaxLevelPatch
 {
     [ThreadStatic]
@@ -109,7 +369,6 @@ public readonly struct InfiniteUpgradeContextState
     public bool IsApplyingNativeUpgrade { get; }
 }
 
-[HarmonyPatch(typeof(CardModel), "UpgradeInternal")]
 public static class InfiniteUpgradeContextPatch
 {
     [ThreadStatic]
@@ -137,7 +396,6 @@ public static class InfiniteUpgradeContextPatch
     }
 }
 
-[HarmonyPatch(typeof(DynamicVarSet), nameof(DynamicVarSet.RecalculateForUpgradeOrEnchant))]
 public static class InfiniteUpgradeRecalculationBoundaryPatch
 {
     [HarmonyPrefix]
@@ -155,7 +413,6 @@ public static class InfiniteUpgradeRecalculationBoundaryPatch
     }
 }
 
-[HarmonyPatch(typeof(DynamicVar), nameof(DynamicVar.UpgradeValueBy))]
 public static class InfiniteUpgradeDynamicValuePatch
 {
     [HarmonyPrefix]
@@ -179,7 +436,6 @@ public static class InfiniteUpgradeDynamicValuePatch
     }
 }
 
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.FromSerializable), typeof(SerializableCard))]
 public static class InfiniteUpgradeDeserializationPatch
 {
     [HarmonyPrefix]
@@ -196,7 +452,6 @@ public static class InfiniteUpgradeDeserializationPatch
     }
 }
 
-[HarmonyPatch]
 public static class XCostPlayCountPatch
 {
     public static MethodBase TargetMethod()
@@ -222,7 +477,6 @@ public static class XCostPlayCountPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.ModifyCardPlayResultPileTypeAndPosition))]
 public static class StickyPlayedCardResultPilePatch
 {
     [HarmonyPostfix]
@@ -233,12 +487,6 @@ public static class StickyPlayedCardResultPilePatch
     }
 }
 
-[HarmonyPatch(
-    typeof(CardCmd),
-    nameof(CardCmd.DiscardAndDraw),
-    typeof(PlayerChoiceContext),
-    typeof(IEnumerable<CardModel>),
-    typeof(int))]
 public static class StickyDiscardPatch
 {
     [HarmonyPrefix]
@@ -320,7 +568,6 @@ public static class StickyDiscardPatch
 }
 
 
-[HarmonyPatch]
 public static class StickyFlushPlayerHandPatch
 {
     public static MethodBase TargetMethod()
@@ -380,13 +627,6 @@ public static class StickyFlushPlayerHandPatch
     }
 }
 
-[HarmonyPatch(
-    typeof(CardCmd),
-    nameof(CardCmd.Exhaust),
-    typeof(PlayerChoiceContext),
-    typeof(CardModel),
-    typeof(bool),
-    typeof(bool))]
 public static class InevitableExhaustPatch
 {
     [HarmonyPostfix]
@@ -422,12 +662,6 @@ public static class InevitableExhaustPatch
     }
 }
 
-[HarmonyPatch(
-    typeof(CardCmd),
-    nameof(CardCmd.Transform),
-    typeof(IEnumerable<CardTransformation>),
-    typeof(Rng),
-    typeof(CardPreviewStyle))]
 public static class InevitableTransformPatch
 {
     [HarmonyPrefix]

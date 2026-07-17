@@ -80,6 +80,15 @@ public partial class NCardSelectScreen : NGenericSelectScreen
         SetMaterializationMode(SelectMaterializationMode.Lazy);
     }
 
+    protected override void OnItemsAdded(IReadOnlyList<IGenericSelectItem> addedItems)
+    {
+        foreach (IGenericSelectItem item in addedItems)
+            _itemsById.TryAdd(item.Id, item);
+
+        _backgroundWarmCursor = 0;
+        _visibleWarmAccumulator = 0d;
+    }
+
     public override void _Process(double delta)
     {
         base._Process(delta);

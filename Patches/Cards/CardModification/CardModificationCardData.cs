@@ -79,6 +79,7 @@ internal static class CardModificationFields
 
         Data.Remove(card);
         Data.Add(card, new CardModificationCardData(normalized));
+        LoadoutKeywordRuntimePatches.EnableFromDelta(normalized);
         CardModificationDynamicPatches.EnableTemporaryPatches();
         if (normalized.HasCustomText) CardModificationDynamicPatches.EnableTextPatches();
         if (normalized.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();

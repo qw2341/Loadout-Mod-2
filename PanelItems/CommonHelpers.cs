@@ -195,6 +195,17 @@ public class CommonHelpers
 			configuredRunState = currentRunState;
 		}
 
+		bool TryAppendCurrentModels(NGenericSelectScreen target)
+		{
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
+			IReadOnlyList<TModel> models = getModels();
+			if (!target.TryApplyItemAdditions(models, adapter))
+				return false;
+
+			configuredRunState = currentRunState;
+			return true;
+		}
+
 		void RefreshAfterActivation(NGenericSelectScreen target, IGenericSelectItem _)
 		{
 			if (refreshModelsAfterActivation)
@@ -247,8 +258,7 @@ public class CommonHelpers
 
 				if (change.Mode == LoadoutRunContentChangeMode.Add)
 				{
-					RefreshCurrentModels(target, animateRelayout: false, updateExistingViews: false);
-					return true;
+					return TryAppendCurrentModels(target);
 				}
 
 				if (change.Mode == LoadoutRunContentChangeMode.Remove)
@@ -275,6 +285,14 @@ public class CommonHelpers
 			{
 				if (change.ChangedCards.Count > 0)
 				{
+					IReadOnlyList<TModel> liveModels = getModels();
+					Dictionary<(ulong OwnerNetId, int Index, string ModelId), (TModel Typed, LoadoutOwnedItem<CardModel> Owned)> liveByIdentity = new();
+					foreach (TModel liveModel in liveModels)
+					{
+						if (liveModel is LoadoutOwnedItem<CardModel> owned)
+							liveByIdentity[(owned.OwnerNetId, owned.Index, owned.Model.Id.ToString())] = (liveModel, owned);
+					}
+
 					Dictionary<(ulong OwnerNetId, int Index, string ModelId), LoadoutCardVisualRefreshKind> changedByIdentity = new();
 					foreach (LoadoutChangedCard changed in change.ChangedCards)
 					{
@@ -287,17 +305,23 @@ public class CommonHelpers
 					}
 
 					bool layoutDirty = false;
-					foreach (IGenericSelectItem item in target.Items)
+					foreach (KeyValuePair<(ulong OwnerNetId, int Index, string ModelId), LoadoutCardVisualRefreshKind> entry in changedByIdentity)
 					{
-						if (item.UntypedModel is not LoadoutOwnedItem<CardModel> ownedCard)
-							continue;
+						(ulong OwnerNetId, int Index, string ModelId) key = entry.Key;
+						LoadoutCardVisualRefreshKind refreshKind = entry.Value;
+						IGenericSelectItem? item = target.Items.FirstOrDefault(candidate =>
+							candidate.UntypedModel is LoadoutOwnedItem<CardModel> current
+							&& current.OwnerNetId == key.OwnerNetId
+							&& current.Index == key.Index
+							&& string.Equals(current.Model.Id.ToString(), key.ModelId, StringComparison.Ordinal));
+						if (item is null || !liveByIdentity.TryGetValue(key, out var live))
+							return false;
+						if (!target.TryReplaceItemModel(item.Id, live.Typed))
+							return false;
 
-						var key = (ownedCard.OwnerNetId, ownedCard.Index, ownedCard.Model.Id.ToString());
-						if (!changedByIdentity.TryGetValue(key, out LoadoutCardVisualRefreshKind refreshKind))
-							continue;
+						LoadoutOwnedItem<CardModel> ownedCard = live.Owned;
 
 						layoutDirty = true;
-						item.RefreshMetadata();
 						if (target is NCardSelectScreen cardScreen)
 						{
 							cardScreen.RefreshItemById(
@@ -335,8 +359,7 @@ public class CommonHelpers
 
 			if (change.Mode == LoadoutRunContentChangeMode.Add)
 			{
-				RefreshCurrentModels(target, animateRelayout: false, updateExistingViews: false);
-				return true;
+				return TryAppendCurrentModels(target);
 			}
 
 			if (change.Mode != LoadoutRunContentChangeMode.Remove)
@@ -375,6 +398,13 @@ public class CommonHelpers
 
 			List<LoadoutRunContentChangedEventArgs> pending = pendingRunContentChanges.ToList();
 			pendingRunContentChanges.Clear();
+
+			if (pending.All(change => change.Mode == LoadoutRunContentChangeMode.Add))
+			{
+				if (!TryHandleTargetedRunContentChange(target, pending[^1]))
+					RefreshCurrentModels(target, animateRelayout, updateExistingViews: false);
+				return;
+			}
 
 			// Structural changes are coalesced into one preserving snapshot. Applying
 			// several add/remove events independently would enumerate the same relic
@@ -1245,6 +1275,12 @@ public class CommonHelpers
         where TModel : AbstractModel
     {
         return $"{item.OwnerNetId}:{item.Model.Id}:{RuntimeHelpers.GetHashCode(item.Model)}";
+    }
+
+    public static string OwnedSlotItemId<TModel>(LoadoutOwnedItem<TModel> item)
+        where TModel : AbstractModel
+    {
+        return $"{item.OwnerNetId}:{item.Index}:{item.Model.Id}";
     }
 
     private static async Task HandleDynamicItemActivatedAsync(

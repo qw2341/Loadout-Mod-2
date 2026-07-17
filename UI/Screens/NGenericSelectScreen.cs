@@ -476,6 +476,68 @@ public partial class NGenericSelectScreen : Control
         return true;
     }
 
+    public bool TryApplyItemAdditions<TModel>(
+        IEnumerable<TModel> models,
+        SelectItemAdapter<TModel> adapter,
+        bool resetScroll = false)
+    {
+        List<TModel> modelSnapshot = models.ToList();
+        if (modelSnapshot.Count < _items.Count)
+            return false;
+
+        for (int index = 0; index < _items.Count; index++)
+        {
+            if (_items[index] is not GenericSelectItem<TModel>
+                || !string.Equals(_items[index].Id, adapter.GetId(modelSnapshot[index]), StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        if (modelSnapshot.Count == _items.Count)
+            return true;
+
+        CancelRelayoutAnimations(applyFinalPositions: false);
+        CancelPendingMaterialization();
+        CancelPendingSearchRefresh();
+
+        HashSet<string> allIds = _items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+        List<GenericSelectItem<TModel>> additions = [];
+        for (int index = _items.Count; index < modelSnapshot.Count; index++)
+        {
+            GenericSelectItem<TModel> item = new(modelSnapshot[index], adapter, index);
+            if (!allIds.Add(item.Id))
+                return false;
+
+            additions.Add(item);
+        }
+
+        List<IGenericSelectItem> addedItems = additions.Cast<IGenericSelectItem>().ToList();
+        _items.AddRange(addedItems);
+
+        OnItemsAdded(addedItems);
+        _hiddenPrewarmCompleted = false;
+        _configuredLocaleLanguage = GetCurrentLocaleLanguage();
+        RefreshLayout(resetScroll, updateExistingViews: false);
+        return true;
+    }
+
+    public bool TryReplaceItemModel<TModel>(string itemId, TModel model)
+    {
+        IGenericSelectItem? item = _items.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+        if (item is not GenericSelectItem<TModel> typedItem || !typedItem.TryReplaceModel(model))
+            return false;
+
+        if (item.View is Control view && GodotObject.IsInstanceValid(view))
+        {
+            ClearActivationBinding(view);
+            BindViewActivation(item, view);
+        }
+
+        return true;
+    }
+
     public bool RefreshItemView(string itemId)
     {
         IGenericSelectItem? item = _items.FirstOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
@@ -1132,6 +1194,10 @@ public partial class NGenericSelectScreen : Control
     }
 
     protected virtual void OnItemsConfigured()
+    {
+    }
+
+    protected virtual void OnItemsAdded(IReadOnlyList<IGenericSelectItem> addedItems)
     {
     }
 
@@ -4475,7 +4541,7 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
         RefreshMetadata();
     }
 
-    public TModel Model { get; }
+    public TModel Model { get; private set; }
     public object UntypedModel => Model!;
     public string Id { get; }
     public string Name { get; private set; } = string.Empty;
@@ -4520,6 +4586,16 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
                      ?? _adapter.GetSearchText?.Invoke(Model)
                      ?? Name;
         _normalizedSearchText = SelectText.Normalize(SearchText);
+    }
+
+    public bool TryReplaceModel(TModel model)
+    {
+        if (!string.Equals(Id, _adapter.GetId(model), StringComparison.Ordinal))
+            return false;
+
+        Model = model;
+        RefreshMetadata();
+        return true;
     }
 
     public bool TryBindActivation(Action activate, out Action? unbind)

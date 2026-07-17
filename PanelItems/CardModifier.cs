@@ -24,7 +24,7 @@ public class CardModifier
         NGenericSelectScreen modifierScreen = null;
         SelectItemAdapter<LoadoutOwnedItem<CardModel>> cardModifierAdapter = new()
         {
-            GetId = item => CommonHelpers.OwnedItemId(item),
+            GetId = item => CommonHelpers.OwnedSlotItemId(item),
             GetName = item => CardPrinter.FormatCardTitle(item.Model),
             GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
             CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
@@ -76,7 +76,7 @@ public class CardModifier
             selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath,
             reconcileModelsOnEveryOpen: false,
             refreshModelsAfterActivation: false,
-            syncChangesWhileHidden: true);
+            syncChangesWhileHidden: false);
 
     }
 
@@ -124,7 +124,7 @@ public class CardModifier
             return;
 
         NCardModificationScreen modificationScreen = NCardModificationScreen.Create();
-        modificationScreen.Name = $"CardModification_{CommonHelpers.MakeSafeNodeName(CommonHelpers.OwnedItemId(item))}";
+        modificationScreen.Name = $"CardModification_{CommonHelpers.MakeSafeNodeName(CommonHelpers.OwnedSlotItemId(item))}";
         SelectScrollOffsetState parentScroll = selectScreen.CaptureScrollOffset();
         modificationScreen.Init(
             item,

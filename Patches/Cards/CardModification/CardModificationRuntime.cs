@@ -29,6 +29,7 @@ using MegaCrit.Sts2.Core.Runs;
 /// </summary>
 public static class CardModificationRuntime
 {
+    private static readonly FieldInfo? CardPileCardsField = AccessTools.Field(typeof(CardPile), "_cards");
     private static readonly FieldInfo? CardTypeField = AccessTools.Field(typeof(CardModel), "<Type>k__BackingField");
     private static readonly FieldInfo? CardRarityField = AccessTools.Field(typeof(CardModel), "<Rarity>k__BackingField");
     private static readonly FieldInfo? CardPoolField = AccessTools.Field(typeof(CardModel), "_pool");
@@ -64,6 +65,7 @@ public static class CardModificationRuntime
         PermanentCardModificationStore.CardChanged += OnPermanentCardChanged;
         PermanentCardModificationStore.Reloaded += OnPermanentStoreReloaded;
         PermanentCardModificationStore.Register();
+        LoadoutKeywordRuntimePatches.Reconcile();
         if (PermanentCardModificationStore.HasAnyCustomText) CardModificationDynamicPatches.EnableTextPatches();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
         CardModificationNetProtocol.Register();
@@ -82,6 +84,7 @@ public static class CardModificationRuntime
         PreviewDeltas = new ConditionalWeakTable<CardModel, CardModificationDelta>();
         CanonicalCardModificationRegistry.RestoreAll();
         CardModificationDynamicPatches.ClearAll();
+        LoadoutKeywordRuntimePatches.ResetRunPatches();
         _registered = false;
     }
 
@@ -612,17 +615,17 @@ public static class CardModificationRuntime
         RebuildOwnedCard(item, previous);
         CardModificationSpec next = GetEffectiveSpec(item.Model);
         NotifyCardUpdated(item, previous, next);
+        LoadoutKeywordRuntimePatches.Reconcile();
         CardModificationNetProtocol.BroadcastTemporary(item, state);
     }
 
     public static void ResetTemporaryToBasic(LoadoutOwnedItem<CardModel> item)
     {
-        CardModificationSpec previous = GetEffectiveSpec(item.Model);
-        CardModificationFields.Clear(item.Model);
-        RebuildOwnedCard(item, previous, forceAllOwnedFields: true);
-        CardModificationSpec next = GetEffectiveSpec(item.Model);
-        NotifyCardUpdated(item, previous, next);
-        CardModificationNetProtocol.BroadcastTemporary(item, next: null);
+        if (ResetTemporaryWithoutBroadcast(item, out LoadoutOwnedItem<CardModel>? replacement)
+            && replacement is not null)
+        {
+            CardModificationNetProtocol.BroadcastTemporary(replacement, next: null);
+        }
     }
 
     public static void CommitPermanent(LoadoutOwnedItem<CardModel> item, CardModificationSpec state)
@@ -644,6 +647,7 @@ public static class CardModificationRuntime
 
         if (temporaryChanged)
             CardModificationNetProtocol.BroadcastTemporary(item, next: null);
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     public static void ResetPermanentToBasic(LoadoutOwnedItem<CardModel> item)
@@ -665,6 +669,7 @@ public static class CardModificationRuntime
 
         if (temporaryChanged)
             CardModificationNetProtocol.BroadcastTemporary(item, next: null);
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     public static int GetPermanentModificationCount()
@@ -708,7 +713,7 @@ public static class CardModificationRuntime
                 break;
             case CardModificationOperation.ResetTemporary:
             case CardModificationOperation.ResetTemporaryToBasic:
-                ApplyTemporaryWithoutBroadcast(item, null);
+                ResetTemporaryWithoutBroadcast(item, out _);
                 break;
             case CardModificationOperation.ApplyPermanent:
                 ApplyPermanentWithoutBroadcast(item, modelId, state, authoritativeRemote);
@@ -744,7 +749,7 @@ public static class CardModificationRuntime
                 break;
             case CardModificationOperation.ResetTemporary:
             case CardModificationOperation.ResetTemporaryToBasic:
-                ApplyTemporaryDeltaWithoutBroadcast(item, null);
+                ResetTemporaryWithoutBroadcast(item, out _);
                 break;
             case CardModificationOperation.ApplyPermanent:
                 ApplyPermanentDeltaWithoutBroadcast(item, modelId, delta, authoritativeRemote);
@@ -836,6 +841,7 @@ public static class CardModificationRuntime
                 LoadoutRunContentChangeMode.Update,
                 changedCards);
         }
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     public static void RetrofitChangedPermanentCards(
@@ -878,6 +884,7 @@ public static class CardModificationRuntime
                 LoadoutRunContentChangeMode.Update,
                 changedCards);
         }
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     private static void ApplyTemporaryWithoutBroadcast(
@@ -891,6 +898,7 @@ public static class CardModificationRuntime
 
         RebuildOwnedCard(item, previous, forceAllOwnedFields: state is null || state.IsEmpty);
         NotifyCardUpdated(item, previous, GetEffectiveSpec(item.Model));
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     private static void ApplyTemporaryDeltaWithoutBroadcast(
@@ -904,6 +912,110 @@ public static class CardModificationRuntime
 
         RebuildOwnedCard(item, previous, forceAllOwnedFields: delta is null || delta.IsEmpty);
         NotifyCardUpdated(item, previous, GetEffectiveSpec(item.Model));
+        LoadoutKeywordRuntimePatches.Reconcile();
+    }
+
+    private static bool ResetTemporaryWithoutBroadcast(
+        LoadoutOwnedItem<CardModel> item,
+        out LoadoutOwnedItem<CardModel>? replacement)
+    {
+        replacement = null;
+        if (!TryReplaceOwnedCardWithFresh(item, out CardModel? freshCard) || freshCard is null)
+            return false;
+
+        replacement = new LoadoutOwnedItem<CardModel>(item.Owner, item.Index, freshCard);
+        RefreshLiveCardVisuals(freshCard, LoadoutCardVisualRefreshKind.Reload);
+        LoadoutRunContentChangeService.NotifyCardUpdated(replacement, LoadoutCardVisualRefreshKind.Reload);
+        LoadoutKeywordRuntimePatches.Reconcile();
+        return true;
+    }
+
+    private static bool TryReplaceOwnedCardWithFresh(
+        LoadoutOwnedItem<CardModel> item,
+        out CardModel? freshCard)
+    {
+        freshCard = null;
+        Player owner = item.Owner;
+        CardModel oldCard = item.Model;
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(oldCard.Id);
+        if (canonical is null
+            || item.Index < 0
+            || item.Index >= owner.Deck.Cards.Count
+            || !ReferenceEquals(owner.Deck.Cards[item.Index], oldCard)
+            || oldCard.Pile?.Type != PileType.Deck
+            || CardPileCardsField?.GetValue(owner.Deck) is not List<CardModel> deckCards
+            || item.Index >= deckCards.Count
+            || !ReferenceEquals(deckCards[item.Index], oldCard))
+        {
+            GD.PushWarning($"CardModification: fresh reset rejected stale card '{oldCard.Id}' at deck index {item.Index} for player {owner.NetId}.");
+            return false;
+        }
+
+        CardModel created;
+        try
+        {
+            created = owner.RunState.CreateCard(canonical, owner);
+            created.FloorAddedToDeck = oldCard.FloorAddedToDeck;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed creating fresh card '{oldCard.Id}'. {exception.Message}");
+            return false;
+        }
+
+        bool deckReplaced = false;
+        bool oldUnregistered = false;
+        List<CardModel> linkedCombatCards = owner.PlayerCombatState?.AllCards
+            .Where(card => ReferenceEquals(card.DeckVersion, oldCard))
+            .ToList()
+            ?? [];
+        try
+        {
+            deckCards[item.Index] = created;
+            deckReplaced = true;
+            foreach (CardModel combatCard in linkedCombatCards)
+                combatCard.DeckVersion = created;
+            owner.RunState.RemoveCard(oldCard);
+            oldUnregistered = true;
+            oldCard.HasBeenRemovedFromState = true;
+            owner.Deck.InvokeContentsChanged();
+            owner.Deck.InvokeCardRemoveFinished();
+            owner.Deck.InvokeCardAddFinished();
+            freshCard = created;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                if (deckReplaced && item.Index < deckCards.Count && ReferenceEquals(deckCards[item.Index], created))
+                    deckCards[item.Index] = oldCard;
+                foreach (CardModel combatCard in linkedCombatCards)
+                {
+                    if (ReferenceEquals(combatCard.DeckVersion, created))
+                        combatCard.DeckVersion = oldCard;
+                }
+
+                if (oldUnregistered && !owner.RunState.ContainsCard(oldCard))
+                {
+                    oldCard.HasBeenRemovedFromState = false;
+                    owner.RunState.AddCard(oldCard, owner);
+                }
+
+                if (owner.RunState.ContainsCard(created))
+                {
+                    owner.RunState.RemoveCard(created);
+                    created.HasBeenRemovedFromState = true;
+                }
+            }
+            catch (Exception rollbackException)
+            {
+                GD.PushError($"CardModification: fresh reset rollback failed for '{oldCard.Id}'. {rollbackException}");
+            }
+
+            GD.PushWarning($"CardModification: failed replacing '{oldCard.Id}' with a fresh card. {exception.Message}");
+            return false;
+        }
     }
 
     private static void ApplyPermanentWithoutBroadcast(
@@ -930,6 +1042,7 @@ public static class CardModificationRuntime
             RebuildOwnedCard(item, selectedPrevious, forceAllOwnedFields: state is null || state.IsEmpty);
             NotifyCardUpdated(item, selectedPrevious, GetEffectiveSpec(item.Model));
         }
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     private static void ApplyPermanentDeltaWithoutBroadcast(
@@ -956,6 +1069,7 @@ public static class CardModificationRuntime
             RebuildOwnedCard(item, selectedPrevious, forceAllOwnedFields: delta is null || delta.IsEmpty);
             NotifyCardUpdated(item, selectedPrevious, GetEffectiveSpec(item.Model));
         }
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     private static void RebuildOwnedCard(
@@ -1445,11 +1559,15 @@ public static class CardModificationRuntime
         }
         AttachmentDisplayCards.Remove(cardId);
         PermanentCardDisplayChanged?.Invoke(cardId);
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     private static void OnPermanentStoreReloaded()
     {
         IReadOnlyList<ModelId> reconciledIds = CanonicalCardModificationRegistry.ReconcileAll();
+        // New permanent Infinite Upgrade definitions must install their upgrade
+        // boundary before existing live copies are rebuilt below.
+        LoadoutKeywordRuntimePatches.Reconcile();
         AttachmentDisplayCards.Clear();
         if (PermanentCardModificationStore.HasAnyCustomText) CardModificationDynamicPatches.EnableTextPatches();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
@@ -1460,6 +1578,7 @@ public static class CardModificationRuntime
         RetrofitChangedPermanentCards(reconciledIds, forceAllOwnedFields: true);
         foreach (ModelId id in reconciledIds)
             PermanentCardDisplayChanged?.Invoke(id);
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
     private sealed class PermanentSuppressionScope : IDisposable

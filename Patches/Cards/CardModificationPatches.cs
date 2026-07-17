@@ -175,6 +175,7 @@ public static class CardPileRemoveCardModificationPatch
 
         __state = new RemovalState(
             LoadoutImmediateMutationService.IsRemovingAllCards
+                || !LoadoutKeywordRuntimePatches.InevitableEnabled
                 ? []
                 : cards.Where(card => LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable)).ToList(),
             removedCards);
@@ -219,6 +220,7 @@ public static class CardPileRemoveCardModificationPatch
                 LoadoutRunContentChangeMode.Remove,
                 removed);
         }
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 }
 
@@ -466,12 +468,19 @@ public static class StartRunLobbyCardModificationCleanUpPatch
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
 public static class RunManagerLaunchCardModificationPatch
 {
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+        LoadoutKeywordRuntimePatches.Reconcile();
+    }
+
     [HarmonyPostfix]
     public static void Postfix()
     {
         LoadoutImmediateMutationService.OnRunLaunched();
         CardModificationNetProtocol.OnRunLaunched();
         RelicModificationMultiplayerSyncService.OnRunLaunched();
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 }
 
@@ -482,6 +491,7 @@ public static class RunManagerCleanUpCardModificationPatch
     public static void Prefix()
     {
         CardModificationDynamicPatches.ResetRunPatches();
+        LoadoutKeywordRuntimePatches.ResetRunPatches();
         TildeKeyStateService.OnRunCleaningUp();
         LoadoutImmediateMutationService.OnRunCleaningUp();
         CardModificationNetProtocol.OnRunCleaningUp();
