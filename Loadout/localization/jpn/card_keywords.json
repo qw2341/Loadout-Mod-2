@@ -6,5 +6,7 @@
   "LOADOUT-X_COST.title": "Xコスト",
   "LOADOUT-X_COST.description": "コストX。このカードのプレイ回数をX倍にする。",
   "LOADOUT-INFINITE_UPGRADE.title": "無限アップグレード",
-  "LOADOUT-INFINITE_UPGRADE.description": "何度でもアップグレードできる。"
+  "LOADOUT-INFINITE_UPGRADE.description": "何度でもアップグレードできる。",
+  "LOADOUT-PASSING.title": "パス",
+  "LOADOUT-PASSING.description": "プレイ後、このカードをランダムな生存中の味方に渡す。[gold]粘着[/gold]がある場合、代わりに自分の[gold]手札[/gold]へ戻る。"
 }

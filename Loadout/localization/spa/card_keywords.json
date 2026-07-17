@@ -6,5 +6,7 @@
   "LOADOUT-X_COST.title": "Coste X",
   "LOADOUT-X_COST.description": "Cuesta X. Las jugadas de esta carta se repiten X veces.",
   "LOADOUT-INFINITE_UPGRADE.title": "Mejora infinita",
-  "LOADOUT-INFINITE_UPGRADE.description": "Puede mejorarse indefinidamente."
+  "LOADOUT-INFINITE_UPGRADE.description": "Puede mejorarse indefinidamente.",
+  "LOADOUT-PASSING.title": "Pase",
+  "LOADOUT-PASSING.description": "Después de jugarse, esta carta se entrega a un aliado vivo al azar. Si es [gold]Pegajosa[/gold], vuelve a tu [gold]Mano[/gold] en su lugar."
 }

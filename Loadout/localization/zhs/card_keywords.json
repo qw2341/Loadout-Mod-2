@@ -6,5 +6,7 @@
   "LOADOUT-X_COST.title": "X 费用",
   "LOADOUT-X_COST.description": "耗费 X。此牌的打出次数重复 X 倍。",
   "LOADOUT-INFINITE_UPGRADE.title": "无限升级",
-  "LOADOUT-INFINITE_UPGRADE.description": "可以无限次升级。"
+  "LOADOUT-INFINITE_UPGRADE.description": "可以无限次升级。",
+  "LOADOUT-PASSING.title": "传递",
+  "LOADOUT-PASSING.description": "打出后，将此牌交给一名随机队友。"
 }

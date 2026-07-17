@@ -6,5 +6,7 @@
   "LOADOUT-X_COST.title": "X Cost",
   "LOADOUT-X_COST.description": "Costs X. This card's plays are repeated X times.",
   "LOADOUT-INFINITE_UPGRADE.title": "Infinite Upgrade",
-  "LOADOUT-INFINITE_UPGRADE.description": "Can be upgraded indefinitely."
+  "LOADOUT-INFINITE_UPGRADE.description": "Can be upgraded indefinitely.",
+  "LOADOUT-PASSING.title": "Passing",
+  "LOADOUT-PASSING.description": "After being played, this card is given to a random ally. "
 }

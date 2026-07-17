@@ -1,6 +1,7 @@
 #nullable enable
 
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 
 namespace Loadout.Keywords;
@@ -65,17 +66,21 @@ internal static class LoadoutKeywordRuntimePatches
     private const string InfiniteHarmonyId = "Loadout.Keyword.InfiniteUpgrade";
     private const string XCostHarmonyId = "Loadout.Keyword.XCost";
     private const string StickyHarmonyId = "Loadout.Keyword.Sticky";
+    private const string CardResultHarmonyId = "Loadout.Keyword.CardResultLocation";
     private const string InevitableHarmonyId = "Loadout.Keyword.Inevitable";
 
     private static readonly Harmony InfiniteHarmony = new(InfiniteHarmonyId);
     private static readonly Harmony XCostHarmony = new(XCostHarmonyId);
     private static readonly Harmony StickyHarmony = new(StickyHarmonyId);
+    private static readonly Harmony CardResultHarmony = new(CardResultHarmonyId);
     private static readonly Harmony InevitableHarmony = new(InevitableHarmonyId);
 
     public static bool InfiniteUpgradeEnabled { get; private set; }
     public static bool XCostEnabled { get; private set; }
     public static bool StickyEnabled { get; private set; }
+    public static bool PassingEnabled { get; private set; }
     public static bool InevitableEnabled { get; private set; }
+    private static bool CardResultLocationEnabled { get; set; }
 
     public static void EnableFromDelta(CardModificationDelta delta)
     {
@@ -85,6 +90,8 @@ internal static class LoadoutKeywordRuntimePatches
             SetXCostEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.StickyKey))
             SetStickyEnabled(true);
+        if (IsEnabled(delta, LoadoutKeywords.PassingKey))
+            SetPassingEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.InevitableKey))
             SetInevitableEnabled(true);
     }
@@ -95,6 +102,7 @@ internal static class LoadoutKeywordRuntimePatches
         SetInfiniteUpgradeEnabled(required.InfiniteUpgrade);
         SetXCostEnabled(required.XCost);
         SetStickyEnabled(required.Sticky);
+        SetPassingEnabled(required.Passing);
         SetInevitableEnabled(required.Inevitable);
     }
 
@@ -103,6 +111,7 @@ internal static class LoadoutKeywordRuntimePatches
         SetInfiniteUpgradeEnabled(false);
         SetXCostEnabled(false);
         SetStickyEnabled(false);
+        SetPassingEnabled(false);
         SetInevitableEnabled(false);
     }
 
@@ -143,6 +152,7 @@ internal static class LoadoutKeywordRuntimePatches
         state.InfiniteUpgrade |= IsEnabled(delta, LoadoutKeywords.InfiniteUpgradeKey);
         state.XCost |= IsEnabled(delta, LoadoutKeywords.XCostKey);
         state.Sticky |= IsEnabled(delta, LoadoutKeywords.StickyKey);
+        state.Passing |= IsEnabled(delta, LoadoutKeywords.PassingKey);
         state.Inevitable |= IsEnabled(delta, LoadoutKeywords.InevitableKey);
     }
 
@@ -153,6 +163,7 @@ internal static class LoadoutKeywordRuntimePatches
             state.InfiniteUpgrade |= LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
             state.XCost |= LoadoutKeywords.Has(card, LoadoutKeywords.XCost);
             state.Sticky |= LoadoutKeywords.Has(card, LoadoutKeywords.Sticky);
+            state.Passing |= LoadoutKeywords.Has(card, LoadoutKeywords.Passing);
             state.Inevitable |= LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable);
             if (state.All)
                 return;
@@ -227,14 +238,12 @@ internal static class LoadoutKeywordRuntimePatches
         {
             StickyHarmony.UnpatchAll(StickyHarmonyId);
             StickyEnabled = false;
+            RefreshCardResultLocationPatch();
             return;
         }
 
         TryEnable(StickyHarmony, StickyHarmonyId, () =>
         {
-            StickyHarmony.Patch(
-                Sts2Compatibility.StickyCardPlayResultMethod,
-                postfix: new HarmonyMethod(StickyPlayedCardResultPilePatch.GetPostfixMethod()));
             PatchPrefixPostfix(StickyHarmony,
                 AccessTools.Method(typeof(CardCmd), nameof(CardCmd.DiscardAndDraw),
                     [typeof(PlayerChoiceContext), typeof(IEnumerable<CardModel>), typeof(int)])!,
@@ -246,7 +255,40 @@ internal static class LoadoutKeywordRuntimePatches
                 typeof(StickyFlushPlayerHandPatch),
                 nameof(StickyFlushPlayerHandPatch.Prefix),
                 nameof(StickyFlushPlayerHandPatch.Postfix));
-        }, () => StickyEnabled = true);
+        }, () =>
+        {
+            StickyEnabled = true;
+            RefreshCardResultLocationPatch();
+        });
+    }
+
+    private static void SetPassingEnabled(bool enabled)
+    {
+        if (enabled == PassingEnabled)
+            return;
+
+        PassingEnabled = enabled;
+        RefreshCardResultLocationPatch();
+    }
+
+    private static void RefreshCardResultLocationPatch()
+    {
+        bool enabled = StickyEnabled || PassingEnabled;
+        if (enabled == CardResultLocationEnabled)
+            return;
+
+        if (!enabled)
+        {
+            CardResultHarmony.UnpatchAll(CardResultHarmonyId);
+            CardResultLocationEnabled = false;
+            return;
+        }
+
+        TryEnable(CardResultHarmony, CardResultHarmonyId, () =>
+            CardResultHarmony.Patch(
+                Sts2Compatibility.StickyCardPlayResultMethod,
+                postfix: new HarmonyMethod(CardResultLocationKeywordPatch.GetPostfixMethod())),
+            () => CardResultLocationEnabled = true);
     }
 
     private static void SetInevitableEnabled(bool enabled)
@@ -315,8 +357,9 @@ internal static class LoadoutKeywordRuntimePatches
         public bool InfiniteUpgrade;
         public bool XCost;
         public bool Sticky;
+        public bool Passing;
         public bool Inevitable;
-        public readonly bool All => InfiniteUpgrade && XCost && Sticky && Inevitable;
+        public readonly bool All => InfiniteUpgrade && XCost && Sticky && Passing && Inevitable;
     }
 }
 
@@ -480,28 +523,28 @@ public static class XCostPlayCountPatch
     }
 }
 
-public static class StickyPlayedCardResultPilePatch
+public static class CardResultLocationKeywordPatch
 {
     internal static MethodInfo GetPostfixMethod()
     {
         if (!Sts2Compatibility.UsesNewCardLocation)
         {
             // 0.107-only compatibility fallback; remove or replace when 0.107 support is dropped.
-            return AccessTools.Method(typeof(StickyPlayedCardResultPilePatch), nameof(LegacyPostfix))
+            return AccessTools.Method(typeof(CardResultLocationKeywordPatch), nameof(LegacyPostfix))
                    ?? throw new MissingMethodException(
-                       typeof(StickyPlayedCardResultPilePatch).FullName,
+                       typeof(CardResultLocationKeywordPatch).FullName,
                        nameof(LegacyPostfix));
         }
 
         Type resultType = Sts2Compatibility.StickyCardPlayResultMethod.ReturnType;
-        Type transformerType = typeof(StickyLocationResult<>).MakeGenericType(resultType);
+        Type transformerType = typeof(CardLocationResult<>).MakeGenericType(resultType);
         System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(transformerType.TypeHandle);
 
         MethodInfo genericPostfix = AccessTools.Method(
-                                        typeof(StickyPlayedCardResultPilePatch),
+                                        typeof(CardResultLocationKeywordPatch),
                                         nameof(NewPostfix))
                                     ?? throw new MissingMethodException(
-                                        typeof(StickyPlayedCardResultPilePatch).FullName,
+                                        typeof(CardResultLocationKeywordPatch).FullName,
                                         nameof(NewPostfix));
         return genericPostfix.MakeGenericMethod(resultType);
     }
@@ -513,7 +556,29 @@ public static class StickyPlayedCardResultPilePatch
         where TResult : struct
     {
         if (LoadoutKeywords.Has(card, LoadoutKeywords.Sticky))
-            __result = StickyLocationResult<TResult>.MoveToHand(__result);
+        {
+            // The result player can differ from Card.Owner (THE_BALL does this).
+            // Sticky belongs to the player who played the card, so it must replace
+            // both the result pile and result player.
+            __result = CardLocationResult<TResult>.Create(
+                card.Owner,
+                PileType.Hand,
+                CardPilePosition.Bottom);
+            return;
+        }
+
+        if (!LoadoutKeywords.Has(card, LoadoutKeywords.Passing))
+            return;
+
+        Player currentPlayer = CardLocationResult<TResult>.GetPlayer(__result);
+        Player? receivingPlayer = GetPassingTarget(card, currentPlayer);
+        if (receivingPlayer is null || receivingPlayer == currentPlayer)
+            return;
+
+        __result = CardLocationResult<TResult>.Create(
+            receivingPlayer,
+            CardLocationResult<TResult>.GetPileType(__result),
+            CardLocationResult<TResult>.GetPosition(__result));
     }
 
     // 0.107-only compatibility fallback; remove or replace when 0.107 support is dropped.
@@ -524,50 +589,89 @@ public static class StickyPlayedCardResultPilePatch
             __result = (PileType.Hand, CardPilePosition.Bottom);
     }
 
-    private static class StickyLocationResult<TResult>
+    private static Player? GetPassingTarget(CardModel card, Player currentResultPlayer)
+    {
+        Player owner = card.Owner;
+
+        // Cards such as THE_BALL already choose an ally through the native
+        // result-location path. Reuse that target and do not consume RNG twice.
+        if (currentResultPlayer != owner)
+            return currentResultPlayer;
+
+        ICombatState? combatState = card.CombatState;
+        if (combatState is null)
+            return null;
+
+        List<Player>? candidates = null;
+        foreach (Creature teammate in combatState.GetTeammatesOf(owner.Creature))
+        {
+            Player? player = teammate.Player;
+            if (!teammate.IsAlive || !teammate.IsPlayer || player is null || player == owner)
+                continue;
+
+            (candidates ??= new List<Player>(2)).Add(player);
+        }
+
+        return candidates is { Count: > 0 }
+            ? owner.RunState.Rng.CombatTargets.NextItem(candidates)
+            : null;
+    }
+
+    private static class CardLocationResult<TResult>
         where TResult : struct
     {
-        internal static readonly Func<TResult, TResult> MoveToHand = CreateMoveToHand();
+        internal static readonly Func<TResult, Player> GetPlayer = CreateGetter<Player>("player", "Player");
+        internal static readonly Func<TResult, PileType> GetPileType = CreateGetter<PileType>("pileType", "PileType");
+        internal static readonly Func<TResult, CardPilePosition> GetPosition =
+            CreateGetter<CardPilePosition>("position", "Position");
+        internal static readonly Func<Player, PileType, CardPilePosition, TResult> Create = CreateConstructor();
 
-        private static Func<TResult, TResult> CreateMoveToHand()
+        private static Func<TResult, TMember> CreateGetter<TMember>(string fieldName, string propertyName)
         {
             Type resultType = typeof(TResult);
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-            MemberInfo? playerMember = resultType.GetField("player", flags)
-                                       ?? (MemberInfo?)resultType.GetProperty("player", flags)
-                                       ?? resultType.GetProperty("Player", flags);
-            if (playerMember is null)
-                throw new MissingMemberException(resultType.FullName, "player");
+            MemberInfo? member = resultType.GetField(fieldName, flags)
+                                 ?? (MemberInfo?)resultType.GetProperty(fieldName, flags)
+                                 ?? resultType.GetProperty(propertyName, flags);
+            if (member is null)
+                throw new MissingMemberException(resultType.FullName, fieldName);
 
-            Type playerType = playerMember switch
+            ParameterExpression current = LinqExpression.Parameter(resultType, "current");
+            System.Linq.Expressions.Expression value = member switch
             {
-                FieldInfo field => field.FieldType,
-                PropertyInfo property => property.PropertyType,
-                _ => throw new InvalidOperationException($"Unsupported player member on {resultType.FullName}.")
+                FieldInfo field => LinqExpression.Field(current, field),
+                PropertyInfo property => LinqExpression.Property(current, property),
+                _ => throw new InvalidOperationException($"Unsupported member on {resultType.FullName}.")
             };
+            return LinqExpression.Lambda<Func<TResult, TMember>>(value, current).Compile();
+        }
 
+        private static Func<Player, PileType, CardPilePosition, TResult> CreateConstructor()
+        {
+            Type resultType = typeof(TResult);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
             ConstructorInfo constructor = resultType.GetConstructor(
                                               flags,
                                               binder: null,
-                                              [playerType, typeof(PileType), typeof(CardPilePosition)],
+                                              [typeof(Player), typeof(PileType), typeof(CardPilePosition)],
                                               modifiers: null)
                                           ?? throw new MissingMethodException(
                                               resultType.FullName,
                                               ".ctor(Player, PileType, CardPilePosition)");
 
-            ParameterExpression current = LinqExpression.Parameter(resultType, "current");
-            System.Linq.Expressions.Expression player = playerMember switch
-            {
-                FieldInfo field => LinqExpression.Field(current, field),
-                PropertyInfo property => LinqExpression.Property(current, property),
-                _ => throw new InvalidOperationException()
-            };
+            ParameterExpression player = LinqExpression.Parameter(typeof(Player), "player");
+            ParameterExpression pileType = LinqExpression.Parameter(typeof(PileType), "pileType");
+            ParameterExpression position = LinqExpression.Parameter(typeof(CardPilePosition), "position");
             NewExpression replacement = LinqExpression.New(
                 constructor,
                 player,
-                LinqExpression.Constant(PileType.Hand),
-                LinqExpression.Constant(CardPilePosition.Bottom));
-            return LinqExpression.Lambda<Func<TResult, TResult>>(replacement, current).Compile();
+                pileType,
+                position);
+            return LinqExpression.Lambda<Func<Player, PileType, CardPilePosition, TResult>>(
+                replacement,
+                player,
+                pileType,
+                position).Compile();
         }
     }
 }

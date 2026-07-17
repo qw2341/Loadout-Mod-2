@@ -6,5 +6,7 @@
   "LOADOUT-X_COST.title": "Coût X",
   "LOADOUT-X_COST.description": "Coûte X. Les utilisations de cette carte sont répétées X fois.",
   "LOADOUT-INFINITE_UPGRADE.title": "Amélioration infinie",
-  "LOADOUT-INFINITE_UPGRADE.description": "Peut être améliorée indéfiniment."
+  "LOADOUT-INFINITE_UPGRADE.description": "Peut être améliorée indéfiniment.",
+  "LOADOUT-PASSING.title": "Passage",
+  "LOADOUT-PASSING.description": "Après avoir été jouée, cette carte est donnée à un allié vivant aléatoire. Si elle est [gold]Collante[/gold], elle revient dans votre [gold]Main[/gold] à la place."
 }

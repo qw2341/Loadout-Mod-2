@@ -13,6 +13,7 @@ public static class LoadoutKeywords
 {
     public const string InevitableKey = "Inevitable";
     public const string StickyKey = "Sticky";
+    public const string PassingKey = "Passing";
     public const string XCostKey = "XCost";
     public const string InfiniteUpgradeKey = "InfiniteUpgrade";
 
@@ -21,6 +22,9 @@ public static class LoadoutKeywords
 
     [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Sticky;
+
+    [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
+    public static CardKeyword Passing;
 
     [CustomEnum("X_COST"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword XCost;
@@ -34,6 +38,7 @@ public static class LoadoutKeywords
         {
             yield return Inevitable;
             yield return Sticky;
+            yield return Passing;
             yield return XCost;
             yield return InfiniteUpgrade;
         }
@@ -52,6 +57,8 @@ public static class LoadoutKeywords
             return InevitableKey;
         if (keyword.Equals(Sticky))
             return StickyKey;
+        if (keyword.Equals(Passing))
+            return PassingKey;
         if (keyword.Equals(XCost))
             return XCostKey;
         if (keyword.Equals(InfiniteUpgrade))
@@ -69,6 +76,9 @@ public static class LoadoutKeywords
                 return keyword != CardKeyword.None;
             case StickyKey:
                 keyword = Sticky;
+                return keyword != CardKeyword.None;
+            case PassingKey:
+                keyword = Passing;
                 return keyword != CardKeyword.None;
             case XCostKey:
                 keyword = XCost;
