@@ -87,24 +87,16 @@ public sealed class TildeKeyStatDefinition
 }
 
 /// <summary>
-/// Makes the Tilde Key's per-player hand-size setting part of BaseLib's
-/// canonical maximum-hand-size calculation. The same hook also carries the
-/// Card Printer's narrowly scoped hand-limit bypass through BaseLib's patched
-/// draw/add paths.
+/// Compatibility fallback that makes the Tilde Key's per-player hand-size
+/// setting part of BaseLib's canonical calculation when another mod also
+/// supplies a max-hand-size modifier.
 /// </summary>
 public sealed class LoadoutMaxHandSizeModifier : AbstractModel, IMaxHandSizeModifier
 {
     public override bool ShouldReceiveCombatHooks => true;
 
     public int ModifyMaxHandSizeLate(Player player, int currentMaxHandSize)
-    {
-        if (LoadoutCardAddRules.ShouldIgnoreHandLimit)
-            return int.MaxValue;
-
-        return TildeKeyStateService.TryGetHandSizeOverride(player, out int value)
-            ? Math.Max(0, value)
-            : currentMaxHandSize;
-    }
+        => TildeKeyStateService.ApplyMaxHandSizeModifier(player, currentMaxHandSize);
 }
 
 public static class TildeKeyStateService
@@ -205,7 +197,9 @@ public static class TildeKeyStateService
             return;
 
         _registered = true;
-        RegisterMaxHandSizeModifier();
+        TildeKeyMaxHandSizeFastPath.Warmup();
+        if (!TildeKeyMaxHandSizeFastPath.CanApplyDirectly)
+            RegisterMaxHandSizeModifier();
         RunManager.Instance.RunStarted += OnRunStarted;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp += OnCombatSetUp;
@@ -570,6 +564,16 @@ public static class TildeKeyStateService
     public static int GetEffectiveHandSize(Player player)
     {
         return MaxHandSizePatch.GetMaxHandSize(player, CardPile.MaxCardsInHand);
+    }
+
+    internal static int ApplyMaxHandSizeModifier(Player player, int currentMaxHandSize)
+    {
+        if (LoadoutCardAddRules.ShouldIgnoreHandLimit)
+            return int.MaxValue;
+
+        return TryGetHandSizeOverride(player, out int value)
+            ? Math.Max(0, value)
+            : currentMaxHandSize;
     }
 
     private static void RegisterMaxHandSizeModifier()

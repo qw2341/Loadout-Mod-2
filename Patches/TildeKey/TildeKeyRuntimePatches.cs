@@ -2,6 +2,8 @@
 
 namespace Loadout.Patches.TildeKey;
 
+using BaseLib.Hooks;
+using BaseLib.Patches.Hooks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,12 +23,90 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
+using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
+
+/// <summary>
+/// BaseLib's max-hand-size helper walks the complete run deck and every combat
+/// pile and allocates a modifier list each time it is called. Native draw calls
+/// that helper several times per card. When Loadout is the only implementation
+/// of the BaseLib modifier interface, avoid subscribing a model to every native
+/// run hook and apply the exact same modifier directly at BaseLib's API boundary.
+/// If another assembly supplies a modifier, retain BaseLib's full ordered hook
+/// iteration so inter-mod behavior remains unchanged.
+/// </summary>
+internal static class TildeKeyMaxHandSizeFastPath
+{
+    private static bool _initialized;
+    private static bool _hasExternalModifier;
+
+    public static void Warmup()
+    {
+        if (_initialized)
+            return;
+
+        foreach (Mod mod in ModManager.GetLoadedMods())
+        {
+            if (mod.assembly is null || !ContainsExternalModifier(mod.assembly))
+                continue;
+
+            _hasExternalModifier = true;
+            break;
+        }
+
+        _initialized = true;
+    }
+
+    public static bool CanApplyDirectly => _initialized && !_hasExternalModifier;
+
+    private static bool ContainsExternalModifier(Assembly assembly)
+    {
+        try
+        {
+            foreach (Type type in assembly.GetTypes())
+            {
+                if (type == typeof(IMaxHandSizeModifier)
+                    || type == typeof(LoadoutMaxHandSizeModifier)
+                    || !typeof(IMaxHandSizeModifier).IsAssignableFrom(type))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            // Unknown types must keep BaseLib's compatibility path.
+            return true;
+        }
+    }
+}
+
+[HarmonyPatch(
+    typeof(MaxHandSizePatch),
+    nameof(MaxHandSizePatch.GetMaxHandSize),
+    typeof(Player),
+    typeof(int))]
+public static class TildeKeyMaxHandSizeFastPathPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(Player player, int baseLimit, ref int __result)
+    {
+        if (!TildeKeyMaxHandSizeFastPath.CanApplyDirectly)
+            return true;
+
+        __result = Math.Max(0, TildeKeyStateService.ApplyMaxHandSizeModifier(player, baseLimit));
+        return false;
+    }
+}
 
 public static class TildeKeyCreatureLockBoundaryPatch
 {
