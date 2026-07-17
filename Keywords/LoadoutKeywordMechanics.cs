@@ -786,7 +786,7 @@ public static class LividCardOnPlayPatch
         if (combatState is null)
             return;
 
-        // Mirrors OUTRAGE.OnPlay in 0.109: every living player on the owner's
+        // Mirrors OUTRAGE.OnPlay: every living player on the owner's
         // team receives a clone in discard, using the native synchronized
         // generated-card command and the same preview settings.
         foreach (Creature teammate in combatState.GetTeammatesOf(source.Owner.Creature))
@@ -795,7 +795,7 @@ public static class LividCardOnPlayPatch
             if (!teammate.IsAlive || !teammate.IsPlayer || player is null)
                 continue;
 
-            CardModel copy = source.CreateCloneForPlayer(player);
+            CardModel copy = Sts2Compatibility.CreateCloneForPlayer(source, player);
             CardPileAddResult result = await CardPileCmd.AddGeneratedCardToCombat(
                 copy,
                 PileType.Discard,

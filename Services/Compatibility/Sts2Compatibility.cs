@@ -16,6 +16,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Modding;
@@ -84,6 +85,15 @@ internal static class Sts2Compatibility
     internal static FieldInfo CardOnPlayWrapperSourceField { get; } =
         ResolveCardOnPlayWrapperSourceField();
 
+    // CreateCloneForPlayer was added after 0.107. Keep the newer-only method
+    // reflection-only so loading/JITing this compatibility class on 0.107 never
+    // resolves a missing metadata reference.
+    private static readonly MethodInfo? NativeCreateCloneForPlayerMethod =
+        AccessTools.Method(typeof(CardModel), "CreateCloneForPlayer", [typeof(Player)]);
+    internal static bool UsesNativeCreateCloneForPlayer => NativeCreateCloneForPlayerMethod is not null;
+    private static readonly Func<CardModel, Player, CardModel> CloneCardForPlayer =
+        CreateCloneForPlayerInvoker();
+
     internal static MethodInfo MultiTargetDamageMethod { get; } = ResolveMultiTargetDamageMethod();
     internal static bool UsesNewMultiTargetDamage { get; } =
         MultiTargetDamageMethod.GetParameters().Length == 7;
@@ -123,6 +133,7 @@ internal static class Sts2Compatibility
             $"MegaAnimationState animations={(SetAnimationMethod.ReturnType == typeof(void) ? "newer" : "0.107")}, " +
             $"card result hook={(UsesNewCardLocation ? "newer" : "0.107")}, " +
             $"card OnPlay wrapper=resolved, " +
+            $"card clone-for-player={(UsesNativeCreateCloneForPlayer ? "newer" : "0.107 fallback")}, " +
             $"mod assemblies={(NewModAssembliesField is not null ? "newer" : "0.107")}.");
     }
 
@@ -190,6 +201,13 @@ internal static class Sts2Compatibility
         int track = 0)
     {
         InvokeAddAnimation(animationState, animation, delay, loop, track);
+    }
+
+    internal static CardModel CreateCloneForPlayer(CardModel source, Player player)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(player);
+        return CloneCardForPlayer(source, player);
     }
 
     internal static IEnumerable<Assembly> GetModAssemblies(Mod mod)
@@ -293,6 +311,57 @@ internal static class Sts2Compatibility
         return sourceField ?? throw new MissingFieldException(
             CardOnPlayWrapperStateMachineType.FullName,
             "<>4__this (CardModel)");
+    }
+
+    private static Func<CardModel, Player, CardModel> CreateCloneForPlayerInvoker()
+    {
+        ParameterExpression source = Expression.Parameter(typeof(CardModel), "source");
+        ParameterExpression player = Expression.Parameter(typeof(Player), "player");
+
+        if (NativeCreateCloneForPlayerMethod is not null)
+        {
+            MethodCallExpression nativeCall = Expression.Call(
+                source,
+                NativeCreateCloneForPlayerMethod,
+                player);
+            return Expression.Lambda<Func<CardModel, Player, CardModel>>(
+                nativeCall,
+                source,
+                player).Compile();
+        }
+
+        // 0.107 compatibility fallback. The 0.109 native implementation is
+        // exactly: CardModel clone = source.CreateClone(); clone._owner = player.
+        // Resolve both members by reflection and compile the sequence once, so
+        // the gameplay hot path is still a direct cached delegate invocation.
+        MethodInfo legacyCreateClone = AccessTools.Method(
+                                           typeof(CardModel),
+                                           "CreateClone",
+                                           Type.EmptyTypes)
+                                       ?? throw new MissingMethodException(
+                                           typeof(CardModel).FullName,
+                                           "CreateClone()");
+        FieldInfo ownerField = AccessTools.Field(typeof(CardModel), "_owner")
+                               ?? throw new MissingFieldException(
+                                   typeof(CardModel).FullName,
+                                   "_owner");
+        if (ownerField.FieldType != typeof(Player))
+        {
+            throw new InvalidOperationException(
+                $"Unexpected CardModel._owner type: {ownerField.FieldType.FullName}.");
+        }
+
+        ParameterExpression clone = Expression.Variable(typeof(CardModel), "clone");
+        BlockExpression legacyBody = Expression.Block(
+            [clone],
+            Expression.Assign(clone, Expression.Call(source, legacyCreateClone)),
+            Expression.Assign(Expression.Field(clone, ownerField), player),
+            clone);
+
+        return Expression.Lambda<Func<CardModel, Player, CardModel>>(
+            legacyBody,
+            source,
+            player).Compile();
     }
 
     private static BatchCardAddInvoker CreateBatchCardAddInvoker()
