@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using Loadout.Services.Actions;
+using Loadout.Services.Compatibility;
 using Loadout.Services.TildeKey;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -21,7 +22,6 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions;
-using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
@@ -52,11 +52,17 @@ internal static class TildeKeyMaxHandSizeFastPath
 
         foreach (Mod mod in ModManager.GetLoadedMods())
         {
-            if (mod.assembly is null || !ContainsExternalModifier(mod.assembly))
-                continue;
+            foreach (Assembly assembly in Sts2Compatibility.GetModAssemblies(mod))
+            {
+                if (!ContainsExternalModifier(assembly))
+                    continue;
 
-            _hasExternalModifier = true;
-            break;
+                _hasExternalModifier = true;
+                break;
+            }
+
+            if (_hasExternalModifier)
+                break;
         }
 
         _initialized = true;
@@ -269,13 +275,45 @@ public static class TildeKeyInfiniteStarsLossPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.ModifyDamage))]
 public static class TildeKeyModifyDamagePatch
 {
     private static readonly System.Threading.AsyncLocal<int> SuppressDepth = new();
 
+    internal static string GetPostfixMethodName() => Sts2Compatibility.UsesNewModifyDamage
+        ? nameof(NewPostfix)
+        // 0.107-only compatibility fallback; remove or replace when 0.107 support is dropped.
+        : nameof(LegacyPostfix);
+
+    // Maintained newer API shape; CardPlay is preserved when the newer hook is available.
     [HarmonyPostfix]
-    public static void Postfix(
+    public static void NewPostfix(
+        IRunState runState,
+        ICombatState? combatState,
+        Creature? target,
+        Creature? dealer,
+        ValueProp props,
+        CardModel? cardSource,
+        CardPlay? cardPlay,
+        ModifyDamageHookType modifyDamageHookType,
+        CardPreviewMode previewMode,
+        ref decimal __result)
+    {
+        ApplyMultiplier(
+            runState,
+            combatState,
+            target,
+            dealer,
+            props,
+            cardSource,
+            cardPlay,
+            modifyDamageHookType,
+            previewMode,
+            ref __result);
+    }
+
+    // 0.107-only compatibility fallback; remove or replace when 0.107 support is dropped.
+    [HarmonyPostfix]
+    public static void LegacyPostfix(
         IRunState runState,
         ICombatState? combatState,
         Creature? target,
@@ -286,17 +324,42 @@ public static class TildeKeyModifyDamagePatch
         CardPreviewMode previewMode,
         ref decimal __result)
     {
+        ApplyMultiplier(
+            runState,
+            combatState,
+            target,
+            dealer,
+            props,
+            cardSource,
+            cardPlay: null,
+            modifyDamageHookType,
+            previewMode,
+            ref __result);
+    }
+
+    private static void ApplyMultiplier(
+        IRunState runState,
+        ICombatState? combatState,
+        Creature? target,
+        Creature? dealer,
+        ValueProp props,
+        CardModel? cardSource,
+        CardPlay? cardPlay,
+        ModifyDamageHookType modifyDamageHookType,
+        CardPreviewMode previewMode,
+        ref decimal result)
+    {
         if (SuppressDepth.Value > 0 || !modifyDamageHookType.HasFlag(ModifyDamageHookType.Multiplicative))
             return;
 
         if (!TryGetMultiplier(target, dealer, out int multiplier) || multiplier == 100)
             return;
 
-        decimal multiplied = __result * multiplier / 100m;
+        decimal multiplied = result * multiplier / 100m;
         SuppressDepth.Value++;
         try
         {
-            __result = Hook.ModifyDamage(
+            result = Sts2Compatibility.ModifyDamage(
                 runState,
                 combatState,
                 target,
@@ -304,9 +367,9 @@ public static class TildeKeyModifyDamagePatch
                 multiplied,
                 props,
                 cardSource,
+                cardPlay,
                 ModifyDamageHookType.Cap,
-                previewMode,
-                out _);
+                previewMode);
         }
         finally
         {
@@ -485,7 +548,6 @@ public static class TildeKeyRelicCounterBadgeModelChangedPatch
     }
 }
 
-[HarmonyPatch(typeof(CreatureCmd), nameof(CreatureCmd.Damage), typeof(PlayerChoiceContext), typeof(IEnumerable<Creature>), typeof(decimal), typeof(ValueProp), typeof(Creature), typeof(CardModel))]
 public static class TildeKeyGodmodeDamagePatch
 {
     [HarmonyPrefix]

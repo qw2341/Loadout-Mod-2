@@ -16,14 +16,6 @@ using MegaCrit.Sts2.Core.Models;
 /// service only asks the game to perform the action; these postfixes publish
 /// the smallest UI invalidation after the native command has actually finished.
 /// </summary>
-[HarmonyPatch(
-    typeof(CardPileCmd),
-    nameof(CardPileCmd.Add),
-    typeof(IEnumerable<CardModel>),
-    typeof(CardPile),
-    typeof(CardPilePosition),
-    typeof(AbstractModel),
-    typeof(bool))]
 public static class LoadoutNativeDeckAddContentPatch
 {
     [HarmonyPostfix]

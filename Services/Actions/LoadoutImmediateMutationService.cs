@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Morphing;
 using Loadout.Services.Networking;
@@ -1289,7 +1290,7 @@ public static class LoadoutImmediateMutationService
         IReadOnlyList<CardPileAddResult> addedCards;
         try
         {
-            addedCards = await CardPileCmd.Add(cards, targetPlayer.Deck);
+            addedCards = await Sts2Compatibility.AddCards(cards, targetPlayer.Deck);
         }
         catch (Exception exception)
         {
@@ -1336,7 +1337,7 @@ public static class LoadoutImmediateMutationService
         {
             // The native batch path runs deck hooks for every fresh card while
             // producing one structural notification and one preview group.
-            addedCards = await CardPileCmd.Add(cards, targetPlayer.Deck);
+            addedCards = await Sts2Compatibility.AddCards(cards, targetPlayer.Deck);
         }
         catch (Exception exception)
         {

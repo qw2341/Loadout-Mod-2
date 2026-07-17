@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Saves;
 
@@ -14,15 +15,15 @@ public static class InputCompatibilityService
     private static readonly IReadOnlyDictionary<string, string> LegacyControllerActions =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["controller_l_stick_press"] = Controller.joystickPress,
-            ["controller_l_stick_left"] = Controller.joystickLeft,
-            ["controller_l_stick_right"] = Controller.joystickRight,
-            ["controller_l_stick_up"] = Controller.joystickUp,
-            ["controller_l_stick_down"] = Controller.joystickDown,
-            ["controller_d_pad_left"] = Controller.dPadWest,
-            ["controller_d_pad_right"] = Controller.dPadEast,
-            ["controller_d_pad_up"] = Controller.dPadNorth,
-            ["controller_d_pad_down"] = Controller.dPadSouth
+            ["controller_l_stick_press"] = Sts2Compatibility.LStickPressAction,
+            ["controller_l_stick_left"] = Sts2Compatibility.LStickLeftAction,
+            ["controller_l_stick_right"] = Sts2Compatibility.LStickRightAction,
+            ["controller_l_stick_up"] = Sts2Compatibility.LStickUpAction,
+            ["controller_l_stick_down"] = Sts2Compatibility.LStickDownAction,
+            ["controller_d_pad_left"] = Sts2Compatibility.DPadLeftAction,
+            ["controller_d_pad_right"] = Sts2Compatibility.DPadRightAction,
+            ["controller_d_pad_up"] = Sts2Compatibility.DPadUpAction,
+            ["controller_d_pad_down"] = Sts2Compatibility.DPadDownAction
         };
 
     private static readonly ISet<string> SupportedControllerMappingKeys =

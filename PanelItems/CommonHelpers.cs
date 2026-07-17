@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Helpers;
 using Loadout.Services.Actions;
+using Loadout.Services.Compatibility;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
 using Loadout.UI;
@@ -922,8 +923,8 @@ public class CommonHelpers
                     ? modId
                     : mod.manifest.name;
 
-                if (mod.assembly is not null)
-                    _modIdsByAssembly[mod.assembly] = modId;
+                foreach (Assembly modAssembly in Sts2Compatibility.GetModAssemblies(mod))
+                    _modIdsByAssembly[modAssembly] = modId;
             }
         }
         catch (Exception exception)

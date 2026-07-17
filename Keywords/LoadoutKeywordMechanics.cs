@@ -8,11 +8,13 @@ namespace Loadout.Keywords;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using Loadout.Services.CardModification;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
@@ -23,6 +25,7 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
+using LinqExpression = System.Linq.Expressions.Expression;
 
 public static class LoadoutKeywordMechanics
 {
@@ -230,8 +233,8 @@ internal static class LoadoutKeywordRuntimePatches
         TryEnable(StickyHarmony, StickyHarmonyId, () =>
         {
             StickyHarmony.Patch(
-                AccessTools.Method(typeof(Hook), nameof(Hook.ModifyCardPlayResultPileTypeAndPosition))!,
-                postfix: new HarmonyMethod(typeof(StickyPlayedCardResultPilePatch), nameof(StickyPlayedCardResultPilePatch.Postfix)));
+                Sts2Compatibility.StickyCardPlayResultMethod,
+                postfix: new HarmonyMethod(StickyPlayedCardResultPilePatch.GetPostfixMethod()));
             PatchPrefixPostfix(StickyHarmony,
                 AccessTools.Method(typeof(CardCmd), nameof(CardCmd.DiscardAndDraw),
                     [typeof(PlayerChoiceContext), typeof(IEnumerable<CardModel>), typeof(int)])!,
@@ -479,11 +482,93 @@ public static class XCostPlayCountPatch
 
 public static class StickyPlayedCardResultPilePatch
 {
+    internal static MethodInfo GetPostfixMethod()
+    {
+        if (!Sts2Compatibility.UsesNewCardLocation)
+        {
+            // 0.107-only compatibility fallback; remove or replace when 0.107 support is dropped.
+            return AccessTools.Method(typeof(StickyPlayedCardResultPilePatch), nameof(LegacyPostfix))
+                   ?? throw new MissingMethodException(
+                       typeof(StickyPlayedCardResultPilePatch).FullName,
+                       nameof(LegacyPostfix));
+        }
+
+        Type resultType = Sts2Compatibility.StickyCardPlayResultMethod.ReturnType;
+        Type transformerType = typeof(StickyLocationResult<>).MakeGenericType(resultType);
+        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(transformerType.TypeHandle);
+
+        MethodInfo genericPostfix = AccessTools.Method(
+                                        typeof(StickyPlayedCardResultPilePatch),
+                                        nameof(NewPostfix))
+                                    ?? throw new MissingMethodException(
+                                        typeof(StickyPlayedCardResultPilePatch).FullName,
+                                        nameof(NewPostfix));
+        return genericPostfix.MakeGenericMethod(resultType);
+    }
+
+    // Maintained newer API path. TResult closes over CardLocation at runtime,
+    // keeping that newer-only type out of the compiled assembly references.
     [HarmonyPostfix]
-    public static void Postfix(CardModel card, ref ValueTuple<PileType, CardPilePosition> __result)
+    public static void NewPostfix<TResult>(CardModel card, ref TResult __result)
+        where TResult : struct
+    {
+        if (LoadoutKeywords.Has(card, LoadoutKeywords.Sticky))
+            __result = StickyLocationResult<TResult>.MoveToHand(__result);
+    }
+
+    // 0.107-only compatibility fallback; remove or replace when 0.107 support is dropped.
+    [HarmonyPostfix]
+    public static void LegacyPostfix(CardModel card, ref ValueTuple<PileType, CardPilePosition> __result)
     {
         if (LoadoutKeywords.Has(card, LoadoutKeywords.Sticky))
             __result = (PileType.Hand, CardPilePosition.Bottom);
+    }
+
+    private static class StickyLocationResult<TResult>
+        where TResult : struct
+    {
+        internal static readonly Func<TResult, TResult> MoveToHand = CreateMoveToHand();
+
+        private static Func<TResult, TResult> CreateMoveToHand()
+        {
+            Type resultType = typeof(TResult);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            MemberInfo? playerMember = resultType.GetField("player", flags)
+                                       ?? (MemberInfo?)resultType.GetProperty("player", flags)
+                                       ?? resultType.GetProperty("Player", flags);
+            if (playerMember is null)
+                throw new MissingMemberException(resultType.FullName, "player");
+
+            Type playerType = playerMember switch
+            {
+                FieldInfo field => field.FieldType,
+                PropertyInfo property => property.PropertyType,
+                _ => throw new InvalidOperationException($"Unsupported player member on {resultType.FullName}.")
+            };
+
+            ConstructorInfo constructor = resultType.GetConstructor(
+                                              flags,
+                                              binder: null,
+                                              [playerType, typeof(PileType), typeof(CardPilePosition)],
+                                              modifiers: null)
+                                          ?? throw new MissingMethodException(
+                                              resultType.FullName,
+                                              ".ctor(Player, PileType, CardPilePosition)");
+
+            ParameterExpression current = LinqExpression.Parameter(resultType, "current");
+            System.Linq.Expressions.Expression player = playerMember switch
+            {
+                FieldInfo field => LinqExpression.Field(current, field),
+                PropertyInfo property => LinqExpression.Property(current, property),
+                _ => throw new InvalidOperationException()
+            };
+            NewExpression replacement = LinqExpression.New(
+                constructor,
+                player,
+                LinqExpression.Constant(PileType.Hand),
+                LinqExpression.Constant(CardPilePosition.Bottom));
+            return LinqExpression.Lambda<Func<TResult, TResult>>(replacement, current).Compile();
+        }
     }
 }
 
@@ -560,7 +645,7 @@ public static class StickyDiscardPatch
         if (cardsToReturn is null)
             return;
 
-        await CardPileCmd.Add(
+        await Sts2Compatibility.AddCards(
             cardsToReturn,
             PileType.Hand,
             CardPilePosition.Bottom);
@@ -620,7 +705,7 @@ public static class StickyFlushPlayerHandPatch
         if (cardsToReturn.Count == 0)
             return;
         
-        await CardPileCmd.Add(
+        await Sts2Compatibility.AddCards(
             cardsToReturn,
             PileType.Hand,
             CardPilePosition.Bottom);

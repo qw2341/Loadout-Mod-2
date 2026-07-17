@@ -4,6 +4,7 @@ using Godot;
 using HarmonyLib;
 using Loadout.Config;
 using Loadout.Patches;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Input;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Modding;
@@ -33,9 +34,11 @@ public partial class MainFile : Node
 
         Godot.Bridge.ScriptManagerBridge.LookupScriptsInAssembly(assembly);
         LogPckBuildMarker();
+        Sts2Compatibility.Initialize();
         InputCompatibilityService.Register();
-            
+             
         Harmony harmony = new(ModId);
+        VersionSensitivePatchInstaller.Install(harmony);
         harmony.PatchAll();
 
         Logger.Info("[Loadout] Harmony PatchAll complete.");
