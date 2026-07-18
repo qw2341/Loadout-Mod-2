@@ -56,12 +56,14 @@ public static class BottledMonsterMorphService
     private static readonly Dictionary<ulong, MorphVisualRuntime> ActiveVisuals = new();
     private static readonly Dictionary<ulong, MorphAudioProfile> ActiveAudioProfiles = new();
     private static readonly Dictionary<ulong, AbstractModel> MorphModelsByPlayer = new();
-    private static readonly HashSet<string> DescriptionTitleWarnings = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> DisplayTitleWarnings = new(StringComparer.Ordinal);
     private static readonly FieldInfo? VisualsField = AccessTools.Field(typeof(NCreature), "<Visuals>k__BackingField");
     private static readonly FieldInfo? SpineAnimatorField = AccessTools.Field(typeof(NCreature), "_spineAnimator");
     private static readonly MethodInfo? ConnectAnimatorSignalsMethod = AccessTools.Method(typeof(NCreature), "ConnectSpineAnimatorSignals");
     private static readonly MethodInfo? UpdateBoundsMethod = AccessTools.Method(typeof(NCreature), "UpdateBounds", [typeof(NCreatureVisuals)]);
     private static readonly MethodInfo? SetOrbManagerPositionMethod = AccessTools.Method(typeof(NCreature), "SetOrbManagerPosition");
+    private static readonly FieldInfo? StateDisplayField = AccessTools.Field(typeof(NCreature), "_stateDisplay");
+    private static readonly MethodInfo? RefreshStateDisplayMethod = AccessTools.Method(typeof(NCreatureStateDisplay), "RefreshValues");
     private static readonly FieldInfo? AnyStateField = AccessTools.Field(typeof(CreatureAnimator), "_anyState");
     private static readonly FieldInfo? BranchedStatesField = AccessTools.Field(typeof(AnimState), "_branchedStates");
     private static readonly FieldInfo? MerchantPlayersField = AccessTools.Field(typeof(NMerchantRoom), "_players");
@@ -159,6 +161,7 @@ public static class BottledMonsterMorphService
             return;
 
         SaveRunStateIfAuthoritative();
+        RefreshCombatDisplayName(player.NetId);
         int revision = NextRevision(player.NetId);
         TaskHelper.RunSafely(ApplyCurrentVisualAsync(player.NetId, revision));
         ScheduleMerchantVisualRefresh(player.NetId);
@@ -363,14 +366,24 @@ public static class BottledMonsterMorphService
     public static string ResolveMorphApplierDescriptionName(string nativeName, PowerModel power)
     {
         return TryGetMorphedPlayerTitle(power.Applier?.Player, out LocString title)
-            ? FormatMorphDescriptionTitle(title, nativeName)
+            ? FormatMorphDisplayTitle(title, nativeName)
             : nativeName;
     }
 
     public static string ResolveMorphTargetDescriptionName(string nativeName, PowerModel power)
     {
         return TryGetMorphedPlayerTitle(power.Target?.Player, out LocString title)
-            ? FormatMorphDescriptionTitle(title, nativeName)
+            ? FormatMorphDisplayTitle(title, nativeName)
+            : nativeName;
+    }
+
+    public static string ResolveMorphCreatureDisplayName(Creature creature, string nativeName)
+    {
+        if (!creature.IsPlayer || !RunManager.Instance.IsSingleplayerOrFakeMultiplayer)
+            return nativeName;
+
+        return TryGetMorphedPlayerTitle(creature.Player, out LocString title)
+            ? FormatMorphDisplayTitle(title, nativeName)
             : nativeName;
     }
 
@@ -397,7 +410,7 @@ public static class BottledMonsterMorphService
         }
     }
 
-    private static string FormatMorphDescriptionTitle(LocString title, string nativeName)
+    private static string FormatMorphDisplayTitle(LocString title, string nativeName)
     {
         try
         {
@@ -406,10 +419,10 @@ public static class BottledMonsterMorphService
         catch (Exception exception)
         {
             string titleKey = $"{title.LocTable}:{title.LocEntryKey}";
-            if (DescriptionTitleWarnings.Add(titleKey))
+            if (DisplayTitleWarnings.Add(titleKey))
             {
                 GD.PushWarning(
-                    $"BottledMonsterMorph: could not format morph title '{titleKey}' for a power description; using the native name. {exception.Message}");
+                    $"BottledMonsterMorph: could not format morph title '{titleKey}' for display text; using the native name. {exception.Message}");
             }
             return nativeName;
         }
@@ -418,10 +431,31 @@ public static class BottledMonsterMorphService
     private static void WarnDescriptionTitleFailureOnce(AbstractModel model, Exception exception)
     {
         string modelId = model.Id.ToString();
-        if (DescriptionTitleWarnings.Add(modelId))
+        if (DisplayTitleWarnings.Add(modelId))
         {
             GD.PushWarning(
-                $"BottledMonsterMorph: could not resolve morph title '{modelId}' for a power description; using the native name. {exception.Message}");
+                $"BottledMonsterMorph: could not resolve morph title '{modelId}' for display text; using the native name. {exception.Message}");
+        }
+    }
+
+    private static void RefreshCombatDisplayName(ulong playerNetId)
+    {
+        try
+        {
+            if (!RunManager.Instance.IsSingleplayerOrFakeMultiplayer)
+                return;
+
+            Player? player = GetRunPlayer(playerNetId);
+            NCreature? creatureNode = player is null ? null : NCombatRoom.Instance?.GetCreatureNode(player.Creature);
+            if (creatureNode is not null
+                && StateDisplayField?.GetValue(creatureNode) is NCreatureStateDisplay stateDisplay)
+            {
+                RefreshStateDisplayMethod?.Invoke(stateDisplay, null);
+            }
+        }
+        catch
+        {
+            // The patched Creature.Name getter still applies on the next native refresh.
         }
     }
 
@@ -1440,6 +1474,7 @@ public static class BottledMonsterMorphService
                 continue;
 
             int revision = NextRevision(playerNetId);
+            RefreshCombatDisplayName(playerNetId);
             TaskHelper.RunSafely(ApplyCurrentVisualAsync(playerNetId, revision));
             ScheduleMerchantVisualRefresh(playerNetId);
             ScheduleRestSiteVisualRefresh(playerNetId);
@@ -1556,6 +1591,7 @@ public static class BottledMonsterMorphService
             foreach (ulong playerNetId in affectedPlayers)
             {
                 int revision = NextRevision(playerNetId);
+                RefreshCombatDisplayName(playerNetId);
                 TaskHelper.RunSafely(ApplyCurrentVisualAsync(playerNetId, revision));
                 ScheduleMerchantVisualRefresh(playerNetId);
                 ScheduleRestSiteVisualRefresh(playerNetId);
@@ -1576,7 +1612,7 @@ public static class BottledMonsterMorphService
         ActiveVisuals.Clear();
         ActiveAudioProfiles.Clear();
         MorphModelsByPlayer.Clear();
-        DescriptionTitleWarnings.Clear();
+        DisplayTitleWarnings.Clear();
         FakeMerchantVisuals.Clear();
         _activeFakeMerchant = null;
         RestSiteVisuals.Clear();

@@ -21,6 +21,16 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Runs;
 
+[HarmonyPatch(typeof(Creature), nameof(Creature.Name), MethodType.Getter)]
+public static class BottledMonsterMorphCreatureDisplayNamePatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(Creature __instance, ref string __result)
+    {
+        __result = BottledMonsterMorphService.ResolveMorphCreatureDisplayName(__instance, __result);
+    }
+}
+
 [HarmonyPatch(typeof(PowerModel), nameof(PowerModel.HoverTips), MethodType.Getter)]
 public static class BottledMonsterMorphPowerDescriptionPatch
 {
