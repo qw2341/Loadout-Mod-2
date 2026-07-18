@@ -17,5 +17,11 @@
   "LOADOUT-RESET_STATUS_READY.title": "",
   "LOADOUT-RESET_STATUS_SUCCEEDED.title": "Statut : les modifications permanentes des cartes ont été réinitialisées",
   "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "Statut : aucune modification permanente de carte à réinitialiser",
-  "LOADOUT-RESET_STATUS_FAILED.title": "Statut : échec de la réinitialisation ; consultez le journal pour plus de détails"
+  "LOADOUT-RESET_STATUS_FAILED.title": "Statut : échec de la réinitialisation ; consultez le journal pour plus de détails",
+  "LOADOUT-RELIC_MODIFICATIONS_SECTION.title": "Modifications des reliques",
+  "LOADOUT-PERMANENT_RELIC_MODIFICATIONS.title": "Modifications permanentes des reliques",
+  "LOADOUT-RESET_ALL_PERMANENT_RELIC_MODIFICATIONS.title": "Réinitialiser toutes les modifications permanentes des reliques",
+  "LOADOUT-RELIC_RESET_STATUS_SUCCEEDED.title": "Statut : les modifications permanentes des reliques ont été réinitialisées",
+  "LOADOUT-RELIC_RESET_STATUS_NOTHING_TO_RESET.title": "Statut : aucune modification permanente de relique à réinitialiser",
+  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "Statut : échec de la réinitialisation ; consultez le journal pour plus de détails"
 }

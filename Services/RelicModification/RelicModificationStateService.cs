@@ -289,6 +289,41 @@ public static class RelicModificationStateService
         lock (Gate) return GetPermanentLocked(id).Clone();
     }
 
+    public static int GetPermanentModificationCount()
+    {
+        EnsureLoaded();
+        lock (Gate) return _permanent.Relics.Count;
+    }
+
+    public static int ResetAllPermanent()
+    {
+        EnsureLoaded();
+        string[] changedKeys;
+        lock (Gate)
+        {
+            changedKeys = _permanent.Relics.Keys.ToArray();
+            if (changedKeys.Length == 0)
+                return 0;
+        }
+
+        HashSet<string> changed = changedKeys.ToHashSet(StringComparer.Ordinal);
+        RestorePermanentBaselines(changed);
+        lock (Gate)
+        {
+            _permanent.Relics.Clear();
+            QueueSave();
+            Interlocked.Increment(ref _stateRevision);
+        }
+
+        ReapplyRelicsAfterPermanentReset(changed);
+        NotifyAllMatchingRelicsUpdated(changed);
+        RaisePermanentRelicDisplayChanged(changedKeys);
+        StateChanged?.Invoke();
+        if (IsMultiplayerHost())
+            RelicModificationMultiplayerSyncService.BroadcastSnapshot();
+        return changedKeys.Length;
+    }
+
     public static RelicModificationState GetEffectiveState(RelicModel relic)
         => GetEffectiveStateReadOnly(relic).Clone();
 
@@ -775,6 +810,25 @@ public static class RelicModificationStateService
         if (changes.Count > 0)
             LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Relics, owners, LoadoutRunContentChangeMode.Update, changedRelics: changes);
     }
+
+    private static void NotifyAllMatchingRelicsUpdated(IReadOnlySet<string> ids)
+    {
+        if (!RunManager.Instance.IsInProgress || RunManager.Instance.DebugOnlyGetState() is not { } run) return;
+        List<LoadoutChangedRelic> changes = [];
+        HashSet<ulong> owners = [];
+        foreach (Player player in run.Players)
+        {
+            for (int index = 0; index < player.Relics.Count; index++)
+            {
+                RelicModel relic = player.Relics[index];
+                if (!ids.Contains(relic.Id.ToString())) continue;
+                owners.Add(player.NetId);
+                changes.Add(new LoadoutChangedRelic(player.NetId, index, relic.Id));
+            }
+        }
+        if (changes.Count > 0)
+            LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Relics, owners, LoadoutRunContentChangeMode.Update, changedRelics: changes);
+    }
     private static void EnsureBaseline(RelicModel relic)
     {
         RelicModificationAttachment attachment = RelicModificationInstanceState.Get(relic);
@@ -789,6 +843,29 @@ public static class RelicModificationStateService
         {
             RelicModificationAttachment attachment = RelicModificationInstanceState.Get(relic);
             RestoreState(relic, attachment.Baseline);
+        }
+    }
+
+    private static void RestorePermanentBaselines(IReadOnlySet<string> ids)
+    {
+        if (!RunManager.Instance.IsInProgress || RunManager.Instance.DebugOnlyGetState() is not { } run) return;
+        foreach (RelicModel relic in run.Players.SelectMany(player => player.Relics).Where(relic => ids.Contains(relic.Id.ToString())))
+        {
+            RelicModificationAttachment attachment = RelicModificationInstanceState.Get(relic);
+            RestoreState(relic, attachment.Baseline);
+        }
+    }
+
+    private static void ReapplyRelicsAfterPermanentReset(IReadOnlySet<string> ids)
+    {
+        if (!RunManager.Instance.IsInProgress || RunManager.Instance.DebugOnlyGetState() is not { } run) return;
+        foreach (RelicModel relic in run.Players.SelectMany(player => player.Relics).Where(relic => ids.Contains(relic.Id.ToString())))
+        {
+            EffectiveStates.Remove(relic);
+            if (GetEffectiveStateReadOnly(relic).IsEmpty)
+                RelicModificationInstanceState.Clear(relic);
+            else
+                ApplyEffectiveState(relic);
         }
     }
     private static void RestoreAllOverlayBaselines()

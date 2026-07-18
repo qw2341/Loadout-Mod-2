@@ -17,5 +17,11 @@
   "LOADOUT-RESET_STATUS_READY.title": "",
   "LOADOUT-RESET_STATUS_SUCCEEDED.title": "상태: 영구 카드 변경을 초기화했습니다",
   "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "상태: 초기화할 영구 카드 변경이 없습니다",
-  "LOADOUT-RESET_STATUS_FAILED.title": "상태: 초기화에 실패했습니다. 자세한 내용은 로그를 확인하세요"
+  "LOADOUT-RESET_STATUS_FAILED.title": "상태: 초기화에 실패했습니다. 자세한 내용은 로그를 확인하세요",
+  "LOADOUT-RELIC_MODIFICATIONS_SECTION.title": "유물 변경",
+  "LOADOUT-PERMANENT_RELIC_MODIFICATIONS.title": "영구 유물 변경",
+  "LOADOUT-RESET_ALL_PERMANENT_RELIC_MODIFICATIONS.title": "모든 영구 유물 변경 초기화",
+  "LOADOUT-RELIC_RESET_STATUS_SUCCEEDED.title": "상태: 영구 유물 변경을 초기화했습니다",
+  "LOADOUT-RELIC_RESET_STATUS_NOTHING_TO_RESET.title": "상태: 초기화할 영구 유물 변경이 없습니다",
+  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "상태: 초기화에 실패했습니다. 자세한 내용은 로그를 확인하세요"
 }

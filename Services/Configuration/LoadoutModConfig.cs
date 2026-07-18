@@ -10,6 +10,7 @@ using Godot;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.Configuration;
+using Loadout.Services.RelicModification;
 
 public enum LoadoutSkin
 {
@@ -85,6 +86,18 @@ public sealed class LoadoutModConfig : SimpleModConfig
             () => ResetAllPermanentCardModifications(resetStatus)));
         optionContainer.AddChild(resetStatus);
 
+        optionContainer.AddChild(CreateSectionHeader(GetLabelText("RelicModificationsSection")));
+        var relicResetStatus = CreateRawLabelControl(GetLabelText("ResetStatusReady"), 22);
+        relicResetStatus.Name = "PermanentRelicModificationResetStatus";
+        relicResetStatus.CustomMinimumSize = new Vector2(0f, 44f);
+        relicResetStatus.HorizontalAlignment = HorizontalAlignment.Center;
+
+        optionContainer.AddChild(CreateButton(
+            "PermanentRelicModifications",
+            "ResetAllPermanentRelicModifications",
+            () => ResetAllPermanentRelicModifications(relicResetStatus)));
+        optionContainer.AddChild(relicResetStatus);
+
         SetupFocusNeighbors(optionContainer);
     }
 
@@ -104,6 +117,25 @@ public sealed class LoadoutModConfig : SimpleModConfig
             status.Text = GetLabelText("ResetStatusFailed");
             status.AddThemeColorOverride("default_color", new Color("F07C72"));
             GD.PushError($"Loadout: failed to reset permanent card modifications. {exception}");
+        }
+    }
+
+    private void ResetAllPermanentRelicModifications(MegaCrit.Sts2.addons.mega_text.MegaRichTextLabel status)
+    {
+        try
+        {
+            int removedCount = RelicModificationStateService.GetPermanentModificationCount();
+            RelicModificationStateService.ResetAllPermanent();
+            status.Text = GetLabelText(removedCount > 0
+                ? "RelicResetStatusSucceeded"
+                : "RelicResetStatusNothingToReset");
+            status.AddThemeColorOverride("default_color", new Color("85D98B"));
+        }
+        catch (Exception exception)
+        {
+            status.Text = GetLabelText("RelicResetStatusFailed");
+            status.AddThemeColorOverride("default_color", new Color("F07C72"));
+            GD.PushError($"Loadout: failed to reset permanent relic modifications. {exception}");
         }
     }
 

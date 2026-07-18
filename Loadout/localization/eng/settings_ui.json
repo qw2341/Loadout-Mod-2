@@ -17,5 +17,11 @@
   "LOADOUT-RESET_STATUS_READY.title": "",
   "LOADOUT-RESET_STATUS_SUCCEEDED.title": "Status: permanent card modifications reset successfully",
   "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "Status: no permanent card modifications to reset",
-  "LOADOUT-RESET_STATUS_FAILED.title": "Status: reset failed; check the log for details"
+  "LOADOUT-RESET_STATUS_FAILED.title": "Status: reset failed; check the log for details",
+  "LOADOUT-RELIC_MODIFICATIONS_SECTION.title": "Relic Modifications",
+  "LOADOUT-PERMANENT_RELIC_MODIFICATIONS.title": "Permanent relic modifications",
+  "LOADOUT-RESET_ALL_PERMANENT_RELIC_MODIFICATIONS.title": "Reset all permanent relic modifications",
+  "LOADOUT-RELIC_RESET_STATUS_SUCCEEDED.title": "Status: permanent relic modifications reset successfully",
+  "LOADOUT-RELIC_RESET_STATUS_NOTHING_TO_RESET.title": "Status: no permanent relic modifications to reset",
+  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "Status: reset failed; check the log for details"
 }

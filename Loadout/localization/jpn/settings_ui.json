@@ -17,5 +17,11 @@
   "LOADOUT-RESET_STATUS_READY.title": "",
   "LOADOUT-RESET_STATUS_SUCCEEDED.title": "状態：恒久的なカード変更をリセットしました",
   "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "状態：リセットする恒久的なカード変更はありません",
-  "LOADOUT-RESET_STATUS_FAILED.title": "状態：リセットに失敗しました。詳細はログを確認してください"
+  "LOADOUT-RESET_STATUS_FAILED.title": "状態：リセットに失敗しました。詳細はログを確認してください",
+  "LOADOUT-RELIC_MODIFICATIONS_SECTION.title": "レリックの変更",
+  "LOADOUT-PERMANENT_RELIC_MODIFICATIONS.title": "恒久的なレリック変更",
+  "LOADOUT-RESET_ALL_PERMANENT_RELIC_MODIFICATIONS.title": "すべての恒久的なレリック変更をリセット",
+  "LOADOUT-RELIC_RESET_STATUS_SUCCEEDED.title": "状態：恒久的なレリック変更をリセットしました",
+  "LOADOUT-RELIC_RESET_STATUS_NOTHING_TO_RESET.title": "状態：リセットする恒久的なレリック変更はありません",
+  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "状態：リセットに失敗しました。詳細はログを確認してください"
 }

@@ -17,5 +17,11 @@
   "LOADOUT-RESET_STATUS_READY.title": "",
   "LOADOUT-RESET_STATUS_SUCCEEDED.title": "状态：已成功重置永久卡牌修改",
   "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "状态：没有需要重置的永久卡牌修改",
-  "LOADOUT-RESET_STATUS_FAILED.title": "状态：重置失败；请查看日志了解详情"
+  "LOADOUT-RESET_STATUS_FAILED.title": "状态：重置失败；请查看日志了解详情",
+  "LOADOUT-RELIC_MODIFICATIONS_SECTION.title": "遗物修改",
+  "LOADOUT-PERMANENT_RELIC_MODIFICATIONS.title": "永久遗物修改",
+  "LOADOUT-RESET_ALL_PERMANENT_RELIC_MODIFICATIONS.title": "重置所有永久遗物修改",
+  "LOADOUT-RELIC_RESET_STATUS_SUCCEEDED.title": "状态：已成功重置永久遗物修改",
+  "LOADOUT-RELIC_RESET_STATUS_NOTHING_TO_RESET.title": "状态：没有需要重置的永久遗物修改",
+  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "状态：重置失败；请查看日志了解详情"
 }

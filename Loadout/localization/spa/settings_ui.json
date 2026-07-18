@@ -17,5 +17,11 @@
   "LOADOUT-RESET_STATUS_READY.title": "",
   "LOADOUT-RESET_STATUS_SUCCEEDED.title": "Estado: las modificaciones permanentes de cartas se restablecieron correctamente",
   "LOADOUT-RESET_STATUS_NOTHING_TO_RESET.title": "Estado: no hay modificaciones permanentes de cartas que restablecer",
-  "LOADOUT-RESET_STATUS_FAILED.title": "Estado: no se pudo restablecer; consulta el registro para obtener más detalles"
+  "LOADOUT-RESET_STATUS_FAILED.title": "Estado: no se pudo restablecer; consulta el registro para obtener más detalles",
+  "LOADOUT-RELIC_MODIFICATIONS_SECTION.title": "Modificaciones de reliquias",
+  "LOADOUT-PERMANENT_RELIC_MODIFICATIONS.title": "Modificaciones permanentes de reliquias",
+  "LOADOUT-RESET_ALL_PERMANENT_RELIC_MODIFICATIONS.title": "Restablecer todas las modificaciones permanentes de reliquias",
+  "LOADOUT-RELIC_RESET_STATUS_SUCCEEDED.title": "Estado: las modificaciones permanentes de reliquias se restablecieron correctamente",
+  "LOADOUT-RELIC_RESET_STATUS_NOTHING_TO_RESET.title": "Estado: no hay modificaciones permanentes de reliquias que restablecer",
+  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "Estado: no se pudo restablecer; consulta el registro para obtener más detalles"
 }
