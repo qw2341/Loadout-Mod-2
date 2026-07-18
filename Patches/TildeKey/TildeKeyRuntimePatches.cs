@@ -183,7 +183,8 @@ public static class TildeKeyExtraStatLockBoundaryPatch
 public static class TildeKeyMapReadyPatch
 {
     [HarmonyPostfix]
-    public static void Postfix() => TildeKeyStateService.RefreshMapDebugTravel();
+    public static void Postfix(NMapScreen __instance)
+        => TildeKeyStateService.RefreshMapDebugTravel(__instance);
 }
 
 public static class TildeKeyRelicCounterLockBoundaryPatch

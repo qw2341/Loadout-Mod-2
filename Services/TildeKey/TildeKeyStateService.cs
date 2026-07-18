@@ -129,6 +129,7 @@ public static class TildeKeyStateService
     private static readonly FieldInfo? BlockChangedField = AccessTools.Field(typeof(Creature), "BlockChanged");
     private static readonly FieldInfo? TurnNumberField = AccessTools.Field(typeof(PlayerCombatState), "<TurnNumber>k__BackingField");
     private static readonly FieldInfo? CombatStatePlayerField = AccessTools.Field(typeof(PlayerCombatState), "_player");
+    private static readonly FieldInfo? RunStartTimeField = AccessTools.Field(typeof(RunManager), "_startTime");
     private static readonly MethodInfo? RelicDisplayAmountChangedMethod = AccessTools.Method(typeof(RelicModel), "InvokeDisplayAmountChanged");
     private static readonly FieldInfo? CreatureStateDisplayField = AccessTools.Field(typeof(NCreature), "_stateDisplay");
     private static readonly MethodInfo? CreatureStateDisplayRefreshValuesMethod = AccessTools.Method(typeof(NCreatureStateDisplay), "RefreshValues");
@@ -290,7 +291,8 @@ public static class TildeKeyStateService
         finally { _lockReapplyDepth--; }
     }
 
-    internal static void RefreshMapDebugTravel() => SyncMapDebugTravel(force: true);
+    internal static void RefreshMapDebugTravel(NMapScreen? screen = null)
+        => SyncMapDebugTravel(force: true, screen);
 
     private static void RefreshDynamicLockPatches()
     {
@@ -1633,11 +1635,11 @@ public static class TildeKeyStateService
         }
     }
 
-    private static void SyncMapDebugTravel(bool force)
+    private static void SyncMapDebugTravel(bool force, NMapScreen? screen = null)
     {
         bool desired = IsGoToAnyRoomEnabled();
-        NMapScreen? screen = NMapScreen.Instance;
-        if (screen is null)
+        screen ??= GetMapScreenSafely();
+        if (screen is null || !GodotObject.IsInstanceValid(screen))
         {
             _lastMapScreen = null;
             _lastDesiredDebugTravel = desired;
@@ -1660,6 +1662,22 @@ public static class TildeKeyStateService
 
         _lastMapScreen = screen;
         _lastDesiredDebugTravel = desired;
+    }
+
+    private static NMapScreen? GetMapScreenSafely()
+    {
+        try
+        {
+            // NMapScreen.Instance dereferences NRun.GlobalUi internally in both
+            // 0.107 and 0.109, so it can throw while the run scene is entering
+            // the tree. The _Ready patch passes its live instance directly;
+            // this helper only covers later callers that do not have one.
+            return NMapScreen.Instance;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool IsGoToAnyRoomEnabled()
@@ -1962,9 +1980,44 @@ public static class TildeKeyStateService
         ReloadRunIfNeeded();
     }
 
+    private static long? GetCurrentRunStartTime()
+    {
+        RunManager manager;
+        try
+        {
+            manager = RunManager.Instance;
+            if (!manager.IsInProgress || manager.DebugOnlyGetState() is null)
+                return null;
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (RunStartTimeField is not null)
+        {
+            try
+            {
+                // RunManager initializes _startTime before it raises RunStarted.
+                // Reading it avoids serializing the entire run through ToSave(),
+                // which is unsafe while NRun/GlobalUi is still being constructed.
+                return RunStartTimeField.GetValue(manager) is long startTime
+                    ? startTime
+                    : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // Future-version fallback if the private field is ever removed.
+        return SaveUtility.GetCurrentRunStartTime();
+    }
+
     private static void ReloadRunIfNeeded()
     {
-        long? currentRunStartTime = SaveUtility.GetCurrentRunStartTime();
+        long? currentRunStartTime = GetCurrentRunStartTime();
         lock (SyncRoot)
         {
             if (_runLoaded && _loadedRunStartTime == currentRunStartTime)
