@@ -13,7 +13,7 @@ namespace Loadout;
 
 
 [ModInitializer(nameof(Initialize))]
-public partial class MainFile : Node
+public static class MainFile
 {
     public const string ModId = "Loadout"; //At the moment, this is used only for the Logger and harmony names.
 
@@ -28,7 +28,7 @@ public partial class MainFile : Node
         SentryStartupCrashInterceptor.Install(Harmony);
         // Logger.Info("[Loadout] Build marker DLL: 2026-07-04-card-printer-native-batch-v5");
 
-        var assembly = Assembly.GetExecutingAssembly();
+        Assembly assembly = typeof(MainFile).Assembly;
         Logger.Info($"[Loadout] Assembly location: {assembly.Location}");
         Logger.Info($"[Loadout] Assembly version: {assembly.GetName().Version}");
 
