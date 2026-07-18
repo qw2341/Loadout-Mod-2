@@ -23,6 +23,7 @@ using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Hooks;
+using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -185,6 +186,14 @@ public static class TildeKeyMapReadyPatch
     [HarmonyPostfix]
     public static void Postfix(NMapScreen __instance)
         => TildeKeyStateService.RefreshMapDebugTravel(__instance);
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.EnterMapCoord))]
+public static class TildeKeyVisitedMapReentryPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(RunManager __instance, MapCoord coord)
+        => TildeKeyStateService.PrepareMapCoordForDebugReentry(__instance, coord);
 }
 
 public static class TildeKeyRelicCounterLockBoundaryPatch

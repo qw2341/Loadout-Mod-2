@@ -33,6 +33,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Extensions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Nodes;
@@ -130,6 +131,7 @@ public static class TildeKeyStateService
     private static readonly FieldInfo? TurnNumberField = AccessTools.Field(typeof(PlayerCombatState), "<TurnNumber>k__BackingField");
     private static readonly FieldInfo? CombatStatePlayerField = AccessTools.Field(typeof(PlayerCombatState), "_player");
     private static readonly FieldInfo? RunStartTimeField = AccessTools.Field(typeof(RunManager), "_startTime");
+    private static readonly FieldInfo? VisitedMapCoordsField = AccessTools.Field(typeof(RunState), "_visitedMapCoords");
     private static readonly MethodInfo? RelicDisplayAmountChangedMethod = AccessTools.Method(typeof(RelicModel), "InvokeDisplayAmountChanged");
     private static readonly FieldInfo? CreatureStateDisplayField = AccessTools.Field(typeof(NCreature), "_stateDisplay");
     private static readonly MethodInfo? CreatureStateDisplayRefreshValuesMethod = AccessTools.Method(typeof(NCreatureStateDisplay), "RefreshValues");
@@ -184,6 +186,7 @@ public static class TildeKeyStateService
     private static long? _loadedRunStartTime;
     private static NMapScreen? _lastMapScreen;
     private static bool _lastDesiredDebugTravel;
+    private static bool _visitedMapCoordsWarningShown;
 
     [ThreadStatic]
     private static int _lockReapplyDepth;
@@ -293,6 +296,45 @@ public static class TildeKeyStateService
 
     internal static void RefreshMapDebugTravel(NMapScreen? screen = null)
         => SyncMapDebugTravel(force: true, screen);
+
+    internal static void PrepareMapCoordForDebugReentry(RunManager manager, MapCoord destination)
+    {
+        if (!IsGoToAnyRoomEnabled() || !manager.IsInProgress)
+            return;
+
+        try
+        {
+            RunState? runState = manager.DebugOnlyGetState();
+            if (runState is null || !runState.VisitedMapCoords.Contains(destination))
+                return;
+
+            // RunManager.EnterMapCoord normally refuses coordinates that are
+            // already present. Removing only the selected coordinate here lets
+            // the original method append it as the current location and retain
+            // the native synchronized travel, save, room, VFX, and hook flow.
+            if (VisitedMapCoordsField?.GetValue(runState) is not IList<MapCoord> visitedMapCoords)
+            {
+                WarnVisitedMapCoordsUnavailable();
+                return;
+            }
+
+            visitedMapCoords.Remove(destination);
+        }
+        catch (Exception exception)
+        {
+            WarnVisitedMapCoordsUnavailable(exception);
+        }
+    }
+
+    private static void WarnVisitedMapCoordsUnavailable(Exception? exception = null)
+    {
+        if (_visitedMapCoordsWarningShown)
+            return;
+
+        _visitedMapCoordsWarningShown = true;
+        string detail = exception is null ? string.Empty : $" {exception.Message}";
+        GD.PushWarning($"TildeKey: could not prepare a completed map room for re-entry; native travel was left unchanged.{detail}");
+    }
 
     private static void RefreshDynamicLockPatches()
     {
