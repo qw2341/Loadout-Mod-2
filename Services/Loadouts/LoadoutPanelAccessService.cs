@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
 using Godot;
+using Loadout.Patches.Loadouts;
 using Loadout.Services.Saving;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
@@ -26,6 +27,7 @@ public static class LoadoutPanelAccessService
 
     private static readonly HashSet<StartRunLobby> RegisteredLobbies = [];
     private static readonly Dictionary<StartRunLobby, Action<LobbyPlayer>> LobbyConnectedHandlers = new();
+    private static readonly HashSet<LoadRunLobby> RegisteredLoadLobbies = [];
 
     private static INetGameService? _runNetService;
     private static RunLobby? _runLobby;
@@ -42,6 +44,7 @@ public static class LoadoutPanelAccessService
             return;
 
         _hostAllowsGuests = allow;
+        LoadoutPanelAccessRunSavePatch.AttachToCurrentRun(allow);
         SaveRunAccessIfActiveHost();
         BroadcastAccess();
         NotifyAccessChanged();
@@ -108,6 +111,52 @@ public static class LoadoutPanelAccessService
             SetHostAllowsGuestsForNewLobby(false);
     }
 
+    public static void RegisterLoadLobby(LoadRunLobby? lobby)
+    {
+        if (lobby is null || !RegisteredLoadLobbies.Add(lobby))
+            return;
+
+        lobby.NetService.RegisterMessageHandler<LoadoutPanelAccessMessage>(HandleAccessMessage);
+        if (lobby.NetService.Type == NetGameType.Host)
+        {
+            ApplyAccess(false);
+            TryLoadRunAccess(lobby.Run.StartTime);
+
+            foreach (ulong playerId in lobby.ConnectedPlayerIds)
+                SendAccessToLoadLobbyPlayer(lobby, playerId);
+        }
+        else if (lobby.NetService.Type == NetGameType.Client)
+        {
+            ApplyAccess(false);
+        }
+    }
+
+    public static void UnregisterLoadLobby(LoadRunLobby? lobby, bool clearClientAccess = false)
+    {
+        if (lobby is null || !RegisteredLoadLobbies.Remove(lobby))
+            return;
+
+        lobby.NetService.UnregisterMessageHandler<LoadoutPanelAccessMessage>(HandleAccessMessage);
+        if (clearClientAccess && lobby.NetService.Type == NetGameType.Client)
+            ApplyAccess(false);
+    }
+
+    public static void SendAccessToLoadLobbyPlayer(LoadRunLobby? lobby, ulong playerId)
+    {
+        if (lobby is null
+            || lobby.NetService.Type != NetGameType.Host
+            || playerId == lobby.NetService.NetId
+            || !lobby.ConnectedPlayerIds.Contains(playerId))
+        {
+            return;
+        }
+
+        lobby.NetService.SendMessage(new LoadoutPanelAccessMessage
+        {
+            allowGuests = _hostAllowsGuests
+        }, playerId);
+    }
+
     public static void OnRunLaunched()
     {
         try
@@ -117,13 +166,30 @@ public static class LoadoutPanelAccessService
                 return;
 
             RegisterRunNetService(netService);
-            if (netService.Type == NetGameType.Host)
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            if (runState is not null
+                && LoadoutPanelAccessRunSavePatch.TryGetAttachedAccess(runState, out bool savedAllowGuests))
+            {
+                ApplyAccess(savedAllowGuests);
+                _loadedRunStartTime = SaveUtility.GetCurrentRunStartTime();
+                if (netService.Type == NetGameType.Host)
+                    SaveRunAccess();
+            }
+            else if (netService.Type == NetGameType.Host)
             {
                 LoadOrCreateRunAccess();
-                BroadcastAccess();
             }
             else if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
                 SetHostAllowsGuestsForNewLobby(false);
+
+            if (runState is not null)
+                LoadoutPanelAccessRunSavePatch.SetAttachedAccess(
+                    runState,
+                    _hostAllowsGuests,
+                    loadedFromSave: false);
+
+            if (netService.Type == NetGameType.Host)
+                BroadcastAccess();
         }
         catch (Exception exception)
         {
@@ -144,6 +210,15 @@ public static class LoadoutPanelAccessService
             return;
 
         _hostAllowsGuests = allow;
+        NotifyAccessChanged();
+    }
+
+    private static void ApplyAccess(bool allowGuests)
+    {
+        if (_hostAllowsGuests == allowGuests)
+            return;
+
+        _hostAllowsGuests = allowGuests;
         NotifyAccessChanged();
     }
 
@@ -221,6 +296,15 @@ public static class LoadoutPanelAccessService
             }
         }
 
+        foreach (LoadRunLobby lobby in RegisteredLoadLobbies.ToList())
+        {
+            if (lobby.NetService.Type != NetGameType.Host)
+                continue;
+
+            foreach (ulong playerId in lobby.ConnectedPlayerIds)
+                SendAccessToLoadLobbyPlayer(lobby, playerId);
+        }
+
         try
         {
             INetGameService netService = RunManager.Instance.NetService;
@@ -258,6 +342,7 @@ public static class LoadoutPanelAccessService
             return;
 
         _hostAllowsGuests = message.allowGuests;
+        LoadoutPanelAccessRunSavePatch.AttachToCurrentRun(message.allowGuests);
         NotifyAccessChanged();
     }
 
@@ -267,6 +352,12 @@ public static class LoadoutPanelAccessService
             return true;
 
         foreach (StartRunLobby lobby in RegisteredLobbies)
+        {
+            if (lobby.NetService.Type == NetGameType.Host)
+                return true;
+        }
+
+        foreach (LoadRunLobby lobby in RegisteredLoadLobbies)
         {
             if (lobby.NetService.Type == NetGameType.Host)
                 return true;
@@ -287,7 +378,8 @@ public static class LoadoutPanelAccessService
         return LoadoutNetworkBroadcast.IsExpectedHostSender(
             senderId,
             _runNetService,
-            RegisteredLobbies.Select(lobby => lobby.NetService));
+            RegisteredLobbies.Select(lobby => lobby.NetService)
+                .Concat(RegisteredLoadLobbies.Select(lobby => lobby.NetService)));
     }
 
     private static NetGameType TryGetActiveNetType()
@@ -296,6 +388,9 @@ public static class LoadoutPanelAccessService
             return _runNetService.Type;
 
         foreach (StartRunLobby lobby in RegisteredLobbies)
+            return lobby.NetService.Type;
+
+        foreach (LoadRunLobby lobby in RegisteredLoadLobbies)
             return lobby.NetService.Type;
 
         try
@@ -326,27 +421,32 @@ public static class LoadoutPanelAccessService
         if (!runStartTime.HasValue)
             return;
 
-        _loadedRunStartTime = runStartTime.Value;
-        string path = SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, runStartTime.Value);
+        if (TryLoadRunAccess(runStartTime.Value))
+            return;
+
+        SaveRunAccess();
+    }
+
+    private static bool TryLoadRunAccess(long runStartTime)
+    {
+        _loadedRunStartTime = runStartTime;
+        string path = SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, runStartTime);
         SaveUtility.LoadResult<RunAccessSaveData> loaded = SaveUtility.LoadProfileJson(
             path,
             new RunAccessSaveData
             {
                 SchemaVersion = CurrentSchemaVersion,
-                RunStartTime = runStartTime.Value,
+                RunStartTime = runStartTime,
                 AllowGuests = _hostAllowsGuests
             });
 
-        if (loaded.Loaded && loaded.Value.RunStartTime == runStartTime.Value)
+        if (loaded.Loaded && loaded.Value.RunStartTime == runStartTime)
         {
-            bool changed = _hostAllowsGuests != loaded.Value.AllowGuests;
-            _hostAllowsGuests = loaded.Value.AllowGuests;
-            if (changed)
-                NotifyAccessChanged();
-            return;
+            ApplyAccess(loaded.Value.AllowGuests);
+            return true;
         }
 
-        SaveRunAccess();
+        return false;
     }
 
     private static void SaveRunAccessIfActiveHost()
@@ -399,6 +499,7 @@ public static class LoadoutPanelAccessService
             info.AddValue(nameof(AllowGuests), AllowGuests);
         }
     }
+
 }
 
 public struct LoadoutPanelAccessMessage : INetMessage, IPacketSerializable

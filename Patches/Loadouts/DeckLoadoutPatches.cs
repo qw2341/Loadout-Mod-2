@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using BaseLib.Patches.Saves;
 using Godot;
 using HarmonyLib;
 using Loadout.PanelItems;
@@ -21,6 +23,89 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
+
+[HarmonyPatch]
+public static class LoadoutPanelAccessRunSavePatch
+{
+    private const string EmbeddedSaveKey = "Loadout.panel_access.allow_guests_v1";
+    private static readonly ConditionalWeakTable<RunState, RunAccessAttachment> RunAccessByState = new();
+    private static bool _registered;
+
+    public static MethodBase TargetMethod()
+    {
+        Type type = AccessTools.TypeByName("BaseLib.Patches.PostModInitPatch")
+                    ?? throw new TypeLoadException("BaseLib.Patches.PostModInitPatch");
+        return AccessTools.Method(type, "LatePostInit")
+               ?? throw new MissingMethodException(type.FullName, "LatePostInit");
+    }
+
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+        if (_registered)
+            return;
+
+        _registered = true;
+        ExtendedSaveHandlers<IRunState, SerializableRun>.RegisterSave<RunState, bool>(
+            EmbeddedSaveKey,
+            GetAttachedAccessForSave,
+            LoadAttachedAccessFromSave,
+            static (allowGuests, writer) => writer.WriteBool(allowGuests),
+            static reader => reader.ReadBool());
+    }
+
+    internal static bool TryGetAttachedAccess(RunState runState, out bool allowGuests)
+    {
+        if (RunAccessByState.TryGetValue(runState, out RunAccessAttachment? attachment)
+            && attachment.LoadedFromSave)
+        {
+            allowGuests = attachment.AllowGuests;
+            return true;
+        }
+
+        allowGuests = false;
+        return false;
+    }
+
+    internal static void SetAttachedAccess(RunState runState, bool allowGuests, bool loadedFromSave)
+    {
+        RunAccessAttachment attachment = RunAccessByState.GetValue(runState, static _ => new RunAccessAttachment());
+        attachment.AllowGuests = allowGuests;
+        attachment.LoadedFromSave |= loadedFromSave;
+    }
+
+    internal static void AttachToCurrentRun(bool allowGuests)
+    {
+        try
+        {
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            if (runState is not null)
+                SetAttachedAccess(runState, allowGuests, loadedFromSave: false);
+        }
+        catch
+        {
+            // The host may still be in the start-run lobby.
+        }
+    }
+
+    private static bool GetAttachedAccessForSave(RunState runState)
+    {
+        return RunAccessByState.TryGetValue(runState, out RunAccessAttachment? attachment)
+               && attachment.AllowGuests;
+    }
+
+    private static void LoadAttachedAccessFromSave(RunState runState, bool allowGuests)
+    {
+        SetAttachedAccess(runState, allowGuests, loadedFromSave: true);
+    }
+
+    private sealed class RunAccessAttachment
+    {
+        public bool AllowGuests;
+        public bool LoadedFromSave;
+    }
+}
 
 [HarmonyPatch(typeof(NDeckViewScreen), nameof(NDeckViewScreen._Ready))]
 public static class DeckViewScreenLoadoutPanelReadyPatch
@@ -222,6 +307,46 @@ public static class StartRunLobbyLoadoutSharingCleanUpPatch
     {
         LoadoutPanelAccessService.UnregisterLobby(__instance, disconnectSession);
         LoadoutHostSharingService.UnregisterLobby(__instance, disconnectSession);
+    }
+}
+
+[HarmonyPatch(typeof(LoadRunLobby))]
+public static class LoadRunLobbyLoadoutSharingConstructorPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        return AccessTools.GetDeclaredConstructors(typeof(LoadRunLobby));
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(LoadRunLobby __instance)
+    {
+        LoadoutPanelAccessService.RegisterLoadLobby(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(LoadRunLobby), nameof(LoadRunLobby.CleanUp))]
+public static class LoadRunLobbyLoadoutSharingCleanUpPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(LoadRunLobby __instance, bool disconnectSession)
+    {
+        LoadoutPanelAccessService.UnregisterLoadLobby(__instance, disconnectSession);
+    }
+}
+
+[HarmonyPatch]
+public static class LoadRunLobbyLoadoutSharingClientJoinedPatch
+{
+    public static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(typeof(LoadRunLobby), "HandleClientLoadJoinRequestMessage");
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(LoadRunLobby __instance, ulong senderId)
+    {
+        LoadoutPanelAccessService.SendAccessToLoadLobbyPlayer(__instance, senderId);
     }
 }
 
