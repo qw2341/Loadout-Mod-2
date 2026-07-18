@@ -125,7 +125,7 @@ public static class SaveUtility
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"Loadout: could not determine current run start time. {exception.Message}");
+            // GD.PushWarning($"Loadout: could not determine current run start time. {exception.Message}");
             return null;
         }
     }

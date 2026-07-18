@@ -1066,7 +1066,15 @@ public class CommonHelpers
 
     public static string FormatPowerTitle(PowerModel power)
     {
-        return power.Title.GetFormattedText();
+	    try
+	    {
+		    return power.Title.GetFormattedText();
+	    }
+	    catch (Exception exception)
+	    {
+		    return power.Id.ToString();
+	    }
+	    
     }
 
     public static Button CreateModelButton(Vector2 size)
