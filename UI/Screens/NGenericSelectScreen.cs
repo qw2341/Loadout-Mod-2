@@ -16,6 +16,7 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -30,6 +31,7 @@ using System.Threading.Tasks;
 /// </summary>
 public partial class NGenericSelectScreen : Control
 {
+    private static NGenericSelectScreen? _hiddenPrewarmOwner;
     private const string AllFilterOptionId = "__all__";
     private const string SelectSortButtonInnerPath = "screens/card_library/library_sort_button";
     private const float SidebarWidth = 288f;
@@ -38,8 +40,12 @@ public partial class NGenericSelectScreen : Control
     private const int InitialMaterializeBudget = 80;
     private const int RemovalMaterializeBudget = 24;
     private const int ScrollMaterializeBudget = 48;
-    private const int MaxPreloadConcurrency = 2;
+    private const int MaxPreloadConcurrency = 8;
+    private const int MaxHiddenPreloadConcurrency = 4;
     private const int DefaultHiddenPrewarmBatchSize = 4;
+    private const int DefaultEagerMaterializeBatchSize = 8;
+    private const double DefaultHiddenPrewarmFrameBudgetMsec = 0.65d;
+    private const double DefaultEagerMaterializeFrameBudgetMsec = 1.0d;
     private const float ScrollSmoothingRate = 15f;
     private const float ScrollSpeedMultiplier = 3f;
     private const float MaterializeRowsAhead = 5f;
@@ -198,6 +204,7 @@ public partial class NGenericSelectScreen : Control
     private Task? _hiddenPrewarmTask;
     private bool _hiddenPrewarmCompleted;
     private bool _hiddenPrewarmEnabled = true;
+    private ulong _activeEagerMaterializationGeneration = ulong.MaxValue;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -692,8 +699,19 @@ public partial class NGenericSelectScreen : Control
 
     private async Task PrewarmForFirstOpenCoreAsync()
     {
+        bool ownsGlobalGate = false;
+        CancellationTokenSource? hiddenPreloadCts = null;
+
         try
         {
+            while (!TryAcquireHiddenPrewarmGate())
+            {
+                if (!await WaitForHiddenPrewarmFrameAsync(_layoutGeneration))
+                    return;
+            }
+
+            ownsGlobalGate = true;
+
             if (_hiddenPrewarmCompleted
                 || !_isConfigured
                 || _itemGrid is null
@@ -703,11 +721,57 @@ public partial class NGenericSelectScreen : Control
                 return;
             }
 
+            while (NLoadoutPanelRoot.Instance?.HasOpenScreen == true)
+            {
+                if (!await WaitForHiddenPrewarmFrameAsync(_layoutGeneration))
+                    return;
+            }
+
             PrepareHiddenPrewarmLayout();
             ulong generation = _layoutGeneration;
             IReadOnlyList<IGenericSelectItem> warmItems = BuildHiddenPrewarmItemList();
-            int batchSize = GetHiddenPrewarmBatchSize();
-            int materializedInBatch = 0;
+            IGenericSelectItem[] preloadItems = warmItems
+                .Where(item => item.HasPreloadResources)
+                .ToArray();
+
+            if (preloadItems.Length > 0)
+            {
+                hiddenPreloadCts = new CancellationTokenSource();
+                _preloadCts = hiddenPreloadCts;
+
+                Task<bool> preloadTask = RunThreadedPreloadAsync(
+                    Name,
+                    preloadItems,
+                    MaxHiddenPreloadConcurrency,
+                    hiddenPreloadCts.Token);
+                
+                while (!preloadTask.IsCompleted)
+                {
+                    if (!await WaitForHiddenPrewarmFrameAsync(generation))
+                    {
+                        TryCancelPreloadCancellationSource(hiddenPreloadCts);
+                        return;
+                    }
+                }
+
+                bool preloadCompleted = await preloadTask;
+                ReleasePreloadCancellationSource(hiddenPreloadCts);
+                hiddenPreloadCts = null;
+                FlushThreadedPreloadWarnings();
+
+                if (!preloadCompleted
+                    || generation != _layoutGeneration
+                    || !IsInsideTree()
+                    || IsVisibleInTree())
+                {
+                    return;
+                }
+            }
+
+            int maxItemsPerFrame = Math.Max(1, GetHiddenPrewarmBatchSize());
+            double frameBudgetMsec = Math.Max(0.1d, GetHiddenPrewarmFrameBudgetMsec());
+            int materializedThisFrame = 0;
+            long frameStartTimestamp = Stopwatch.GetTimestamp();
 
             foreach (IGenericSelectItem item in warmItems)
             {
@@ -717,19 +781,32 @@ public partial class NGenericSelectScreen : Control
                 {
                     return;
                 }
+                
+                while (NLoadoutPanelRoot.Instance?.HasOpenScreen == true)
+                {
+                    if (!await WaitForHiddenPrewarmFrameAsync(generation))
+                        return;
+
+                    materializedThisFrame = 0;
+                    frameStartTimestamp = Stopwatch.GetTimestamp();
+                }
 
                 if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
                     continue;
 
                 MaterializeItemView(item, layout, updateExistingView: false);
-                materializedInBatch++;
+                materializedThisFrame++;
 
-                if (materializedInBatch < batchSize)
+                bool itemLimitReached = materializedThisFrame >= maxItemsPerFrame;
+                bool timeLimitReached = HasFrameBudgetExpired(frameStartTimestamp, frameBudgetMsec);
+                if (!itemLimitReached && !timeLimitReached)
                     continue;
 
-                materializedInBatch = 0;
+                materializedThisFrame = 0;
                 if (!await WaitForHiddenPrewarmFrameAsync(generation))
                     return;
+
+                frameStartTimestamp = Stopwatch.GetTimestamp();
             }
 
             if (generation != _layoutGeneration || !IsInsideTree() || IsVisibleInTree())
@@ -740,14 +817,40 @@ public partial class NGenericSelectScreen : Control
             _pendingResetScroll = false;
             _hiddenPrewarmCompleted = true;
         }
+        catch (OperationCanceledException)
+        {
+            // Configuration changes and screen opens cancel stale prewarm work.
+        }
         catch (Exception exception)
         {
             GD.PushWarning($"Loadout select screen '{Name}' hidden prewarm failed: {exception}");
         }
         finally
         {
+            if (hiddenPreloadCts is not null)
+                ReleasePreloadCancellationSource(hiddenPreloadCts);
+
+            if (ownsGlobalGate)
+                ReleaseHiddenPrewarmGate();
+
             _hiddenPrewarmTask = null;
         }
+    }
+
+    private bool TryAcquireHiddenPrewarmGate()
+    {
+        NGenericSelectScreen? owner = _hiddenPrewarmOwner;
+        if (owner is not null && GodotObject.IsInstanceValid(owner) && owner != this)
+            return false;
+
+        _hiddenPrewarmOwner = this;
+        return true;
+    }
+
+    private void ReleaseHiddenPrewarmGate()
+    {
+        if (_hiddenPrewarmOwner == this)
+            _hiddenPrewarmOwner = null;
     }
 
     private void PrepareHiddenPrewarmLayout()
@@ -788,6 +891,32 @@ public partial class NGenericSelectScreen : Control
             return 2;
 
         return DefaultHiddenPrewarmBatchSize;
+    }
+
+    protected virtual double GetHiddenPrewarmFrameBudgetMsec()
+    {
+        string screenName = Name.ToString();
+        if (screenName.Contains("BottledMonster", StringComparison.Ordinal)
+            || screenName.Contains("EventfulCompass", StringComparison.Ordinal))
+        {
+            return 0.35d;
+        }
+
+        return DefaultHiddenPrewarmFrameBudgetMsec;
+    }
+
+    protected virtual int GetEagerMaterializeBatchSize() => DefaultEagerMaterializeBatchSize;
+
+    protected virtual double GetEagerMaterializeFrameBudgetMsec()
+    {
+        string screenName = Name.ToString();
+        if (screenName.Contains("BottledMonster", StringComparison.Ordinal)
+            || screenName.Contains("EventfulCompass", StringComparison.Ordinal))
+        {
+            return 0.5d;
+        }
+
+        return DefaultEagerMaterializeFrameBudgetMsec;
     }
 
     protected virtual int GetInitialMaterializeBudget() => InitialMaterializeBudget;
@@ -1984,6 +2113,7 @@ public partial class NGenericSelectScreen : Control
         }
 
         Interlocked.Exchange(ref _completedPreloadGeneration, -1);
+        _activeEagerMaterializationGeneration = ulong.MaxValue;
         while (_preloadWarnings.TryDequeue(out _))
         {
             // discard stale warnings from cancelled generations
@@ -2833,31 +2963,142 @@ public partial class NGenericSelectScreen : Control
 
     private void FinalizeEagerMaterialization(bool warnOnMismatch)
     {
-        if (_itemGrid is null)
+        if (_itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
             return;
 
-        int visibleItemViews = 0;
+        ulong generation = _layoutGeneration;
+        if (_activeEagerMaterializationGeneration == generation)
+            return;
+
+        _activeEagerMaterializationGeneration = generation;
+        IReadOnlyList<IGenericSelectItem> materializationOrder = BuildEagerMaterializationOrder();
+        _ = MaterializeEagerViewsOverFramesAsync(generation, warnOnMismatch, materializationOrder);
+    }
+
+    private IReadOnlyList<IGenericSelectItem> BuildEagerMaterializationOrder()
+    {
+        Rect2 priorityRect = BuildViewportMaterializeRect(
+            _targetScrollY,
+            GetMaterializeRowsBehind(),
+            GetMaterializeRowsAhead());
+
+        List<IGenericSelectItem> priorityItems = new(_itemLayoutOrder.Count);
+        List<IGenericSelectItem> remainingItems = new(_itemLayoutOrder.Count);
+
         foreach (IGenericSelectItem item in _itemLayoutOrder)
         {
-            if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
-                continue;
+            bool isNearViewport = _itemLayouts.TryGetValue(item, out SelectItemLayout layout)
+                                  && new Rect2(layout.Position, layout.Size)
+                                      .Intersects(priorityRect, includeBorders: true);
 
-            if (MaterializeItemView(item, layout, updateExistingView: true))
-                visibleItemViews++;
+            (isNearViewport ? priorityItems : remainingItems).Add(item);
         }
 
-        if (!warnOnMismatch || visibleItemViews == _itemLayoutOrder.Count || _lastEagerMismatchWarningGeneration == _layoutGeneration)
-            return;
+        priorityItems.AddRange(remainingItems);
+        return priorityItems;
+    }
 
-        _lastEagerMismatchWarningGeneration = _layoutGeneration;
-        GD.PushWarning(
-            $"Loadout select screen '{Name}' eager materialization mismatch: " +
-            $"layouts={_itemLayoutOrder.Count}, visibleItemViews={visibleItemViews}, layoutNodes={_visibleLayoutNodes.Count}.");
+    private async Task MaterializeEagerViewsOverFramesAsync(
+        ulong generation,
+        bool warnOnMismatch,
+        IReadOnlyList<IGenericSelectItem> materializationOrder)
+    {
+        int visibleItemViews = 0;
+        int maxItemsPerFrame = Math.Max(1, GetEagerMaterializeBatchSize());
+        double frameBudgetMsec = Math.Max(0.1d, GetEagerMaterializeFrameBudgetMsec());
+        int materializedThisFrame = 0;
+        long frameStartTimestamp = Stopwatch.GetTimestamp();
+
+        try
+        {
+            foreach (IGenericSelectItem item in materializationOrder)
+            {
+                if (generation != _layoutGeneration
+                    || _materializationMode != SelectMaterializationMode.Eager
+                    || !IsInsideTree()
+                    || !IsVisibleInTree())
+                {
+                    return;
+                }
+
+                if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
+                    continue;
+
+                if (MaterializeItemView(item, layout, updateExistingView: true))
+                    visibleItemViews++;
+
+                materializedThisFrame++;
+
+                bool itemLimitReached = materializedThisFrame >= maxItemsPerFrame;
+                bool timeLimitReached = HasFrameBudgetExpired(frameStartTimestamp, frameBudgetMsec);
+                if (!itemLimitReached && !timeLimitReached)
+                    continue;
+
+                materializedThisFrame = 0;
+                if (!await WaitForVisibleMaterializationFrameAsync(generation))
+                    return;
+
+                frameStartTimestamp = Stopwatch.GetTimestamp();
+            }
+
+            if (generation != _layoutGeneration
+                || _materializationMode != SelectMaterializationMode.Eager
+                || !IsInsideTree()
+                || !IsVisibleInTree())
+            {
+                return;
+            }
+
+            UpdateViewportCulling(force: true);
+
+            if (!warnOnMismatch
+                || visibleItemViews == materializationOrder.Count
+                || _lastEagerMismatchWarningGeneration == generation)
+            {
+                return;
+            }
+
+            _lastEagerMismatchWarningGeneration = generation;
+            GD.PushWarning(
+                $"Loadout select screen '{Name}' eager materialization mismatch: " +
+                $"layouts={materializationOrder.Count}, visibleItemViews={visibleItemViews}, layoutNodes={_visibleLayoutNodes.Count}.");
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Loadout select screen '{Name}' eager materialization failed: {exception}");
+        }
+        finally
+        {
+            if (_activeEagerMaterializationGeneration == generation)
+                _activeEagerMaterializationGeneration = ulong.MaxValue;
+        }
+    }
+
+    private async Task<bool> WaitForVisibleMaterializationFrameAsync(ulong generation)
+    {
+        if (generation != _layoutGeneration || !IsInsideTree() || !IsVisibleInTree())
+            return false;
+
+        SceneTree tree = GetTree();
+        if (tree is null)
+            return false;
+
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return generation == _layoutGeneration && IsInsideTree() && IsVisibleInTree();
+    }
+
+    private static bool HasFrameBudgetExpired(long startTimestamp, double budgetMsec)
+    {
+        long elapsedTicks = Stopwatch.GetTimestamp() - startTimestamp;
+        return elapsedTicks * 1000d / Stopwatch.Frequency >= budgetMsec;
     }
 
     private void StartThreadedPreloadThenMaterializeAll()
     {
         if (_itemGrid is null || !IsVisibleInTree())
+            return;
+
+        if (_preloadCts is not null || _activeEagerMaterializationGeneration == _layoutGeneration)
             return;
 
         IGenericSelectItem[] preloadItems = _itemLayoutOrder
@@ -2883,7 +3124,26 @@ public partial class NGenericSelectScreen : Control
         IReadOnlyList<IGenericSelectItem> preloadItems,
         CancellationToken token)
     {
-        int maxDegreeOfParallelism = Math.Max(1, Math.Min(preloadItems.Count, MaxPreloadConcurrency));
+        bool completed = await RunThreadedPreloadAsync(
+            screenName,
+            preloadItems,
+            MaxPreloadConcurrency,
+            token);
+
+        if (completed && !token.IsCancellationRequested)
+            Interlocked.Exchange(ref _completedPreloadGeneration, unchecked((long)generation));
+    }
+
+    private async Task<bool> RunThreadedPreloadAsync(
+        string screenName,
+        IReadOnlyList<IGenericSelectItem> preloadItems,
+        int requestedConcurrency,
+        CancellationToken token)
+    {
+        if (preloadItems.Count == 0)
+            return !token.IsCancellationRequested;
+
+        int maxDegreeOfParallelism = Math.Max(1, Math.Min(preloadItems.Count, requestedConcurrency));
 
         try
         {
@@ -2915,11 +3175,30 @@ public partial class NGenericSelectScreen : Control
         }
         catch (OperationCanceledException)
         {
-            return;
+            return false;
         }
 
-        if (!token.IsCancellationRequested)
-            Interlocked.Exchange(ref _completedPreloadGeneration, unchecked((long)generation));
+        return !token.IsCancellationRequested;
+    }
+
+    private void ReleasePreloadCancellationSource(CancellationTokenSource source)
+    {
+        if (ReferenceEquals(_preloadCts, source))
+            _preloadCts = null;
+
+        source.Dispose();
+    }
+
+    private static void TryCancelPreloadCancellationSource(CancellationTokenSource source)
+    {
+        try
+        {
+            source.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Another lifecycle path already cancelled and disposed this generation.
+        }
     }
 
     private void CompleteThreadedPreloadIfReady()
