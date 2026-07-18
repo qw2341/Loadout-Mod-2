@@ -838,7 +838,16 @@ public partial class NLoadoutPanel : Panel
 		if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelic relicView))
 			return;
 
-		relicView.Model = RelicModificationStateService.GetEffectivePermanentRelicForDisplay(model);
+		RelicModel? boundModel = relicView.Model;
+		if (boundModel is null || !boundModel.Id.Equals(model.Id))
+			relicView.Model = model;
+
+		if (!relicView.IsNodeReady())
+			return;
+		
+		RelicModel displayModel = RelicModificationStateService.GetEffectivePermanentRelicForDisplay(model);
+		relicView.Icon.SelfModulate = Colors.White;
+		displayModel.UpdateTexture(relicView.Icon);
 	}
 
 	private void OnPermanentRelicDisplayChanged(ModelId relicId)

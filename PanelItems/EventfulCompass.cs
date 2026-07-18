@@ -11,6 +11,7 @@ using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -76,6 +77,7 @@ public class EventfulCompass
     private static readonly Dictionary<Control, Tween> EventTileHoverTweens = new();
     private static readonly Dictionary<string, SubViewport> AncientPreviewViewports = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, Texture2D> AncientPreviewTextures = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, bool> EventPortraitLoadability = new(StringComparer.Ordinal);
 
     private static void UpsertRoomJumpControls(NGenericSelectScreen screen)
     {
@@ -296,38 +298,49 @@ public class EventfulCompass
 			    return CreateTileBackground(ancientPreview);
 	    }
 
+	    if (model.LayoutType != EventLayoutType.Default)
+		    return null;
+
+	    string portraitPath = ImageHelper.GetImagePath(
+		    $"events/{model.Id.Entry.ToLowerInvariant()}.png");
+	    if (!CanLoadEventPortrait(portraitPath))
+		    return null;
+
 	    try
 	    {
 		    Texture2D portrait = model.CreateInitialPortrait();
-		    return CreateTileBackground(portrait);
+		    return portrait is null ? null : CreateTileBackground(portrait);
 	    }
 	    catch (Exception)
 	    {
-		    // if (model is not AncientEventModel ancient)
-		    // {
-			   //  GD.PushWarning($"LoadoutPanel: could not load event portrait for '{model.Id}'. {exception.Message}");
-			   //  return null;
-		    // }
-		    //
-		    // try
-		    // {
-			   //  return CreateTileBackground(ancient.RunHistoryIcon);
-		    // }
-		    // catch (Exception iconException)
-		    // {
-			   //  try
-			   //  {
-				  //   return CreateTileBackground(ancient.MapIcon);
-			   //  }
-			   //  catch (Exception mapIconException)
-			   //  {
-				  //   GD.PushWarning(
-					 //    $"LoadoutPanel: could not load ancient portrait/icon for '{model.Id}'. portrait={exception.Message}; runHistory={iconException.Message}; map={mapIconException.Message}");
-				  //   return null;
-			   //  }
-		    // }
+		    // A custom loader can disappear or reject the resource after the capability
+		    // check. Negative-cache the path so filtering/prewarm does not retry it.
+		    EventPortraitLoadability[portraitPath] = false;
 		    return null;
 	    }
+    }
+
+    private static bool CanLoadEventPortrait(string portraitPath)
+    {
+	    if (string.IsNullOrWhiteSpace(portraitPath))
+		    return false;
+
+	    if (EventPortraitLoadability.TryGetValue(portraitPath, out bool loadable))
+		    return loadable;
+
+	    try
+	    {
+		    
+		    loadable = PreloadManager.Cache.ContainsKey(portraitPath)
+		               || ResourceLoader.Exists(portraitPath, nameof(Texture2D));
+	    }
+	    catch (Exception)
+	    {
+		    loadable = false;
+	    }
+
+	    EventPortraitLoadability[portraitPath] = loadable;
+	    return loadable;
     }
 
     public static TextureRect CreateTileBackground(Texture2D texture)
