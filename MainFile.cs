@@ -1,65 +1,140 @@
+using System;
 using System.Reflection;
+using System.Threading;
+
 using BaseLib.Config;
-using Godot;
+using Godot.Bridge;
 using HarmonyLib;
 using Loadout.Config;
 using Loadout.Patches;
 using Loadout.Services.Compatibility;
 using Loadout.Services.Input;
 using Loadout.UI.Managers;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Modding;
+using MethodInfo = System.Reflection.MethodInfo;
 
 namespace Loadout;
-
 
 [ModInitializer(nameof(Initialize))]
 public static class MainFile
 {
-    public const string ModId = "Loadout"; //At the moment, this is used only for the Logger and harmony names.
+    public const string ModId = "Loadout";
 
     public static MegaCrit.Sts2.Core.Logging.Logger Logger { get; } =
         new(ModId, MegaCrit.Sts2.Core.Logging.LogType.Generic);
-    
-    private static readonly Harmony Harmony = new("loadout");
+
+    private static readonly Harmony BootstrapHarmony =
+        new("Loadout.Bootstrap");
+
+    private static readonly Harmony RuntimeHarmony =
+        new(ModId);
+
+    private static int _lateInitializationStarted;
 
     public static void Initialize()
     {
-        Logger.Info("[Loadout] Intercepting Sentry to prevent crashing when launching from workshop.");
-        SentryStartupCrashInterceptor.Install(Harmony);
-        // Logger.Info("[Loadout] Build marker DLL: 2026-07-04-card-printer-native-batch-v5");
+        Logger.Info("[Loadout] Beginning early bootstrap.");
+
+        // Keep this early only if the Sentry interception is required before
+        // the game's essential initialization.
+        SentryStartupCrashInterceptor.Install(BootstrapHarmony);
+
+        MethodInfo? locInitialize =
+            AccessTools.DeclaredMethod(typeof(LocManager), "Initialize");
+
+        if (locInitialize is null)
+        {
+            throw new MissingMethodException(
+                typeof(LocManager).FullName,
+                "Initialize");
+        }
+
+        BootstrapHarmony.Patch(
+            locInitialize,
+            postfix: new HarmonyMethod(
+                typeof(MainFile),
+                nameof(AfterLocManagerInitialized)));
+
+        Logger.Info("[Loadout] Waiting for game localization initialization.");
+    }
+
+    private static void AfterLocManagerInitialized()
+    {
+        if (Interlocked.Exchange(
+                ref _lateInitializationStarted,
+                1) != 0)
+        {
+            return;
+        }
+
+        Logger.Info(
+            "[Loadout] LocManager is ready; beginning full initialization.");
 
         Assembly assembly = typeof(MainFile).Assembly;
-        Logger.Info($"[Loadout] Assembly location: {assembly.Location}");
-        Logger.Info($"[Loadout] Assembly version: {assembly.GetName().Version}");
 
-        Godot.Bridge.ScriptManagerBridge.LookupScriptsInAssembly(assembly);
-        LogPckBuildMarker();
-        Sts2Compatibility.Initialize();
-        InputCompatibilityService.Register();
-             
-        Harmony harmony = new(ModId);
-        VersionSensitivePatchInstaller.Install(harmony);
-        harmony.PatchAll();
+        RunInitializationStep(
+            "Godot script registration",
+            () => ScriptManagerBridge.LookupScriptsInAssembly(assembly));
 
-        Logger.Info("[Loadout] Harmony PatchAll complete.");
+        RunInitializationStep(
+            "PCK marker",
+            LogPckBuildMarker);
 
-        LocMan.Load();
-        ModConfigRegistry.Register(ModId, new LoadoutModConfig());
+        RunInitializationStep(
+            "version compatibility",
+            Sts2Compatibility.Initialize);
 
-        Logger.Info("[Loadout] Initialize complete.");
+        RunInitializationStep(
+            "input registration",
+            InputCompatibilityService.Register);
+
+        RunInitializationStep(
+            "version-sensitive patches",
+            () => VersionSensitivePatchInstaller.Install(RuntimeHarmony));
+
+        RunInitializationStep(
+            "Harmony PatchAll",
+            () => RuntimeHarmony.PatchAll(assembly));
+
+        RunInitializationStep(
+            "Loadout localization",
+            LocMan.Load);
+
+        RunInitializationStep(
+            "configuration registration",
+            () => ModConfigRegistry.Register(
+                ModId,
+                new LoadoutModConfig()));
+
+        Logger.Info("[Loadout] Full initialization complete.");
     }
-    
+
+    private static void RunInitializationStep(
+        string name,
+        Action action)
+    {
+        Logger.Info($"[Loadout] Starting: {name}");
+        action();
+        Logger.Info($"[Loadout] Completed: {name}");
+    }
+
     private static void LogPckBuildMarker()
     {
         const string path = "res://Loadout/build_marker.txt";
 
-        if (!FileAccess.FileExists(path))
+        if (!Godot.FileAccess.FileExists(path))
         {
             Logger.Warn("[Loadout] PCK build marker missing.");
             return;
         }
 
-        using FileAccess file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
-        Logger.Info("[Loadout] " + file.GetAsText().Trim());
+        using Godot.FileAccess file =
+            Godot.FileAccess.Open(
+                path,
+                Godot.FileAccess.ModeFlags.Read);
+
+        Logger.Info(
+            "[Loadout] " + file.GetAsText().Trim());
     }
 }
