@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Godot;
 using HarmonyLib;
 using Loadout.Services.RelicModification;
 using MegaCrit.Sts2.Core.Commands;
@@ -19,6 +20,17 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.InspectScreens;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
+
+[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.UpdateTexture))]
+public static class RelicTextureTintResetPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(TextureRect texture)
+    {
+        if (texture is not null)
+            texture.SelfModulate = Colors.White;
+    }
+}
 
 [HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.MutableClone))]
 public static class RelicMutableCloneModificationPatch

@@ -22,6 +22,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
+using MegaCrit.Sts2.Core.Nodes.Relics;
 
 public partial class NRelicModificationScreen : Control
 {
@@ -394,6 +395,7 @@ public partial class NRelicModificationScreen : Control
         _relicImage = new TextureRect
         {
             Name = "RelicImage",
+            Material = CreateRelicMaterial(),
             CustomMinimumSize = new Vector2(192f, 192f),
             ExpandMode = TextureRect.ExpandModeEnum.FitWidth,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
@@ -448,6 +450,8 @@ public partial class NRelicModificationScreen : Control
         _descriptionLabel = _previewHost.GetNodeOrNull<MegaRichTextLabel>("Popup/Text/RelicDescription");
         _flavorLabel = _previewHost.GetNodeOrNull<MegaRichTextLabel>("Popup/Text/FlavorText");
         _relicImage = _previewHost.GetNodeOrNull<TextureRect>("Popup/RelicFrame/RelicImage");
+        if (_relicImage is not null)
+            _relicImage.Material = CreateRelicMaterial();
         _frameMaterial = _previewHost.GetNodeOrNull<TextureRect>("Popup/RelicFrame/Frame")?.Material as ShaderMaterial;
     }
 
@@ -830,9 +834,19 @@ public partial class NRelicModificationScreen : Control
         if (_flavorLabel is not null)
             _flavorLabel.SetTextAutoSize($"[center]{GetFlavorSafely(preview)}[/center]");
         if (_relicImage is not null)
+        {
             _relicImage.Texture = preview.BigIcon;
+            _relicImage.SelfModulate = Colors.White;
+            if (_relicImage.Material is ShaderMaterial)
+                preview.UpdateTexture(_relicImage);
+        }
 
         RefreshHoverTips(preview);
+    }
+
+    private static ShaderMaterial? CreateRelicMaterial()
+    {
+        return GD.Load<ShaderMaterial>(NRelic.relicMatPath)?.Duplicate() as ShaderMaterial;
     }
 
     private void RefreshHoverTips(RelicModel preview)

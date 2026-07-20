@@ -75,6 +75,7 @@ public static class RelicModifier
             {
                 modifierScreen = screen;
                 LoadoutTargetService.UpsertTargetDropdown(screen, TargetDropdownName, TargetKey, LoadoutTargetMode.PlayersOnly, refresh);
+                screen.RefreshCurrentItemStates();
             },
             selectScreenScenePath: CommonHelpers.RelicSelectScreenScenePath,
             reconcileModelsOnEveryOpen: false,
@@ -144,6 +145,12 @@ public static class RelicModifier
 
         if (!ReferenceEquals(relicView.Model, model))
             relicView.Model = model;
+
+        if (relicView.IsNodeReady())
+        {
+            relicView.Icon.SelfModulate = Colors.White;
+            model.UpdateTexture(relicView.Icon);
+        }
 
         RefreshCounterLabel(relicView, model);
     }

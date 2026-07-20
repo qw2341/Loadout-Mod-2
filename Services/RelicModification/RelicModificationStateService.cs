@@ -218,7 +218,7 @@ public static class RelicModificationStateService
     private static readonly ConcurrentDictionary<Type, IReadOnlyList<RelicSavedPropertyDescriptor>> DescriptorCache = new();
     private static readonly ConcurrentDictionary<Type, IReadOnlyDictionary<string, RelicSavedPropertyDescriptor>> DescriptorMapCache = new();
     private static readonly MethodInfo? DisplayAmountChanged = AccessTools.Method(typeof(RelicModel), "InvokeDisplayAmountChanged");
-    private static readonly MethodInfo? StatusChanged = AccessTools.Method(typeof(RelicModel), "InvokeStatusChanged");
+    private static readonly FieldInfo? StatusChanged = AccessTools.Field(typeof(RelicModel), nameof(RelicModel.StatusChanged));
     private static readonly MethodInfo? IconChanged = AccessTools.Method(typeof(RelicModel), "RelicIconChanged");
     private static PermanentSaveData _permanent = new();
     private static Dictionary<string, RelicModificationState> _hostOverlay = new(StringComparer.Ordinal);
@@ -635,7 +635,7 @@ public static class RelicModificationStateService
     public static void RefreshRelic(RelicModel relic)
     {
         try { DisplayAmountChanged?.Invoke(relic, null); } catch { }
-        try { StatusChanged?.Invoke(relic, null); } catch { }
+        try { (StatusChanged?.GetValue(relic) as Action)?.Invoke(); } catch { }
         try { IconChanged?.Invoke(relic, null); } catch { }
     }
 
