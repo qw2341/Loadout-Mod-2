@@ -14,7 +14,9 @@ using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Runs;
 
 public static class RelicModifier
 {
@@ -56,11 +58,14 @@ public static class RelicModifier
                 builder.Materialization(SelectMaterializationMode.Lazy);
                 builder.HiddenPrewarm(true);
                 builder.Layout(10, new Vector2(68f, 68f), 32, 32);
-                builder.ActionButton(
-                    "host_relic_permamods",
-                    LocMan.Loc("HOST_PERMAMODS_DOWNLOAD_TITLE", "Download Host Permamods"),
-                    _ => OpenHostPermamodConflictScreen(),
-                    CommonHelpers.LoadActionButtonIcon("RelicModifier.png"));
+                if (IsMultiplayerClient())
+                {
+                    builder.ActionButton(
+                        "host_relic_permamods",
+                        LocMan.Loc("HOST_PERMAMODS_DOWNLOAD_TITLE", "Download Host Permamods"),
+                        _ => OpenHostPermamodConflictScreen(),
+                        CommonHelpers.LoadActionButtonIcon("RelicModifier.png"));
+                }
             },
             (_, _) => System.Threading.Tasks.Task.FromResult<IReadOnlyList<Services.LastActions.LastActionEntry>>([]),
             "RelicModifier.png",
@@ -252,6 +257,18 @@ public static class RelicModifier
         NHostPermamodConflictScreen screen = new() { Name = "HostRelicPermamodConflict" };
         screen.InitForRelics();
         root.OpenScreen(screen);
+    }
+
+    private static bool IsMultiplayerClient()
+    {
+        try
+        {
+            return RunManager.Instance.NetService.Type == NetGameType.Client;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool SameOwnedItem(LoadoutOwnedItem<RelicModel> left, LoadoutOwnedItem<RelicModel> right)

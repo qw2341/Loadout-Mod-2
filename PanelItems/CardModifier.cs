@@ -10,8 +10,10 @@ using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Runs;
 
 namespace Loadout.PanelItems;
 
@@ -49,10 +51,13 @@ public class CardModifier
                 "upgrade_all", LocMan.Loc("UPGRADE_ALL", "Upgrade All"),
                 HandleUpgradeAllDeckCards,
                 CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
-            builder.ActionButton(
-                "host_permamods", LocMan.Loc("HOST_PERMAMODS_DOWNLOAD_TITLE", "Download Host Permamods"),
-                _ => OpenHostPermamodConflictScreen(),
-                CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
+            if (IsMultiplayerClient())
+            {
+                builder.ActionButton(
+                    "host_permamods", LocMan.Loc("HOST_PERMAMODS_DOWNLOAD_TITLE", "Download Host Permamods"),
+                    _ => OpenHostPermamodConflictScreen(),
+                    CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
+            }
         }
 
         CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForModifier,
@@ -177,6 +182,18 @@ public class CardModifier
             Name = "HostPermamodConflict"
         };
         root.OpenScreen(screen);
+    }
+
+    private static bool IsMultiplayerClient()
+    {
+        try
+        {
+            return RunManager.Instance.NetService.Type == NetGameType.Client;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetDeckCardsForModifier()
