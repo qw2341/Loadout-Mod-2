@@ -75,7 +75,10 @@ public static class LoadoutApplyService
         }
 
         if (changedCardPlayers.Count > 0)
+        {
+            LoadoutKeywordRuntimePatches.Reconcile();
             LoadoutRunContentChangeService.Notify(LoadoutRunContentKind.Cards, changedCardPlayers, LoadoutRunContentChangeMode.Replace);
+        }
 
         if (loadout.HasRelics)
             _ = ReplaceRelicsAsync(targets, loadout.Relics);
@@ -204,10 +207,11 @@ public static class LoadoutApplyService
             if (isStartingDeck)
                 card.FloorAddedToDeck = 1;
 
-            if (HasEnabledInfiniteUpgrade(modificationState)
-                && !LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade))
+            if (LoadoutKeywordRuntimePatches.HasEnabledInfiniteUpgrade(modificationState))
             {
-                card.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
+                LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
+                if (!LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade))
+                    card.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
             }
 
             ApplyLoadoutUpgradeLevelDirect(card, upgradeLevel);
@@ -228,23 +232,6 @@ public static class LoadoutApplyService
             card.UpgradeInternal();
             card.FinalizeUpgradeInternal();
         }
-    }
-
-    private static bool HasEnabledInfiniteUpgrade(CardModificationSpec? state)
-    {
-        if (state is null)
-            return false;
-
-        foreach ((string rawKeyword, bool enabled) in state.KeywordOverrides)
-        {
-            if (LoadoutKeywords.TryResolve(rawKeyword, out CardKeyword keyword)
-                && keyword.Equals(LoadoutKeywords.InfiniteUpgrade))
-            {
-                return enabled;
-            }
-        }
-
-        return false;
     }
 
     private static bool TryGetDeckBackingList(Player targetPlayer, out List<CardModel> deckCards)

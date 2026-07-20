@@ -234,8 +234,22 @@ public static class CardModificationRuntime
                && SameStructuralValue(previous?.Rarity, next?.Rarity)
                && SameStructuralValue(previous?.PortraitPath, next?.PortraitPath)
                && SameStructuralValue(previous?.BetaPortraitPath, next?.BetaPortraitPath)
+               && KeywordOverridesEquivalent(previous?.KeywordOverrides, next?.KeywordOverrides)
             ? LoadoutCardVisualRefreshKind.Lightweight
             : LoadoutCardVisualRefreshKind.Reload;
+    }
+
+    private static bool KeywordOverridesEquivalent(
+        IReadOnlyDictionary<string, bool>? left,
+        IReadOnlyDictionary<string, bool>? right)
+    {
+        int leftCount = left?.Count ?? 0;
+        if (leftCount != (right?.Count ?? 0))
+            return false;
+        if (leftCount == 0)
+            return true;
+
+        return left!.All(pair => right!.TryGetValue(pair.Key, out bool value) && value == pair.Value);
     }
 
     public static bool SpecsEquivalent(CardModificationSpec? left, CardModificationSpec? right)
@@ -1109,7 +1123,10 @@ public static class CardModificationRuntime
         if (PermanentCardModificationStore.TryGetDelta(canonical.Id, out CardModificationDelta? permanent))
             ApplyPermanentResidual(baseline, permanent);
         int count = Math.Max(0, upgradeLevel);
-        InfiniteUpgradeMaxLevelPatch.BeginDeserialization(count);
+        InfiniteUpgradeDeserializationState deserializationState =
+            InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
+                count,
+                LoadoutKeywords.Has(baseline, LoadoutKeywords.InfiniteUpgrade));
         try
         {
             for (int i = 0; i < count && baseline.IsUpgradable; i++)
@@ -1120,7 +1137,7 @@ public static class CardModificationRuntime
         }
         finally
         {
-            InfiniteUpgradeMaxLevelPatch.EndDeserialization();
+            InfiniteUpgradeMaxLevelPatch.EndDeserialization(deserializationState);
         }
         return baseline;
     }

@@ -238,16 +238,30 @@ public static class CardModelToSerializableCardModificationPatch
 public static class CardModelFromSerializableCardModificationPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(SerializableCard save, out CardModificationLoadData? __state)
+    public static void Prefix(SerializableCard save, out CardDeserializationState __state)
     {
-        __state = CardModificationPersistence.Read(save);
+        CardModificationLoadData? loaded = CardModificationPersistence.Read(save);
+        CardModificationSpec? permanent = save.Id is { } cardId
+            && PermanentCardModificationStore.TryGet(cardId, out CardModificationSpec? savedPermanent)
+                ? savedPermanent
+                : null;
+        bool useInfiniteUpgradeValues = LoadoutKeywordRuntimePatches.HasEnabledInfiniteUpgrade(permanent)
+                                        || LoadoutKeywordRuntimePatches.HasEnabledInfiniteUpgrade(loaded?.Delta)
+                                        || LoadoutKeywordRuntimePatches.HasEnabledInfiniteUpgrade(loaded?.LegacyAbsolute);
+        if (useInfiniteUpgradeValues)
+            LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
+
+        InfiniteUpgradeDeserializationState upgradeState =
+            InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
+                save.CurrentUpgradeLevel,
+                useInfiniteUpgradeValues);
+        __state = new CardDeserializationState(loaded, upgradeState);
+
         // An owned attachment is reconstructed by the permanent/temporary spec.
         // Prevent the native saved copy from being stacked underneath it first.
-        if (save.Id is { } cardId
-            && ((PermanentCardModificationStore.TryGet(cardId, out CardModificationSpec? permanent)
-                 && permanent.Enchantment is not null)
-                || __state?.Delta?.Enchantment is not null
-                || __state?.LegacyAbsolute?.Enchantment is not null))
+        if (permanent?.Enchantment is not null
+            || loaded?.Delta?.Enchantment is not null
+            || loaded?.LegacyAbsolute?.Enchantment is not null)
         {
             save.Enchantment = null;
         }
@@ -257,11 +271,22 @@ public static class CardModelFromSerializableCardModificationPatch
     public static void Postfix(
         SerializableCard save,
         CardModel __result,
-        CardModificationLoadData? __state)
+        CardDeserializationState __state)
     {
-        CardModificationPersistence.Import(save, __result, __state);
+        CardModificationPersistence.Import(save, __result, __state.Loaded);
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(CardDeserializationState __state, Exception? __exception)
+    {
+        InfiniteUpgradeMaxLevelPatch.EndDeserialization(__state.UpgradeState);
+        return __exception;
     }
 }
+
+public readonly record struct CardDeserializationState(
+    CardModificationLoadData? Loaded,
+    InfiniteUpgradeDeserializationState UpgradeState);
 
 public static class ChecksumTrackerCardModificationSerializationPatch
 {

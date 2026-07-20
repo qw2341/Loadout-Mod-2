@@ -26,7 +26,6 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
-using MegaCrit.Sts2.Core.Saves.Runs;
 using LinqExpression = System.Linq.Expressions.Expression;
 
 public static class LoadoutKeywordMechanics
@@ -100,6 +99,21 @@ internal static class LoadoutKeywordRuntimePatches
             SetInevitableEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid)))
             SetLividEnabled(true);
+    }
+
+    public static bool HasEnabledInfiniteUpgrade(CardModificationSpec? state)
+    {
+        return state is not null && IsEnabled(state.KeywordOverrides, LoadoutKeywords.InfiniteUpgradeKey);
+    }
+
+    public static bool HasEnabledInfiniteUpgrade(CardModificationDelta? delta)
+    {
+        return delta is not null && IsEnabled(delta.KeywordOverrides, LoadoutKeywords.InfiniteUpgradeKey);
+    }
+
+    public static void EnsureInfiniteUpgradeEnabled()
+    {
+        SetInfiniteUpgradeEnabled(true);
     }
 
     public static void Reconcile()
@@ -181,7 +195,10 @@ internal static class LoadoutKeywordRuntimePatches
     }
 
     private static bool IsEnabled(CardModificationDelta delta, string key) =>
-        delta.KeywordOverrides.TryGetValue(key, out bool enabled) && enabled;
+        IsEnabled(delta.KeywordOverrides, key);
+
+    private static bool IsEnabled(IReadOnlyDictionary<string, bool> overrides, string key) =>
+        overrides.TryGetValue(key, out bool enabled) && enabled;
 
     private static void SetInfiniteUpgradeEnabled(bool enabled)
     {
@@ -214,11 +231,6 @@ internal static class LoadoutKeywordRuntimePatches
                 AccessTools.Method(typeof(DynamicVar), nameof(DynamicVar.UpgradeValueBy))!,
                 typeof(InfiniteUpgradeDynamicValuePatch),
                 nameof(InfiniteUpgradeDynamicValuePatch.Prefix));
-            PatchPrefixFinalizer(InfiniteHarmony,
-                AccessTools.Method(typeof(CardModel), nameof(CardModel.FromSerializable), [typeof(SerializableCard)])!,
-                typeof(InfiniteUpgradeDeserializationPatch),
-                nameof(InfiniteUpgradeDeserializationPatch.Prefix),
-                nameof(InfiniteUpgradeDeserializationPatch.Finalizer));
         }, () => InfiniteUpgradeEnabled = true);
     }
 
@@ -399,15 +411,28 @@ public static class InfiniteUpgradeMaxLevelPatch
     [ThreadStatic]
     private static int _deserializingMaxLevel;
 
-    public static void BeginDeserialization(int maxLevel)
+    [ThreadStatic]
+    private static bool _deserializingInfiniteUpgrade;
+
+    public static InfiniteUpgradeDeserializationState BeginDeserialization(
+        int maxLevel,
+        bool useInfiniteUpgradeValues = false)
     {
+        InfiniteUpgradeDeserializationState previous = new(
+            _deserializingMaxLevel,
+            _deserializingInfiniteUpgrade);
         _deserializingMaxLevel = Math.Max(_deserializingMaxLevel, maxLevel);
+        _deserializingInfiniteUpgrade |= useInfiniteUpgradeValues;
+        return previous;
     }
 
-    public static void EndDeserialization()
+    public static void EndDeserialization(InfiniteUpgradeDeserializationState previous)
     {
-        _deserializingMaxLevel = 0;
+        _deserializingMaxLevel = previous.MaxLevel;
+        _deserializingInfiniteUpgrade = previous.UseInfiniteUpgradeValues;
     }
+
+    public static bool IsDeserializingInfiniteUpgrade => _deserializingInfiniteUpgrade;
 
     public static IEnumerable<MethodBase> TargetMethods()
     {
@@ -434,6 +459,10 @@ public static class InfiniteUpgradeMaxLevelPatch
     }
 }
 
+public readonly record struct InfiniteUpgradeDeserializationState(
+    int MaxLevel,
+    bool UseInfiniteUpgradeValues);
+
 public readonly struct InfiniteUpgradeContextState
 {
     public InfiniteUpgradeContextState(CardModel? activeCard, bool isApplyingNativeUpgrade)
@@ -459,6 +488,7 @@ public static class InfiniteUpgradeContextPatch
     {
         __state = new InfiniteUpgradeContextState(ActiveCard, IsApplyingNativeUpgrade);
         ActiveCard = LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade)
+                     || InfiniteUpgradeMaxLevelPatch.IsDeserializingInfiniteUpgrade
             ? __instance
             : null;
         IsApplyingNativeUpgrade = ActiveCard is not null;
@@ -510,22 +540,6 @@ public static class InfiniteUpgradeDynamicValuePatch
         int extraValue = card.CurrentUpgradeLevel - 1;
         if (extraValue > 0)
             addend += extraValue;
-    }
-}
-
-public static class InfiniteUpgradeDeserializationPatch
-{
-    [HarmonyPrefix]
-    public static void Prefix(SerializableCard save)
-    {
-        InfiniteUpgradeMaxLevelPatch.BeginDeserialization(save.CurrentUpgradeLevel);
-    }
-
-    [HarmonyFinalizer]
-    public static Exception? Finalizer(Exception? __exception)
-    {
-        InfiniteUpgradeMaxLevelPatch.EndDeserialization();
-        return __exception;
     }
 }
 
