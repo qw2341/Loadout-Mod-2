@@ -103,12 +103,41 @@ internal static class LoadoutKeywordRuntimePatches
 
     public static bool HasEnabledInfiniteUpgrade(CardModificationSpec? state)
     {
-        return state is not null && IsEnabled(state.KeywordOverrides, LoadoutKeywords.InfiniteUpgradeKey);
+        return GetInfiniteUpgradeOverride(state) == true;
     }
 
     public static bool HasEnabledInfiniteUpgrade(CardModificationDelta? delta)
     {
-        return delta is not null && IsEnabled(delta.KeywordOverrides, LoadoutKeywords.InfiniteUpgradeKey);
+        return GetInfiniteUpgradeOverride(delta) == true;
+    }
+
+    public static bool? GetInfiniteUpgradeOverride(CardModificationSpec? state)
+    {
+        return state?.KeywordOverrides.TryGetValue(
+            LoadoutKeywords.InfiniteUpgradeKey,
+            out bool enabled) == true
+            ? enabled
+            : null;
+    }
+
+    public static bool? GetInfiniteUpgradeOverride(CardModificationDelta? delta)
+    {
+        return delta?.KeywordOverrides.TryGetValue(
+            LoadoutKeywords.InfiniteUpgradeKey,
+            out bool enabled) == true
+            ? enabled
+            : null;
+    }
+
+    public static bool ResolveEffectiveInfiniteUpgrade(
+        CardModificationSpec? permanent,
+        CardModificationDelta? temporary,
+        CardModificationSpec? legacyTemporary = null)
+    {
+        return GetInfiniteUpgradeOverride(temporary)
+               ?? GetInfiniteUpgradeOverride(legacyTemporary)
+               ?? GetInfiniteUpgradeOverride(permanent)
+               ?? false;
     }
 
     public static void EnsureInfiniteUpgradeEnabled()
@@ -412,27 +441,28 @@ public static class InfiniteUpgradeMaxLevelPatch
     private static int _deserializingMaxLevel;
 
     [ThreadStatic]
-    private static bool _deserializingInfiniteUpgrade;
+    private static bool? _deserializingInfiniteUpgradeValues;
 
     public static InfiniteUpgradeDeserializationState BeginDeserialization(
         int maxLevel,
-        bool useInfiniteUpgradeValues = false)
+        bool? useInfiniteUpgradeValues = null)
     {
         InfiniteUpgradeDeserializationState previous = new(
             _deserializingMaxLevel,
-            _deserializingInfiniteUpgrade);
+            _deserializingInfiniteUpgradeValues);
         _deserializingMaxLevel = Math.Max(_deserializingMaxLevel, maxLevel);
-        _deserializingInfiniteUpgrade |= useInfiniteUpgradeValues;
+        if (useInfiniteUpgradeValues.HasValue)
+            _deserializingInfiniteUpgradeValues = useInfiniteUpgradeValues;
         return previous;
     }
 
     public static void EndDeserialization(InfiniteUpgradeDeserializationState previous)
     {
         _deserializingMaxLevel = previous.MaxLevel;
-        _deserializingInfiniteUpgrade = previous.UseInfiniteUpgradeValues;
+        _deserializingInfiniteUpgradeValues = previous.UseInfiniteUpgradeValues;
     }
 
-    public static bool IsDeserializingInfiniteUpgrade => _deserializingInfiniteUpgrade;
+    public static bool? InfiniteUpgradeValuesOverride => _deserializingInfiniteUpgradeValues;
 
     public static IEnumerable<MethodBase> TargetMethods()
     {
@@ -461,7 +491,7 @@ public static class InfiniteUpgradeMaxLevelPatch
 
 public readonly record struct InfiniteUpgradeDeserializationState(
     int MaxLevel,
-    bool UseInfiniteUpgradeValues);
+    bool? UseInfiniteUpgradeValues);
 
 public readonly struct InfiniteUpgradeContextState
 {
@@ -487,8 +517,9 @@ public static class InfiniteUpgradeContextPatch
     public static void Prefix(CardModel __instance, out InfiniteUpgradeContextState __state)
     {
         __state = new InfiniteUpgradeContextState(ActiveCard, IsApplyingNativeUpgrade);
-        ActiveCard = LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade)
-                     || InfiniteUpgradeMaxLevelPatch.IsDeserializingInfiniteUpgrade
+        bool useInfiniteUpgradeValues = InfiniteUpgradeMaxLevelPatch.InfiniteUpgradeValuesOverride
+                                        ?? LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade);
+        ActiveCard = useInfiniteUpgradeValues
             ? __instance
             : null;
         IsApplyingNativeUpgrade = ActiveCard is not null;

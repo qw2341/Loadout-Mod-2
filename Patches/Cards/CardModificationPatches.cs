@@ -245,9 +245,10 @@ public static class CardModelFromSerializableCardModificationPatch
             && PermanentCardModificationStore.TryGet(cardId, out CardModificationSpec? savedPermanent)
                 ? savedPermanent
                 : null;
-        bool useInfiniteUpgradeValues = LoadoutKeywordRuntimePatches.HasEnabledInfiniteUpgrade(permanent)
-                                        || LoadoutKeywordRuntimePatches.HasEnabledInfiniteUpgrade(loaded?.Delta)
-                                        || LoadoutKeywordRuntimePatches.HasEnabledInfiniteUpgrade(loaded?.LegacyAbsolute);
+        bool useInfiniteUpgradeValues = LoadoutKeywordRuntimePatches.ResolveEffectiveInfiniteUpgrade(
+            permanent,
+            loaded?.Delta,
+            loaded?.LegacyAbsolute);
         if (useInfiniteUpgradeValues)
             LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
 

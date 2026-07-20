@@ -353,7 +353,10 @@ public static class CardModificationRuntime
         CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
         if (canonical is null) return new CardModificationDelta();
         CardModificationSpec permanent = PermanentCardModificationStore.Get(card.Id);
-        CardModel baseline = CreateBaseline(canonical, card.CurrentUpgradeLevel);
+        CardModel baseline = CreateBaseline(
+            canonical,
+            card.CurrentUpgradeLevel,
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(desired));
         return CreateDelta(baseline, desired, permanent);
     }
 
@@ -368,7 +371,10 @@ public static class CardModificationRuntime
     {
         CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
         if (canonical is null) return new CardModificationSpec();
-        CardModel baseline = CreateBaseline(canonical, card.CurrentUpgradeLevel);
+        CardModel baseline = CreateBaseline(
+            canonical,
+            card.CurrentUpgradeLevel,
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(delta));
         return MaterializeSpec(baseline, delta);
     }
 
@@ -378,7 +384,10 @@ public static class CardModificationRuntime
         CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
         if (canonical is null) return;
         CardModificationSpec previous = GetEffectiveSpec(card);
-        CardModel baseline = CreateBaseline(canonical, card.CurrentUpgradeLevel);
+        CardModel baseline = CreateBaseline(
+            canonical,
+            card.CurrentUpgradeLevel,
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(data.Delta));
         CardModificationSpec desired = MaterializeSpec(baseline, data.Delta);
         CopyNativeFields(baseline, card, previous, desired);
         ApplySpecToCard(card, desired);
@@ -573,7 +582,10 @@ public static class CardModificationRuntime
                 return source;
 
             CardModificationSpec permanent = PermanentCardModificationStore.Get(source.Id);
-            CardModel preview = CreateBaseline(canonical, source.CurrentUpgradeLevel);
+            CardModel preview = CreateBaseline(
+                canonical,
+                source.CurrentUpgradeLevel,
+                LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state));
             CardModificationDelta temporary = CreateDelta(preview, state, permanent);
             ApplyDeltaToCard(preview, temporary);
             if (temporary.HasCustomText || temporary.HasPortraitOverride)
@@ -1106,7 +1118,10 @@ public static class CardModificationRuntime
         if (canonical is null)
             return;
 
-        CardModel baseline = CreateBaseline(canonical, card.CurrentUpgradeLevel);
+        CardModel baseline = CreateBaseline(
+            canonical,
+            card.CurrentUpgradeLevel,
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(next));
         CopyNativeFields(baseline, card, previous, next, forceAllOwnedFields);
         ApplySpecToCard(card, temporary);
         card.FinalizeUpgradeInternal();
@@ -1114,7 +1129,8 @@ public static class CardModificationRuntime
 
     private static CardModel CreateBaseline(
         CardModel canonical,
-        int upgradeLevel)
+        int upgradeLevel,
+        bool? infiniteUpgradeOverride = null)
     {
         CardModel baseline;
         using (SuppressPermanentApplication())
@@ -1122,11 +1138,26 @@ public static class CardModificationRuntime
 
         if (PermanentCardModificationStore.TryGetDelta(canonical.Id, out CardModificationDelta? permanent))
             ApplyPermanentResidual(baseline, permanent);
+
+        if (infiniteUpgradeOverride.HasValue)
+        {
+            bool hasInfiniteUpgrade = LoadoutKeywords.Has(baseline, LoadoutKeywords.InfiniteUpgrade);
+            if (infiniteUpgradeOverride.Value && !hasInfiniteUpgrade)
+                baseline.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
+            else if (!infiniteUpgradeOverride.Value && hasInfiniteUpgrade)
+                baseline.RemoveKeyword(LoadoutKeywords.InfiniteUpgrade);
+        }
+
+        bool useInfiniteUpgradeValues = infiniteUpgradeOverride
+                                        ?? LoadoutKeywords.Has(baseline, LoadoutKeywords.InfiniteUpgrade);
+        if (useInfiniteUpgradeValues)
+            LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
+
         int count = Math.Max(0, upgradeLevel);
         InfiniteUpgradeDeserializationState deserializationState =
             InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
                 count,
-                LoadoutKeywords.Has(baseline, LoadoutKeywords.InfiniteUpgrade));
+                useInfiniteUpgradeValues);
         try
         {
             for (int i = 0; i < count && baseline.IsUpgradable; i++)

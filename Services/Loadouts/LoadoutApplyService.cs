@@ -207,11 +207,21 @@ public static class LoadoutApplyService
             if (isStartingDeck)
                 card.FloorAddedToDeck = 1;
 
-            if (LoadoutKeywordRuntimePatches.HasEnabledInfiniteUpgrade(modificationState))
+            bool? infiniteUpgradeOverride =
+                LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(modificationState);
+            if (infiniteUpgradeOverride.HasValue)
             {
-                LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
-                if (!LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade))
-                    card.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
+                bool hasInfiniteUpgrade = LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
+                if (infiniteUpgradeOverride.Value)
+                {
+                    LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
+                    if (!hasInfiniteUpgrade)
+                        card.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
+                }
+                else if (hasInfiniteUpgrade)
+                {
+                    card.RemoveKeyword(LoadoutKeywords.InfiniteUpgrade);
+                }
             }
 
             ApplyLoadoutUpgradeLevelDirect(card, upgradeLevel);

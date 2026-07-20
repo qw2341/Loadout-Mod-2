@@ -213,7 +213,10 @@ public class CommonHelpers
 				RefreshCurrentModels(target, animateRelayout: false);
 		}
 
-		bool TryHandleTargetedRunContentChange(NGenericSelectScreen target, LoadoutRunContentChangedEventArgs change)
+		bool TryHandleTargetedRunContentChange(
+			NGenericSelectScreen target,
+			LoadoutRunContentChangedEventArgs change,
+			bool refreshLayoutAfterUpdate = true)
 		{
 			Type modelType = typeof(TModel);
 			if (change.Kind == LoadoutRunContentKind.Relics
@@ -348,7 +351,7 @@ public class CommonHelpers
 							CardPrinter.RefreshCardVisuals(view, ownedCard.Model);
 					}
 
-					if (layoutDirty)
+					if (layoutDirty && refreshLayoutAfterUpdate)
 						target.RefreshLayout(resetScroll: false, updateExistingViews: false);
 
 					return true;
@@ -412,7 +415,20 @@ public class CommonHelpers
 			// collection and relayout it multiple times before the player sees it.
 			if (pending.Any(change => change.Mode != LoadoutRunContentChangeMode.Update))
 			{
-				RefreshCurrentModels(target, animateRelayout, updateExistingViews: false);
+				bool updateExistingViews = false;
+				foreach (LoadoutRunContentChangedEventArgs change in pending)
+				{
+					if (change.Mode != LoadoutRunContentChangeMode.Update)
+						continue;
+
+					// Apply exact view reloads before the structural snapshot reuses the
+					// existing holders. If an earlier removal shifted identities, refresh
+					// the materialized holders during the snapshot as a safe fallback.
+					if (!TryHandleTargetedRunContentChange(target, change, refreshLayoutAfterUpdate: false))
+						updateExistingViews = true;
+				}
+
+				RefreshCurrentModels(target, animateRelayout, updateExistingViews: updateExistingViews);
 				return;
 			}
 
