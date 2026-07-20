@@ -247,11 +247,11 @@ internal static class TildeKeyDynamicLockPatches
 
 public static class TildeKeyModifyHandDrawPatch
 {
-    [HarmonyPostfix]
-    public static void Postfix(Player player, ref decimal __result)
+    [HarmonyPrefix]
+    public static void Prefix(Player player, ref decimal originalCardCount)
     {
         if (TildeKeyStateService.TryGetDrawPerTurnOverride(player, out int drawPerTurn))
-            __result = drawPerTurn;
+            originalCardCount = drawPerTurn;
     }
 }
 
@@ -472,7 +472,7 @@ internal static class TildeKeyDynamicDrawPatches
             Harmony.Patch(
                 AccessTools.Method(typeof(Hook), nameof(Hook.ModifyHandDraw))
                 ?? throw new MissingMethodException(typeof(Hook).FullName, nameof(Hook.ModifyHandDraw)),
-                postfix: new HarmonyMethod(typeof(TildeKeyModifyHandDrawPatch), nameof(TildeKeyModifyHandDrawPatch.Postfix)));
+                prefix: new HarmonyMethod(typeof(TildeKeyModifyHandDrawPatch), nameof(TildeKeyModifyHandDrawPatch.Prefix)));
         }
 
         if (drawTillHandLimit)
