@@ -47,7 +47,7 @@ public class PowerGiver
 		{
 			GetId = PowerId,
 			GetName = CommonHelpers.FormatPowerTitle,
-			GetSearchText = power => $"{power.Id} {CommonHelpers.FormatPowerTitle(power)} {power.Description}",
+			GetSearchText = power => $"{power.Id} {CommonHelpers.FormatPowerTitle(power)} {power.Description.GetFormattedText()}",
 			CreateView = (power, _) => CreatePowerGridItem(
 				power,
 				PowerGiverStateService.GetCounter(PowerId(power)),

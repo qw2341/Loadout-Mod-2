@@ -9,6 +9,7 @@ using Loadout.Services.Targets;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -28,7 +29,7 @@ public class CardModifier
         {
             GetId = item => CommonHelpers.OwnedSlotItemId(item),
             GetName = item => CardPrinter.FormatCardTitle(item.Model),
-            GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
+            GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.GetDescriptionForPile(PileType.None)}",
             CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
             ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model),
             UpdateView = (item, view, state) =>

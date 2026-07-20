@@ -40,7 +40,7 @@ public class CardPrinter
 	    {
 		    GetId = card => card.Id.ToString(),
 		    GetName = card => FormatCardTitle(card),
-		    GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.TitleLocString} {card.Description}",
+		    GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.GetDescriptionForPile(PileType.None)}",
 		    CreateView = CreateCardGridItem,
 		    ViewReady = (card, view) => RefreshCardVisuals(view, card),
 		    UpdateView = (card, view, state) =>

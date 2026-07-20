@@ -366,7 +366,7 @@ public partial class NLoadoutPanel : Panel
 			{
 				GetId = relic => relic.Id.ToString(),
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
-				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription}",
+				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription.GetFormattedText()}",
 				CreateView = (relic, _) => CreateRelicGridItem(relic),
 				ViewReady = (relic, view) => RefreshRelicGridItem(view, relic),
 				UpdateView = (relic, view, _) => RefreshRelicGridItem(view, relic),
@@ -419,7 +419,7 @@ public partial class NLoadoutPanel : Panel
 			{
 				GetId = item => CommonHelpers.OwnedItemId(item),
 				GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
-				GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)} {item.Model.DynamicDescription}",
+				GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)} {item.Model.DynamicDescription.GetFormattedText()}",
 				CreateView = (item, _) => CreateOwnedRelicGridItem(item.Model),
 				BindActivationWithCleanup = (_, view, activate) => BindRelicActivationWithCleanup(view, activate)
 			},
@@ -457,7 +457,7 @@ public partial class NLoadoutPanel : Panel
 			{
 				GetId = potion => potion.Id.ToString(),
 				GetName = potion => CommonHelpers.FormatPotionTitle(potion),
-				GetSearchText = potion => $"{potion.Id} {CommonHelpers.FormatPotionTitle(potion)} {potion.DynamicDescription}",
+				GetSearchText = potion => $"{potion.Id} {CommonHelpers.FormatPotionTitle(potion)} {potion.DynamicDescription.GetFormattedText()}",
 				CreateView = (potion, _) => CreatePotionGridItem(potion),
 				BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
 			}, builder =>
@@ -497,7 +497,7 @@ public partial class NLoadoutPanel : Panel
 			{
 				GetId = item => CommonHelpers.OwnedItemId(item),
 				GetName = item => CardPrinter.FormatCardTitle(item.Model),
-				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.TitleLocString} {item.Model.Description}",
+				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.GetDescriptionForPile(PileType.None)}",
 				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
 				ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model),
 				UpdateView = (item, view, state) =>
