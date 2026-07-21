@@ -138,6 +138,7 @@ public static class BottledMonsterMorphPowerDescriptionPatch
 public static class BottledMonsterMorphCreatureReadyPatch
 {
     [HarmonyPostfix]
+    [HarmonyPriority(Priority.First)]
     public static void Postfix(NCreature __instance)
     {
         BottledMonsterMorphService.OnCreatureReady(__instance);

@@ -55,10 +55,13 @@ public static class BottledMonsterMorphService
     private static readonly Dictionary<ulong, int> RestSiteRevisions = new();
     private static readonly Dictionary<ulong, MorphVisualRuntime> ActiveVisuals = new();
     private static readonly Dictionary<ulong, MorphAudioProfile> ActiveAudioProfiles = new();
+    private static readonly Dictionary<ulong, CombatVisualScaleRuntime> CombatScaleRuntimes = new();
     private static readonly Dictionary<ulong, AbstractModel> MorphModelsByPlayer = new();
     private static readonly HashSet<string> DisplayTitleWarnings = new(StringComparer.Ordinal);
     private static readonly FieldInfo? VisualsField = AccessTools.Field(typeof(NCreature), "<Visuals>k__BackingField");
     private static readonly FieldInfo? SpineAnimatorField = AccessTools.Field(typeof(NCreature), "_spineAnimator");
+    private static readonly FieldInfo? TempScaleField = AccessTools.Field(typeof(NCreature), "_tempScale");
+    private static readonly FieldInfo? ScaleTweenField = AccessTools.Field(typeof(NCreature), "_scaleTween");
     private static readonly MethodInfo? ConnectAnimatorSignalsMethod = AccessTools.Method(typeof(NCreature), "ConnectSpineAnimatorSignals");
     private static readonly MethodInfo? UpdateBoundsMethod = AccessTools.Method(typeof(NCreature), "UpdateBounds", [typeof(NCreatureVisuals)]);
     private static readonly MethodInfo? SetOrbManagerPositionMethod = AccessTools.Method(typeof(NCreature), "SetOrbManagerPosition");
@@ -170,6 +173,7 @@ public static class BottledMonsterMorphService
 
     public static void OnCreatureReady(NCreature creatureNode)
     {
+        TrackCombatScaleRuntime(creatureNode);
         if (creatureNode.Entity?.Player is not { } player
             || !_state.Players.ContainsKey(player.NetId.ToString()))
         {
@@ -716,6 +720,9 @@ public static class BottledMonsterMorphService
                 Transform2D authoredTransform = proxy.Transform;
                 authoredTransform.Origin = Vector2.Zero;
                 proxy.Transform = runtime.Host.Transform.AffineInverse() * authoredTransform;
+                proxy.Scale *= new Vector2(
+                    Mathf.Abs(runtime.Host.Scale.X),
+                    Mathf.Abs(runtime.Host.Scale.Y));
             }
             else if (visualModel is MonsterModel monster)
             {
@@ -882,6 +889,8 @@ public static class BottledMonsterMorphService
             newVisual.Position = oldVisual.Position;
             newVisual.Modulate = oldVisual.Modulate;
             newVisual.Visible = oldVisual.Visible;
+            newVisual.Scale = oldVisual.Scale;
+            newVisual.Rotation = oldVisual.Rotation;
             parent.AddChild(newVisual);
             parent.MoveChild(newVisual, Math.Max(0, siblingIndex));
             playerVisuals[slot] = newVisual;
@@ -968,6 +977,7 @@ public static class BottledMonsterMorphService
         NCreatureVisuals? newVisuals = null;
         NCreatureVisuals? oldVisuals = null;
         object? oldAnimator = null;
+        CombatVisualScaleRuntime? oldScaleRuntime = null;
         bool fieldsSwapped = false;
         try
         {
@@ -977,8 +987,15 @@ public static class BottledMonsterMorphService
 
             oldVisuals = creatureNode.Visuals;
             oldAnimator = SpineAnimatorField.GetValue(creatureNode);
+            ulong nodeId = creatureNode.GetInstanceId();
+            CombatScaleRuntimes.TryGetValue(nodeId, out oldScaleRuntime);
             int oldIndex = oldVisuals.GetIndex();
             Color oldModulate = oldVisuals.Modulate;
+            CreatureScaleSnapshot inheritedScale = CaptureCreatureScale(
+                creatureNode,
+                oldVisuals,
+                oldScaleRuntime);
+            float newIntrinsicDefaultScale = GetValidScale(newVisuals.DefaultScale, 1f);
 
             creatureNode.AddChild(newVisuals);
             creatureNode.MoveChild(newVisuals, Math.Max(0, oldIndex));
@@ -992,11 +1009,15 @@ public static class BottledMonsterMorphService
             VisualsField.SetValue(creatureNode, newVisuals);
             SpineAnimatorField.SetValue(creatureNode, animator);
             fieldsSwapped = true;
+            ApplyInheritedCreatureScale(creatureNode, newVisuals, inheritedScale, newIntrinsicDefaultScale);
+            CombatScaleRuntimes[nodeId] = new CombatVisualScaleRuntime(
+                creatureNode,
+                newVisuals,
+                newIntrinsicDefaultScale);
             ConnectAnimatorSignalsMethod?.Invoke(creatureNode, null);
             UpdateBoundsMethod.Invoke(creatureNode, [newVisuals]);
             SetOrbManagerPositionMethod?.Invoke(creatureNode, null);
 
-            ulong nodeId = creatureNode.GetInstanceId();
             PruneInvalidVisuals();
             if (isMorphed)
                 ActiveAudioProfiles[nodeId] = new MorphAudioProfile(creatureNode, visualModel);
@@ -1027,6 +1048,10 @@ public static class BottledMonsterMorphService
         {
             ActiveVisuals.Remove(creatureNode.GetInstanceId());
             ActiveAudioProfiles.Remove(creatureNode.GetInstanceId());
+            if (oldScaleRuntime is not null)
+                CombatScaleRuntimes[creatureNode.GetInstanceId()] = oldScaleRuntime;
+            else
+                CombatScaleRuntimes.Remove(creatureNode.GetInstanceId());
             if (fieldsSwapped && oldVisuals is not null && GodotObject.IsInstanceValid(oldVisuals))
             {
                 try
@@ -1051,6 +1076,84 @@ public static class BottledMonsterMorphService
 
             GD.PushWarning($"BottledMonsterMorph: could not install '{visualModel.Id}' on player creature. {exception.Message}");
         }
+    }
+
+    private static void TrackCombatScaleRuntime(NCreature creatureNode)
+    {
+        if (creatureNode.Entity?.Player is null || !GodotObject.IsInstanceValid(creatureNode.Visuals))
+            return;
+
+        CombatScaleRuntimes[creatureNode.GetInstanceId()] = new CombatVisualScaleRuntime(
+            creatureNode,
+            creatureNode.Visuals,
+            GetValidScale(creatureNode.Visuals.DefaultScale, 1f));
+    }
+
+    private static CreatureScaleSnapshot CaptureCreatureScale(
+        NCreature creatureNode,
+        NCreatureVisuals oldVisuals,
+        CombatVisualScaleRuntime? runtime)
+    {
+        float intrinsicDefaultScale = runtime is not null
+                                      && ReferenceEquals(runtime.Node, creatureNode)
+                                      && ReferenceEquals(runtime.Visuals, oldVisuals)
+            ? runtime.IntrinsicDefaultScale
+            : GetValidScale(oldVisuals.DefaultScale, 1f);
+        float currentDefaultScale = GetValidScale(oldVisuals.DefaultScale, intrinsicDefaultScale);
+        float persistentMultiplier = GetValidScale(currentDefaultScale / intrinsicDefaultScale, 1f);
+        float tempScale = GetCreatureTempScale(creatureNode, oldVisuals);
+
+        bool nativeScaleTweenRunning = ScaleTweenField?.GetValue(creatureNode) is Tween tween
+                                       && GodotObject.IsInstanceValid(tween)
+                                       && tween.IsRunning();
+        if (!nativeScaleTweenRunning)
+        {
+            float expectedVisualScale = tempScale * currentDefaultScale;
+            if (!Mathf.IsZeroApprox(expectedVisualScale))
+            {
+                float directVisualMultiplier = GetValidScale(
+                    oldVisuals.Scale.X / expectedVisualScale,
+                    1f);
+                persistentMultiplier *= directVisualMultiplier;
+            }
+        }
+
+        return new CreatureScaleSnapshot(tempScale, persistentMultiplier);
+    }
+
+    private static float GetCreatureTempScale(NCreature creatureNode, NCreatureVisuals oldVisuals)
+    {
+        if (TempScaleField?.GetValue(creatureNode) is float tempScale)
+            return GetValidScale(tempScale, 1f);
+
+        float defaultScale = oldVisuals.DefaultScale;
+        if (!float.IsFinite(defaultScale) || Mathf.IsZeroApprox(defaultScale))
+            return 1f;
+
+        float fallbackScale = oldVisuals.Scale.X / defaultScale;
+        return float.IsFinite(fallbackScale) && fallbackScale > 0f ? fallbackScale : 1f;
+    }
+
+    private static void ApplyInheritedCreatureScale(
+        NCreature creatureNode,
+        NCreatureVisuals newVisuals,
+        CreatureScaleSnapshot inheritedScale,
+        float intrinsicDefaultScale)
+    {
+        newVisuals.DefaultScale = intrinsicDefaultScale * inheritedScale.PersistentMultiplier;
+
+        // ScaleTo owns NCreature's active tween and temporary multiplier. Rebind
+        // it after carrying the independent persistent/default-scale layer so
+        // neither kind of scale is discarded or compounded by a morph swap.
+        creatureNode.ScaleTo(inheritedScale.TempMultiplier, 0.0);
+        newVisuals.Scale = Vector2.One
+                           * inheritedScale.TempMultiplier
+                           * newVisuals.DefaultScale;
+    }
+
+    private static float GetValidScale(float value, float fallback)
+    {
+        return float.IsFinite(value) && value > 0f ? value : fallback;
     }
 
     private static NCreatureVisuals? CreateVisuals(AbstractModel model)
@@ -1401,6 +1504,15 @@ public static class BottledMonsterMorphService
         {
             ActiveAudioProfiles.Remove(nodeId);
         }
+
+        foreach (ulong nodeId in CombatScaleRuntimes
+                     .Where(pair => !GodotObject.IsInstanceValid(pair.Value.Node)
+                                    || !GodotObject.IsInstanceValid(pair.Value.Visuals))
+                     .Select(pair => pair.Key)
+                     .ToList())
+        {
+            CombatScaleRuntimes.Remove(nodeId);
+        }
     }
 
     private static void LoadRunState()
@@ -1611,6 +1723,7 @@ public static class BottledMonsterMorphService
         RestSiteRevisions.Clear();
         ActiveVisuals.Clear();
         ActiveAudioProfiles.Clear();
+        CombatScaleRuntimes.Clear();
         MorphModelsByPlayer.Clear();
         DisplayTitleWarnings.Clear();
         FakeMerchantVisuals.Clear();
@@ -1631,6 +1744,15 @@ public static class BottledMonsterMorphService
         HashSet<string> FailedTriggers);
 
     private sealed record MorphAudioProfile(NCreature Node, AbstractModel Model);
+
+    private sealed record CombatVisualScaleRuntime(
+        NCreature Node,
+        NCreatureVisuals Visuals,
+        float IntrinsicDefaultScale);
+
+    private readonly record struct CreatureScaleSnapshot(
+        float TempMultiplier,
+        float PersistentMultiplier);
 
     private sealed class RestSiteVisualRuntime(
         NRestSiteRoom room,
