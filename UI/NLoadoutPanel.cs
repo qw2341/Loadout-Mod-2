@@ -1006,10 +1006,13 @@ public partial class NLoadoutPanel : Panel
 	{
 		string leftId = left.Id.ToString();
 		string rightId = right.Id.ToString();
-		if (groupingData.GroupKeyByRelicId.TryGetValue(leftId, out string? leftGroup)
-		    && groupingData.GroupKeyByRelicId.TryGetValue(rightId, out string? rightGroup)
-		    && string.Equals(leftGroup, rightGroup, StringComparison.Ordinal)
-		    && groupingData.CompatibilityRarityOrderByRelicId.TryGetValue(leftId, out int leftRarityOrder)
+		string leftGroup = GetRelicGroupKey(left, groupingData);
+		string rightGroup = GetRelicGroupKey(right, groupingData);
+		int groupOrder = string.Compare(leftGroup, rightGroup, StringComparison.Ordinal);
+		if (groupOrder != 0)
+			return groupOrder;
+
+		if (groupingData.CompatibilityRarityOrderByRelicId.TryGetValue(leftId, out int leftRarityOrder)
 		    && groupingData.CompatibilityRarityOrderByRelicId.TryGetValue(rightId, out int rightRarityOrder))
 		{
 			int rarityOrder = leftRarityOrder.CompareTo(rightRarityOrder);
