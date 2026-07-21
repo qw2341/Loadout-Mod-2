@@ -49,6 +49,7 @@ using HarmonyLib;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Services.Compatibility;
 using Loadout.Services.LastActions;
 using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
@@ -60,7 +61,18 @@ namespace  Loadout.UI;
 
 public partial class NLoadoutPanel : Panel
 {
-	private const int MaxLoadoutItemInitAttempts = 120;
+	private const string HextechRelicGroupKey = "relic:hextech";
+	private const string HextechCharacterGroupPrefix = "relic:hextech:character:";
+	private const string HextechForgeGroupKey = "relic:hextech:forges";
+	private static readonly string[] HextechKnownCharacterPoolOrder =
+	{
+		"IRONCLAD",
+		"SILENT",
+		"REGENT",
+		"DEFECT",
+		"NECROBINDER"
+	};
+
 	private static bool DebugForceShownExpanded = false;
 	private const string LoadoutBagTargetDropdownName = "LoadoutBagTargetDropdown";
 	private const string LoadoutCauldronTargetKey = "loadout_cauldron";
@@ -90,9 +102,8 @@ public partial class NLoadoutPanel : Panel
 	private static NLoadoutPanel? _instance;
 	private static bool _configPreviewVisible;
 
-	private int _loadoutItemInitAttempts;
+	private bool _loadoutItemInitializationAttempted;
 	private bool _loadoutItemsAdded;
-	private string? _lastLoadoutItemInitError;
 	private bool _runStartedConnected;
 	private bool _isReady;
 	private Control? _layoutParent;
@@ -383,8 +394,12 @@ public partial class NLoadoutPanel : Panel
 				CommonHelpers.AddModFilters(builder, ModelDb.AllRelics);
 				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatRelicTitle(a), CommonHelpers.FormatRelicTitle(b), StringComparison.Ordinal));
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.Loc("SORT_RARITY", "Rarity")), CompareRelicRarity, activeByDefault: true);
 				RelicGroupingData relicGroupingData = BuildRelicGroupingData();
+				builder.Sorter(
+					"rarity",
+					LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.Loc("SORT_RARITY", "Rarity")),
+					(left, right) => CompareRelicRarity(left, right, relicGroupingData),
+					activeByDefault: true);
 				builder.GroupBySorter(
 					"rarity",
 					relic => GetRelicGroupKey(relic, relicGroupingData),
@@ -551,45 +566,27 @@ public partial class NLoadoutPanel : Panel
 		if (_loadoutItemsAdded)
 			return true;
 
-		if (_loadoutItemInitAttempts >= MaxLoadoutItemInitAttempts)
+		if (_loadoutItemInitializationAttempted)
 			return false;
 
-		_loadoutItemInitAttempts++;
+		_loadoutItemInitializationAttempted = true;
 
 		try
 		{
 			VerifyStaticModelCollectionsAreReady();
 			AddLoadoutItems();
 			_loadoutItemsAdded = true;
-			_lastLoadoutItemInitError = null;
 			UpdatePanelHeight();
 			return true;
 		}
-		catch (KeyNotFoundException exception)
+		catch (Exception exception)
 		{
-			_lastLoadoutItemInitError = exception.Message;
-
-			if (_loadoutItemInitAttempts == 1)
-			{
-				GD.PushWarning(
-					$"LoadoutPanel: ModelDb is not ready yet; startup preloader will retry. Missing key: {exception.Message}");
-			}
-
-			if (_loadoutItemInitAttempts >= MaxLoadoutItemInitAttempts)
-			{
-				GD.PushError(
-					$"LoadoutPanel: failed to initialize loadout items after {_loadoutItemInitAttempts} frames. " +
-					$"Last missing key: {exception.Message}");
-			}
-
+			GD.PushError($"[Loadout] Failed to initialize loadout panel items; initialization will not be retried: {exception}");
 			return false;
 		}
 	}
 
 	public bool LoadoutItemsInitialized => _loadoutItemsAdded;
-	public int LoadoutItemInitAttempts => _loadoutItemInitAttempts;
-	public bool LoadoutItemInitializationExhausted => _loadoutItemInitAttempts >= MaxLoadoutItemInitAttempts;
-	public string? LastLoadoutItemInitError => _lastLoadoutItemInitError;
 
 	public IReadOnlyList<SelectScreenPreloadEntry> GetSelectScreensForPreload()
 	{
@@ -957,7 +954,9 @@ public partial class NLoadoutPanel : Panel
 	private static void AddRelicPoolFilters(SelectScreenBuilder<RelicModel> builder)
 	{
 		IReadOnlyList<RelicPoolModel> pools = CommonHelpers.BuildOrderedPools(
-			ModelDb.AllRelics.Select(relic => relic.Pool),
+			ModelDb.AllRelics
+				.Select(relic => TryGetRelicPool(relic, out RelicPoolModel pool) ? pool : null)
+				.OfType<RelicPoolModel>(),
 			ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.RelicPool),
 			pool => CommonHelpers.IsSharedPool(pool) && !CommonHelpers.IsInternalPool(pool));
 
@@ -965,9 +964,19 @@ public partial class NLoadoutPanel : Panel
 		{
 			RelicPoolModel localPool = pool;
 			builder.Filter(CommonHelpers.PoolFilterId("relic", localPool), CommonHelpers.GetPoolLabel(localPool),
-				relic => CommonHelpers.SamePool(relic.Pool, localPool),
+				relic => TryGetRelicPool(relic, out RelicPoolModel relicPool)
+				         && CommonHelpers.SamePool(relicPool, localPool),
 				"class");
 		}
+	}
+
+	private static bool TryGetRelicPool(RelicModel relic, out RelicPoolModel pool)
+	{
+		RelicPoolModel? matchingPool = ModelDb.AllRelicPools
+			.FirstOrDefault(candidate => candidate.AllRelicIds.Contains(relic.Id));
+
+		pool = matchingPool!;
+		return matchingPool is not null;
 	}
 
 
@@ -990,8 +999,32 @@ public partial class NLoadoutPanel : Panel
 		};
 	}
 
-	private static int CompareRelicRarity(RelicModel left, RelicModel right)
+	private static int CompareRelicRarity(
+		RelicModel left,
+		RelicModel right,
+		RelicGroupingData groupingData)
 	{
+		string leftId = left.Id.ToString();
+		string rightId = right.Id.ToString();
+		if (groupingData.GroupKeyByRelicId.TryGetValue(leftId, out string? leftGroup)
+		    && groupingData.GroupKeyByRelicId.TryGetValue(rightId, out string? rightGroup)
+		    && string.Equals(leftGroup, rightGroup, StringComparison.Ordinal)
+		    && groupingData.CompatibilityRarityOrderByRelicId.TryGetValue(leftId, out int leftRarityOrder)
+		    && groupingData.CompatibilityRarityOrderByRelicId.TryGetValue(rightId, out int rightRarityOrder))
+		{
+			int rarityOrder = leftRarityOrder.CompareTo(rightRarityOrder);
+			if (rarityOrder != 0)
+				return rarityOrder;
+
+			if (groupingData.CompatibilityCatalogOrderByRelicId.TryGetValue(leftId, out int leftCatalogOrder)
+			    && groupingData.CompatibilityCatalogOrderByRelicId.TryGetValue(rightId, out int rightCatalogOrder))
+			{
+				int catalogOrder = leftCatalogOrder.CompareTo(rightCatalogOrder);
+				if (catalogOrder != 0)
+					return catalogOrder;
+			}
+		}
+
 		int rarity = GetRelicRaritySortValue(left.Rarity).CompareTo(GetRelicRaritySortValue(right.Rarity));
 		return rarity != 0 ? rarity : string.Compare(CommonHelpers.FormatRelicTitle(left), CommonHelpers.FormatRelicTitle(right), StringComparison.Ordinal);
 	}
@@ -1046,6 +1079,21 @@ public partial class NLoadoutPanel : Panel
 	private static RelicGroupingData BuildRelicGroupingData()
 	{
 		Dictionary<string, string> keyByRelicId = new(StringComparer.Ordinal);
+		Dictionary<string, int> compatibilityRarityOrderByRelicId = new(StringComparer.Ordinal);
+		Dictionary<string, int> compatibilityCatalogOrderByRelicId = new(StringComparer.Ordinal);
+		HashSet<string> usedCharacterPoolKeys = new(StringComparer.Ordinal);
+		bool hasHextechRunes = false;
+		bool hasStatForgers = false;
+		IReadOnlyList<Type> runeTypes = HextechRunesInterop.GetAllRuneTypes();
+		Dictionary<Type, int> runeOrderByType = runeTypes
+			.Select((type, index) => (type, index))
+			.GroupBy(entry => entry.type)
+			.ToDictionary(group => group.Key, group => group.First().index);
+		IReadOnlyList<Type> forgeTypes = HextechRunesInterop.GetAllForgeTypes();
+		Dictionary<Type, int> forgeOrderByType = forgeTypes
+			.Select((type, index) => (type, index))
+			.GroupBy(entry => entry.type)
+			.ToDictionary(group => group.Key, group => group.First().index);
 		Dictionary<string, RelicModel> ancientRelicsById = ModelDb.AllRelics
 			.Where(relic => relic.Rarity == RelicRarity.Ancient)
 			.GroupBy(relic => relic.Id.ToString(), StringComparer.Ordinal)
@@ -1059,15 +1107,6 @@ public partial class NLoadoutPanel : Panel
 			["relic:shop"] = new(new LocString("relic_collection", "SHOP").GetFormattedText()),
 			["relic:ancient"] = new(new LocString("relic_collection", "ANCIENT").GetFormattedText(), childGroupPrefix: "relic:ancient:"),
 			["relic:event"] = new(new LocString("relic_collection", "EVENT").GetFormattedText())
-		};
-		List<string> groupOrder = new()
-		{
-			"relic:starter",
-			"relic:common",
-			"relic:uncommon",
-			"relic:rare",
-			"relic:shop",
-			"relic:ancient"
 		};
 		List<string> ancientGroupOrder = new();
 
@@ -1088,13 +1127,80 @@ public partial class NLoadoutPanel : Panel
 			headerText.Add("Ancient", ancient.Title);
 			AncientEventModel headerAncient = ancient;
 			headers[groupKey] = new SelectGroupHeader(headerText.GetFormattedText(), () => CommonHelpers.TryGetValidTexture(headerAncient.RunHistoryIcon));
-			groupOrder.Add(groupKey);
 			ancientGroupOrder.Add(groupKey);
 
 			foreach (RelicModel relic in ancientRelics)
 				keyByRelicId[relic.Id.ToString()] = groupKey;
 		}
 
+		foreach (RelicModel relic in ModelDb.AllRelics)
+		{
+			string relicId = relic.Id.ToString();
+			Type relicType = relic.CanonicalInstance?.GetType() ?? relic.GetType();
+			if (HextechRunesInterop.IsHextechRelic(relic))
+			{
+				hasHextechRunes = true;
+				string poolKey = HextechRunesInterop.GetPlayerRunePoolKey(relic)?.Trim().ToUpperInvariant()
+				                 ?? string.Empty;
+				if (HextechKnownCharacterPoolOrder.Contains(poolKey, StringComparer.Ordinal))
+				{
+					usedCharacterPoolKeys.Add(poolKey);
+					keyByRelicId[relicId] = HextechCharacterGroupPrefix + poolKey;
+				}
+				else
+				{
+					// Generic, sponsor-pack, and future unknown pools stay in ARAM's main Hextech category.
+					keyByRelicId[relicId] = HextechRelicGroupKey;
+				}
+
+				compatibilityRarityOrderByRelicId[relicId] =
+					HextechRunesInterop.GetPlayerRuneRaritySortOrder(relicType);
+				compatibilityCatalogOrderByRelicId[relicId] = runeOrderByType.TryGetValue(relicType, out int runeOrder)
+					? runeOrder
+					: int.MaxValue;
+				continue;
+			}
+
+			bool isForgeRelic = HextechRunesInterop.IsHextechForgeRelic(relic);
+			bool isForgeShopRelic = HextechRunesInterop.IsHextechShopRelic(relic);
+			if (!isForgeRelic && !isForgeShopRelic)
+				continue;
+
+			hasStatForgers = true;
+			keyByRelicId[relicId] = HextechForgeGroupKey;
+			compatibilityRarityOrderByRelicId[relicId] = isForgeShopRelic ? -1 : 0;
+			compatibilityCatalogOrderByRelicId[relicId] = isForgeShopRelic
+				? -1
+				: forgeOrderByType.TryGetValue(relicType, out int forgeOrder)
+					? forgeOrder
+					: int.MaxValue;
+		}
+
+		string starterHeader = new LocString("relic_collection", "STARTER").GetRawText();
+		List<string> hextechCharacterGroupOrder = BuildHextechHeaders(
+			headers,
+			usedCharacterPoolKeys,
+			starterHeader,
+			hasHextechRunes,
+			hasStatForgers);
+
+		List<string> groupOrder = new() { "relic:starter" };
+		if (hasHextechRunes)
+		{
+			groupOrder.Add(HextechRelicGroupKey);
+			groupOrder.AddRange(hextechCharacterGroupOrder);
+		}
+		if (hasStatForgers)
+			groupOrder.Add(HextechForgeGroupKey);
+		groupOrder.AddRange(new[]
+		{
+			"relic:common",
+			"relic:uncommon",
+			"relic:rare",
+			"relic:shop",
+			"relic:ancient"
+		});
+		groupOrder.AddRange(ancientGroupOrder);
 		groupOrder.Add("relic:event");
 
 		List<string> descendingGroupOrder = new()
@@ -1108,17 +1214,30 @@ public partial class NLoadoutPanel : Panel
 			"relic:shop",
 			"relic:rare",
 			"relic:uncommon",
-			"relic:common",
-			"relic:starter"
+			"relic:common"
 		});
+		if (hasHextechRunes)
+		{
+			descendingGroupOrder.Add(HextechRelicGroupKey);
+			descendingGroupOrder.AddRange(hextechCharacterGroupOrder);
+		}
+		if (hasStatForgers)
+			descendingGroupOrder.Add(HextechForgeGroupKey);
+		descendingGroupOrder.Add("relic:starter");
 
-		return new RelicGroupingData(keyByRelicId, headers, groupOrder, descendingGroupOrder);
+		return new RelicGroupingData(
+			keyByRelicId,
+			compatibilityRarityOrderByRelicId,
+			compatibilityCatalogOrderByRelicId,
+			headers,
+			groupOrder,
+			descendingGroupOrder);
 	}
 
 	private static string GetRelicGroupKey(RelicModel relic, RelicGroupingData groupingData)
 	{
-		if (relic.Rarity == RelicRarity.Ancient && groupingData.AncientGroupKeyByRelicId.TryGetValue(relic.Id.ToString(), out string? ancientKey))
-			return ancientKey;
+		if (groupingData.GroupKeyByRelicId.TryGetValue(relic.Id.ToString(), out string? assignedKey))
+			return assignedKey;
 
 		return relic.Rarity switch
 		{
@@ -1133,6 +1252,102 @@ public partial class NLoadoutPanel : Panel
 		};
 	}
 
+	private static List<string> BuildHextechHeaders(
+		IDictionary<string, SelectGroupHeader> headers,
+		IReadOnlySet<string> usedCharacterPoolKeys,
+		string starterHeader,
+		bool hasHextechRunes,
+		bool hasStatForgers)
+	{
+		if (hasHextechRunes)
+		{
+			headers[HextechRelicGroupKey] = BuildHextechHeader(
+				starterHeader,
+				"海克斯：",
+				"来自海克斯符文池的自定义遗物。",
+				"Hextech:",
+				"Custom relics from the Hextech rune pool.",
+				"HEXTECH_RUNES_SUBCATEGORY",
+				HextechCharacterGroupPrefix);
+		}
+
+		List<string> characterGroups = new();
+		foreach (string poolKey in HextechKnownCharacterPoolOrder.Where(usedCharacterPoolKeys.Contains))
+		{
+			(string zhTitle, string zhBody, string enTitle, string enBody) = poolKey switch
+			{
+				"IRONCLAD" => ("铁甲战士海克斯：", "仅铁甲战士可抽取的海克斯符文。", "Ironclad Hexes:", "Hextech runes only available to Ironclad."),
+				"SILENT" => ("静默猎手海克斯：", "仅静默猎手可抽取的海克斯符文。", "Silent Hexes:", "Hextech runes only available to Silent."),
+				"REGENT" => ("储君海克斯：", "仅储君可抽取的海克斯符文。", "Regent Hexes:", "Hextech runes only available to Regent."),
+				"DEFECT" => ("故障机器人海克斯：", "仅故障机器人可抽取的海克斯符文。", "Defect Hexes:", "Hextech runes only available to Defect."),
+				"NECROBINDER" => ("亡灵契约师海克斯：", "仅亡灵契约师可抽取的海克斯符文。", "Necrobinder Hexes:", "Hextech runes only available to Necrobinder."),
+				_ => throw new InvalidOperationException($"Unsupported Hextech character pool '{poolKey}'.")
+			};
+			string groupKey = HextechCharacterGroupPrefix + poolKey;
+			headers[groupKey] = BuildHextechHeader(
+				starterHeader,
+				zhTitle,
+				zhBody,
+				enTitle,
+				enBody,
+				$"HEXTECH_{poolKey}");
+			characterGroups.Add(groupKey);
+		}
+
+		if (hasStatForgers)
+		{
+			headers[HextechForgeGroupKey] = BuildHextechHeader(
+				starterHeader,
+				"属性锻造器：",
+				"来自属性锻造系统的自定义遗物。",
+				"Stat Forgers:",
+				"Custom relics from the stat forging system.",
+				"HEXTECH_FORGES_SUBCATEGORY");
+		}
+
+		return characterGroups;
+	}
+
+	private static SelectGroupHeader BuildHextechHeader(
+		string starterHeader,
+		string zhTitle,
+		string zhBody,
+		string enTitle,
+		string enBody,
+		string logKey,
+		string? childGroupPrefix = null)
+	{
+		try
+		{
+			string formatted = HextechRunesCollectionInterop.FormatLikeStarterHeader(
+				starterHeader,
+				zhTitle,
+				zhBody,
+				enTitle,
+				enBody,
+				logKey);
+			bool useChinese = starterHeader.Contains("初始：", StringComparison.Ordinal);
+			string expectedTitle = useChinese ? zhTitle : enTitle;
+			string expectedBody = useChinese ? zhBody : enBody;
+			if (!string.IsNullOrWhiteSpace(formatted)
+			    && formatted.Contains(expectedTitle, StringComparison.Ordinal)
+			    && formatted.Contains(expectedBody, StringComparison.Ordinal))
+			{
+				return new SelectGroupHeader(formatted, childGroupPrefix: childGroupPrefix);
+			}
+		}
+		catch (Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanel: ARAM collection header formatter failed for '{logKey}': {exception.Message}");
+		}
+
+		bool fallbackToChinese = starterHeader.Contains("初始：", StringComparison.Ordinal);
+		string fallbackTitle = fallbackToChinese ? zhTitle : enTitle;
+		string fallbackBody = fallbackToChinese ? zhBody : enBody;
+		string exactHeader = $"[gold][font_size=28][b]{fallbackTitle}[/b][/font_size][/gold] {fallbackBody}";
+		return new SelectGroupHeader(exactHeader, childGroupPrefix: childGroupPrefix);
+	}
+
 	private static SelectGroupHeader GetRelicGroupHeader(string key, RelicGroupingData groupingData)
 	{
 		return groupingData.HeadersByKey.TryGetValue(key, out SelectGroupHeader? header)
@@ -1143,18 +1358,24 @@ public partial class NLoadoutPanel : Panel
 	private sealed class RelicGroupingData
 	{
 		public RelicGroupingData(
-			IReadOnlyDictionary<string, string> ancientGroupKeyByRelicId,
+			IReadOnlyDictionary<string, string> groupKeyByRelicId,
+			IReadOnlyDictionary<string, int> compatibilityRarityOrderByRelicId,
+			IReadOnlyDictionary<string, int> compatibilityCatalogOrderByRelicId,
 			IReadOnlyDictionary<string, SelectGroupHeader> headersByKey,
 			IReadOnlyList<string> groupOrder,
 			IReadOnlyList<string> descendingGroupOrder)
 		{
-			AncientGroupKeyByRelicId = ancientGroupKeyByRelicId;
+			GroupKeyByRelicId = groupKeyByRelicId;
+			CompatibilityRarityOrderByRelicId = compatibilityRarityOrderByRelicId;
+			CompatibilityCatalogOrderByRelicId = compatibilityCatalogOrderByRelicId;
 			HeadersByKey = headersByKey;
 			GroupOrder = groupOrder;
 			DescendingGroupOrder = descendingGroupOrder;
 		}
 
-		public IReadOnlyDictionary<string, string> AncientGroupKeyByRelicId { get; }
+		public IReadOnlyDictionary<string, string> GroupKeyByRelicId { get; }
+		public IReadOnlyDictionary<string, int> CompatibilityRarityOrderByRelicId { get; }
+		public IReadOnlyDictionary<string, int> CompatibilityCatalogOrderByRelicId { get; }
 		public IReadOnlyDictionary<string, SelectGroupHeader> HeadersByKey { get; }
 		public IReadOnlyList<string> GroupOrder { get; }
 		public IReadOnlyList<string> DescendingGroupOrder { get; }

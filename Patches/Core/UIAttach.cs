@@ -24,6 +24,7 @@ public static class UIAttach
     private static bool _attachScheduled;
     private static bool _attached;
     private static bool _preloadScheduled;
+    private static bool _preloadAttempted;
     private static bool _preloaded;
 
     [HarmonyPostfix]
@@ -47,6 +48,7 @@ public static class UIAttach
             // The overlay root was removed. Allow a later completed asset session
             // to recreate it and warm a fresh set of screen instances.
             _attached = false;
+            _preloadAttempted = false;
             _preloaded = false;
         }
 
@@ -101,9 +103,10 @@ public static class UIAttach
 
     private static void ScheduleSelectScreenPreload(NLoadoutPanelRoot root)
     {
-        if (_preloaded || _preloadScheduled)
+        if (_preloaded || _preloadScheduled || _preloadAttempted)
             return;
 
+        _preloadAttempted = true;
         _preloadScheduled = true;
         _ = PreloadSelectScreensAsync(root);
     }
@@ -124,19 +127,8 @@ public static class UIAttach
             if (!await WaitForNextFrame(root))
                 return;
 
-            while (!panel.TryInitializeLoadoutItems())
-            {
-                if (panel.LoadoutItemInitializationExhausted)
-                {
-                    Log.Error(
-                        $"[Loadout] Select-screen preload stopped after {panel.LoadoutItemInitAttempts} initialization attempts. " +
-                        $"Last error: {panel.LastLoadoutItemInitError}");
-                    return;
-                }
-
-                if (!await WaitForNextFrame(root))
-                    return;
-            }
+            if (!panel.TryInitializeLoadoutItems())
+                return;
 
             // Give the panel-item nodes their own frame before materializing the
             // first catalog screen, avoiding a combined initialization spike.
