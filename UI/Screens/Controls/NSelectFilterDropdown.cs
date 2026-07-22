@@ -18,7 +18,8 @@ using System.Linq;
 public readonly record struct LoadoutDropdownOption(
     string Id,
     string Label,
-    Func<IReadOnlyList<IHoverTip>>? HoverTipsFactory = null);
+    Func<IReadOnlyList<IHoverTip>>? HoverTipsFactory = null,
+    Texture2D? Icon = null);
 
 public partial class NLoadoutDropdown : NDropdown
 {
@@ -38,6 +39,7 @@ public partial class NLoadoutDropdown : NDropdown
     private Control? _dropdownContainer;
     private Control? _dropdownOriginalParent;
     private ColorRect? _buttonHoverHighlight;
+    private TextureRect? _currentOptionIcon;
     private int _dropdownOriginalIndex;
     private NButton? _dismisser;
     private bool _containerPressStarted;
@@ -65,6 +67,7 @@ public partial class NLoadoutDropdown : NDropdown
         _container = GetNode<Control>("Container");
         _dropdownContainer = GetNode<Control>("%DropdownContainer");
         _buttonHoverHighlight = GetNodeOrNull<ColorRect>("%HoverHighlight");
+        _currentOptionIcon = GetNodeOrNull<TextureRect>("%CurrentOptionIcon");
         _dismisser = GetNode<NButton>("%Dismisser");
         _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(OnDismisserReleased));
         MouseEntered += OnButtonHoverStart;
@@ -102,6 +105,7 @@ public partial class NLoadoutDropdown : NDropdown
         _dropdownOriginalParent = null;
         _dropdownContainer = null;
         _buttonHoverHighlight = null;
+        _currentOptionIcon = null;
         _dismisser = null;
         _container = null;
         _isReady = false;
@@ -227,7 +231,7 @@ public partial class NLoadoutDropdown : NDropdown
                 MouseFilter = MouseFilterEnum.Stop
             };
             item.FontSize = ItemFontSize;
-            item.Init(option.Id, option.Label);
+            item.Init(option.Id, option.Label, option.Icon);
             item.SetHoverTipsFactory(option.HoverTipsFactory);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(OnDropdownItemSelected));
             _dropdownItems.AddChild(item);
@@ -258,6 +262,7 @@ public partial class NLoadoutDropdown : NDropdown
 
         if (_items.Count == 0)
         {
+            RefreshCurrentItemIcon(null);
             _currentOptionLabel.SetTextAutoSize(_labelPrefix);
             return;
         }
@@ -272,7 +277,20 @@ public partial class NLoadoutDropdown : NDropdown
         string label = string.IsNullOrWhiteSpace(_labelPrefix)
             ? selectedItem.Label
             : $"{_labelPrefix}: {selectedItem.Label}";
+        RefreshCurrentItemIcon(selectedItem.Icon);
         _currentOptionLabel.SetTextAutoSize(label);
+    }
+
+    private void RefreshCurrentItemIcon(Texture2D? icon)
+    {
+        if (_currentOptionIcon is null || _currentOptionLabel is null)
+            return;
+
+        bool hasIcon = icon is not null;
+        _currentOptionIcon.Texture = icon;
+        _currentOptionIcon.Visible = hasIcon;
+        _currentOptionLabel.OffsetLeft = hasIcon ? 52f : 0f;
+        _currentOptionLabel.OffsetRight = hasIcon ? -52f : 0f;
     }
 
     private void OpenLoadoutDropdown()
@@ -493,6 +511,22 @@ public partial class NLoadoutDropdown : NDropdown
         };
         hoverHighlight.SetAnchorsPreset(LayoutPreset.FullRect);
         currentOption.AddChild(hoverHighlight);
+
+        TextureRect currentOptionIcon = new()
+        {
+            Name = "CurrentOptionIcon",
+            UniqueNameInOwner = true,
+            Visible = false,
+            ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        currentOptionIcon.SetAnchorsPreset(LayoutPreset.CenterLeft);
+        currentOptionIcon.OffsetLeft = 8f;
+        currentOptionIcon.OffsetTop = -20f;
+        currentOptionIcon.OffsetRight = 48f;
+        currentOptionIcon.OffsetBottom = 20f;
+        currentOption.AddChild(currentOptionIcon);
 
         MegaLabel label = new()
         {

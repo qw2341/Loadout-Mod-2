@@ -754,7 +754,8 @@ public partial class NCardModificationScreen : Control
             {
                 _workingState.Enchantment = spec;
                 _temporaryState.Enchantment = spec?.Clone();
-            });
+            },
+            enchantment => enchantment.Icon);
 
         AddAttachmentEditor(
             LocMan.Loc("CARD_MOD_AFFLICTION", "Affliction"),
@@ -960,7 +961,8 @@ public partial class NCardModificationScreen : Control
         CardAttachmentSpec? savedSpec,
         TModel? currentModel,
         bool showAmountEditor,
-        Action<CardAttachmentSpec?> setSpec)
+        Action<CardAttachmentSpec?> setSpec,
+        Func<TModel, Texture2D?>? iconProvider = null)
         where TModel : AbstractModel
     {
         if (_rightControls is null)
@@ -1028,7 +1030,8 @@ public partial class NCardModificationScreen : Control
                 return new LoadoutDropdownOption(
                     localModel.Id.ToString(),
                     GetAttachmentTitle(localModel),
-                    () => GetAttachmentHoverTips(localModel));
+                    () => GetAttachmentHoverTips(localModel),
+                    iconProvider?.Invoke(localModel));
             })
             .ToList();
 

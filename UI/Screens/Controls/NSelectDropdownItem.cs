@@ -15,21 +15,31 @@ using MegaCrit.Sts2.Core.Nodes.HoverTips;
 
 public partial class NSelectDropdownItem : NDropdownItem
 {
+    private const float IconSize = 36f;
+    private const float IconLeftInset = 6f;
+    private const float LabelIconInset = 48f;
+
     public string OptionId { get; private set; } = string.Empty;
     public int FontSize { get; set; } = 24;
 
     private string _pendingLabel = "DropdownItem";
+    private Texture2D? _pendingIcon;
     private ColorRect? _highlight;
+    private TextureRect? _icon;
     private Func<IReadOnlyList<IHoverTip>>? _hoverTipsFactory;
     private bool _hoverTipsVisible;
 
-    public void Init(string optionId, string label)
+    public void Init(string optionId, string label, Texture2D? icon = null)
     {
         OptionId = optionId;
         _pendingLabel = label;
+        _pendingIcon = icon;
 
         if (IsNodeReady())
+        {
             Text = label;
+            RefreshIconLayout();
+        }
     }
 
     public void SetHoverTipsFactory(Func<IReadOnlyList<IHoverTip>>? hoverTipsFactory)
@@ -49,6 +59,7 @@ public partial class NSelectDropdownItem : NDropdownItem
         base._Ready();
         ApplyFontSize();
         Text = _pendingLabel;
+        RefreshIconLayout();
     }
 
     public override void _ExitTree()
@@ -88,31 +99,63 @@ public partial class NSelectDropdownItem : NDropdownItem
             _highlight = highlight;
         }
 
-        if (GetNodeOrNull<MegaLabel>("Label") is not null)
-            return;
-
-        MegaLabel label = new()
+        _icon = GetNodeOrNull<TextureRect>("Icon");
+        if (_icon is null)
         {
-            Name = "Label",
-            Text = "DropdownItem",
-            AutoSizeEnabled = false,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        label.SetAnchorsPreset(LayoutPreset.FullRect);
-        label.AddThemeColorOverride("font_color", StsColors.cream);
-        label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.12549f));
-        label.AddThemeConstantOverride("shadow_offset_x", 3);
-        label.AddThemeConstantOverride("shadow_offset_y", 2);
-        label.AddThemeFontOverride("font", LoadFont("res://themes/kreon_bold_glyph_space_one.tres"));
-        label.AddThemeFontSizeOverride("font_size", FontSize);
-        AddChild(label);
+            TextureRect icon = new()
+            {
+                Name = "Icon",
+                Visible = false,
+                ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            icon.SetAnchorsPreset(LayoutPreset.CenterLeft);
+            icon.OffsetLeft = IconLeftInset;
+            icon.OffsetTop = -IconSize * 0.5f;
+            icon.OffsetRight = IconLeftInset + IconSize;
+            icon.OffsetBottom = IconSize * 0.5f;
+            AddChild(icon);
+            _icon = icon;
+        }
+
+        if (GetNodeOrNull<MegaLabel>("Label") is null)
+        {
+            MegaLabel label = new()
+            {
+                Name = "Label",
+                Text = "DropdownItem",
+                AutoSizeEnabled = false,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            label.SetAnchorsPreset(LayoutPreset.FullRect);
+            label.AddThemeColorOverride("font_color", StsColors.cream);
+            label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.12549f));
+            label.AddThemeConstantOverride("shadow_offset_x", 3);
+            label.AddThemeConstantOverride("shadow_offset_y", 2);
+            label.AddThemeFontOverride("font", LoadFont("res://themes/kreon_bold_glyph_space_one.tres"));
+            label.AddThemeFontSizeOverride("font_size", FontSize);
+            AddChild(label);
+        }
     }
 
     private void ApplyFontSize()
     {
         GetNodeOrNull<MegaLabel>("Label")?.AddThemeFontSizeOverride("font_size", FontSize);
+    }
+
+    private void RefreshIconLayout()
+    {
+        if (_icon is null || GetNodeOrNull<MegaLabel>("Label") is not { } label)
+            return;
+
+        bool hasIcon = _pendingIcon is not null;
+        _icon.Texture = _pendingIcon;
+        _icon.Visible = hasIcon;
+        label.OffsetLeft = hasIcon ? LabelIconInset : 0f;
+        label.OffsetRight = hasIcon ? -LabelIconInset : 0f;
     }
 
     private static Font? LoadFont(string path)
