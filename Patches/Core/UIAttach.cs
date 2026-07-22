@@ -12,69 +12,51 @@ using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.TildeKey;
 using Loadout.UI;
-using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Models;
 
 namespace Loadout.Patches.Core;
 
-[HarmonyPatch(typeof(AssetLoadingSession), nameof(AssetLoadingSession.Process))]
+[HarmonyPatch(typeof(ModelDb), nameof(ModelDb.InitIds))]
 public static class UIAttach
 {
     private static bool _servicesRegistered;
-    private static bool _attachScheduled;
-    private static bool _attached;
+    private static bool _startupScheduled;
+    private static bool _startupAttempted;
     private static bool _preloadScheduled;
     private static bool _preloadAttempted;
     private static bool _preloaded;
 
     [HarmonyPostfix]
-    private static void Postfix(AssetLoadingSession __instance)
+    private static void Postfix()
     {
-        if (_attachScheduled)
+        if (_startupScheduled || _startupAttempted)
             return;
 
-        if (__instance == null || !__instance.IsCompleted)
-            return;
+        _startupScheduled = true;
 
-        if (_attached)
-        {
-            NLoadoutPanelRoot existingRoot = NLoadoutPanelRoot.Instance;
-            if (IsValid(existingRoot))
-            {
-                ScheduleSelectScreenPreload(existingRoot);
-                return;
-            }
-
-            // The overlay root was removed. Allow a later completed asset session
-            // to recreate it and warm a fresh set of screen instances.
-            _attached = false;
-            _preloadAttempted = false;
-            _preloaded = false;
-        }
-
-        string sessionName = GetSessionName(__instance);
-
-        // Keep accepting the first completed asset session. Some game versions/mod
-        // combinations do not expose the Common session name consistently.
-        RegisterServicesOnce();
-
-        _attachScheduled = true;
-
-        Log.Info($"[Loadout] Asset preload session '{sessionName}' complete. Scheduling UI attach and select-screen preload.");
+        Log.Info("[Loadout] ModelDb IDs initialized. Scheduling UI attach and select-screen preload.");
 
         Callable.From(AttachUiDeferred).CallDeferred();
     }
 
     private static void AttachUiDeferred()
     {
+        _startupScheduled = false;
+        if (_startupAttempted)
+            return;
+
+        _startupAttempted = true;
+
         try
         {
+            RegisterServicesOnce();
+
             SceneTree tree = Engine.GetMainLoop() as SceneTree;
 
             if (tree == null)
             {
-                Log.Error("[Loadout] Failed to attach UI: SceneTree was null.");
-                _attachScheduled = false;
+                Log.Error("[Loadout] Failed to attach UI after ModelDb initialization: SceneTree was null.");
                 return;
             }
 
@@ -82,22 +64,16 @@ public static class UIAttach
 
             if (root == null || !GodotObject.IsInstanceValid(root))
             {
-                Log.Error("[Loadout] Failed to attach UI: root was null or invalid.");
-                _attachScheduled = false;
+                Log.Error("[Loadout] Failed to attach UI after ModelDb initialization: root was null or invalid.");
                 return;
             }
 
-            _attached = true;
-            _attachScheduled = false;
-
-            Log.Info("[Loadout] Attached UI root after asset preload completed.");
+            Log.Info("[Loadout] Attached UI root after ModelDb IDs initialized.");
             ScheduleSelectScreenPreload(root);
         }
         catch (Exception e)
         {
-            _attached = false;
-            _attachScheduled = false;
-            Log.Error($"[Loadout] Failed to attach UI after asset preload: {e}");
+            Log.Error($"[Loadout] Failed to attach UI after ModelDb initialization: {e}");
         }
     }
 
@@ -123,7 +99,7 @@ public static class UIAttach
                 throw new InvalidOperationException("LoadoutPanel was not found under LoadoutPanelRoot.");
 
             // Let the newly attached root and panel complete their first layout frame
-            // before touching ModelDb-backed panel items.
+            // before creating the ModelDb-backed panel items.
             if (!await WaitForNextFrame(root))
                 return;
 
@@ -247,13 +223,5 @@ public static class UIAttach
         TildeKeyStateService.Register();
 
         Log.Info("[Loadout] Services registered.");
-    }
-
-    private static string GetSessionName(AssetLoadingSession session)
-    {
-        var nameField = AccessTools.Field(typeof(AssetLoadingSession), "_name");
-        object value = nameField?.GetValue(session);
-
-        return value as string ?? string.Empty;
     }
 }
