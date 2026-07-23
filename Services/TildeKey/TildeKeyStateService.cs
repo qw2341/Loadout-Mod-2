@@ -18,6 +18,7 @@ using Godot;
 using HarmonyLib;
 using Loadout.Patches.TildeKey;
 using Loadout.Services.Actions;
+using Loadout.Services.CreatureManipulation;
 using Loadout.Services.Saving;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
@@ -336,7 +337,7 @@ public static class TildeKeyStateService
         GD.PushWarning($"TildeKey: could not prepare a completed map room for re-entry; native travel was left unchanged.{detail}");
     }
 
-    private static void RefreshDynamicLockPatches()
+    internal static void RefreshDynamicLockPatches()
     {
         bool creature = false;
         bool player = false;
@@ -386,6 +387,7 @@ public static class TildeKeyStateService
             }
         }
 
+        creature |= CreatureManipulationStateService.HasCreatureLocks;
         TildeKeyDynamicLockPatches.Configure(creature, player, combat, extra, relic);
         TildeKeyDynamicDrawPatches.Configure(drawPerTurn, drawTillHandLimit);
     }

@@ -256,3 +256,13 @@ LOADOUT_IMPORTED,Imported loadout.,已导入预设方案。,Équipement importé
 LOADOUT_CLIPBOARD_INVALID,Clipboard is invalid.,剪贴板内容无效。,Le presse-papiers n'est pas valide.,クリップボードの内容が無効です。,클립보드 내용이 잘못되었습니다.,El portapapeles no es válido.
 REMOVE_ALL_RELICS,Remove All Relics,移除所有遗物,Supprimer toutes les reliques,すべてのレリックを削除,모든 유물 제거,Eliminar todas las reliquias
 REMOVE_ALL_CARDS,Remove All Cards,移除所有卡牌,Supprimer toutes les cartes,すべてのカードを削除,모든 카드 제거,Eliminar todas las cartas
+CREATURE_MANIP_REPOSITION,Reposition,拖拽移动,Déplacer,ドラッグ移動,드래그 이동,Reposicionar
+CREATURE_MANIP_POWERS,Edit Powers,编辑能力,Modifier les pouvoirs,能力を編集,능력 편집,Editar poderes
+CREATURE_MANIP_KILL,Insta Kill,秒杀,Tuer instantanément,即死,즉시 처치,Matar al instante
+CREATURE_MANIP_KILL_CONFIRM,Are you sure?,确定吗？,Confirmer ?,本当ですか？,확실합니까?,¿Estás seguro?
+CREATURE_MANIP_STATS,Edit Stats,编辑属性,Modifier les stats,ステータス編集,능력치 편집,Editar atributos
+CREATURE_MANIP_DUPLICATE,Duplicate,复制,Dupliquer,複製,복제,Duplicar
+CREATURE_MANIP_STATS_TITLE,Creature Stats,生物属性,Stats de la créature,クリーチャーのステータス,크리처 능력치,Atributos de criatura
+CREATURE_MANIP_CURRENT_HP,Current HP,当前生命,PV actuels,現在HP,현재 체력,PV actuales
+CREATURE_MANIP_MAX_HP,Max HP,最大生命,PV max,最大HP,최대 체력,PV máximos
+CREATURE_MANIP_BLOCK,Block,格挡,Blocage,ブロック,방어도,Bloqueo

@@ -8,6 +8,7 @@ using Loadout.PanelItems;
 using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using Loadout.UI.CreatureManipulation;
 
 namespace Loadout.UI;
 
@@ -29,6 +30,7 @@ public partial class NLoadoutPanelRoot : Control
 	private Control _screenContainer;
 	private Control _dropdownLayer;
 	private Control _hoverTipLayer;
+	private NCreatureManipulationPanel _creatureManipulationPanel;
 
 	public static NLoadoutPanelRoot Instance => IsValid(_instance) ? _instance : null;
 
@@ -55,6 +57,7 @@ public partial class NLoadoutPanelRoot : Control
 		BindDropdownLayer();
 		BindHoverTipLayer();
 		RefreshScreens();
+		GetCreatureManipulationPanel();
 
 		if (!InitialScreen.IsEmpty)
 			OpenScreen(InitialScreen);
@@ -168,6 +171,25 @@ public partial class NLoadoutPanelRoot : Control
 		}
 
 		_hoverTipLayer.MoveToFront();
+	}
+
+	public NCreatureManipulationPanel GetCreatureManipulationPanel()
+	{
+		if (IsValid(_creatureManipulationPanel))
+			return _creatureManipulationPanel;
+
+		_creatureManipulationPanel = GetNodeOrNull<NCreatureManipulationPanel>("CreatureManipulationPanel");
+		if (IsValid(_creatureManipulationPanel))
+			return _creatureManipulationPanel;
+
+		_creatureManipulationPanel = new NCreatureManipulationPanel
+		{
+			Name = "CreatureManipulationPanel",
+			Visible = false
+		};
+		AddChild(_creatureManipulationPanel);
+		_creatureManipulationPanel.MoveToFront();
+		return _creatureManipulationPanel;
 	}
 
 	private void RefreshScreens()

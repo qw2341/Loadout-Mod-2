@@ -170,7 +170,7 @@ public class PowerGiver
 		LoadoutImmediateMutationService.RequestClearCurrentPowers(type, target);
 	}
 
-	private static Control CreatePowerGridItem(PowerModel model, int selectedAmount = 0, bool isFavorite = false)
+	internal static Control CreatePowerGridItem(PowerModel model, int selectedAmount = 0, bool isFavorite = false)
 	{
 		Texture2D icon = null;
 		if (ResourceLoader.Exists(model.IconPath))

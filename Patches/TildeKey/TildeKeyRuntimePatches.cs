@@ -14,6 +14,7 @@ using Godot;
 using HarmonyLib;
 using Loadout.Services.Actions;
 using Loadout.Services.Compatibility;
+using Loadout.Services.CreatureManipulation;
 using Loadout.Services.TildeKey;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -131,7 +132,11 @@ public static class TildeKeyCreatureLockBoundaryPatch
         }
     }
 
-    public static void Postfix(Creature __instance) => TildeKeyStateService.ReassertCreatureLocks(__instance);
+    public static void Postfix(Creature __instance)
+    {
+        TildeKeyStateService.ReassertCreatureLocks(__instance);
+        CreatureManipulationStateService.ReassertCreatureLocks(__instance);
+    }
 }
 
 public static class TildeKeyPlayerLockBoundaryPatch
