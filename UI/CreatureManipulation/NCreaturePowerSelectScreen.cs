@@ -8,6 +8,7 @@ using System.Linq;
 using Godot;
 using Loadout.PanelItems;
 using Loadout.Services.CreatureManipulation;
+using Loadout.Services.PowerGiver;
 using Loadout.UI.Screens;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.addons.mega_text;
@@ -17,6 +18,7 @@ using MegaCrit.Sts2.Core.Models;
 
 public static class NCreaturePowerSelectScreen
 {
+    private const string CurrentPowersToggleId = "current_powers";
     private static readonly Vector2 PowerButtonSize = new(220f, 104f);
 
     public static void Open(Creature target)
@@ -30,15 +32,25 @@ public static class NCreaturePowerSelectScreen
         PackedScene? scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
         NGenericSelectScreen screen = scene.Instantiate<NGenericSelectScreen>();
         screen.Name = $"CreaturePowerSelect_{combatId}";
+        PowerGiverStateService.EnsureLoaded();
+
+        bool favoritesOnly = false;
+        HashSet<string> currentPowerIds = target.Powers
+            .Select(power => PowerKey(power.Id))
+            .ToHashSet(StringComparer.Ordinal);
 
         SelectItemAdapter<PowerModel> adapter = new()
         {
-            GetId = power => power.Id.ToString(),
+            GetId = power => PowerKey(power.Id),
             GetName = CommonHelpers.FormatPowerTitle,
             GetSearchText = GetSearchText,
             CreateView = (power, _) =>
-                PowerGiver.CreatePowerGridItem(power, GetLiveAmount(target, power.Id)),
-            UpdateView = (power, view, _) => UpdateLiveAmount(view, target, power.Id),
+                PowerGiver.CreatePowerGridItem(
+                    power,
+                    GetLiveAmount(target, power.Id),
+                    PowerGiverStateService.IsFavorite(PowerKey(power.Id)) && !favoritesOnly),
+            UpdateView = (power, view, _) =>
+                UpdatePowerGridItem(view, target, power, favoritesOnly),
             BindActivationWithCleanup = (power, view, _) =>
                 BindActivation(screen, target, power, view)
         };
@@ -49,6 +61,26 @@ public static class NCreaturePowerSelectScreen
             builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
             builder.Materialization(SelectMaterializationMode.Eager);
             builder.Layout(5, PowerButtonSize, 24, 24, fixedSlots: false);
+            builder.ActionButton(
+                "clear_current_buffs",
+                LocMan.Loc("POWER_GIVER_CLEAR_CURRENT_BUFFS", "Clear Current Buffs"),
+                _ => CreatureManipulationStateService.RequestClearPowers(target, PowerType.Buff),
+                section: SelectSidebarSection.Bottom);
+            builder.ActionButton(
+                "clear_current_debuffs",
+                LocMan.Loc("POWER_GIVER_CLEAR_CURRENT_DEBUFFS", "Clear Current Debuffs"),
+                _ => CreatureManipulationStateService.RequestClearPowers(target, PowerType.Debuff),
+                section: SelectSidebarSection.Bottom);
+            builder.Toggle(
+                CurrentPowersToggleId,
+                LocMan.Loc("CREATURE_MANIP_CURRENT_POWERS", "Current Powers"),
+                checkedByDefault: true,
+                section: SelectSidebarSection.Bottom,
+                affectsVisibility: true);
+            builder.CustomVisibilityPredicate(power =>
+                (!favoritesOnly || PowerGiverStateService.IsFavorite(PowerKey(power.Id)))
+                && (!screen.IsToggleEnabled(CurrentPowersToggleId)
+                    || currentPowerIds.Contains(PowerKey(power.Id))));
             builder.FilterGroup("type", LocMan.Loc("FILTER_GROUP_TYPE", "Type"));
             builder.Filter(
                 "buff",
@@ -100,15 +132,45 @@ public static class NCreaturePowerSelectScreen
                 (a, b) => a.Type.CompareTo(b.Type));
         });
 
-        void RefreshPower(PowerModel _) => screen.RefreshCurrentItemStates();
-        void RefreshPowerAmount(PowerModel _, int __, bool ___) => screen.RefreshCurrentItemStates();
-        void RefreshPowerDecrease(PowerModel _, bool __) => screen.RefreshCurrentItemStates();
+        CommonHelpers.AddFavoritesModeDropdown(
+            screen,
+            "CreaturePowerFavoritesDropdown",
+            () => favoritesOnly,
+            value => favoritesOnly = value);
+
+        void RefreshPowerView(PowerModel power, bool membershipChanged)
+        {
+            if (membershipChanged && screen.IsToggleEnabled(CurrentPowersToggleId))
+                screen.RefreshNow(resetScroll: false);
+            else
+                screen.RefreshItemView(PowerKey(power.Id));
+        }
+
+        void RefreshPowerApplied(PowerModel power)
+        {
+            bool membershipChanged = currentPowerIds.Add(PowerKey(power.Id));
+            RefreshPowerView(power, membershipChanged);
+        }
+
+        void RefreshPowerAmount(PowerModel power, int _, bool __) =>
+            screen.RefreshItemView(PowerKey(power.Id));
+
+        void RefreshPowerDecrease(PowerModel power, bool _) =>
+            screen.RefreshItemView(PowerKey(power.Id));
+
+        void RefreshPowerRemoved(PowerModel power)
+        {
+            bool stillPresent = target.Powers.Any(candidate => SamePowerId(candidate.Id, power.Id));
+            bool membershipChanged = !stillPresent && currentPowerIds.Remove(PowerKey(power.Id));
+            RefreshPowerView(power, membershipChanged);
+        }
+
         void CloseForDeath(Creature _) => NLoadoutPanelRoot.CloseTopLoadoutScreen();
 
-        target.PowerApplied += RefreshPower;
+        target.PowerApplied += RefreshPowerApplied;
         target.PowerIncreased += RefreshPowerAmount;
         target.PowerDecreased += RefreshPowerDecrease;
-        target.PowerRemoved += RefreshPower;
+        target.PowerRemoved += RefreshPowerRemoved;
         target.Died += CloseForDeath;
 
         bool opened = false;
@@ -122,10 +184,10 @@ public static class NCreaturePowerSelectScreen
             if (!opened || cleaned)
                 return;
             cleaned = true;
-            target.PowerApplied -= RefreshPower;
+            target.PowerApplied -= RefreshPowerApplied;
             target.PowerIncreased -= RefreshPowerAmount;
             target.PowerDecreased -= RefreshPowerDecrease;
-            target.PowerRemoved -= RefreshPower;
+            target.PowerRemoved -= RefreshPowerRemoved;
             target.Died -= CloseForDeath;
             screen.QueueFree();
         }
@@ -153,6 +215,14 @@ public static class NCreaturePowerSelectScreen
                 return;
             }
 
+            if (mouse.AltPressed || Input.IsKeyPressed(Key.Alt))
+            {
+                PowerGiverStateService.ToggleFavorite(PowerKey(power.Id));
+                screen.RefreshNow(resetScroll: false);
+                view.AcceptEvent();
+                return;
+            }
+
             int multiplier = screen.GetCurrentActivationMultiplier();
             int delta = mouse.ButtonIndex == MouseButton.Right ? -multiplier : multiplier;
             CreatureManipulationStateService.RequestAdjustPower(target, power.Id, delta);
@@ -167,13 +237,24 @@ public static class NCreaturePowerSelectScreen
         };
     }
 
-    private static void UpdateLiveAmount(Control view, Creature target, ModelId powerId)
+    private static void UpdatePowerGridItem(
+        Control view,
+        Creature target,
+        PowerModel power,
+        bool favoritesOnly)
     {
-        int amount = GetLiveAmount(target, powerId);
-        if (view.GetNodeOrNull<MegaLabel>("PowerAmount") is not { } label)
-            return;
-        label.Text = amount == 0 ? string.Empty : amount.ToString();
-        label.Visible = amount != 0;
+        int amount = GetLiveAmount(target, power.Id);
+        if (view.GetNodeOrNull<MegaLabel>("PowerAmount") is { } label)
+        {
+            label.Text = amount == 0 ? string.Empty : amount.ToString();
+            label.Visible = amount != 0;
+        }
+
+        if (view.GetNodeOrNull<CanvasItem>("FavoriteGlow") is { } favoriteGlow)
+        {
+            favoriteGlow.Visible = !favoritesOnly
+                                   && PowerGiverStateService.IsFavorite(PowerKey(power.Id));
+        }
     }
 
     private static int GetLiveAmount(Creature target, ModelId powerId) =>
@@ -184,6 +265,12 @@ public static class NCreaturePowerSelectScreen
                                 powerId.ToString(),
                                 StringComparison.Ordinal))
             .Sum(power => power.DisplayAmount);
+
+    private static string PowerKey(ModelId powerId) => powerId.ToString();
+
+    private static bool SamePowerId(ModelId left, ModelId right) =>
+        left == right
+        || string.Equals(PowerKey(left), PowerKey(right), StringComparison.Ordinal);
 
     private static string GetSearchText(PowerModel power)
     {

@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -115,6 +116,18 @@ public static class CreatureManipulationStateService
             Operation = CreatureManipulationOperation.AdjustPower,
             ModelId = powerId.ToString(),
             Amount = delta
+        });
+    }
+
+    public static bool RequestClearPowers(Creature target, PowerType powerType)
+    {
+        if (powerType is not (PowerType.Buff or PowerType.Debuff))
+            return false;
+
+        return Request(target, new CreatureManipulationPayload
+        {
+            Operation = CreatureManipulationOperation.ClearPowersByType,
+            PowerType = powerType
         });
     }
 
@@ -283,6 +296,10 @@ public static class CreatureManipulationStateService
             case CreatureManipulationOperation.AdjustPower:
                 await ApplyPowerDeltaAsync(target, payload);
                 break;
+            case CreatureManipulationOperation.ClearPowersByType:
+                if (target.IsAlive)
+                    await ApplyClearPowersByTypeAsync(target, payload.PowerType);
+                break;
             case CreatureManipulationOperation.SetStat:
                 ApplyStat(target, payload.Stat, payload.Value, updateExistingLock: true);
                 break;
@@ -404,6 +421,9 @@ public static class CreatureManipulationStateService
                 payload.Amount is >= -MaxPowerDeltaMagnitude and <= MaxPowerDeltaMagnitude
                 && payload.Amount != 0
                 && ResolvePower(payload.ModelId) is not null,
+            CreatureManipulationOperation.ClearPowersByType =>
+                target.IsAlive
+                && payload.PowerType is PowerType.Buff or PowerType.Debuff,
             CreatureManipulationOperation.SetStat or CreatureManipulationOperation.SetLock =>
                 Enum.IsDefined(payload.Stat) && payload.Value >= 0,
             CreatureManipulationOperation.Kill => true,
@@ -447,6 +467,32 @@ public static class CreatureManipulationStateService
             int step = Math.Min(remaining, available);
             await PowerCmd.ModifyAmount(choiceContext, power, -step, applier, null);
             remaining -= step;
+        }
+    }
+
+    private static async Task ApplyClearPowersByTypeAsync(
+        Creature target,
+        PowerType powerType)
+    {
+        if (powerType is not (PowerType.Buff or PowerType.Debuff))
+            return;
+
+        List<PowerModel> powers = target.Powers
+            .Where(power => power.Type == powerType)
+            .ToList();
+
+        foreach (PowerModel power in powers)
+        {
+            try
+            {
+                await PowerCmd.Remove(power);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning(
+                    $"CreatureManipulation: failed clearing {powerType} power " +
+                    $"'{power.Id}' from '{target.Name}'. {exception.Message}");
+            }
         }
     }
 

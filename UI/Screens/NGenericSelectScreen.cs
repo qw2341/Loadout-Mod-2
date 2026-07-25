@@ -2383,11 +2383,14 @@ public partial class NGenericSelectScreen : Control
 
     private void OnToggleChanged(NLoadoutToggle toggle)
     {
-        if (!_togglesById.ContainsKey(toggle.ToggleId))
+        if (!_togglesById.TryGetValue(toggle.ToggleId, out SelectToggleDefinition? definition))
             return;
 
         _toggleStates[toggle.ToggleId] = toggle.IsChecked;
-        RefreshVisibleItemStates();
+        if (definition.AffectsVisibility)
+            RefreshNow(resetScroll: true);
+        else
+            RefreshVisibleItemStates();
     }
 
     private void RebuildFilterButtons()
@@ -4696,9 +4699,15 @@ public sealed class SelectScreenBuilder<TModel>
         string id,
         string label,
         bool checkedByDefault = false,
-        SelectSidebarSection section = SelectSidebarSection.Main)
+        SelectSidebarSection section = SelectSidebarSection.Main,
+        bool affectsVisibility = false)
     {
-        _screen.AddToggle(new SelectToggleDefinition(id, label, checkedByDefault, section));
+        _screen.AddToggle(new SelectToggleDefinition(
+            id,
+            label,
+            checkedByDefault,
+            section,
+            affectsVisibility));
         return this;
     }
 
@@ -5152,18 +5161,21 @@ public sealed class SelectToggleDefinition
         string id,
         string label,
         bool checkedByDefault = false,
-        SelectSidebarSection section = SelectSidebarSection.Main)
+        SelectSidebarSection section = SelectSidebarSection.Main,
+        bool affectsVisibility = false)
     {
         Id = id;
         Label = label;
         CheckedByDefault = checkedByDefault;
         Section = section;
+        AffectsVisibility = affectsVisibility;
     }
 
     public string Id { get; }
     public string Label { get; }
     public bool CheckedByDefault { get; }
     public SelectSidebarSection Section { get; }
+    public bool AffectsVisibility { get; }
 }
 
 public sealed class SelectActionButtonDefinition

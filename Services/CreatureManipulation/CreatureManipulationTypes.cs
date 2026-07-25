@@ -4,10 +4,12 @@ namespace Loadout.Services.CreatureManipulation;
 
 using System.Collections.Generic;
 using Godot;
+using MegaCrit.Sts2.Core.Entities.Powers;
 
 public enum CreatureManipulationOperation
 {
     AdjustPower,
+    ClearPowersByType,
     SetStat,
     SetLock,
     Kill,
@@ -40,6 +42,7 @@ public sealed class CreatureManipulationPayload
     public bool Locked { get; set; }
     public string ModelId { get; set; } = string.Empty;
     public int Amount { get; set; }
+    public PowerType PowerType { get; set; }
     public CreatureDuplicateSnapshot? Duplicate { get; set; }
 }
 
