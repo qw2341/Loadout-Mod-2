@@ -111,10 +111,15 @@ public static class NCreaturePowerSelectScreen
         target.PowerRemoved += RefreshPower;
         target.Died += CloseForDeath;
 
+        bool opened = false;
         bool cleaned = false;
         void Cleanup()
         {
-            if (cleaned)
+            // RegisterScreen deliberately hides a newly attached screen before
+            // PushScreen opens it. NGenericSelectScreen reports that initial
+            // hidden state through ScreenClosed, so ignore it until this
+            // particular screen has actually been opened once.
+            if (!opened || cleaned)
                 return;
             cleaned = true;
             target.PowerApplied -= RefreshPower;
@@ -129,6 +134,7 @@ public static class NCreaturePowerSelectScreen
         screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
         screen.ScreenClosed += Cleanup;
         root.OpenScreen(screen);
+        opened = screen.IsVisibleInTree();
         screen.RefreshCurrentItemStates();
     }
 
