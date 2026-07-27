@@ -40,14 +40,14 @@ public partial class NCreatureManipulationPanel : PanelContainer
         ZIndex = 1005;
         Visible = false;
         MouseFilter = MouseFilterEnum.Stop;
-        CustomMinimumSize = new Vector2(330f, 0f);
+        CustomMinimumSize = new Vector2(354f, 0f);
         AddThemeStyleboxOverride("panel", EmptyStyle);
 
         Texture2D? panelTexture = LoadGameTexture("res://images/ui/reward_screen/reward_panel.png");
         ColorRect panelFallback = new()
         {
             Name = "PanelFallback",
-            Color = new Color(0.035f, 0.075f, 0.095f, 0.98f),
+            Color = new Color(0.035f, 0.075f, 0.095f, 0.9f),
             Visible = panelTexture is null,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -66,10 +66,22 @@ public partial class NCreatureManipulationPanel : PanelContainer
             PatchMarginBottom = 102,
             AxisStretchHorizontal = NinePatchRect.AxisStretchMode.Stretch,
             AxisStretchVertical = NinePatchRect.AxisStretchMode.Stretch,
+            SelfModulate = new Color(1f, 1f, 1f, 0.9f),
             MouseFilter = MouseFilterEnum.Ignore
         };
         panelBackground.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(panelBackground);
+
+        MarginContainer outerShell = new()
+        {
+            Name = "OuterShell",
+            MouseFilter = MouseFilterEnum.Pass
+        };
+        outerShell.AddThemeConstantOverride("margin_left", 24);
+        outerShell.AddThemeConstantOverride("margin_top", 24);
+        outerShell.AddThemeConstantOverride("margin_right", 24);
+        outerShell.AddThemeConstantOverride("margin_bottom", 24);
+        AddChild(outerShell);
 
         MarginContainer contentMargin = new()
         {
@@ -80,7 +92,7 @@ public partial class NCreatureManipulationPanel : PanelContainer
         contentMargin.AddThemeConstantOverride("margin_top", 16);
         contentMargin.AddThemeConstantOverride("margin_right", 18);
         contentMargin.AddThemeConstantOverride("margin_bottom", 16);
-        AddChild(contentMargin);
+        outerShell.AddChild(contentMargin);
 
         VBoxContainer buttons = new()
         {
@@ -436,6 +448,7 @@ public partial class NCreatureManipulationPanel : PanelContainer
     private sealed partial class QuickMenuButton : Button
     {
         private static readonly Color HoverColor = new(0.172549f, 0.345098f, 0.439216f, 0.82f);
+        private static readonly Color IdleHighlightColor = new(0.172549f, 0.345098f, 0.439216f, 0f);
         private static readonly Color ArmedColor = new(0.42f, 0.08f, 0.07f, 0.68f);
         private static readonly Color ArmedHoverColor = new(0.62f, 0.12f, 0.09f, 0.84f);
         private static readonly Color ArmedTextColor = new(1f, 0.72f, 0.55f);
@@ -470,7 +483,7 @@ public partial class NCreatureManipulationPanel : PanelContainer
             _highlight = new ColorRect
             {
                 Name = "Highlight",
-                Color = Colors.Transparent,
+                Color = IdleHighlightColor,
                 MouseFilter = MouseFilterEnum.Ignore
             };
             _highlight.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -643,7 +656,7 @@ public partial class NCreatureManipulationPanel : PanelContainer
             bool highlighted = IsHighlighted;
             Color highlightColor = _armed
                 ? (highlighted ? ArmedHoverColor : ArmedColor)
-                : (highlighted ? HoverColor : Colors.Transparent);
+                : (highlighted ? HoverColor : IdleHighlightColor);
             Color textColor = _armed
                 ? ArmedTextColor
                 : (highlighted ? StsColors.gold : StsColors.cream);
