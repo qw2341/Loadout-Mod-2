@@ -5,6 +5,8 @@ namespace Loadout.UI.Screens;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using BaseLib.Patches.Content;
 using Godot;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
@@ -35,15 +37,33 @@ public partial class NCardModificationScreen : Control
         Description
     }
 
+    private sealed record KeywordCatalogEntry(
+        CardKeyword Keyword,
+        string Label,
+        string ModId,
+        string ModName);
+
+    private sealed record KeywordContentBlock(
+        string? Header,
+        IReadOnlyList<KeywordCatalogEntry> Entries);
+
     private const string ScenePath = "res://UI/Screens/CardModificationScreen.tscn";
     private const string NoneOptionId = "__none__";
+    private const string AllKeywordModFilterId = "__all_keyword_mods__";
+    private const string BaseGameKeywordModId = "slaythespire2";
+    private const string BaseLibKeywordModId = "BaseLib";
+    private const string OtherKeywordModId = "__other_keyword_mod__";
     private const float SidePanelWidth = 438f;
     private const float ActionButtonWidth = 318f;
     private const float CardEditButtonWidth = 246f;
     private const float ActionButtonHeight = 42f;
+    private const float KeywordContentWidth = 426f;
     private const float KeywordToggleHeight = 44f;
     private const float KeywordRowSeparation = 2f;
     private const float KeywordScrollbarWidth = 48f;
+    private const float KeywordGroupHeaderHeight = 36f;
+    private const float KeywordHeaderGridGap = 2f;
+    private const float KeywordGroupSeparation = 10f;
     private const int KeywordColumns = 2;
     private const int KeywordVisibleRows = 7;
     private const float HoverTipCardGap = 22f;
@@ -84,6 +104,8 @@ public partial class NCardModificationScreen : Control
     private bool _isClosing;
     private bool _hasBeenVisible;
     private bool _awaitingResetConfirmation;
+    private IReadOnlyList<KeywordCatalogEntry>? _keywordCatalog;
+    private string _selectedKeywordModId = AllKeywordModFilterId;
 
     public static NCardModificationScreen Create()
     {
@@ -106,6 +128,8 @@ public partial class NCardModificationScreen : Control
         _items = items?.Count > 0 ? items.ToList() : [item];
         _itemIndex = Math.Max(0, _items.FindIndex(candidate => SameOwnedItem(candidate, item)));
         _parentScrollRestore = parentScrollRestore;
+        _keywordCatalog = null;
+        _selectedKeywordModId = AllKeywordModFilterId;
         LoadItem(_items[_itemIndex]);
 
         if (IsNodeReady())
@@ -780,13 +804,207 @@ public partial class NCardModificationScreen : Control
 
         _rightControls.AddChild(CreateSectionLabel(LocMan.Loc("FILTER_GROUP_KEYWORD", "Keyword")));
 
-        IReadOnlyList<CardKeyword> availableKeywords = GetAvailableKeywords(_item.Model);
-        int rowCount = (availableKeywords.Count + KeywordColumns - 1) / KeywordColumns;
-        bool needsScrolling = rowCount > KeywordVisibleRows;
-        float visibleHeight = GetKeywordGridHeight(Math.Min(rowCount, KeywordVisibleRows));
-        float gridWidth = needsScrolling ? 426f - KeywordScrollbarWidth : 426f;
-        float toggleWidth = (gridWidth - 8f) / KeywordColumns;
+        IReadOnlyList<KeywordCatalogEntry> catalog = GetKeywordCatalog();
+        IReadOnlyList<IGrouping<string, KeywordCatalogEntry>> sources = GetOrderedKeywordSources(catalog);
+        HashSet<string> availableSourceIds = sources
+            .Select(source => source.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        if (_selectedKeywordModId != AllKeywordModFilterId
+            && !availableSourceIds.Contains(_selectedKeywordModId))
+        {
+            _selectedKeywordModId = AllKeywordModFilterId;
+        }
 
+        List<LoadoutDropdownOption> filterOptions =
+        [
+            new LoadoutDropdownOption(AllKeywordModFilterId, SelectScreenLoc.Text("ALL", "All"))
+        ];
+        filterOptions.AddRange(sources.Select(source =>
+        {
+            KeywordCatalogEntry first = source.First();
+            return new LoadoutDropdownOption(source.Key, first.ModName);
+        }));
+
+        NSelectFilterDropdown modFilter = new()
+        {
+            Name = "KeywordModFilter",
+            CustomMinimumSize = new Vector2(KeywordContentWidth, 52f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            DropdownWidth = 420f
+        };
+        modFilter.SetItems(
+            LocMan.Loc("FILTER_GROUP_MODS", "Mods"),
+            filterOptions,
+            _selectedKeywordModId);
+        _rightControls.AddChild(modFilter);
+
+        VBoxContainer contentHost = new()
+        {
+            Name = "KeywordContentHost",
+            CustomMinimumSize = new Vector2(KeywordContentWidth, 0f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        _rightControls.AddChild(contentHost);
+        RebuildKeywordContent(contentHost, catalog);
+
+        modFilter.SelectedItemChanged += selectedId =>
+        {
+            if (string.Equals(_selectedKeywordModId, selectedId, StringComparison.Ordinal))
+                return;
+
+            _selectedKeywordModId = availableSourceIds.Contains(selectedId)
+                ? selectedId
+                : AllKeywordModFilterId;
+            RebuildKeywordContent(contentHost, catalog);
+        };
+    }
+
+    private void RebuildKeywordContent(
+        VBoxContainer contentHost,
+        IReadOnlyList<KeywordCatalogEntry> catalog)
+    {
+        if (_item is null || !GodotObject.IsInstanceValid(contentHost))
+            return;
+
+        ClearChildren(contentHost);
+
+        IReadOnlyList<KeywordContentBlock> blocks = BuildKeywordContentBlocks(catalog);
+        float contentHeight = GetKeywordContentHeight(blocks);
+        float maximumVisibleHeight = GetKeywordGridHeight(KeywordVisibleRows);
+        bool needsScrolling = contentHeight > maximumVisibleHeight;
+        float visibleHeight = Math.Min(contentHeight, maximumVisibleHeight);
+        float contentWidth = needsScrolling
+            ? KeywordContentWidth - KeywordScrollbarWidth
+            : KeywordContentWidth;
+
+        VBoxContainer content = CreateKeywordContent(blocks, contentWidth);
+        content.CustomMinimumSize = new Vector2(contentWidth, contentHeight);
+
+        if (!needsScrolling)
+        {
+            contentHost.AddChild(content);
+            return;
+        }
+
+        NScrollableContainer scroll = new()
+        {
+            Name = "KeywordScroll",
+            CustomMinimumSize = new Vector2(KeywordContentWidth, visibleHeight),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            MouseFilter = MouseFilterEnum.Stop
+        };
+
+        Control mask = new()
+        {
+            Name = "Mask",
+            ClipContents = true,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        mask.SetAnchorsPreset(LayoutPreset.FullRect);
+        mask.OffsetRight = -KeywordScrollbarWidth;
+        scroll.AddChild(mask);
+
+        content.Name = "Content";
+        content.SetAnchorsPreset(LayoutPreset.TopWide);
+        mask.AddChild(content);
+
+        NScrollbar scrollbar = CreateGameScrollbar();
+        scrollbar.Name = "Scrollbar";
+        scrollbar.CustomMinimumSize = new Vector2(KeywordScrollbarWidth, 0f);
+        scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
+        scrollbar.OffsetLeft = -KeywordScrollbarWidth;
+        scrollbar.OffsetTop = 8f;
+        scrollbar.OffsetRight = 0f;
+        scrollbar.OffsetBottom = -8f;
+        scroll.AddChild(scrollbar);
+        scroll.DisableScrollingIfContentFits();
+        contentHost.AddChild(scroll);
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(scroll) && GodotObject.IsInstanceValid(content))
+                scroll.SetContent(content);
+        }).CallDeferred();
+    }
+
+    private IReadOnlyList<KeywordContentBlock> BuildKeywordContentBlocks(
+        IReadOnlyList<KeywordCatalogEntry> catalog)
+    {
+        if (_selectedKeywordModId != AllKeywordModFilterId)
+        {
+            IReadOnlyList<KeywordCatalogEntry> filtered = catalog
+                .Where(entry => string.Equals(entry.ModId, _selectedKeywordModId, StringComparison.Ordinal))
+                .OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(entry => Convert.ToInt32(entry.Keyword))
+                .ToList();
+            return filtered.Count == 0
+                ? []
+                : [new KeywordContentBlock(null, filtered)];
+        }
+
+        List<KeywordContentBlock> blocks = [];
+        IReadOnlyList<KeywordCatalogEntry> core = catalog
+            .Where(entry => IsCoreKeywordSource(entry.ModId))
+            .OrderBy(entry => GetKeywordSourceRank(entry.ModId))
+            .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => Convert.ToInt32(entry.Keyword))
+            .ToList();
+        if (core.Count > 0)
+            blocks.Add(new KeywordContentBlock(null, core));
+
+        foreach (IGrouping<string, KeywordCatalogEntry> source in GetOrderedKeywordSources(catalog)
+                     .Where(source => !IsCoreKeywordSource(source.Key)))
+        {
+            IReadOnlyList<KeywordCatalogEntry> entries = source
+                .OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(entry => Convert.ToInt32(entry.Keyword))
+                .ToList();
+            blocks.Add(new KeywordContentBlock(source.First().ModName, entries));
+        }
+
+        return blocks;
+    }
+
+    private VBoxContainer CreateKeywordContent(
+        IReadOnlyList<KeywordContentBlock> blocks,
+        float contentWidth)
+    {
+        VBoxContainer content = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        content.AddThemeConstantOverride("separation", (int)KeywordGroupSeparation);
+
+        foreach (KeywordContentBlock block in blocks)
+        {
+            if (block.Header is null)
+            {
+                content.AddChild(CreateKeywordGrid(block.Entries, contentWidth));
+                continue;
+            }
+
+            VBoxContainer group = new()
+            {
+                CustomMinimumSize = new Vector2(contentWidth, GetKeywordBlockHeight(block)),
+                SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            group.AddThemeConstantOverride("separation", (int)KeywordHeaderGridGap);
+            group.AddChild(CreateKeywordGroupHeader(block.Header));
+            group.AddChild(CreateKeywordGrid(block.Entries, contentWidth));
+            content.AddChild(group);
+        }
+
+        return content;
+    }
+
+    private GridContainer CreateKeywordGrid(
+        IReadOnlyList<KeywordCatalogEntry> entries,
+        float gridWidth)
+    {
+        int rowCount = (entries.Count + KeywordColumns - 1) / KeywordColumns;
+        float toggleWidth = (gridWidth - 8f) / KeywordColumns;
         GridContainer grid = new()
         {
             Columns = KeywordColumns,
@@ -797,56 +1015,10 @@ public partial class NCardModificationScreen : Control
         grid.AddThemeConstantOverride("h_separation", 8);
         grid.AddThemeConstantOverride("v_separation", (int)KeywordRowSeparation);
 
-        if (needsScrolling)
+        IReadOnlySet<CardKeyword> localKeywords = GetKeywordsSafely(_item!.Model).ToHashSet();
+        foreach (KeywordCatalogEntry entry in entries)
         {
-            NScrollableContainer scroll = new()
-            {
-                Name = "KeywordScroll",
-                CustomMinimumSize = new Vector2(426f, visibleHeight),
-                SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-                MouseFilter = MouseFilterEnum.Stop
-            };
-
-            Control mask = new()
-            {
-                Name = "Mask",
-                ClipContents = true,
-                MouseFilter = MouseFilterEnum.Ignore
-            };
-            mask.SetAnchorsPreset(LayoutPreset.FullRect);
-            mask.OffsetRight = -KeywordScrollbarWidth;
-            scroll.AddChild(mask);
-
-            grid.Name = "Content";
-            grid.SetAnchorsPreset(LayoutPreset.TopWide);
-            mask.AddChild(grid);
-
-            NScrollbar scrollbar = CreateGameScrollbar();
-            scrollbar.Name = "Scrollbar";
-            scrollbar.CustomMinimumSize = new Vector2(KeywordScrollbarWidth, 0f);
-            scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
-            scrollbar.OffsetLeft = -KeywordScrollbarWidth;
-            scrollbar.OffsetTop = 8f;
-            scrollbar.OffsetRight = 0f;
-            scrollbar.OffsetBottom = -8f;
-            scroll.AddChild(scrollbar);
-            scroll.DisableScrollingIfContentFits();
-            _rightControls.AddChild(scroll);
-            Callable.From(() =>
-            {
-                if (GodotObject.IsInstanceValid(scroll) && GodotObject.IsInstanceValid(grid))
-                    scroll.SetContent(grid);
-            }).CallDeferred();
-        }
-        else
-        {
-            _rightControls.AddChild(grid);
-        }
-
-        IReadOnlySet<CardKeyword> localKeywords = _item.Model.GetKeywordsWithSources(KeywordSources.Local);
-        foreach (CardKeyword keyword in availableKeywords)
-        {
-            CardKeyword localKeyword = keyword;
+            CardKeyword localKeyword = entry.Keyword;
             string key = LoadoutKeywords.GetStorageKey(localKeyword);
             bool isChecked = _workingState.KeywordOverrides.TryGetValue(key, out bool saved)
                 ? saved
@@ -858,7 +1030,7 @@ public partial class NCardModificationScreen : Control
                 SizeFlagsHorizontal = SizeFlags.ShrinkBegin
             };
             toggle.SetHoverTipsFactory(() => GetKeywordHoverTips(localKeyword));
-            toggle.Init($"keyword_{key}", CardPrinter.GetCardKeywordLabel(localKeyword), isChecked);
+            toggle.Init($"keyword_{key}", entry.Label, isChecked);
             toggle.Toggled += changed =>
             {
                 _workingState.KeywordOverrides[key] = changed.IsChecked;
@@ -867,6 +1039,68 @@ public partial class NCardModificationScreen : Control
             };
             grid.AddChild(toggle);
         }
+
+        return grid;
+    }
+
+    private static float GetKeywordContentHeight(IReadOnlyList<KeywordContentBlock> blocks)
+    {
+        if (blocks.Count == 0)
+            return 0f;
+
+        return blocks.Sum(GetKeywordBlockHeight)
+               + ((blocks.Count - 1) * KeywordGroupSeparation);
+    }
+
+    private static float GetKeywordBlockHeight(KeywordContentBlock block)
+    {
+        int rowCount = (block.Entries.Count + KeywordColumns - 1) / KeywordColumns;
+        float height = GetKeywordGridHeight(rowCount);
+        if (block.Header is not null)
+            height += KeywordGroupHeaderHeight + KeywordHeaderGridGap;
+        return height;
+    }
+
+    private static MegaLabel CreateKeywordGroupHeader(string text)
+    {
+        MegaLabel label = CreateLabel(text, 22, StsColors.gold);
+        label.CustomMinimumSize = new Vector2(0f, KeywordGroupHeaderHeight);
+        return label;
+    }
+
+    private static IReadOnlyList<IGrouping<string, KeywordCatalogEntry>> GetOrderedKeywordSources(
+        IReadOnlyList<KeywordCatalogEntry> catalog)
+    {
+        return catalog
+            .GroupBy(entry => entry.ModId, StringComparer.Ordinal)
+            .OrderBy(source => GetKeywordSourceRank(source.Key))
+            .ThenBy(
+                source => GetKeywordSourceRank(source.Key) == 3
+                    ? source.First().ModName
+                    : string.Empty,
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(source => source.Key, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static bool IsCoreKeywordSource(string modId)
+    {
+        return string.Equals(modId, BaseGameKeywordModId, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(modId, BaseLibKeywordModId, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(modId, MainFile.ModId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int GetKeywordSourceRank(string modId)
+    {
+        if (string.Equals(modId, BaseGameKeywordModId, StringComparison.OrdinalIgnoreCase))
+            return 0;
+        if (string.Equals(modId, BaseLibKeywordModId, StringComparison.OrdinalIgnoreCase))
+            return 1;
+        if (string.Equals(modId, MainFile.ModId, StringComparison.OrdinalIgnoreCase))
+            return 2;
+        if (string.Equals(modId, OtherKeywordModId, StringComparison.Ordinal))
+            return 4;
+        return 3;
     }
 
     private static float GetKeywordGridHeight(int rowCount)
@@ -1799,31 +2033,210 @@ public partial class NCardModificationScreen : Control
                || string.Equals(model.Id.Entry, id, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IReadOnlyList<CardKeyword> GetAvailableKeywords(CardModel card)
+    private IReadOnlyList<KeywordCatalogEntry> GetKeywordCatalog()
     {
-        HashSet<CardKeyword> keywords = Enum.GetValues<CardKeyword>()
+        return _keywordCatalog ??= BuildKeywordCatalog();
+    }
+
+    private IReadOnlyList<KeywordCatalogEntry> BuildKeywordCatalog()
+    {
+        HashSet<CardKeyword> nativeKeywords = Enum.GetValues<CardKeyword>()
             .Where(keyword => keyword != CardKeyword.None)
             .ToHashSet();
+        HashSet<CardKeyword> loadoutKeywords = LoadoutKeywords.All
+            .Where(keyword => keyword != CardKeyword.None)
+            .ToHashSet();
+        HashSet<CardKeyword> availableKeywords = new(nativeKeywords);
+        availableKeywords.UnionWith(loadoutKeywords);
 
-        foreach (CardKeyword keyword in LoadoutKeywords.All)
+        Dictionary<CardKeyword, HashSet<string>> declaredOwners = [];
+        IReadOnlyDictionary<Assembly, string> modIdsByAssembly =
+            CommonHelpers.GetLoadedModIdsByAssembly();
+        foreach ((Assembly assembly, string modId) in modIdsByAssembly)
+            AddDeclaredKeywords(assembly, modId, availableKeywords, declaredOwners);
+
+        try
         {
-            if (keyword != CardKeyword.None)
-                keywords.Add(keyword);
+            foreach (int rawKeyword in CustomKeywords.KeywordIDs.Keys.ToList())
+                AddAvailableKeyword(availableKeywords, (CardKeyword)rawKeyword);
         }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"CardModification: failed to read BaseLib's registered keyword catalog. {exception.Message}");
+        }
+
+        Dictionary<CardKeyword, HashSet<string>> usageOwners = [];
+        foreach (CardModel model in ModelDb.AllCards)
+            AddCardKeywordUsage(model, modIdsByAssembly, availableKeywords, usageOwners);
+        foreach (LoadoutOwnedItem<CardModel> item in _items)
+            AddCardKeywordUsage(item.Model, modIdsByAssembly, availableKeywords, usageOwners);
+        if (_item is not null)
+            AddCardKeywordUsage(_item.Model, modIdsByAssembly, availableKeywords, usageOwners);
+
+        return availableKeywords
+            .Where(keyword => keyword != CardKeyword.None)
+            .Select(keyword =>
+            {
+                string modId = ResolveKeywordModId(
+                    keyword,
+                    nativeKeywords,
+                    loadoutKeywords,
+                    declaredOwners,
+                    usageOwners);
+                string modName = string.Equals(modId, OtherKeywordModId, StringComparison.Ordinal)
+                    ? LocMan.Loc("OTHER", "Other")
+                    : CommonHelpers.GetModName(modId);
+                return new KeywordCatalogEntry(
+                    keyword,
+                    CardPrinter.GetCardKeywordLabel(keyword),
+                    modId,
+                    modName);
+            })
+            .ToList();
+    }
+
+    private static void AddDeclaredKeywords(
+        Assembly assembly,
+        string modId,
+        ISet<CardKeyword> availableKeywords,
+        IDictionary<CardKeyword, HashSet<string>> declaredOwners)
+    {
+        foreach (Type type in GetLoadableTypes(assembly))
+        {
+            FieldInfo[] fields;
+            try
+            {
+                fields = type.GetFields(
+                    BindingFlags.Static
+                    | BindingFlags.Public
+                    | BindingFlags.NonPublic
+                    | BindingFlags.DeclaredOnly);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (FieldInfo field in fields)
+            {
+                if (field.FieldType != typeof(CardKeyword))
+                    continue;
+
+                CardKeyword keyword;
+                try
+                {
+                    if (field.GetValue(null) is not CardKeyword value)
+                        continue;
+                    keyword = value;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (!AddAvailableKeyword(availableKeywords, keyword))
+                    continue;
+
+                if (!declaredOwners.TryGetValue(keyword, out HashSet<string>? owners))
+                {
+                    owners = new HashSet<string>(StringComparer.Ordinal);
+                    declaredOwners[keyword] = owners;
+                }
+                owners.Add(modId);
+            }
+        }
+    }
+
+    private static IReadOnlyList<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException exception)
+        {
+            return exception.Types.OfType<Type>().ToList();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"CardModification: could not inspect keyword declarations in assembly " +
+                $"'{assembly.GetName().Name}'. {exception.Message}");
+            return [];
+        }
+    }
+
+    private static void AddCardKeywordUsage(
+        CardModel card,
+        IReadOnlyDictionary<Assembly, string> modIdsByAssembly,
+        ISet<CardKeyword> availableKeywords,
+        IDictionary<CardKeyword, HashSet<string>> usageOwners)
+    {
+        Assembly assembly = card.GetType().Assembly;
+        string? modId = assembly == typeof(CardModel).Assembly
+            ? BaseGameKeywordModId
+            : modIdsByAssembly.GetValueOrDefault(assembly);
 
         foreach (CardKeyword keyword in GetKeywordsSafely(card))
-            keywords.Add(keyword);
-
-        foreach (CardModel model in ModelDb.AllCards)
         {
-            foreach (CardKeyword keyword in GetKeywordsSafely(model))
-                keywords.Add(keyword);
+            if (!AddAvailableKeyword(availableKeywords, keyword))
+                continue;
+            if (string.IsNullOrWhiteSpace(modId))
+                continue;
+
+            if (!usageOwners.TryGetValue(keyword, out HashSet<string>? owners))
+            {
+                owners = new HashSet<string>(StringComparer.Ordinal);
+                usageOwners[keyword] = owners;
+            }
+            owners.Add(modId);
+        }
+    }
+
+    private static bool AddAvailableKeyword(
+        ISet<CardKeyword> availableKeywords,
+        CardKeyword keyword)
+    {
+        if (keyword == CardKeyword.None)
+            return false;
+
+        availableKeywords.Add(keyword);
+        return true;
+    }
+
+    private static string ResolveKeywordModId(
+        CardKeyword keyword,
+        IReadOnlySet<CardKeyword> nativeKeywords,
+        IReadOnlySet<CardKeyword> loadoutKeywords,
+        IReadOnlyDictionary<CardKeyword, HashSet<string>> declaredOwners,
+        IReadOnlyDictionary<CardKeyword, HashSet<string>> usageOwners)
+    {
+        if (nativeKeywords.Contains(keyword))
+            return BaseGameKeywordModId;
+        if (loadoutKeywords.Contains(keyword))
+            return MainFile.ModId;
+
+        if (declaredOwners.TryGetValue(keyword, out HashSet<string>? declarations))
+        {
+            if (declarations.Count == 1)
+                return declarations.First();
+
+            if (usageOwners.TryGetValue(keyword, out HashSet<string>? uses)
+                && uses.Count == 1
+                && declarations.Contains(uses.First()))
+            {
+                return uses.First();
+            }
         }
 
-        return keywords
-            .Where(keyword => keyword != CardKeyword.None)
-            .OrderBy(keyword => Convert.ToInt32(keyword))
-            .ToList();
+        if (usageOwners.TryGetValue(keyword, out HashSet<string>? owners)
+            && owners.Count == 1)
+        {
+            return owners.First();
+        }
+
+        return OtherKeywordModId;
     }
 
     private static IEnumerable<CardKeyword> GetKeywordsSafely(CardModel card)

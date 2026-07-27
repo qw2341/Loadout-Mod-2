@@ -889,6 +889,12 @@ public class CommonHelpers
             : modId;
     }
 
+    internal static IReadOnlyDictionary<Assembly, string> GetLoadedModIdsByAssembly()
+    {
+        EnsureModLookup();
+        return new Dictionary<Assembly, string>(_modIdsByAssembly);
+    }
+
     public static void AddModFilters<TModel>(SelectScreenBuilder<TModel> builder, IEnumerable<TModel> models)
         where TModel : AbstractModel
     {
