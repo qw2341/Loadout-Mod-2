@@ -42,21 +42,62 @@ public class PowerGiver
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		bool showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
 		CommonHelpers.LastActionCaptureSession captureSession = null;
+		Dictionary<string, string> powerTitles = new(StringComparer.Ordinal);
+		Dictionary<string, PowerType> powerTypes = new(StringComparer.Ordinal);
+		Dictionary<string, PowerStackType> powerStackTypes = new(StringComparer.Ordinal);
+
+		string GetPowerTitle(PowerModel power)
+		{
+			string powerId = PowerId(power);
+			if (!powerTitles.TryGetValue(powerId, out string title))
+			{
+				title = CommonHelpers.FormatPowerTitle(power);
+				powerTitles[powerId] = title;
+			}
+
+			return title;
+		}
+
+		PowerType GetPowerType(PowerModel power)
+		{
+			string powerId = PowerId(power);
+			if (!powerTypes.TryGetValue(powerId, out PowerType type))
+			{
+				type = GetSafePowerType(power);
+				powerTypes[powerId] = type;
+			}
+
+			return type;
+		}
+
+		PowerStackType GetPowerStackType(PowerModel power)
+		{
+			string powerId = PowerId(power);
+			if (!powerStackTypes.TryGetValue(powerId, out PowerStackType stackType))
+			{
+				stackType = GetSafePowerStackType(power);
+				powerStackTypes[powerId] = stackType;
+			}
+
+			return stackType;
+		}
 
 		SelectItemAdapter<PowerModel> adapter = new()
 		{
 			GetId = PowerId,
-			GetName = CommonHelpers.FormatPowerTitle,
-			GetSearchText = power => $"{power.Id} {CommonHelpers.FormatPowerTitle(power)} {power.Description.GetFormattedText()}",
+			GetName = GetPowerTitle,
+			GetSearchTextFromName = CreateSafePowerSearchText,
 			CreateView = (power, _) => CreatePowerGridItem(
 				power,
 				PowerGiverStateService.GetCounter(PowerId(power)),
-				PowerGiverStateService.IsFavorite(PowerId(power)) && !showPowerGiverFavoritesOnly),
+				PowerGiverStateService.IsFavorite(PowerId(power)) && !showPowerGiverFavoritesOnly,
+				GetPowerTitle(power)),
 			UpdateView = (power, view, _) => UpdatePowerGridItem(view, power, showPowerGiverFavoritesOnly),
 			BindActivationWithCleanup = (power, view, _) => BindPowerGiverActivationWithCleanup(
 				screen,
 				power,
 				view,
+				() => showPowerGiverFavoritesOnly,
 				entry => captureSession?.Add([entry]))
 		};
 
@@ -66,27 +107,30 @@ public class PowerGiver
 			if (resetFavoriteMode)
 				showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
 
+			powerTitles.Clear();
+			powerTypes.Clear();
+			powerStackTypes.Clear();
 			IReadOnlyList<PowerModel> allPowers = ModelDb.AllPowers.ToList();
 			target.Configure(allPowers, adapter, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-				builder.Materialization(SelectMaterializationMode.Eager);
+				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(5, PowerButtonSize, 24, 24, fixedSlots: false);
 				builder.ActionButton("clear_current_buffs", LocMan.Loc("POWER_GIVER_CLEAR_CURRENT_BUFFS", "Clear Current Buffs"), _ => HandleClearCurrentPowers(PowerType.Buff));
 				builder.ActionButton("clear_current_debuffs", LocMan.Loc("POWER_GIVER_CLEAR_CURRENT_DEBUFFS", "Clear Current Debuffs"), _ => HandleClearCurrentPowers(PowerType.Debuff));
 				builder.CustomVisibilityPredicate(power => !showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
 				builder.FilterGroup("type", LocMan.Loc("FILTER_GROUP_TYPE", "Type"));
-				builder.Filter("buff", LocMan.Loc("POWER_TYPE_BUFF", "Buff"), power => power.Type == PowerType.Buff, "type");
-				builder.Filter("debuff", LocMan.Loc("POWER_TYPE_DEBUFF", "Debuff"), power => power.Type == PowerType.Debuff, "type");
-				builder.Filter("type_none", LocMan.Loc("NONE", "None"), power => power.Type == PowerType.None, "type");
+				builder.Filter("buff", LocMan.Loc("POWER_TYPE_BUFF", "Buff"), power => GetPowerType(power) == PowerType.Buff, "type");
+				builder.Filter("debuff", LocMan.Loc("POWER_TYPE_DEBUFF", "Debuff"), power => GetPowerType(power) == PowerType.Debuff, "type");
+				builder.Filter("type_none", LocMan.Loc("NONE", "None"), power => GetPowerType(power) == PowerType.None, "type");
 				builder.FilterGroup("stack", LocMan.Loc("FILTER_GROUP_STACK", "Stack"));
-				builder.Filter("stack_none", LocMan.Loc("NONE", "None"), power => power.StackType == PowerStackType.None, "stack");
-				builder.Filter("counter", LocMan.Loc("POWER_STACK_COUNTER", "Counter"), power => power.StackType == PowerStackType.Counter, "stack");
-				builder.Filter("single", LocMan.Loc("POWER_STACK_SINGLE", "Single"), power => power.StackType == PowerStackType.Single, "stack");
+				builder.Filter("stack_none", LocMan.Loc("NONE", "None"), power => GetPowerStackType(power) == PowerStackType.None, "stack");
+				builder.Filter("counter", LocMan.Loc("POWER_STACK_COUNTER", "Counter"), power => GetPowerStackType(power) == PowerStackType.Counter, "stack");
+				builder.Filter("single", LocMan.Loc("POWER_STACK_SINGLE", "Single"), power => GetPowerStackType(power) == PowerStackType.Single, "stack");
 				CommonHelpers.AddModFilters(builder, allPowers);
-				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatPowerTitle(a), CommonHelpers.FormatPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
+				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(GetPowerTitle(a), GetPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
 				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
-				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("SORT_TYPE", "Type")), (a, b) => a.Type.CompareTo(b.Type));
+				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("SORT_TYPE", "Type")), (a, b) => GetPowerType(a).CompareTo(GetPowerType(b)));
 			});
 			AddPowerGiverSidebarDropdowns(
 				target,
@@ -170,7 +214,11 @@ public class PowerGiver
 		LoadoutImmediateMutationService.RequestClearCurrentPowers(type, target);
 	}
 
-	internal static Control CreatePowerGridItem(PowerModel model, int selectedAmount = 0, bool isFavorite = false)
+	internal static Control CreatePowerGridItem(
+		PowerModel model,
+		int selectedAmount = 0,
+		bool isFavorite = false,
+		string displayName = null)
 	{
 		Texture2D icon = null;
 		if (ResourceLoader.Exists(model.IconPath))
@@ -197,7 +245,7 @@ public class PowerGiver
 		}
 
 		MegaLabel nameLabel = CommonHelpers.CreateButtonLabel(
-			"PowerName", CommonHelpers.FormatPowerTitle(model),
+			"PowerName", displayName ?? CommonHelpers.FormatPowerTitle(model),
 			new Vector2(82f, 8f),
 			new Vector2(126f, 78f),
 			18,
@@ -209,7 +257,7 @@ public class PowerGiver
 		MegaLabel amountLabel = CreatePowerAmountLabel(model, selectedAmount);
 		button.AddChild(amountLabel);
 
-		CommonHelpers.AttachHoverTips(button, CreateSafePowerHoverTips(model));
+		CommonHelpers.AttachHoverTips(button, CreateSafePowerHoverTips(model, icon));
 		return button;
 	}
 
@@ -235,20 +283,77 @@ public class PowerGiver
 		}
 		catch
 		{
-			return model.Type == PowerType.Debuff ? StsColors.red : StsColors.cream;
+			return GetSafePowerType(model) == PowerType.Debuff ? StsColors.red : StsColors.cream;
 		}
 	}
 
-	private static IEnumerable<IHoverTip> CreateSafePowerHoverTips(PowerModel model)
+	internal static PowerType GetSafePowerType(PowerModel model)
 	{
 		try
 		{
-			return [model.DumbHoverTip];
+			return model.Type;
 		}
-		catch (Exception exception)
+		catch
 		{
-			GD.PushWarning($"LoadoutPanel: could not create power hover tip for '{PowerId(model)}'. {exception.Message}");
+			return PowerType.None;
+		}
+	}
+
+	internal static PowerStackType GetSafePowerStackType(PowerModel model)
+	{
+		try
+		{
+			return model.StackType;
+		}
+		catch
+		{
+			return PowerStackType.None;
+		}
+	}
+
+	internal static string CreateSafePowerSearchText(PowerModel model, string displayName)
+	{
+		string description = GetSafeRawPowerDescription(model);
+		return string.IsNullOrWhiteSpace(description)
+			? $"{model.Id} {displayName}"
+			: $"{model.Id} {displayName} {description}";
+	}
+
+	private static IEnumerable<IHoverTip> CreateSafePowerHoverTips(PowerModel model, Texture2D icon)
+	{
+		try
+		{
+			if (!model.Title.Exists())
+				return [];
+
+			string description = GetSafeRawPowerDescription(model);
+			HoverTip hoverTip = new(
+				model.Title,
+				string.IsNullOrWhiteSpace(description) ? PowerId(model) : description,
+				icon)
+			{
+				Id = PowerId(model),
+				IsDebuff = GetSafePowerType(model) == PowerType.Debuff
+			};
+			return [hoverTip];
+		}
+		catch
+		{
 			return [];
+		}
+	}
+
+	private static string GetSafeRawPowerDescription(PowerModel model)
+	{
+		try
+		{
+			return model.Description.Exists()
+				? model.Description.GetRawText()
+				: string.Empty;
+		}
+		catch
+		{
+			return string.Empty;
 		}
 	}
 
@@ -280,6 +385,7 @@ public class PowerGiver
 		NGenericSelectScreen screen,
 		PowerModel power,
 		Control view,
+		Func<bool> getFavoritesOnly,
 		Action<LastActionEntry> recordLastAction = null)
 	{
 		if (view is null || !GodotObject.IsInstanceValid(view))
@@ -297,7 +403,10 @@ public class PowerGiver
 			if (mouseButton.AltPressed || Input.IsKeyPressed(Key.Alt))
 			{
 				PowerGiverStateService.ToggleFavorite(powerId);
-				screen.RefreshNow();
+				if (getFavoritesOnly())
+					screen.RefreshLayout(resetScroll: false, updateExistingViews: false);
+				else
+					screen.RefreshItemView(powerId);
 				view.AcceptEvent();
 				return;
 			}
@@ -317,7 +426,7 @@ public class PowerGiver
 				recordLastAction?.Invoke(entry);
 			}
 
-			screen.RefreshCurrentItemStates();
+			screen.RefreshItemView(powerId);
 			view.AcceptEvent();
 		}
 

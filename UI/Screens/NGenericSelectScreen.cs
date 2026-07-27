@@ -2388,7 +2388,7 @@ public partial class NGenericSelectScreen : Control
 
         _toggleStates[toggle.ToggleId] = toggle.IsChecked;
         if (definition.AffectsVisibility)
-            RefreshNow(resetScroll: true);
+            RefreshLayout(resetScroll: true, updateExistingViews: false);
         else
             RefreshVisibleItemStates();
     }

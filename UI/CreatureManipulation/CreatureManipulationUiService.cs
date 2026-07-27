@@ -12,7 +12,7 @@ using MegaCrit.Sts2.Core.Nodes.Combat;
 
 public static class CreatureManipulationUiService
 {
-    private static readonly Dictionary<ulong, Control.GuiInputEventHandler> InputHandlers = [];
+    private static readonly Dictionary<ulong, CreatureInputBinding> InputHandlers = [];
 
     public static void OnCreatureReady(NCreature node)
     {
@@ -43,22 +43,28 @@ public static class CreatureManipulationUiService
             node.Hitbox.AcceptEvent();
         }
 
-        InputHandlers[id] = OnGuiInput;
+        InputHandlers[id] = new CreatureInputBinding(node, OnGuiInput);
         node.Hitbox.GuiInput += OnGuiInput;
     }
 
     public static void OnCreatureExit(NCreature node)
     {
         ulong id = node.GetInstanceId();
-        if (!InputHandlers.Remove(id, out Control.GuiInputEventHandler? handler))
+        if (!InputHandlers.Remove(id, out CreatureInputBinding? binding))
             return;
 
         if (GodotObject.IsInstanceValid(node.Hitbox))
-            node.Hitbox.GuiInput -= handler;
+            node.Hitbox.GuiInput -= binding.Handler;
     }
 
     public static void Clear()
     {
+        foreach (CreatureInputBinding binding in InputHandlers.Values)
+        {
+            if (GodotObject.IsInstanceValid(binding.Node.Hitbox))
+                binding.Node.Hitbox.GuiInput -= binding.Handler;
+        }
+
         InputHandlers.Clear();
         NLoadoutPanelRoot.Instance?.GetCreatureManipulationPanel().Close();
     }
@@ -73,4 +79,8 @@ public static class CreatureManipulationUiService
                && NLoadoutPanelRoot.Instance?.HasOpenScreen != true
                && NPlayerHand.Instance?.InCardPlay != true;
     }
+
+    private sealed record CreatureInputBinding(
+        NCreature Node,
+        Control.GuiInputEventHandler Handler);
 }

@@ -38,28 +38,71 @@ public static class NCreaturePowerSelectScreen
         HashSet<string> currentPowerIds = target.Powers
             .Select(power => PowerKey(power.Id))
             .ToHashSet(StringComparer.Ordinal);
+        Dictionary<string, string> powerTitles = new(StringComparer.Ordinal);
+        Dictionary<string, PowerType> powerTypes = new(StringComparer.Ordinal);
+        Dictionary<string, PowerStackType> powerStackTypes = new(StringComparer.Ordinal);
+        bool opened = false;
+        bool cleaned = false;
+        bool membershipRefreshQueued = false;
+
+        string GetPowerTitle(PowerModel power)
+        {
+            string powerId = PowerKey(power.Id);
+            if (!powerTitles.TryGetValue(powerId, out string? title))
+            {
+                title = CommonHelpers.FormatPowerTitle(power);
+                powerTitles[powerId] = title;
+            }
+
+            return title;
+        }
+
+        PowerType GetPowerType(PowerModel power)
+        {
+            string powerId = PowerKey(power.Id);
+            if (!powerTypes.TryGetValue(powerId, out PowerType type))
+            {
+                type = PowerGiver.GetSafePowerType(power);
+                powerTypes[powerId] = type;
+            }
+
+            return type;
+        }
+
+        PowerStackType GetPowerStackType(PowerModel power)
+        {
+            string powerId = PowerKey(power.Id);
+            if (!powerStackTypes.TryGetValue(powerId, out PowerStackType stackType))
+            {
+                stackType = PowerGiver.GetSafePowerStackType(power);
+                powerStackTypes[powerId] = stackType;
+            }
+
+            return stackType;
+        }
 
         SelectItemAdapter<PowerModel> adapter = new()
         {
             GetId = power => PowerKey(power.Id),
-            GetName = CommonHelpers.FormatPowerTitle,
-            GetSearchText = GetSearchText,
+            GetName = GetPowerTitle,
+            GetSearchTextFromName = PowerGiver.CreateSafePowerSearchText,
             CreateView = (power, _) =>
                 PowerGiver.CreatePowerGridItem(
                     power,
                     GetLiveAmount(target, power.Id),
-                    PowerGiverStateService.IsFavorite(PowerKey(power.Id)) && !favoritesOnly),
+                    PowerGiverStateService.IsFavorite(PowerKey(power.Id)) && !favoritesOnly,
+                    GetPowerTitle(power)),
             UpdateView = (power, view, _) =>
                 UpdatePowerGridItem(view, target, power, favoritesOnly),
             BindActivationWithCleanup = (power, view, _) =>
-                BindActivation(screen, target, power, view)
+                BindActivation(screen, target, power, view, () => favoritesOnly)
         };
 
         IReadOnlyList<PowerModel> allPowers = ModelDb.AllPowers.ToList();
         screen.Configure(allPowers, adapter, builder =>
         {
             builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
-            builder.Materialization(SelectMaterializationMode.Eager);
+            builder.Materialization(SelectMaterializationMode.Lazy);
             builder.Layout(5, PowerButtonSize, 24, 24, fixedSlots: false);
             builder.ActionButton(
                 "clear_current_buffs",
@@ -85,41 +128,41 @@ public static class NCreaturePowerSelectScreen
             builder.Filter(
                 "buff",
                 LocMan.Loc("POWER_TYPE_BUFF", "Buff"),
-                power => power.Type == PowerType.Buff,
+                power => GetPowerType(power) == PowerType.Buff,
                 "type");
             builder.Filter(
                 "debuff",
                 LocMan.Loc("POWER_TYPE_DEBUFF", "Debuff"),
-                power => power.Type == PowerType.Debuff,
+                power => GetPowerType(power) == PowerType.Debuff,
                 "type");
             builder.Filter(
                 "none",
                 LocMan.Loc("NONE", "None"),
-                power => power.Type == PowerType.None,
+                power => GetPowerType(power) == PowerType.None,
                 "type");
             builder.FilterGroup("stack", LocMan.Loc("FILTER_GROUP_STACK", "Stack"));
             builder.Filter(
                 "stack_none",
                 LocMan.Loc("NONE", "None"),
-                power => power.StackType == PowerStackType.None,
+                power => GetPowerStackType(power) == PowerStackType.None,
                 "stack");
             builder.Filter(
                 "counter",
                 LocMan.Loc("POWER_STACK_COUNTER", "Counter"),
-                power => power.StackType == PowerStackType.Counter,
+                power => GetPowerStackType(power) == PowerStackType.Counter,
                 "stack");
             builder.Filter(
                 "single",
                 LocMan.Loc("POWER_STACK_SINGLE", "Single"),
-                power => power.StackType == PowerStackType.Single,
+                power => GetPowerStackType(power) == PowerStackType.Single,
                 "stack");
             CommonHelpers.AddModFilters(builder, allPowers);
             builder.Sorter(
                 "name",
                 LocMan.Loc("SORT_NAME", "Name"),
                 (a, b) => string.Compare(
-                    CommonHelpers.FormatPowerTitle(a),
-                    CommonHelpers.FormatPowerTitle(b),
+                    GetPowerTitle(a),
+                    GetPowerTitle(b),
                     StringComparison.Ordinal),
                 activeByDefault: true);
             builder.Sorter(
@@ -129,7 +172,7 @@ public static class NCreaturePowerSelectScreen
             builder.Sorter(
                 "type",
                 LocMan.Loc("SORT_TYPE", "Type"),
-                (a, b) => a.Type.CompareTo(b.Type));
+                (a, b) => GetPowerType(a).CompareTo(GetPowerType(b)));
         });
 
         CommonHelpers.AddFavoritesModeDropdown(
@@ -138,12 +181,31 @@ public static class NCreaturePowerSelectScreen
             () => favoritesOnly,
             value => favoritesOnly = value);
 
+        void QueueMembershipRefresh()
+        {
+            if (membershipRefreshQueued || cleaned)
+                return;
+
+            membershipRefreshQueued = true;
+            Callable.From(() =>
+            {
+                membershipRefreshQueued = false;
+                if (cleaned
+                    || !GodotObject.IsInstanceValid(screen)
+                    || !screen.IsInsideTree())
+                {
+                    return;
+                }
+
+                screen.RefreshLayout(resetScroll: false, updateExistingViews: false);
+            }).CallDeferred();
+        }
+
         void RefreshPowerView(PowerModel power, bool membershipChanged)
         {
+            screen.RefreshItemView(PowerKey(power.Id));
             if (membershipChanged && screen.IsToggleEnabled(CurrentPowersToggleId))
-                screen.RefreshNow(resetScroll: false);
-            else
-                screen.RefreshItemView(PowerKey(power.Id));
+                QueueMembershipRefresh();
         }
 
         void RefreshPowerApplied(PowerModel power)
@@ -173,8 +235,6 @@ public static class NCreaturePowerSelectScreen
         target.PowerRemoved += RefreshPowerRemoved;
         target.Died += CloseForDeath;
 
-        bool opened = false;
-        bool cleaned = false;
         void Cleanup()
         {
             // RegisterScreen deliberately hides a newly attached screen before
@@ -204,7 +264,8 @@ public static class NCreaturePowerSelectScreen
         NGenericSelectScreen screen,
         Creature target,
         PowerModel power,
-        Control view)
+        Control view,
+        Func<bool> getFavoritesOnly)
     {
         void OnInput(InputEvent input)
         {
@@ -218,7 +279,10 @@ public static class NCreaturePowerSelectScreen
             if (mouse.AltPressed || Input.IsKeyPressed(Key.Alt))
             {
                 PowerGiverStateService.ToggleFavorite(PowerKey(power.Id));
-                screen.RefreshNow(resetScroll: false);
+                if (getFavoritesOnly())
+                    screen.RefreshLayout(resetScroll: false, updateExistingViews: false);
+                else
+                    screen.RefreshItemView(PowerKey(power.Id));
                 view.AcceptEvent();
                 return;
             }
@@ -272,15 +336,4 @@ public static class NCreaturePowerSelectScreen
         left == right
         || string.Equals(PowerKey(left), PowerKey(right), StringComparison.Ordinal);
 
-    private static string GetSearchText(PowerModel power)
-    {
-        try
-        {
-            return $"{power.Id} {CommonHelpers.FormatPowerTitle(power)} {power.Description.GetFormattedText()}";
-        }
-        catch
-        {
-            return $"{power.Id} {CommonHelpers.FormatPowerTitle(power)}";
-        }
-    }
 }
