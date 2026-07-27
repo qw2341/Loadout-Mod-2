@@ -387,8 +387,8 @@ public partial class NCardModificationScreen : Control
             return;
 
         BindSceneNodes();
-        RebuildControls();
         RefreshPreview();
+        RebuildControls();
     }
 
     private void BindSceneNodes()
@@ -553,8 +553,8 @@ public partial class NCardModificationScreen : Control
         CommitPendingTemporaryModification();
         _itemIndex = nextIndex;
         LoadItem(_items[_itemIndex]);
-        RebuildControls();
         RefreshPreview();
+        RebuildControls();
     }
 
     private void LayoutPreviewNavigation()
@@ -1265,7 +1265,7 @@ public partial class NCardModificationScreen : Control
                     localModel.Id.ToString(),
                     GetAttachmentTitle(localModel),
                     () => GetAttachmentHoverTips(localModel),
-                    iconProvider?.Invoke(localModel));
+                    GetAttachmentIconSafely(localModel, iconProvider));
             })
             .ToList();
 
@@ -1296,6 +1296,27 @@ public partial class NCardModificationScreen : Control
         };
         _rightControls.AddChild(dropdown);
         _rightControls.AddChild(CreateSpacer(8f));
+    }
+
+    private static Texture2D? GetAttachmentIconSafely<TModel>(
+        TModel model,
+        Func<TModel, Texture2D?>? iconProvider)
+        where TModel : AbstractModel
+    {
+        if (iconProvider is null)
+            return null;
+
+        try
+        {
+            return iconProvider(model);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"CardModification: failed to load the attachment icon for '{model.Id}'. " +
+                $"The attachment will remain available without an icon. {exception.Message}");
+            return null;
+        }
     }
 
     private static void AddStepperRow(VBoxContainer container, string label, int value, int min, int max, Action<int> onChanged)
@@ -2049,11 +2070,8 @@ public partial class NCardModificationScreen : Control
         HashSet<CardKeyword> availableKeywords = new(nativeKeywords);
         availableKeywords.UnionWith(loadoutKeywords);
 
-        Dictionary<CardKeyword, HashSet<string>> declaredOwners = [];
         IReadOnlyDictionary<Assembly, string> modIdsByAssembly =
             CommonHelpers.GetLoadedModIdsByAssembly();
-        foreach ((Assembly assembly, string modId) in modIdsByAssembly)
-            AddDeclaredKeywords(assembly, modId, availableKeywords, declaredOwners);
 
         try
         {
@@ -2082,88 +2100,34 @@ public partial class NCardModificationScreen : Control
                     keyword,
                     nativeKeywords,
                     loadoutKeywords,
-                    declaredOwners,
                     usageOwners);
                 string modName = string.Equals(modId, OtherKeywordModId, StringComparison.Ordinal)
                     ? LocMan.Loc("OTHER", "Other")
                     : CommonHelpers.GetModName(modId);
                 return new KeywordCatalogEntry(
                     keyword,
-                    CardPrinter.GetCardKeywordLabel(keyword),
+                    GetKeywordLabelSafely(keyword),
                     modId,
                     modName);
             })
             .ToList();
     }
 
-    private static void AddDeclaredKeywords(
-        Assembly assembly,
-        string modId,
-        ISet<CardKeyword> availableKeywords,
-        IDictionary<CardKeyword, HashSet<string>> declaredOwners)
-    {
-        foreach (Type type in GetLoadableTypes(assembly))
-        {
-            FieldInfo[] fields;
-            try
-            {
-                fields = type.GetFields(
-                    BindingFlags.Static
-                    | BindingFlags.Public
-                    | BindingFlags.NonPublic
-                    | BindingFlags.DeclaredOnly);
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (FieldInfo field in fields)
-            {
-                if (field.FieldType != typeof(CardKeyword))
-                    continue;
-
-                CardKeyword keyword;
-                try
-                {
-                    if (field.GetValue(null) is not CardKeyword value)
-                        continue;
-                    keyword = value;
-                }
-                catch
-                {
-                    continue;
-                }
-
-                if (!AddAvailableKeyword(availableKeywords, keyword))
-                    continue;
-
-                if (!declaredOwners.TryGetValue(keyword, out HashSet<string>? owners))
-                {
-                    owners = new HashSet<string>(StringComparer.Ordinal);
-                    declaredOwners[keyword] = owners;
-                }
-                owners.Add(modId);
-            }
-        }
-    }
-
-    private static IReadOnlyList<Type> GetLoadableTypes(Assembly assembly)
+    private static string GetKeywordLabelSafely(CardKeyword keyword)
     {
         try
         {
-            return assembly.GetTypes();
-        }
-        catch (ReflectionTypeLoadException exception)
-        {
-            return exception.Types.OfType<Type>().ToList();
+            string label = CardPrinter.GetCardKeywordLabel(keyword);
+            return string.IsNullOrWhiteSpace(label)
+                ? keyword.ToString()
+                : label;
         }
         catch (Exception exception)
         {
             GD.PushWarning(
-                $"CardModification: could not inspect keyword declarations in assembly " +
-                $"'{assembly.GetName().Name}'. {exception.Message}");
-            return [];
+                $"CardModification: failed to localize keyword '{Convert.ToInt32(keyword)}'. " +
+                $"{exception.Message}");
+            return keyword.ToString();
         }
     }
 
@@ -2209,26 +2173,12 @@ public partial class NCardModificationScreen : Control
         CardKeyword keyword,
         IReadOnlySet<CardKeyword> nativeKeywords,
         IReadOnlySet<CardKeyword> loadoutKeywords,
-        IReadOnlyDictionary<CardKeyword, HashSet<string>> declaredOwners,
         IReadOnlyDictionary<CardKeyword, HashSet<string>> usageOwners)
     {
         if (nativeKeywords.Contains(keyword))
             return BaseGameKeywordModId;
         if (loadoutKeywords.Contains(keyword))
             return MainFile.ModId;
-
-        if (declaredOwners.TryGetValue(keyword, out HashSet<string>? declarations))
-        {
-            if (declarations.Count == 1)
-                return declarations.First();
-
-            if (usageOwners.TryGetValue(keyword, out HashSet<string>? uses)
-                && uses.Count == 1
-                && declarations.Contains(uses.First()))
-            {
-                return uses.First();
-            }
-        }
 
         if (usageOwners.TryGetValue(keyword, out HashSet<string>? owners)
             && owners.Count == 1)
