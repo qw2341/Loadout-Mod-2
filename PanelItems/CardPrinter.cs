@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Helpers;
+using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
@@ -430,6 +431,13 @@ public class CardPrinter
 
     public static string GetCardKeywordLabel(CardKeyword keyword)
     {
+	    if (LoadoutSpecialKeywords.TryGet(
+	            keyword,
+	            out LoadoutSpecialKeywordDefinition specialKeyword))
+	    {
+		    return LoadoutSpecialKeywords.GetTitle(specialKeyword);
+	    }
+
 	    try
 	    {
 		    if (HoverTipFactory.FromKeyword(keyword) is HoverTip hoverTip && !string.IsNullOrWhiteSpace(hoverTip.Title))

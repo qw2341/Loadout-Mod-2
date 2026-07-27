@@ -610,13 +610,7 @@ public partial class NCardModificationScreen : Control
         if (_cardEditActions is not null)
             ClearChildren(_cardEditActions);
 
-        _titleLabel = CreateLabel(CardPrinter.FormatCardTitle(_item.Model), 32, StsColors.gold);
-        _leftControls.AddChild(_titleLabel);
-        _leftControls.AddChild(CreateCardIdLabel(_item.Model.Id.ToString()));
-        _leftControls.AddChild(CreateSpacer(6f));
-
-        AddDropdownControls();
-        AddNumericControls();
+        RebuildLeftControls();
         AddCardEditActions();
         AddKeywordControls();
         AddAttachmentControls();
@@ -649,6 +643,21 @@ public partial class NCardModificationScreen : Control
         ConnectActionButton(addCopiesButton, AddCopiesToDeck);
         _actionControls.AddChild(addCopiesButton);
         ConfigureActionButtonSize(addCopiesButton);
+    }
+
+    private void RebuildLeftControls()
+    {
+        if (_leftControls is null || _item is null)
+            return;
+
+        ClearChildren(_leftControls);
+        _titleLabel = CreateLabel(CardPrinter.FormatCardTitle(_item.Model), 32, StsColors.gold);
+        _leftControls.AddChild(_titleLabel);
+        _leftControls.AddChild(CreateCardIdLabel(_item.Model.Id.ToString()));
+        _leftControls.AddChild(CreateSpacer(6f));
+
+        AddDropdownControls();
+        AddNumericControls();
     }
 
     private void AddCardEditActions()
@@ -701,13 +710,24 @@ public partial class NCardModificationScreen : Control
                 ApplyWorkingState();
             });
 
-        foreach ((string name, var dynamicVar) in card.DynamicVars.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        CardModel dynamicVarCard = _previewDisplayModel ?? card;
+        foreach ((string name, var dynamicVar) in dynamicVarCard.DynamicVars.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
             int current = _workingState.DynamicVars.TryGetValue(name, out decimal saved)
                 ? Decimal.ToInt32(saved)
                 : Decimal.ToInt32(dynamicVar.BaseValue);
-            
-            AddStepperRow(_leftControls, LocMan.DynamicVarLoc(dynamicVar), current, int.MinValue, int.MaxValue, value =>
+
+            string label = LocMan.DynamicVarLoc(dynamicVar);
+            int minimum = int.MinValue;
+            int maximum = int.MaxValue;
+            if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+            {
+                label = LocMan.Loc(specialVar.LabelLocKey, name);
+                minimum = specialVar.Minimum;
+                maximum = specialVar.Maximum;
+            }
+
+            AddStepperRow(_leftControls, label, current, minimum, maximum, value =>
             {
                 _workingState.DynamicVars[name] = value;
                 _temporaryState.DynamicVars[name] = value;
@@ -1053,7 +1073,32 @@ public partial class NCardModificationScreen : Control
             {
                 _workingState.KeywordOverrides[key] = changed.IsChecked;
                 _temporaryState.KeywordOverrides[key] = changed.IsChecked;
+                bool hasSpecialDefinition = LoadoutSpecialKeywords.TryGet(
+                    localKeyword,
+                    out LoadoutSpecialKeywordDefinition specialDefinition);
+                if (hasSpecialDefinition)
+                {
+                    foreach (LoadoutKeywordDynamicVarDefinition dynamicVar in specialDefinition.DynamicVars)
+                    {
+                        if (changed.IsChecked)
+                        {
+                            decimal initial = dynamicVar.DefaultValue;
+                            if (_item.Model.DynamicVars.TryGetValue(dynamicVar.Name, out var existing))
+                                initial = existing.BaseValue;
+                            _workingState.DynamicVars.TryAdd(dynamicVar.Name, initial);
+                            _temporaryState.DynamicVars.TryAdd(dynamicVar.Name, initial);
+                        }
+                        else
+                        {
+                            _workingState.DynamicVars.Remove(dynamicVar.Name);
+                            _temporaryState.DynamicVars.Remove(dynamicVar.Name);
+                        }
+                    }
+                }
+
                 ApplyWorkingState();
+                if (hasSpecialDefinition)
+                    Callable.From(RebuildLeftControls).CallDeferred();
             };
             grid.AddChild(toggle);
         }
@@ -2231,6 +2276,9 @@ public partial class NCardModificationScreen : Control
 
     private static IReadOnlyList<IHoverTip> GetKeywordHoverTips(CardKeyword keyword)
     {
+        if (LoadoutSpecialKeywords.IsDescriptionKeyword(keyword))
+            return [];
+
         try
         {
             return [HoverTipFactory.FromKeyword(keyword)];

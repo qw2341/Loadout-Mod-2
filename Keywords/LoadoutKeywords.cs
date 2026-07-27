@@ -17,6 +17,7 @@ public static class LoadoutKeywords
     public const string LividKey = "Livid";
     public const string XCostKey = "XCost";
     public const string InfiniteUpgradeKey = "InfiniteUpgrade";
+    public const string LessonLearnedKey = "LessonLearned";
 
     [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Inevitable;
@@ -36,6 +37,9 @@ public static class LoadoutKeywords
     [CustomEnum("INFINITE_UPGRADE"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword InfiniteUpgrade;
 
+    [CustomEnum("LESSON_LEARNED")]
+    public static CardKeyword LessonLearned;
+
     public static IEnumerable<CardKeyword> All
     {
         get
@@ -46,6 +50,7 @@ public static class LoadoutKeywords
             yield return Livid;
             yield return XCost;
             yield return InfiniteUpgrade;
+            yield return LessonLearned;
         }
     }
 
@@ -70,6 +75,8 @@ public static class LoadoutKeywords
             return XCostKey;
         if (keyword.Equals(InfiniteUpgrade))
             return InfiniteUpgradeKey;
+        if (keyword.Equals(LessonLearned))
+            return LessonLearnedKey;
 
         return keyword.ToString();
     }
@@ -95,6 +102,9 @@ public static class LoadoutKeywords
                 return keyword != CardKeyword.None;
             case InfiniteUpgradeKey:
                 keyword = InfiniteUpgrade;
+                return keyword != CardKeyword.None;
+            case LessonLearnedKey:
+                keyword = LessonLearned;
                 return keyword != CardKeyword.None;
             default:
                 return Enum.TryParse(key, ignoreCase: true, out keyword);

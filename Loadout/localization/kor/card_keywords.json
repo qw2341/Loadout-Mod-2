@@ -10,5 +10,8 @@
   "LOADOUT-PASSING.title": "패스",
   "LOADOUT-PASSING.description": "사용 후 이 카드를 무작위 아군의 [gold]뽑기 더미[/gold]에 섞어 넣습니다.",
   "LOADOUT-LIVID.title": "격노",
-  "LOADOUT-LIVID.description": "사용 시 모든 플레이어의 [gold]버린 카드 더미[/gold]에 자신의 복사본을 1장 추가합니다."
+  "LOADOUT-LIVID.description": "사용 시 모든 플레이어의 [gold]버린 카드 더미[/gold]에 자신의 복사본을 1장 추가합니다.",
+  "LOADOUT-LESSON_LEARNED.title": "얻은 교훈",
+  "LOADOUT-LESSON_LEARNED.description": "[gold]치명[/gold]일 경우, [gold]덱[/gold]에 있는 무작위 카드를 [gold]강화[/gold]합니다.",
+  "LOADOUT-LESSON_LEARNED.cardText": "[gold]치명[/gold]일 경우, [gold]덱[/gold]에 있는 무작위 카드 {LoadoutLessonLearnedCards:diff()}장을 [gold]강화[/gold]합니다."
 }

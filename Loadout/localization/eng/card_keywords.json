@@ -10,5 +10,8 @@
   "LOADOUT-PASSING.title": "Passing",
   "LOADOUT-PASSING.description": "This card is shuffled into a random ally's [gold]Draw Pile[/gold] after being played.",
   "LOADOUT-LIVID.title": "Livid",
-  "LOADOUT-LIVID.description": "Adds a copy of itself to every player's [gold]Discard Pile[/gold] when played."
+  "LOADOUT-LIVID.description": "Adds a copy of itself to every player's [gold]Discard Pile[/gold] when played.",
+  "LOADOUT-LESSON_LEARNED.title": "Lesson Learned",
+  "LOADOUT-LESSON_LEARNED.description": "If [gold]Fatal[/gold], [gold]Upgrade[/gold] random cards in your [gold]Deck[/gold].",
+  "LOADOUT-LESSON_LEARNED.cardText": "If [gold]Fatal[/gold], [gold]Upgrade[/gold] {LoadoutLessonLearnedCards:diff()} random {LoadoutLessonLearnedCards:plural:card|cards} in your [gold]Deck[/gold]."
 }

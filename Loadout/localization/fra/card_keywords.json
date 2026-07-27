@@ -10,5 +10,8 @@
   "LOADOUT-PASSING.title": "Passage",
   "LOADOUT-PASSING.description": "Cette carte est mélangée dans la [gold]Pioche[/gold] d'un allié aléatoire après avoir été jouée.",
   "LOADOUT-LIVID.title": "Furieuse",
-  "LOADOUT-LIVID.description": "Ajoute une copie d'elle-même à la [gold]Défausse[/gold] de chaque joueur lorsqu'elle est jouée."
+  "LOADOUT-LIVID.description": "Ajoute une copie d'elle-même à la [gold]Défausse[/gold] de chaque joueur lorsqu'elle est jouée.",
+  "LOADOUT-LESSON_LEARNED.title": "Leçon apprise",
+  "LOADOUT-LESSON_LEARNED.description": "Si [gold]Fatal[/gold], [gold]améliore[/gold] des cartes aléatoires de votre [gold]Deck[/gold].",
+  "LOADOUT-LESSON_LEARNED.cardText": "Si [gold]Fatal[/gold], [gold]améliore[/gold] {LoadoutLessonLearnedCards:diff()} {LoadoutLessonLearnedCards:plural:carte aléatoire|cartes aléatoires} de votre [gold]Deck[/gold]."
 }

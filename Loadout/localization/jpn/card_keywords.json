@@ -10,5 +10,8 @@
   "LOADOUT-PASSING.title": "パス",
   "LOADOUT-PASSING.description": "プレイ後、このカードをランダムな味方の[gold]山札[/gold]へシャッフルする。",
   "LOADOUT-LIVID.title": "激怒",
-  "LOADOUT-LIVID.description": "プレイ時、各プレイヤーの[gold]捨て札[/gold]へ自身のコピーを1枚追加する。"
+  "LOADOUT-LIVID.description": "プレイ時、各プレイヤーの[gold]捨て札[/gold]へ自身のコピーを1枚追加する。",
+  "LOADOUT-LESSON_LEARNED.title": "得た教訓",
+  "LOADOUT-LESSON_LEARNED.description": "[gold]フェイタル[/gold]の場合、[gold]デッキ[/gold]のランダムなカードを[gold]アップグレード[/gold]する。",
+  "LOADOUT-LESSON_LEARNED.cardText": "[gold]フェイタル[/gold]の場合、[gold]デッキ[/gold]のランダムなカードを{LoadoutLessonLearnedCards:diff()}枚[gold]アップグレード[/gold]する。"
 }

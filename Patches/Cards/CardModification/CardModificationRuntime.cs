@@ -282,6 +282,8 @@ public static class CardModificationRuntime
                 card.BaseReplayCount = spec.BaseReplayCount.Value;
             if (spec.BaseStarCost.HasValue)
                 SetBaseStarCost(card, spec.BaseStarCost.Value);
+            ApplyKeywordOverrides(card, spec.KeywordOverrides);
+            LoadoutSpecialKeywords.SynchronizeDynamicVars(card);
             foreach ((string name, decimal value) in spec.DynamicVars)
             {
                 if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
@@ -295,8 +297,8 @@ public static class CardModificationRuntime
             if (TryParseEnum(spec.Rarity, out CardRarity rarity))
                 CardRarityField?.SetValue(card, rarity);
 
-            ApplyKeywordOverrides(card, spec.KeywordOverrides);
-            LoadoutKeywordMechanics.SynchronizeEnergyCost(card, spec.KeywordOverrides, spec.EnergyCost);
+            LoadoutKeywordRuntimePatches.EnableFromOverrides(spec.KeywordOverrides);
+            XCostKeywordMechanics.SynchronizeEnergyCost(card, spec.KeywordOverrides, spec.EnergyCost);
             ApplyEnchantmentSpec(card, spec.Enchantment);
             if (includeAffliction)
                 ApplyAfflictionSpec(card, spec.Affliction);
@@ -321,6 +323,8 @@ public static class CardModificationRuntime
                 card.BaseReplayCount += delta.BaseReplayCountDelta.Value;
             if (delta.BaseStarCostDelta.HasValue)
                 SetBaseStarCost(card, card.BaseStarCost + delta.BaseStarCostDelta.Value);
+            ApplyKeywordOverrides(card, delta.KeywordOverrides);
+            LoadoutSpecialKeywords.SynchronizeDynamicVars(card);
             foreach ((string name, decimal value) in delta.DynamicVarDeltas)
             {
                 if (card.DynamicVars.TryGetValue(name, out var dynamicVar)) dynamicVar.BaseValue += value;
@@ -329,8 +333,7 @@ public static class CardModificationRuntime
             if (TryResolveModel(delta.PoolId, ModelDb.AllCardPools, out CardPoolModel? pool)) CardPoolField?.SetValue(card, pool);
             if (TryParseEnum(delta.Type, out CardType type)) CardTypeField?.SetValue(card, type);
             if (TryParseEnum(delta.Rarity, out CardRarity rarity)) CardRarityField?.SetValue(card, rarity);
-            ApplyKeywordOverrides(card, delta.KeywordOverrides);
-            LoadoutKeywordMechanics.SynchronizeEnergyCost(card, delta.KeywordOverrides, delta.EnergyOverride);
+            XCostKeywordMechanics.SynchronizeEnergyCost(card, delta.KeywordOverrides, delta.EnergyOverride);
             ApplyEnchantmentSpec(card, delta.Enchantment);
             if (includeAffliction) ApplyAfflictionSpec(card, delta.Affliction);
         }
@@ -424,6 +427,11 @@ public static class CardModificationRuntime
                 decimal difference = value - baselineVar.BaseValue;
                 if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
             }
+            else if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+            {
+                decimal difference = value - specialVar.DefaultValue;
+                if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
+            }
         }
         if (!SameStructuralValue(desired.PoolId, structuralBaseline?.PoolId)
             && !string.Equals(desired.PoolId, baseline.Pool.Id.ToString(), StringComparison.Ordinal))
@@ -482,6 +490,11 @@ public static class CardModificationRuntime
                 decimal difference = value - original;
                 if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
             }
+            else if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+            {
+                decimal difference = value - specialVar.DefaultValue;
+                if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
+            }
         }
         if (!string.IsNullOrWhiteSpace(desired.PoolId)
             && !string.Equals(desired.PoolId, baseline.Pool.Id.ToString(), StringComparison.Ordinal))
@@ -534,6 +547,8 @@ public static class CardModificationRuntime
         {
             if (baseline.DynamicVars.TryGetValue(name, out var baselineVar))
                 spec.DynamicVars[name] = baselineVar.BaseValue + difference;
+            else if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+                spec.DynamicVars[name] = specialVar.DefaultValue + difference;
         }
         spec.Normalize();
         return spec;
@@ -568,6 +583,8 @@ public static class CardModificationRuntime
         {
             if (baseline.DynamicVars.TryGetValue(name, out decimal original))
                 spec.DynamicVars[name] = original + difference;
+            else if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+                spec.DynamicVars[name] = specialVar.DefaultValue + difference;
         }
         spec.Normalize();
         return spec;
@@ -1190,11 +1207,6 @@ public static class CardModificationRuntime
                 new CardEnergyCost(destination, source.EnergyCost.Canonical, source.EnergyCost.CostsX));
             destination.BaseReplayCount = source.BaseReplayCount;
             SetBaseStarCost(destination, source.BaseStarCost);
-            foreach ((string name, var sourceVar) in source.DynamicVars)
-            {
-                if (destination.DynamicVars.TryGetValue(name, out var destinationVar))
-                    destinationVar.BaseValue = sourceVar.BaseValue;
-            }
             CardPoolField?.SetValue(destination, source.Pool);
             CardTypeField?.SetValue(destination, source.Type);
             CardRarityField?.SetValue(destination, source.Rarity);
@@ -1215,20 +1227,6 @@ public static class CardModificationRuntime
             destination.BaseReplayCount = source.BaseReplayCount;
         if (!forceAllOwnedFields && (previous.BaseStarCost.HasValue || next.BaseStarCost.HasValue))
             SetBaseStarCost(destination, source.BaseStarCost);
-
-        if (!forceAllOwnedFields)
-        {
-            HashSet<string> dynamicVarNames = new(previous.DynamicVars.Keys, StringComparer.Ordinal);
-            dynamicVarNames.UnionWith(next.DynamicVars.Keys);
-            foreach (string name in dynamicVarNames)
-            {
-                if (source.DynamicVars.TryGetValue(name, out var sourceVar)
-                    && destination.DynamicVars.TryGetValue(name, out var destinationVar))
-                {
-                    destinationVar.BaseValue = sourceVar.BaseValue;
-                }
-            }
-        }
 
         if (!forceAllOwnedFields && (previous.PoolId is not null || next.PoolId is not null))
             CardPoolField?.SetValue(destination, source.Pool);
@@ -1253,8 +1251,31 @@ public static class CardModificationRuntime
             }
         }
 
+        LoadoutSpecialKeywords.SynchronizeDynamicVars(destination);
+        if (forceAllOwnedFields)
+        {
+            foreach ((string name, var sourceVar) in source.DynamicVars)
+            {
+                if (destination.DynamicVars.TryGetValue(name, out var destinationVar))
+                    destinationVar.BaseValue = sourceVar.BaseValue;
+            }
+        }
+        else
+        {
+            HashSet<string> dynamicVarNames = new(previous.DynamicVars.Keys, StringComparer.Ordinal);
+            dynamicVarNames.UnionWith(next.DynamicVars.Keys);
+            foreach (string name in dynamicVarNames)
+            {
+                if (source.DynamicVars.TryGetValue(name, out var sourceVar)
+                    && destination.DynamicVars.TryGetValue(name, out var destinationVar))
+                {
+                    destinationVar.BaseValue = sourceVar.BaseValue;
+                }
+            }
+        }
+
         if (keywordKeys.Contains(LoadoutKeywords.XCostKey))
-            LoadoutKeywordMechanics.SynchronizeEnergyCost(destination, next.KeywordOverrides, next.EnergyCost);
+            XCostKeywordMechanics.SynchronizeEnergyCost(destination, next.KeywordOverrides, next.EnergyCost);
         if (!forceAllOwnedFields
             && (previous.EnergyCost.HasValue
              || next.EnergyCost.HasValue

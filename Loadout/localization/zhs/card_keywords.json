@@ -10,5 +10,8 @@
   "LOADOUT-PASSING.title": "传递",
   "LOADOUT-PASSING.description": "打出后，将此牌洗入一名随机队友的[gold]抽牌堆[/gold]。",
   "LOADOUT-LIVID.title": "盛怒",
-  "LOADOUT-LIVID.description": "打出时，将自身的一张复制牌加入每名玩家的[gold]弃牌堆[/gold]。"
+  "LOADOUT-LIVID.description": "打出时，将自身的一张复制牌加入每名玩家的[gold]弃牌堆[/gold]。",
+  "LOADOUT-LESSON_LEARNED.title": "勤学",
+  "LOADOUT-LESSON_LEARNED.description": "[gold]斩杀[/gold]时，随机[gold]升级[/gold]你[gold]牌组[/gold]中的牌。",
+  "LOADOUT-LESSON_LEARNED.cardText": "[gold]斩杀[/gold]时，随机[gold]升级[/gold]你[gold]牌组[/gold]中的{LoadoutLessonLearnedCards:diff()}张牌。"
 }

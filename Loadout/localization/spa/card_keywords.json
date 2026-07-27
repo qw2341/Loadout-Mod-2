@@ -10,5 +10,8 @@
   "LOADOUT-PASSING.title": "Pase",
   "LOADOUT-PASSING.description": "Esta carta se baraja en la [gold]Pila de robo[/gold] de un aliado al azar después de jugarse.",
   "LOADOUT-LIVID.title": "Furiosa",
-  "LOADOUT-LIVID.description": "Añade una copia de sí misma a la [gold]Pila de descarte[/gold] de cada jugador al jugarse."
+  "LOADOUT-LIVID.description": "Añade una copia de sí misma a la [gold]Pila de descarte[/gold] de cada jugador al jugarse.",
+  "LOADOUT-LESSON_LEARNED.title": "Lección aprendida",
+  "LOADOUT-LESSON_LEARNED.description": "Si es [gold]Fatal[/gold], [gold]mejora[/gold] cartas aleatorias de tu [gold]Mazo[/gold].",
+  "LOADOUT-LESSON_LEARNED.cardText": "Si es [gold]Fatal[/gold], [gold]mejora[/gold] {LoadoutLessonLearnedCards:diff()} {LoadoutLessonLearnedCards:plural:carta aleatoria|cartas aleatorias} de tu [gold]Mazo[/gold]."
 }

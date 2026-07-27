@@ -152,6 +152,7 @@ internal static class CanonicalCardModificationRegistry
         TypeField.SetValue(canonical, baseline.Type);
         RarityField.SetValue(canonical, baseline.Rarity);
         KeywordsField.SetValue(canonical, new HashSet<CardKeyword>(baseline.Keywords));
+        LoadoutSpecialKeywords.SynchronizeDynamicVars(canonical);
         CanonicalStarCosts.Remove(canonical.Id);
     }
 
@@ -175,15 +176,6 @@ internal static class CanonicalCardModificationRegistry
             CanonicalStarCosts[canonical.Id] = starCost;
         }
 
-        foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
-        {
-            if (baseline.DynamicVars.TryGetValue(name, out decimal original)
-                && canonical.DynamicVars.TryGetValue(name, out DynamicVar? variable))
-            {
-                variable.BaseValue = original + difference;
-            }
-        }
-
         if (ResolvePool(delta.PoolId) is { } pool)
             PoolField.SetValue(canonical, pool);
         if (Enum.TryParse(delta.Type, true, out CardType type))
@@ -200,6 +192,21 @@ internal static class CanonicalCardModificationRegistry
             else keywords.Remove(keyword);
         }
         KeywordsField.SetValue(canonical, keywords);
+        LoadoutSpecialKeywords.SynchronizeDynamicVars(canonical);
+
+        foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
+        {
+            decimal original;
+            if (!baseline.DynamicVars.TryGetValue(name, out original))
+            {
+                if (!LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+                    continue;
+                original = specialVar.DefaultValue;
+            }
+
+            if (canonical.DynamicVars.TryGetValue(name, out DynamicVar? variable))
+                variable.BaseValue = original + difference;
+        }
     }
 
     private static void ConfigurePatches()
