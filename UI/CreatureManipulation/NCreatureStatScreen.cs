@@ -17,7 +17,7 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 
 public partial class NCreatureStatScreen : Control
 {
-    private static readonly Vector2 PanelSize = new(820f, 590f);
+    private static readonly Vector2 PanelSize = new(780f, 520f);
     private static readonly Dictionary<string, Texture2D?> TextureCache = new(StringComparer.Ordinal);
 
     private readonly Creature _target;
@@ -58,14 +58,6 @@ public partial class NCreatureStatScreen : Control
 
     private void BuildUi()
     {
-        ColorRect dim = new()
-        {
-            Color = new Color(0f, 0f, 0f, 0.72f),
-            MouseFilter = MouseFilterEnum.Stop
-        };
-        dim.SetAnchorsPreset(LayoutPreset.FullRect);
-        AddChild(dim);
-
         Control panel = new()
         {
             CustomMinimumSize = PanelSize,
@@ -104,10 +96,10 @@ public partial class NCreatureStatScreen : Control
 
         MarginContainer margin = new();
         margin.SetAnchorsPreset(LayoutPreset.FullRect);
-        margin.AddThemeConstantOverride("margin_left", 56);
-        margin.AddThemeConstantOverride("margin_top", 54);
-        margin.AddThemeConstantOverride("margin_right", 56);
-        margin.AddThemeConstantOverride("margin_bottom", 54);
+        margin.AddThemeConstantOverride("margin_left", 52);
+        margin.AddThemeConstantOverride("margin_top", 42);
+        margin.AddThemeConstantOverride("margin_right", 52);
+        margin.AddThemeConstantOverride("margin_bottom", 42);
         panel.AddChild(margin);
 
         CenterContainer contentCenter = new()
@@ -120,26 +112,43 @@ public partial class NCreatureStatScreen : Control
 
         VBoxContainer content = new()
         {
-            CustomMinimumSize = new Vector2(700f, 0f),
+            CustomMinimumSize = new Vector2(660f, 0f),
             SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
             SizeFlagsVertical = SizeFlags.ShrinkCenter,
             Alignment = BoxContainer.AlignmentMode.Center,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        content.AddThemeConstantOverride("separation", 12);
+        content.AddThemeConstantOverride("separation", 8);
         contentCenter.AddChild(content);
 
         MegaLabel title = CommonHelpers.CreateButtonLabel(
             "Title",
             LocMan.Loc("CREATURE_MANIP_STATS_TITLE", "Creature Stats"),
             Vector2.Zero,
-            new Vector2(700f, 64f),
-            38,
+            new Vector2(660f, 56f),
+            36,
             HorizontalAlignment.Center,
             StsColors.gold);
         title.AddThemeColorOverride("font_outline_color", new Color(0f, 0f, 0f, 0.7f));
         title.AddThemeConstantOverride("outline_size", 10);
         content.AddChild(title);
+
+        CenterContainer titleDividerMount = new()
+        {
+            CustomMinimumSize = new Vector2(660f, 10f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        ColorRect titleDivider = new()
+        {
+            CustomMinimumSize = new Vector2(360f, 2f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            Color = new Color(0.82f, 0.64f, 0.25f, 0.42f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        titleDividerMount.AddChild(titleDivider);
+        content.AddChild(titleDividerMount);
 
         AddRow(content, CreatureManipulationStat.CurrentHp,
             LocMan.Loc("CREATURE_MANIP_CURRENT_HP", "Current HP"));
@@ -150,7 +159,7 @@ public partial class NCreatureStatScreen : Control
 
         CenterContainer closeMount = new()
         {
-            CustomMinimumSize = new Vector2(700f, 58f),
+            CustomMinimumSize = new Vector2(660f, 54f),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -176,7 +185,7 @@ public partial class NCreatureStatScreen : Control
         _rows[stat] = row;
         CenterContainer rowMount = new()
         {
-            CustomMinimumSize = new Vector2(700f, 86f),
+            CustomMinimumSize = new Vector2(660f, 72f),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -240,7 +249,6 @@ public partial class NCreatureStatScreen : Control
         private readonly Creature _target;
         private readonly CreatureManipulationStat _stat;
         private readonly LineEdit _entry;
-        private readonly TextureRect _entryBackground;
         private readonly NLoadoutToggle _lock;
         private bool _refreshing;
         private bool _submitted;
@@ -252,22 +260,10 @@ public partial class NCreatureStatScreen : Control
         {
             _target = target;
             _stat = stat;
-            CustomMinimumSize = new Vector2(660f, 78f);
+            CustomMinimumSize = new Vector2(640f, 68f);
             SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
             SizeFlagsVertical = SizeFlags.ShrinkCenter;
             MouseFilter = MouseFilterEnum.Pass;
-
-            TextureRect rowBackground = new()
-            {
-                Name = "RowBackground",
-                Texture = LoadGameTexture("res://images/ui/reward_screen/reward_item_button.png"),
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.Scale,
-                Modulate = new Color(0.72f, 0.79f, 0.84f, 0.92f),
-                MouseFilter = MouseFilterEnum.Ignore
-            };
-            rowBackground.SetAnchorsPreset(LayoutPreset.FullRect);
-            AddChild(rowBackground);
 
             HBoxContainer rowContent = new()
             {
@@ -276,12 +272,28 @@ public partial class NCreatureStatScreen : Control
                 MouseFilter = MouseFilterEnum.Pass
             };
             rowContent.SetAnchorsPreset(LayoutPreset.FullRect);
-            rowContent.OffsetLeft = 24f;
-            rowContent.OffsetTop = 10f;
-            rowContent.OffsetRight = -24f;
-            rowContent.OffsetBottom = -10f;
-            rowContent.AddThemeConstantOverride("separation", 14);
+            rowContent.OffsetLeft = 10f;
+            rowContent.OffsetTop = 7f;
+            rowContent.OffsetRight = -10f;
+            rowContent.OffsetBottom = -7f;
+            rowContent.AddThemeConstantOverride("separation", 12);
             AddChild(rowContent);
+
+            ColorRect divider = new()
+            {
+                Name = "Divider",
+                Color = new Color(0.48f, 0.62f, 0.66f, 0.24f),
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            divider.AnchorLeft = 0f;
+            divider.AnchorTop = 1f;
+            divider.AnchorRight = 1f;
+            divider.AnchorBottom = 1f;
+            divider.OffsetLeft = 56f;
+            divider.OffsetTop = -1f;
+            divider.OffsetRight = -8f;
+            divider.OffsetBottom = 0f;
+            AddChild(divider);
 
             (string iconPath, Color accent) = stat switch
             {
@@ -301,7 +313,7 @@ public partial class NCreatureStatScreen : Control
             {
                 Name = "StatIcon",
                 Texture = string.IsNullOrEmpty(iconPath) ? null : LoadGameTexture(iconPath),
-                CustomMinimumSize = new Vector2(42f, 42f),
+                CustomMinimumSize = new Vector2(38f, 38f),
                 SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
                 SizeFlagsVertical = SizeFlags.ShrinkCenter,
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
@@ -315,8 +327,8 @@ public partial class NCreatureStatScreen : Control
                 "Label",
                 labelText,
                 Vector2.Zero,
-                new Vector2(0f, 54f),
-                25,
+                new Vector2(0f, 50f),
+                24,
                 HorizontalAlignment.Left,
                 accent);
             label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
@@ -329,7 +341,7 @@ public partial class NCreatureStatScreen : Control
             HBoxContainer actions = new()
             {
                 Name = "Actions",
-                CustomMinimumSize = new Vector2(380f, 56f),
+                CustomMinimumSize = new Vector2(354f, 52f),
                 SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
                 SizeFlagsVertical = SizeFlags.ShrinkCenter,
                 Alignment = BoxContainer.AlignmentMode.End,
@@ -338,58 +350,27 @@ public partial class NCreatureStatScreen : Control
             actions.AddThemeConstantOverride("separation", 12);
             rowContent.AddChild(actions);
 
-            Control entryFrame = new()
+            _entry = new NMegaLineEdit
             {
-                Name = "EntryFrame",
-                CustomMinimumSize = new Vector2(190f, 50f),
+                Name = "ValueEntry",
+                CustomMinimumSize = new Vector2(174f, 46f),
                 SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
                 SizeFlagsVertical = SizeFlags.ShrinkCenter,
-                MouseFilter = MouseFilterEnum.Pass
-            };
-            _entryBackground = new TextureRect
-            {
-                Name = "Background",
-                Texture = LoadGameTexture("res://images/ui/reward_screen/reward_item_button.png"),
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.Scale,
-                Modulate = new Color(0.62f, 0.68f, 0.72f, 0.95f),
-                MouseFilter = MouseFilterEnum.Ignore
-            };
-            _entryBackground.SetAnchorsPreset(LayoutPreset.FullRect);
-            entryFrame.AddChild(_entryBackground);
-
-            _entry = new LineEdit
-            {
                 Alignment = HorizontalAlignment.Center,
                 MouseFilter = MouseFilterEnum.Stop
             };
-            _entry.SetAnchorsPreset(LayoutPreset.FullRect);
-            _entry.OffsetLeft = 12f;
-            _entry.OffsetTop = 2f;
-            _entry.OffsetRight = -12f;
-            _entry.OffsetBottom = -2f;
             _entry.AddThemeFontOverride(
                 "font",
-                CommonHelpers.LoadGameFont("res://themes/kreon_bold_glyph_space_one.tres"));
-            _entry.AddThemeFontSizeOverride("font_size", 25);
-            _entry.AddThemeColorOverride("font_color", StsColors.cream);
-            _entry.AddThemeColorOverride("font_focus_color", StsColors.gold);
-            _entry.AddThemeColorOverride("caret_color", StsColors.gold);
-            _entry.AddThemeColorOverride("selection_color", new Color(0.55f, 0.36f, 0.12f, 0.75f));
-            StyleBoxEmpty emptyStyle = new();
-            _entry.AddThemeStyleboxOverride("normal", emptyStyle);
-            _entry.AddThemeStyleboxOverride("focus", emptyStyle);
-            _entry.AddThemeStyleboxOverride("read_only", emptyStyle);
+                CommonHelpers.LoadGameFont("res://themes/kreon_regular_shared.tres"));
+            _entry.AddThemeFontSizeOverride("font_size", 24);
             _entry.TextSubmitted += OnSubmitted;
-            _entry.FocusEntered += OnFocusEntered;
             _entry.FocusExited += OnFocusExited;
-            entryFrame.AddChild(_entry);
-            actions.AddChild(entryFrame);
+            actions.AddChild(_entry);
 
             _lock = new NLoadoutToggle
             {
                 Name = "Lock",
-                CustomMinimumSize = new Vector2(170f, 52f),
+                CustomMinimumSize = new Vector2(168f, 50f),
                 SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
                 SizeFlagsVertical = SizeFlags.ShrinkCenter
             };
@@ -421,7 +402,6 @@ public partial class NCreatureStatScreen : Control
         public override void _ExitTree()
         {
             _entry.TextSubmitted -= OnSubmitted;
-            _entry.FocusEntered -= OnFocusEntered;
             _entry.FocusExited -= OnFocusExited;
         }
 
@@ -432,14 +412,8 @@ public partial class NCreatureStatScreen : Control
             _entry.ReleaseFocus();
         }
 
-        private void OnFocusEntered()
-        {
-            _entryBackground.Modulate = new Color(0.92f, 0.94f, 1f, 1f);
-        }
-
         private void OnFocusExited()
         {
-            _entryBackground.Modulate = new Color(0.62f, 0.68f, 0.72f, 0.95f);
             if (_submitted)
             {
                 _submitted = false;
