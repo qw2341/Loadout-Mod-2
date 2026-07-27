@@ -58,9 +58,11 @@ public partial class NCardModificationScreen : Control
     private const float CardEditButtonWidth = 246f;
     private const float ActionButtonHeight = 42f;
     private const float KeywordContentWidth = 426f;
+    private const float KeywordPanelTopMargin = 24f;
     private const float KeywordToggleHeight = 44f;
     private const float KeywordRowSeparation = 2f;
     private const float KeywordScrollbarWidth = 48f;
+    private const float KeywordScrollbarEndCapSize = 48f;
     private const float KeywordGroupHeaderHeight = 36f;
     private const float KeywordHeaderGridGap = 2f;
     private const float KeywordGroupSeparation = 10f;
@@ -402,11 +404,24 @@ public partial class NCardModificationScreen : Control
         _previewHost = GetNodeOrNull<Control>("%PreviewCardHost");
         _leftArrowMount = GetNodeOrNull<Control>("%LeftArrow");
         _rightArrowMount = GetNodeOrNull<Control>("%RightArrow");
+        DisableHorizontalEditorScroll(_leftControls);
+        if (GetNodeOrNull<Control>("RightEditor") is { } rightEditor)
+            rightEditor.OffsetTop = KeywordPanelTopMargin;
         _leftArrow = EnsureInspectArrowButton(_leftArrowMount, isLeft: true);
         _rightArrow = EnsureInspectArrowButton(_rightArrowMount, isLeft: false);
 
         EnsureBackButton();
         BindSceneSignals();
+    }
+
+    private static void DisableHorizontalEditorScroll(Control? controls)
+    {
+        Node? ancestor = controls?.GetParent();
+        while (ancestor is not null && ancestor is not ScrollContainer)
+            ancestor = ancestor.GetParent();
+
+        if (ancestor is ScrollContainer scroll)
+            scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
     }
 
     private static NButton? EnsureInspectArrowButton(Control? mount, bool isLeft)
@@ -597,7 +612,7 @@ public partial class NCardModificationScreen : Control
 
         _titleLabel = CreateLabel(CardPrinter.FormatCardTitle(_item.Model), 32, StsColors.gold);
         _leftControls.AddChild(_titleLabel);
-        _leftControls.AddChild(CreateLabel(_item.Model.Id.ToString(), 18, StsColors.cream));
+        _leftControls.AddChild(CreateCardIdLabel(_item.Model.Id.ToString()));
         _leftControls.AddChild(CreateSpacer(6f));
 
         AddDropdownControls();
@@ -914,9 +929,12 @@ public partial class NCardModificationScreen : Control
         scrollbar.CustomMinimumSize = new Vector2(KeywordScrollbarWidth, 0f);
         scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
         scrollbar.OffsetLeft = -KeywordScrollbarWidth;
-        scrollbar.OffsetTop = 8f;
+        // The native track caps are 48px and intentionally extend beyond the
+        // NScrollbar range. Inset the range by that amount so both caps, the
+        // body, and the handle form one complete scrollbar inside the viewport.
+        scrollbar.OffsetTop = KeywordScrollbarEndCapSize;
         scrollbar.OffsetRight = 0f;
-        scrollbar.OffsetBottom = -8f;
+        scrollbar.OffsetBottom = -KeywordScrollbarEndCapSize;
         scroll.AddChild(scrollbar);
         scroll.DisableScrollingIfContentFits();
         contentHost.AddChild(scroll);
@@ -1140,7 +1158,7 @@ public partial class NCardModificationScreen : Control
             MouseFilter = MouseFilterEnum.Ignore
         };
         trackTop.SetAnchorsPreset(LayoutPreset.TopWide);
-        trackTop.OffsetTop = -48f;
+        trackTop.OffsetTop = -KeywordScrollbarEndCapSize;
         scrollbar.AddChild(trackTop);
 
         TextureRect trackBottom = new()
@@ -1153,7 +1171,7 @@ public partial class NCardModificationScreen : Control
             MouseFilter = MouseFilterEnum.Ignore
         };
         trackBottom.SetAnchorsPreset(LayoutPreset.BottomWide);
-        trackBottom.OffsetBottom = 48f;
+        trackBottom.OffsetBottom = KeywordScrollbarEndCapSize;
         scrollbar.AddChild(trackBottom);
 
         TextureRect handle = new()
@@ -2020,6 +2038,16 @@ public partial class NCardModificationScreen : Control
     {
         MegaLabel label = CreateLabel(text, 25, StsColors.gold);
         label.CustomMinimumSize = new Vector2(0f, 42f);
+        return label;
+    }
+
+    private static MegaLabel CreateCardIdLabel(string text)
+    {
+        MegaLabel label = CreateLabel(text, 18, StsColors.cream);
+        label.AutowrapMode = TextServer.AutowrapMode.Arbitrary;
+        label.TextOverrunBehavior = TextServer.OverrunBehavior.NoTrimming;
+        label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        label.CustomMinimumSize = new Vector2(0f, 24f);
         return label;
     }
 
