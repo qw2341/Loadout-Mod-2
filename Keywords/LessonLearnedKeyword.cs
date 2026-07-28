@@ -5,16 +5,17 @@ namespace Loadout.Keywords;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Audio.Debug;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Commands.Builders;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -54,9 +55,10 @@ public sealed class LessonLearnedKeyword : LoadoutKeywordModel
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         VariableDefinitions;
 
-    internal static void Apply(CardModel source)
+    internal static void Apply(CardModel source, int fatalCount)
     {
-        if (!LoadoutKeywordRegistry.TryGetValue(
+        if (fatalCount <= 0
+            || !LoadoutKeywordRegistry.TryGetValue(
                 source,
                 CardsVar,
                 out DynamicVar countVar))
@@ -64,7 +66,11 @@ public sealed class LessonLearnedKeyword : LoadoutKeywordModel
             return;
         }
 
-        int count = Math.Max(0, countVar.IntValue);
+        long upgradeCount =
+            (long)Math.Max(0, countVar.IntValue) * fatalCount;
+        if (upgradeCount <= 0)
+            return;
+
         IReadOnlyList<CardModel> deckCards =
             PileType.Deck.GetPile(source.Owner).Cards;
         List<CardModel> candidates = new(deckCards.Count);
@@ -74,32 +80,48 @@ public sealed class LessonLearnedKeyword : LoadoutKeywordModel
                 candidates.Add(card);
         }
 
-        for (int upgradeIndex = 0; upgradeIndex < count; upgradeIndex++)
+        if (candidates.Count == 0)
+            return;
+
+        LessonLearnedCombatEndGuard.Enter();
+        try
         {
-            if (candidates.Count == 0)
-                break;
-
-            int selectedIndex = source.Owner.RunState.Rng.CombatCardSelection
-                .NextInt(0, candidates.Count);
-            CardModel selected = candidates[selectedIndex];
-            int previousUpgradeLevel = selected.CurrentUpgradeLevel;
-            CardCmd.Upgrade(selected, CardPreviewStyle.HorizontalLayout);
-            if (!selected.IsUpgradable)
-                candidates.RemoveAt(selectedIndex);
-
-            if (selected.CurrentUpgradeLevel <= previousUpgradeLevel
-                || !LocalContext.IsMine(selected))
+            for (long upgradeIndex = 0;
+                 upgradeIndex < upgradeCount;
+                 upgradeIndex++)
             {
-                continue;
-            }
+                if (candidates.Count == 0)
+                    break;
 
-            // CardCmd.Upgrade supplies the native NCardUpgradeVfx. The base
-            // game's card-smith sound is presentation-only, so only the owning
-            // local peer plays it.
-            NDebugAudioManager.Instance?.Play(
-                TmpSfx.cardSmith,
-                1f,
-                PitchVariance.Small);
+                int selectedIndex = source.Owner.RunState.Rng
+                    .CombatCardSelection
+                    .NextInt(0, candidates.Count);
+                CardModel selected = candidates[selectedIndex];
+                int previousUpgradeLevel = selected.CurrentUpgradeLevel;
+                CardCmd.Upgrade(
+                    selected,
+                    CardPreviewStyle.HorizontalLayout);
+                if (!selected.IsUpgradable)
+                    candidates.RemoveAt(selectedIndex);
+
+                if (selected.CurrentUpgradeLevel <= previousUpgradeLevel
+                    || !LocalContext.IsMine(selected))
+                {
+                    continue;
+                }
+
+                // CardCmd.Upgrade supplies the native NCardUpgradeVfx. The
+                // card-smith sound is presentation-only, so only the owning
+                // local peer plays it.
+                NDebugAudioManager.Instance?.Play(
+                    TmpSfx.cardSmith,
+                    1f,
+                    PitchVariance.Small);
+            }
+        }
+        finally
+        {
+            LessonLearnedCombatEndGuard.Exit();
         }
     }
 }
@@ -122,18 +144,9 @@ internal static class LessonLearnedAttackFatalPatch
                 Func<AttackCommand, IReadOnlyList<Creature>>>(
                 GetPossibleTargetsMethod);
 
-    private static readonly ConditionalWeakTable<CardPlay, Resolution>
-        Resolutions = new();
-
-    private sealed class Resolution
-    {
-        public bool Triggered;
-    }
-
     private sealed record FatalAttackState(
         CardModel Source,
-        HashSet<Creature> EligibleTargets,
-        Resolution Resolution);
+        HashSet<Creature> EligibleTargets);
 
     [HarmonyPrefix]
     private static void Prefix(
@@ -171,8 +184,7 @@ internal static class LessonLearnedAttackFatalPatch
 
         __state = new FatalAttackState(
             source,
-            eligibleTargets,
-            Resolutions.GetValue(cardPlay, _ => new Resolution()));
+            eligibleTargets);
     }
 
     private static bool IsFatalEligible(Creature target)
@@ -203,7 +215,7 @@ internal static class LessonLearnedAttackFatalPatch
         FatalAttackState state)
     {
         AttackCommand command = await original;
-        bool wasFatal = false;
+        int fatalCount = 0;
         foreach (List<DamageResult> hitResults in command.Results)
         {
             foreach (DamageResult result in hitResults)
@@ -211,27 +223,45 @@ internal static class LessonLearnedAttackFatalPatch
                 if (result.WasTargetKilled
                     && state.EligibleTargets.Contains(result.Receiver))
                 {
-                    wasFatal = true;
-                    break;
+                    fatalCount++;
                 }
             }
-
-            if (wasFatal)
-                break;
         }
 
-        if (!wasFatal)
-            return command;
-
-        lock (state.Resolution)
-        {
-            if (state.Resolution.Triggered)
-                return command;
-
-            state.Resolution.Triggered = true;
-        }
-
-        LessonLearnedKeyword.Apply(state.Source);
+        LessonLearnedKeyword.Apply(state.Source, fatalCount);
         return command;
+    }
+}
+
+internal static class LessonLearnedCombatEndGuard
+{
+    [ThreadStatic]
+    private static int _depth;
+
+    internal static bool IsActive => _depth > 0;
+
+    internal static void Enter()
+    {
+        _depth++;
+    }
+
+    internal static void Exit()
+    {
+        if (_depth > 0)
+            _depth--;
+    }
+}
+
+[HarmonyPatch(
+    typeof(Hook),
+    nameof(Hook.ShouldStopCombatFromEnding),
+    typeof(ICombatState))]
+internal static class LessonLearnedCombatEndGuardPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ref bool __result)
+    {
+        if (LessonLearnedCombatEndGuard.IsActive)
+            __result = true;
     }
 }
