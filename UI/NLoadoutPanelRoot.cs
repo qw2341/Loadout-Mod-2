@@ -19,6 +19,7 @@ public partial class NLoadoutPanelRoot : Control
 	private const int OverlayLayer = 1000;
 	private const int DropdownLayerZIndex = 1000;
 	private const int HoverTipLayerZIndex = 1010;
+	private const int NativeFeedbackLayerZIndex = 1020;
 
 	private static CanvasLayer _overlayLayer;
 	private static NLoadoutPanelRoot _instance;
@@ -30,11 +31,14 @@ public partial class NLoadoutPanelRoot : Control
 	private Control _screenContainer;
 	private Control _dropdownLayer;
 	private Control _hoverTipLayer;
+	private NLoadoutNativeFeedback _nativeFeedbackLayer;
 	private NCreatureManipulationPanel _creatureManipulationPanel;
 
 	public static NLoadoutPanelRoot Instance => IsValid(_instance) ? _instance : null;
 
 	public bool HasOpenScreen => TryPeekScreen(out _);
+	public bool HasActiveNativeCardFeedback =>
+		IsValid(_nativeFeedbackLayer) && _nativeFeedbackLayer.HasActiveCardFeedback;
 	public Control DropdownLayer => _dropdownLayer;
 	public Control HoverTipLayer => _hoverTipLayer;
 
@@ -56,6 +60,7 @@ public partial class NLoadoutPanelRoot : Control
 		BindScreenStack();
 		BindDropdownLayer();
 		BindHoverTipLayer();
+		BindNativeFeedbackLayer();
 		RefreshScreens();
 		GetCreatureManipulationPanel();
 
@@ -88,6 +93,7 @@ public partial class NLoadoutPanelRoot : Control
 
 	public override void _ExitTree()
 	{
+		ClearNativeFeedback();
 		LoadoutThemeManager.ThemeChanged -= OnThemeChanged;
 		EventfulCompass.ReleaseAncientPreviewCache();
 		_screens.Clear();
@@ -151,6 +157,24 @@ public partial class NLoadoutPanelRoot : Control
 		};
 		_dropdownLayer.SetAnchorsPreset(LayoutPreset.FullRect);
 		AddChild(_dropdownLayer);
+	}
+
+	private void BindNativeFeedbackLayer()
+	{
+		_nativeFeedbackLayer = GetNodeOrNull<NLoadoutNativeFeedback>("NativeFeedbackLayer");
+		if (!IsValid(_nativeFeedbackLayer))
+		{
+			_nativeFeedbackLayer = new NLoadoutNativeFeedback
+			{
+				Name = "NativeFeedbackLayer",
+				MouseFilter = MouseFilterEnum.Ignore
+			};
+			_nativeFeedbackLayer.SetAnchorsPreset(LayoutPreset.FullRect);
+			AddChild(_nativeFeedbackLayer);
+		}
+
+		_nativeFeedbackLayer.ZIndex = NativeFeedbackLayerZIndex;
+		_nativeFeedbackLayer.MoveToFront();
 	}
 
 	public void AdoptGameHoverTips()
@@ -264,6 +288,66 @@ public partial class NLoadoutPanelRoot : Control
 
 		_screenHistory.Clear();
 		UpdateModalInputState();
+	}
+
+	public bool TryPreviewCardPileAdd(
+		IReadOnlyList<MegaCrit.Sts2.Core.Entities.Cards.CardPileAddResult> results,
+		float lingerTime,
+		MegaCrit.Sts2.Core.Nodes.CommonUi.CardPreviewStyle style)
+	{
+		if (!IsValid(_nativeFeedbackLayer))
+			return false;
+
+		try
+		{
+			_nativeFeedbackLayer.PreviewCardPileAdd(results, lingerTime, style);
+			return true;
+		}
+		catch (System.Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanelRoot: native card-add feedback failed. {exception.Message}");
+			return false;
+		}
+	}
+
+	public bool TryPreviewCardRemoval(IReadOnlyList<MegaCrit.Sts2.Core.Models.CardModel> cards)
+	{
+		if (!IsValid(_nativeFeedbackLayer))
+			return false;
+
+		try
+		{
+			_nativeFeedbackLayer.PreviewCardRemoval(cards);
+			return true;
+		}
+		catch (System.Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanelRoot: native card-removal feedback failed. {exception.Message}");
+			return false;
+		}
+	}
+
+	public bool TryPreviewRelicObtained(MegaCrit.Sts2.Core.Models.RelicModel relic)
+	{
+		if (!IsValid(_nativeFeedbackLayer))
+			return false;
+
+		try
+		{
+			_nativeFeedbackLayer.PreviewRelicObtained(relic);
+			return true;
+		}
+		catch (System.Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanelRoot: native relic feedback failed for '{relic.Id}'. {exception.Message}");
+			return false;
+		}
+	}
+
+	public void ClearNativeFeedback()
+	{
+		if (IsValid(_nativeFeedbackLayer))
+			_nativeFeedbackLayer.Clear();
 	}
 
 	public void RegisterScreen(Control screen)

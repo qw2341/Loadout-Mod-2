@@ -1405,7 +1405,8 @@ public static class LoadoutImmediateMutationService
         CardPreviewStyle style = addedCards.Count > 5
             ? CardPreviewStyle.GridLayout
             : CardPreviewStyle.HorizontalLayout;
-        CardCmd.PreviewCardPileAdd(addedCards, 1.2f, style);
+        if (NLoadoutPanelRoot.Instance?.TryPreviewCardPileAdd(addedCards, 1.2f, style) != true)
+            CardCmd.PreviewCardPileAdd(addedCards, 1.2f, style);
     }
 
     private static async Task ApplyAddRelicAsync(LoadoutImmediateMutationPayload payload, Player requester)
@@ -1421,6 +1422,7 @@ public static class LoadoutImmediateMutationService
                 {
                     RelicModel relic = canonicalRelic.ToMutable();
                     Task<RelicModel> obtainTask = RelicCmd.Obtain(relic, targetPlayer);
+                    NLoadoutPanelRoot.Instance?.TryPreviewRelicObtained(relic);
 
                     // RelicCmd inserts the relic before it awaits AfterObtained.
                     // Some relics expose their screen as a pickup effect (Kifuda),
@@ -1475,7 +1477,8 @@ public static class LoadoutImmediateMutationService
         try
         {
             // The CardPileCmd postfix publishes the precise structural delta.
-            await CardPileCmd.RemoveFromDeck(item.Model, showPreview: true);
+            bool showNativePreview = NLoadoutPanelRoot.Instance?.TryPreviewCardRemoval([item.Model]) != true;
+            await CardPileCmd.RemoveFromDeck(item.Model, showPreview: showNativePreview);
         }
         catch (Exception exception)
         {
@@ -1566,8 +1569,9 @@ public static class LoadoutImmediateMutationService
 
             try
             {
+                bool showNativePreview = NLoadoutPanelRoot.Instance?.TryPreviewCardRemoval(cards) != true;
                 using (BeginRemoveAllCards())
-                    await CardPileCmd.RemoveFromDeck(cards, showPreview: true);
+                    await CardPileCmd.RemoveFromDeck(cards, showPreview: showNativePreview);
             }
             catch (Exception exception)
             {
@@ -1661,6 +1665,7 @@ public static class LoadoutImmediateMutationService
             {
                 RelicModel clone = (RelicModel)item.Model.ClonePreservingMutability();
                 Task<RelicModel> obtainTask = RelicCmd.Obtain(clone, item.Owner);
+                NLoadoutPanelRoot.Instance?.TryPreviewRelicObtained(clone);
                 if (!obtainTask.IsCompleted) _ = TaskHelper.RunSafely(obtainTask);
                 else await obtainTask;
             }

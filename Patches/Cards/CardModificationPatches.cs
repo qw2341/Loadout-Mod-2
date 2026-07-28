@@ -14,6 +14,7 @@ using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
 using Loadout.Services.TildeKey;
+using Loadout.UI;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -203,7 +204,13 @@ public static class CardPileRemoveCardModificationPatch
             Player owner = card.Owner;
             owner.RunState.AddCard(card, owner);
             CardPileAddResult result = await CardPileCmd.Add(card, owner.Deck);
-            CardCmd.PreviewCardPileAdd(result);
+            bool previewHandled = NLoadoutPanelRoot.Instance is { HasActiveNativeCardFeedback: true } root
+                                  && root.TryPreviewCardPileAdd(
+                                      [result],
+                                      1.2f,
+                                      CardPreviewStyle.HorizontalLayout);
+            if (!previewHandled)
+                CardCmd.PreviewCardPileAdd(result);
         }
 
         List<LoadoutChangedCard> removed = state.RemovedCards
