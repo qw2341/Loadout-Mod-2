@@ -61,8 +61,8 @@ public static class BottledMonster
                 AddActFilters(builder);
                 AddMonsterCategoryFilters(builder, roomTypesByMonsterId);
                 CommonHelpers.AddModFilters(builder, allMonsters);
-                builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(FormatMonsterTitle(a), FormatMonsterTitle(b), StringComparison.Ordinal), activeByDefault: true);
-                builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+                builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), FormatMonsterTitle, activeByDefault: true, comparer: StringComparer.Ordinal);
+                builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
                 builder.Sorter("mod", LocMan.Loc("FILTER_GROUP_MODS", "Mods"), CompareMonsterMod);
             },
             _ => { },

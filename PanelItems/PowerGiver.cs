@@ -128,8 +128,8 @@ public class PowerGiver
 				builder.Filter("counter", LocMan.Loc("POWER_STACK_COUNTER", "Counter"), power => GetPowerStackType(power) == PowerStackType.Counter, "stack");
 				builder.Filter("single", LocMan.Loc("POWER_STACK_SINGLE", "Single"), power => GetPowerStackType(power) == PowerStackType.Single, "stack");
 				CommonHelpers.AddModFilters(builder, allPowers);
-				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(GetPowerTitle(a), GetPowerTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), GetPowerTitle, activeByDefault: true, comparer: StringComparer.Ordinal);
+				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
 				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("SORT_TYPE", "Type")), (a, b) => GetPowerType(a).CompareTo(GetPowerType(b)));
 			});
 			AddPowerGiverSidebarDropdowns(

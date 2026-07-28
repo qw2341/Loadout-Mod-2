@@ -52,6 +52,7 @@ public class CommonHelpers
 
     private static Dictionary<Assembly, string> _modIdsByAssembly;
     private static Dictionary<string, string> _modNamesById;
+    private static bool _modLookupMissRefreshAttempted;
 
     public static NLoadoutPanelItem CreateAndAddLoadoutItem<TModel>(
         IEnumerable<TModel> models,
@@ -868,10 +869,16 @@ public class CommonHelpers
         if (_modIdsByAssembly.TryGetValue(assembly, out string modId))
             return modId;
 
-        EnsureModLookup(forceRefresh: true);
-        return _modIdsByAssembly.TryGetValue(assembly, out modId)
-            ? modId
-            : BaseGameModId;
+        if (!_modLookupMissRefreshAttempted)
+        {
+            _modLookupMissRefreshAttempted = true;
+            EnsureModLookup(forceRefresh: true);
+            if (_modIdsByAssembly.TryGetValue(assembly, out modId))
+                return modId;
+        }
+
+        _modIdsByAssembly[assembly] = BaseGameModId;
+        return BaseGameModId;
     }
 
     public static string GetModName(string modId)
@@ -883,10 +890,16 @@ public class CommonHelpers
         if (_modNamesById.TryGetValue(modId, out string modName))
             return modName;
 
-        EnsureModLookup(forceRefresh: true);
-        return _modNamesById.TryGetValue(modId, out modName)
-            ? modName
-            : modId;
+        if (!_modLookupMissRefreshAttempted)
+        {
+            _modLookupMissRefreshAttempted = true;
+            EnsureModLookup(forceRefresh: true);
+            if (_modNamesById.TryGetValue(modId, out modName))
+                return modName;
+        }
+
+        _modNamesById[modId] = modId;
+        return modId;
     }
 
     internal static IReadOnlyDictionary<Assembly, string> GetLoadedModIdsByAssembly()
@@ -927,7 +940,10 @@ public class CommonHelpers
         if (!forceRefresh && _modIdsByAssembly is not null && _modNamesById is not null)
             return;
 
-        _modIdsByAssembly = new Dictionary<Assembly, string>();
+        _modIdsByAssembly = new Dictionary<Assembly, string>
+        {
+            [typeof(AbstractModel).Assembly] = BaseGameModId
+        };
         _modNamesById = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [BaseGameModId] = BaseGameModName
@@ -1152,6 +1168,35 @@ public class CommonHelpers
             return;
 
         owner.MouseEntered += () => ShowHoverTips(owner, tips);
+        owner.MouseExited += () => NHoverTipSet.Remove(owner);
+        owner.TreeExiting += () => NHoverTipSet.Remove(owner);
+    }
+
+    public static void AttachHoverTips(Control owner, Func<IReadOnlyList<IHoverTip>> hoverTipProvider)
+    {
+        ArgumentNullException.ThrowIfNull(hoverTipProvider);
+        IReadOnlyList<IHoverTip> cachedTips = null;
+
+        owner.MouseEntered += () =>
+        {
+            if (cachedTips is null)
+            {
+                try
+                {
+                    cachedTips = hoverTipProvider()
+                        .Where(tip => tip is not null)
+                        .ToList();
+                }
+                catch (Exception exception)
+                {
+                    GD.PushWarning($"LoadoutPanel: could not create hover tips for '{owner.Name}'. {exception.Message}");
+                    cachedTips = Array.Empty<IHoverTip>();
+                }
+            }
+
+            if (cachedTips.Count > 0)
+                ShowHoverTips(owner, cachedTips);
+        };
         owner.MouseExited += () => NHoverTipSet.Remove(owner);
         owner.TreeExiting += () => NHoverTipSet.Remove(owner);
     }

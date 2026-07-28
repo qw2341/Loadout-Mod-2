@@ -2643,7 +2643,7 @@ public partial class NGenericSelectScreen : Control
         Dictionary<string, List<IGenericSelectItem>> itemsByKey = new(StringComparer.Ordinal);
         foreach (IGenericSelectItem item in _visibleItems)
         {
-            string key = group.KeySelector(item);
+            string key = group.GetKey(item);
             if (!itemsByKey.TryGetValue(key, out List<IGenericSelectItem>? items))
             {
                 items = new List<IGenericSelectItem>();
@@ -4762,6 +4762,39 @@ public sealed class SelectScreenBuilder<TModel>
         return this;
     }
 
+    public SelectScreenBuilder<TModel> KeySorter<TKey>(
+        string id,
+        string label,
+        Func<TModel, TKey> keySelector,
+        bool activeByDefault = false,
+        bool descendingByDefault = false,
+        IComparer<TKey>? comparer = null)
+    {
+        comparer ??= Comparer<TKey>.Default;
+        Dictionary<IGenericSelectItem, TKey> cachedKeys = new();
+
+        TKey GetKey(IGenericSelectItem item)
+        {
+            if (cachedKeys.TryGetValue(item, out TKey? key))
+                return key;
+
+            key = item is GenericSelectItem<TModel> typed
+                ? keySelector(typed.Model)
+                : default!;
+            cachedKeys[item] = key;
+            return key;
+        }
+
+        _screen.AddSorter(new SelectSorterDefinition(
+            id,
+            label,
+            (left, right) => comparer.Compare(GetKey(left), GetKey(right)),
+            activeByDefault: activeByDefault,
+            descendingByDefault: descendingByDefault));
+
+        return this;
+    }
+
     public SelectScreenBuilder<TModel> GroupBySorter(
         string sorterId,
         Func<TModel, string> keySelector,
@@ -5012,6 +5045,8 @@ public sealed class SelectLayoutDefinition
 
 public sealed class SelectGroupDefinition
 {
+    private readonly Dictionary<IGenericSelectItem, string> _keysByItem = new();
+
     public SelectGroupDefinition(
         string sorterId,
         Func<IGenericSelectItem, string> keySelector,
@@ -5031,6 +5066,16 @@ public sealed class SelectGroupDefinition
     public Func<string, SelectGroupHeader> HeaderSelector { get; }
     public IReadOnlyList<string> GroupOrder { get; }
     public IReadOnlyList<string>? DescendingGroupOrder { get; }
+
+    public string GetKey(IGenericSelectItem item)
+    {
+        if (_keysByItem.TryGetValue(item, out string? key))
+            return key;
+
+        key = KeySelector(item);
+        _keysByItem[item] = key;
+        return key;
+    }
 
     public IEnumerable<string> GetGroupOrder(bool descending)
     {

@@ -54,8 +54,8 @@ public class EventfulCompass
 				builder.Filter("shared", LocMan.Loc("SCOPE_SHARED", "Shared"), eventModel => eventModel.IsShared, "sharing");
 				builder.Filter("solo", LocMan.Loc("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
 				CommonHelpers.AddModFilters(builder, allEvents);
-				builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), (a, b) => string.Compare(CommonHelpers.FormatEventTitle(a), CommonHelpers.FormatEventTitle(b), StringComparison.Ordinal), activeByDefault: true);
-				builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (a, b) => string.Compare(a.Id.Entry, b.Id.Entry, StringComparison.Ordinal));
+				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), CommonHelpers.FormatEventTitle, activeByDefault: true, comparer: StringComparer.Ordinal);
+				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
 			}, UpsertRoomJumpControls,
 			"EventfulCompass.png",
 			LocMan.Loc("EVENTFULCOMPASS_TITLE", "Eventful Compass"),
@@ -241,7 +241,7 @@ public class EventfulCompass
 	    Button button = CommonHelpers.CreateModelButton(EventTileSize);
 	    button.ClipContents = true;
 
-	    TextureRect background = CreateEventTileBackground(model);
+	    TextureRect background = CreateEventTileBackground(model, button);
 	    if (background is not null)
 		    button.AddChild(background);
 
@@ -285,15 +285,15 @@ public class EventfulCompass
 		    button.AddChild(epithetLabel);
 	    }
 
-	    CommonHelpers.AttachHoverTips(button, CreateEventHoverTips(model));
+	    CommonHelpers.AttachHoverTips(button, () => CreateEventHoverTips(model));
 	    return button;
     }
 
-    private static TextureRect CreateEventTileBackground(EventModel model)
+    private static TextureRect CreateEventTileBackground(EventModel model, Node viewportOwner)
     {
 	    if (model is AncientEventModel ancientEvent)
 	    {
-		    Texture2D ancientPreview = GetAncientBackgroundPreviewTexture(ancientEvent);
+		    Texture2D ancientPreview = GetAncientBackgroundPreviewTexture(ancientEvent, viewportOwner);
 		    if (ancientPreview is not null)
 			    return CreateTileBackground(ancientPreview);
 	    }
@@ -357,11 +357,19 @@ public class EventfulCompass
 	    };
     }
 
-    private static Texture2D GetAncientBackgroundPreviewTexture(AncientEventModel model)
+    private static Texture2D GetAncientBackgroundPreviewTexture(AncientEventModel model, Node viewportOwner)
     {
 	    string id = model.Id.ToString();
-	    if (AncientPreviewTextures.TryGetValue(id, out Texture2D cachedTexture))
+	    if (AncientPreviewTextures.TryGetValue(id, out Texture2D cachedTexture)
+	        && GodotObject.IsInstanceValid(cachedTexture)
+	        && AncientPreviewViewports.TryGetValue(id, out SubViewport cachedViewport)
+	        && GodotObject.IsInstanceValid(cachedViewport))
+	    {
 		    return cachedTexture;
+	    }
+
+	    AncientPreviewTextures.Remove(id);
+	    AncientPreviewViewports.Remove(id);
 
 	    try
 	    {
@@ -371,7 +379,7 @@ public class EventfulCompass
 			    Size = AncientPreviewTextureSize,
 			    TransparentBg = false,
 			    Disable3D = false,
-			    RenderTargetUpdateMode = SubViewport.UpdateMode.WhenVisible
+			    RenderTargetUpdateMode = SubViewport.UpdateMode.Once
 		    };
 
 		    Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);
@@ -381,10 +389,11 @@ public class EventfulCompass
 		    backgroundScene.Scale = Vector2.One * Math.Max(AncientPreviewTextureSize.X / 1920f, AncientPreviewTextureSize.Y / 1080f);
 		    viewport.AddChild(backgroundScene);
 
-		    NLoadoutPanelRoot.Instance?.AddChild(viewport);
+		    viewportOwner.AddChild(viewport);
 		    Texture2D texture = viewport.GetTexture();
 		    AncientPreviewViewports[id] = viewport;
 		    AncientPreviewTextures[id] = texture;
+		    _ = DisableAncientPreviewAfterRenderAsync(viewport);
 		    return texture;
 	    }
 	    catch (Exception exception)
@@ -392,6 +401,21 @@ public class EventfulCompass
 		    GD.PushWarning($"LoadoutPanel: could not create ancient background preview for '{model.Id}'. {exception.Message}");
 		    return null;
 	    }
+    }
+
+    private static async Task DisableAncientPreviewAfterRenderAsync(SubViewport viewport)
+    {
+	    if (!GodotObject.IsInstanceValid(viewport) || !viewport.IsInsideTree())
+		    return;
+
+	    SceneTree tree = viewport.GetTree();
+	    await viewport.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+	    await viewport.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+	    if (!GodotObject.IsInstanceValid(viewport))
+		    return;
+
+	    viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled;
+	    viewport.ProcessMode = Node.ProcessModeEnum.Disabled;
     }
 
     public static void ReleaseAncientPreviewCache()
