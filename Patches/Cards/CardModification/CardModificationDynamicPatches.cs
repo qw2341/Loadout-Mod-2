@@ -4,6 +4,7 @@ namespace Loadout.Patches.Cards.CardModification;
 
 using System;
 using HarmonyLib;
+using Loadout.Patches;
 using Loadout.Patches.Cards;
 using Loadout.Services.CardModification;
 using MegaCrit.Sts2.Core.Commands;
@@ -62,8 +63,7 @@ internal static class CardModificationDynamicPatches
         PatchPrefixFinalizer(TextHarmony, GetDescriptionFormatter(),
             typeof(CardModelDescriptionCardModificationPatch), nameof(CardModelDescriptionCardModificationPatch.Prefix),
             nameof(CardModelDescriptionCardModificationPatch.Finalizer));
-        PatchPostfix(TextHarmony, typeof(LocString), nameof(LocString.GetRawText),
-            typeof(LocStringRawTextCardModificationPatch), nameof(LocStringRawTextCardModificationPatch.Postfix));
+        LocStringModificationDispatcher.EnsureInstalled();
     }
 
     public static void EnablePortraitPatches()

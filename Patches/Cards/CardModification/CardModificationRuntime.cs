@@ -73,7 +73,7 @@ public static class CardModificationRuntime
         PermanentCardModificationStore.Register();
         _customTextOverridesMayExist = PermanentCardModificationStore.HasAnyCustomText;
         LoadoutKeywordRuntimePatches.Reconcile();
-        CardModificationDynamicPatches.EnableTextPatches();
+        if (_customTextOverridesMayExist) CardModificationDynamicPatches.EnableTextPatches();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
         if (PermanentCardModificationStore.HasAnyUpgradeModifications) CardUpgradeModificationRuntimePatches.Enable();
         CardModificationNetProtocol.Register();
@@ -144,6 +144,7 @@ public static class CardModificationRuntime
     internal static void MarkCustomTextOverridesPresent()
     {
         _customTextOverridesMayExist = true;
+        CardModificationDynamicPatches.EnableTextPatches();
     }
 
     public static bool HasPortraitOverrides(CardModel card)
@@ -825,6 +826,8 @@ public static class CardModificationRuntime
         {
             PreviewDeltas.Remove(scratch);
             PreviewDeltas.Add(scratch, previewDelta);
+            if (previewDelta.HasCustomText) MarkCustomTextOverridesPresent();
+            if (previewDelta.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
         }
         return scratch;
     }

@@ -137,7 +137,6 @@ public static class PlayerPopulateRelicsModificationPatch
     }
 }
 
-[HarmonyPatch]
 public static class RelicRarityModificationPatch
 {
     public static IEnumerable<MethodBase> TargetMethods() => typeof(RelicModel).Assembly.GetTypes()
@@ -155,7 +154,6 @@ public static class RelicRarityModificationPatch
     }
 }
 
-[HarmonyPatch]
 public static class RelicIsUsedUpModificationPatch
 {
     public static IEnumerable<MethodBase> TargetMethods() => typeof(RelicModel).Assembly.GetTypes()
@@ -172,7 +170,6 @@ public static class RelicIsUsedUpModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.Status), MethodType.Setter)]
 public static class RelicStatusModificationPatch
 {
     [HarmonyPrefix]
@@ -184,7 +181,6 @@ public static class RelicStatusModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Melt), typeof(RelicModel))]
 public static class RelicMeltModificationPatch
 {
     [HarmonyPrefix]
@@ -197,7 +193,6 @@ public static class RelicMeltModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.Title), MethodType.Getter)]
 public static class RelicTitleModificationPatch
 {
     [HarmonyPrefix]
@@ -221,7 +216,6 @@ public static class RelicTitleModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.Flavor), MethodType.Getter)]
 public static class RelicFlavorModificationPatch
 {
     [HarmonyPrefix]
@@ -245,7 +239,6 @@ public static class RelicFlavorModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(LocString), nameof(LocString.GetRawText))]
 public static class RelicLocStringRawTextModificationPatch
 {
     [HarmonyPostfix]
@@ -256,7 +249,6 @@ public static class RelicLocStringRawTextModificationPatch
     }
 }
 
-[HarmonyPatch(typeof(RelicModel), nameof(RelicModel.DynamicDescription), MethodType.Getter)]
 public static class RelicDescriptionModificationPatch
 {
     [HarmonyPrefix]

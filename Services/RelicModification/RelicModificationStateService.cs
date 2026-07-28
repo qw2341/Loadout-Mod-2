@@ -15,6 +15,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
 using HarmonyLib;
+using Loadout.Patches.Relics;
 using Loadout.Services.Actions;
 using Loadout.Services.Saving;
 using Loadout.Services.Targets;
@@ -1016,6 +1017,13 @@ public static class RelicModificationStateService
             if (updated == current) return;
         }
         while (Interlocked.CompareExchange(ref _knownFeatureFlags, updated, current) != current);
+
+        RelicModificationFeature newlyAdded = (RelicModificationFeature)(updated & ~current);
+        RelicModificationDynamicPatches.Enable(
+            rarity: (newlyAdded & RelicModificationFeature.Rarity) != 0,
+            customText: (newlyAdded & RelicModificationFeature.CustomText) != 0,
+            neverMelt: (newlyAdded & RelicModificationFeature.NeverMelt) != 0,
+            neverUsed: (newlyAdded & RelicModificationFeature.NeverUsed) != 0);
     }
 
     private sealed class EffectiveStateCache { public EffectiveStateEntry? Entry; }
