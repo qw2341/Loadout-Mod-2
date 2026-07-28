@@ -4,12 +4,25 @@ namespace Loadout.Keywords;
 
 using System.Collections.Generic;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 
-internal static class PassingKeyword
+public sealed class PassingKeyword : LoadoutKeywordModel
 {
+    public static PassingKeyword Instance { get; } = new();
+
+    private PassingKeyword()
+    {
+    }
+
+    public override CardKeyword Keyword => LoadoutKeywords.Passing;
+
+    public override string StorageKey => LoadoutKeywords.PassingKey;
+
+    public override string TitleLocKey => "LOADOUT-PASSING.title";
+
     internal static Player? GetTarget(CardModel card, Player currentResultPlayer)
     {
         Player owner = card.Owner;

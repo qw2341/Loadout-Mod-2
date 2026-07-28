@@ -283,7 +283,7 @@ public static class CardModificationRuntime
             if (spec.BaseStarCost.HasValue)
                 SetBaseStarCost(card, spec.BaseStarCost.Value);
             ApplyKeywordOverrides(card, spec.KeywordOverrides);
-            LoadoutSpecialKeywords.SynchronizeDynamicVars(card);
+            LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
             foreach ((string name, decimal value) in spec.DynamicVars)
             {
                 if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
@@ -324,7 +324,7 @@ public static class CardModificationRuntime
             if (delta.BaseStarCostDelta.HasValue)
                 SetBaseStarCost(card, card.BaseStarCost + delta.BaseStarCostDelta.Value);
             ApplyKeywordOverrides(card, delta.KeywordOverrides);
-            LoadoutSpecialKeywords.SynchronizeDynamicVars(card);
+            LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
             // Preview cards reach this path before their first visual refresh.
             // Enable description/runtime patches immediately even when no live
             // deck card currently carries the keyword.
@@ -431,9 +431,12 @@ public static class CardModificationRuntime
                 decimal difference = value - baselineVar.BaseValue;
                 if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
             }
-            else if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+            else if (LoadoutKeywordRegistry.TryGetDynamicVar(
+                         name,
+                         out var keywordVarDefinition))
             {
-                decimal difference = value - specialVar.DefaultValue;
+                decimal difference =
+                    value - keywordVarDefinition.DefaultValue;
                 if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
             }
         }
@@ -494,9 +497,12 @@ public static class CardModificationRuntime
                 decimal difference = value - original;
                 if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
             }
-            else if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+            else if (LoadoutKeywordRegistry.TryGetDynamicVar(
+                         name,
+                         out var keywordVarDefinition))
             {
-                decimal difference = value - specialVar.DefaultValue;
+                decimal difference =
+                    value - keywordVarDefinition.DefaultValue;
                 if (difference != 0m) delta.DynamicVarDeltas[name] = difference;
             }
         }
@@ -551,8 +557,11 @@ public static class CardModificationRuntime
         {
             if (baseline.DynamicVars.TryGetValue(name, out var baselineVar))
                 spec.DynamicVars[name] = baselineVar.BaseValue + difference;
-            else if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
-                spec.DynamicVars[name] = specialVar.DefaultValue + difference;
+            else if (LoadoutKeywordRegistry.TryGetDynamicVar(
+                         name,
+                         out var keywordVarDefinition))
+                spec.DynamicVars[name] =
+                    keywordVarDefinition.DefaultValue + difference;
         }
         spec.Normalize();
         return spec;
@@ -587,8 +596,11 @@ public static class CardModificationRuntime
         {
             if (baseline.DynamicVars.TryGetValue(name, out decimal original))
                 spec.DynamicVars[name] = original + difference;
-            else if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
-                spec.DynamicVars[name] = specialVar.DefaultValue + difference;
+            else if (LoadoutKeywordRegistry.TryGetDynamicVar(
+                         name,
+                         out var keywordVarDefinition))
+                spec.DynamicVars[name] =
+                    keywordVarDefinition.DefaultValue + difference;
         }
         spec.Normalize();
         return spec;
@@ -1255,7 +1267,7 @@ public static class CardModificationRuntime
             }
         }
 
-        LoadoutSpecialKeywords.SynchronizeDynamicVars(destination);
+        LoadoutKeywordRegistry.SynchronizeDynamicVars(destination);
         if (forceAllOwnedFields)
         {
             foreach ((string name, var sourceVar) in source.DynamicVars)

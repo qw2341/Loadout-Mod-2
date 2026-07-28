@@ -12,9 +12,31 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 
-internal static class LividKeyword
+public sealed class LividKeyword : LoadoutKeywordModel
 {
-    internal static async Task Apply(CardModel source)
+    public static LividKeyword Instance { get; } = new();
+
+    private LividKeyword()
+    {
+    }
+
+    public override CardKeyword Keyword => LoadoutKeywords.Livid;
+
+    public override string StorageKey => LoadoutKeywords.LividKey;
+
+    public override string TitleLocKey => "LOADOUT-LIVID.title";
+
+    public override bool HasOnPlayEffect => true;
+
+    public override Task AfterOnPlay(
+        CardModel card,
+        CardPlay cardPlay,
+        object? capturedState)
+    {
+        return Apply(card);
+    }
+
+    private static async Task Apply(CardModel source)
     {
         ICombatState? combatState = source.CombatState;
         if (combatState is null)

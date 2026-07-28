@@ -152,7 +152,7 @@ internal static class CanonicalCardModificationRegistry
         TypeField.SetValue(canonical, baseline.Type);
         RarityField.SetValue(canonical, baseline.Rarity);
         KeywordsField.SetValue(canonical, new HashSet<CardKeyword>(baseline.Keywords));
-        LoadoutSpecialKeywords.SynchronizeDynamicVars(canonical);
+        LoadoutKeywordRegistry.SynchronizeDynamicVars(canonical);
         CanonicalStarCosts.Remove(canonical.Id);
     }
 
@@ -192,16 +192,18 @@ internal static class CanonicalCardModificationRegistry
             else keywords.Remove(keyword);
         }
         KeywordsField.SetValue(canonical, keywords);
-        LoadoutSpecialKeywords.SynchronizeDynamicVars(canonical);
+        LoadoutKeywordRegistry.SynchronizeDynamicVars(canonical);
 
         foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
         {
             decimal original;
             if (!baseline.DynamicVars.TryGetValue(name, out original))
             {
-                if (!LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+                if (!LoadoutKeywordRegistry.TryGetDynamicVar(
+                        name,
+                        out var keywordVarDefinition))
                     continue;
-                original = specialVar.DefaultValue;
+                original = keywordVarDefinition.DefaultValue;
             }
 
             if (canonical.DynamicVars.TryGetValue(name, out DynamicVar? variable))

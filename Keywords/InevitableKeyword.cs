@@ -9,6 +9,21 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 
+public sealed class InevitableKeyword : LoadoutKeywordModel
+{
+    public static InevitableKeyword Instance { get; } = new();
+
+    private InevitableKeyword()
+    {
+    }
+
+    public override CardKeyword Keyword => LoadoutKeywords.Inevitable;
+
+    public override string StorageKey => LoadoutKeywords.InevitableKey;
+
+    public override string TitleLocKey => "LOADOUT-INEVITABLE.title";
+}
+
 public static class InevitableExhaustPatch
 {
     [HarmonyPostfix]

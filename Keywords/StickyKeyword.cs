@@ -15,6 +15,21 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 
+public sealed class StickyKeyword : LoadoutKeywordModel
+{
+    public static StickyKeyword Instance { get; } = new();
+
+    private StickyKeyword()
+    {
+    }
+
+    public override CardKeyword Keyword => LoadoutKeywords.Sticky;
+
+    public override string StorageKey => LoadoutKeywords.StickyKey;
+
+    public override string TitleLocKey => "LOADOUT-STICKY.title";
+}
+
 public static class StickyDiscardPatch
 {
     [HarmonyPrefix]

@@ -19,6 +19,12 @@ public enum LoadoutKeywordTextPosition
     After
 }
 
+public enum LoadoutKeywordPresentation
+{
+    Normal,
+    DescriptionOnly
+}
+
 public sealed record LoadoutKeywordDynamicVarDefinition(
     string Name,
     decimal DefaultValue,
@@ -39,9 +45,18 @@ public abstract class LoadoutKeywordModel
 
     public abstract string TitleLocKey { get; }
 
+    public virtual LoadoutKeywordPresentation Presentation =>
+        LoadoutKeywordPresentation.Normal;
+
+    public virtual string? CardTextLocKey => null;
+
+    public virtual LoadoutKeywordTextPosition TextPosition =>
+        LoadoutKeywordTextPosition.After;
+
     public virtual IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars => [];
 
-    public virtual bool ShowKeywordHoverTip => true;
+    public bool ShowKeywordHoverTip =>
+        Presentation == LoadoutKeywordPresentation.Normal;
 
     public virtual bool HasOnPlayEffect => false;
 
@@ -57,6 +72,19 @@ public abstract class LoadoutKeywordModel
     public string GetTitle()
     {
         return new LocString("card_keywords", TitleLocKey).GetFormattedText();
+    }
+
+    public string GetCardText(CardModel card)
+    {
+        if (Presentation != LoadoutKeywordPresentation.DescriptionOnly
+            || string.IsNullOrWhiteSpace(CardTextLocKey))
+        {
+            return string.Empty;
+        }
+
+        LocString cardText = new("card_keywords", CardTextLocKey);
+        card.DynamicVars.AddTo(cardText);
+        return cardText.GetFormattedText();
     }
 
     /// <summary>
@@ -77,28 +105,6 @@ public abstract class LoadoutKeywordModel
         object? capturedState)
     {
         return Task.CompletedTask;
-    }
-}
-
-/// <summary>
-/// Parent for keywords that do not render a keyword heading or hover tooltip.
-/// Their localized text is appended to the card description and may use any
-/// dynamic variables declared by the child model.
-/// </summary>
-public abstract class LoadoutDescriptionKeywordModel : LoadoutKeywordModel
-{
-    public abstract string CardTextLocKey { get; }
-
-    public virtual LoadoutKeywordTextPosition TextPosition =>
-        LoadoutKeywordTextPosition.After;
-
-    public sealed override bool ShowKeywordHoverTip => false;
-
-    public string GetCardText(CardModel card)
-    {
-        LocString cardText = new("card_keywords", CardTextLocKey);
-        card.DynamicVars.AddTo(cardText);
-        return cardText.GetFormattedText();
     }
 
     internal static MethodInfo GetDescriptionTarget()

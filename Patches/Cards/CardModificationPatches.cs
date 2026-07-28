@@ -506,6 +506,7 @@ public static class RunManagerLaunchCardModificationPatch
         LoadoutImmediateMutationService.OnRunLaunched();
         CardModificationNetProtocol.OnRunLaunched();
         RelicModificationMultiplayerSyncService.OnRunLaunched();
+        LoadoutKeywordRuntimePatches.PrepareRunKeywordPatches();
         LoadoutKeywordRuntimePatches.Reconcile();
     }
 }

@@ -19,7 +19,6 @@ internal static class PostOnPlayKeywordDispatcher
         object? CapturedState);
 
     private sealed record DispatchState(
-        bool Livid,
         IReadOnlyList<KeywordEffectState> KeywordEffects);
 
     internal static IEnumerable<MethodBase> TargetMethods()
@@ -55,10 +54,9 @@ internal static class PostOnPlayKeywordDispatcher
         out object? __state)
     {
         CardPlay cardPlay = __1;
-        bool livid = LoadoutKeywords.Has(__instance, LoadoutKeywords.Livid);
         List<KeywordEffectState>? effects = null;
 
-        foreach (LoadoutKeywordModel model in LoadoutSpecialKeywords.All)
+        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.WithPostOnPlayEffect)
         {
             if (!model.HasOnPlayEffect || !model.IsEnabled(__instance))
                 continue;
@@ -68,9 +66,9 @@ internal static class PostOnPlayKeywordDispatcher
                 model.CaptureBeforeOnPlay(__instance, cardPlay)));
         }
 
-        __state = !livid && effects is null
+        __state = effects is null
             ? null
-            : new DispatchState(livid, effects ?? []);
+            : new DispatchState(effects);
     }
 
     [HarmonyPostfix]
@@ -101,8 +99,5 @@ internal static class PostOnPlayKeywordDispatcher
                 cardPlay,
                 effect.CapturedState);
         }
-
-        if (state.Livid)
-            await LividKeyword.Apply(source);
     }
 }

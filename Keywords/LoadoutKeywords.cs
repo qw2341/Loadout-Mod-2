@@ -40,19 +40,8 @@ public static class LoadoutKeywords
     [CustomEnum("LESSON_LEARNED")]
     public static CardKeyword LessonLearned;
 
-    public static IEnumerable<CardKeyword> All
-    {
-        get
-        {
-            yield return Inevitable;
-            yield return Sticky;
-            yield return Passing;
-            yield return Livid;
-            yield return XCost;
-            yield return InfiniteUpgrade;
-            yield return LessonLearned;
-        }
-    }
+    public static IEnumerable<CardKeyword> All =>
+        LoadoutKeywordRegistry.All.Select(model => model.Keyword);
 
     public static bool Has(CardModel? card, CardKeyword keyword)
     {
@@ -63,51 +52,33 @@ public static class LoadoutKeywords
 
     public static string GetStorageKey(CardKeyword keyword)
     {
-        if (keyword.Equals(Inevitable))
-            return InevitableKey;
-        if (keyword.Equals(Sticky))
-            return StickyKey;
-        if (keyword.Equals(Passing))
-            return PassingKey;
-        if (keyword.Equals(Livid))
-            return LividKey;
-        if (keyword.Equals(XCost))
-            return XCostKey;
-        if (keyword.Equals(InfiniteUpgrade))
-            return InfiniteUpgradeKey;
-        if (keyword.Equals(LessonLearned))
-            return LessonLearnedKey;
-
-        return keyword.ToString();
+        return LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
+            ? model.StorageKey
+            : keyword.ToString();
     }
 
     public static bool TryResolve(string? key, out CardKeyword keyword)
     {
-        switch (key?.Trim())
+        string? normalized = key?.Trim();
+        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.All)
         {
-            case InevitableKey:
-                keyword = Inevitable;
-                return keyword != CardKeyword.None;
-            case StickyKey:
-                keyword = Sticky;
-                return keyword != CardKeyword.None;
-            case PassingKey:
-                keyword = Passing;
-                return keyword != CardKeyword.None;
-            case LividKey:
-                keyword = Livid;
-                return keyword != CardKeyword.None;
-            case XCostKey:
-                keyword = XCost;
-                return keyword != CardKeyword.None;
-            case InfiniteUpgradeKey:
-                keyword = InfiniteUpgrade;
-                return keyword != CardKeyword.None;
-            case LessonLearnedKey:
-                keyword = LessonLearned;
-                return keyword != CardKeyword.None;
-            default:
-                return Enum.TryParse(key, ignoreCase: true, out keyword);
+            if (!string.Equals(
+                    model.StorageKey,
+                    normalized,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            keyword = model.Keyword;
+            return keyword != CardKeyword.None;
         }
+
+        if (Enum.TryParse(normalized, ignoreCase: true, out keyword)
+            && keyword != CardKeyword.None)
+            return true;
+
+        keyword = CardKeyword.None;
+        return false;
     }
 }

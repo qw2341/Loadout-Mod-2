@@ -7,8 +7,24 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
+
+public sealed class InfiniteUpgradeKeyword : LoadoutKeywordModel
+{
+    public static InfiniteUpgradeKeyword Instance { get; } = new();
+
+    private InfiniteUpgradeKeyword()
+    {
+    }
+
+    public override CardKeyword Keyword => LoadoutKeywords.InfiniteUpgrade;
+
+    public override string StorageKey => LoadoutKeywords.InfiniteUpgradeKey;
+
+    public override string TitleLocKey => "LOADOUT-INFINITE_UPGRADE.title";
+}
 
 public static class InfiniteUpgradeMaxLevelPatch
 {

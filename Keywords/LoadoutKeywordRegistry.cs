@@ -13,7 +13,7 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 
-public static class LoadoutSpecialKeywords
+public static class LoadoutKeywordRegistry
 {
     private static readonly FieldInfo DynamicVarDictionaryField =
         AccessTools.Field(typeof(DynamicVarSet), "_vars")
@@ -21,10 +21,36 @@ public static class LoadoutSpecialKeywords
 
     private static readonly IReadOnlyList<LoadoutKeywordModel> Models =
     [
+        InevitableKeyword.Instance,
+        StickyKeyword.Instance,
+        PassingKeyword.Instance,
+        LividKeyword.Instance,
+        XCostKeyword.Instance,
+        InfiniteUpgradeKeyword.Instance,
         LessonLearnedKeyword.Instance
     ];
 
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        DescriptionModels =
+        Models
+            .Where(model =>
+                model.Presentation
+                == LoadoutKeywordPresentation.DescriptionOnly)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        PostOnPlayModels =
+        Models
+            .Where(model => model.HasOnPlayEffect)
+            .ToArray();
+
     public static IReadOnlyList<LoadoutKeywordModel> All => Models;
+
+    public static IReadOnlyList<LoadoutKeywordModel> DescriptionOnly =>
+        DescriptionModels;
+
+    public static IReadOnlyList<LoadoutKeywordModel> WithPostOnPlayEffect =>
+        PostOnPlayModels;
 
     public static bool TryGet(
         CardKeyword keyword,
@@ -66,7 +92,7 @@ public static class LoadoutSpecialKeywords
     public static bool IsDescriptionKeyword(CardKeyword keyword)
     {
         return TryGet(keyword, out LoadoutKeywordModel model)
-               && model is LoadoutDescriptionKeywordModel;
+               && model.Presentation == LoadoutKeywordPresentation.DescriptionOnly;
     }
 
     public static string GetTitle(LoadoutKeywordModel model)
@@ -130,19 +156,18 @@ public static class LoadoutSpecialKeywords
         List<string>? before = null;
         List<string>? after = null;
 
-        foreach (LoadoutKeywordModel model in Models)
+        foreach (LoadoutKeywordModel model in DescriptionModels)
         {
-            if (model is not LoadoutDescriptionKeywordModel descriptionKeyword
-                || !model.IsEnabled(card))
+            if (!model.IsEnabled(card))
             {
                 continue;
             }
 
-            string formatted = descriptionKeyword.GetCardText(card);
+            string formatted = model.GetCardText(card);
             if (string.IsNullOrWhiteSpace(formatted))
                 continue;
 
-            if (descriptionKeyword.TextPosition == LoadoutKeywordTextPosition.Before)
+            if (model.TextPosition == LoadoutKeywordTextPosition.Before)
                 (before ??= []).Add(formatted);
             else
                 (after ??= []).Add(formatted);
@@ -163,7 +188,7 @@ public static class LoadoutSpecialKeywords
         IEnumerable<IHoverTip> hoverTips)
     {
         HashSet<string>? excludedIds = null;
-        foreach (LoadoutKeywordModel model in Models)
+        foreach (LoadoutKeywordModel model in DescriptionModels)
         {
             if (model.ShowKeywordHoverTip || !model.IsEnabled(card))
             {
@@ -192,7 +217,7 @@ public static class LoadoutDescriptionKeywordPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref string __result)
     {
-        __result = LoadoutSpecialKeywords.AddDescriptionLines(__instance, __result);
+        __result = LoadoutKeywordRegistry.AddDescriptionLines(__instance, __result);
     }
 }
 
@@ -203,7 +228,7 @@ public static class LoadoutDescriptionKeywordHoverTipsPatch
         CardModel __instance,
         ref IEnumerable<IHoverTip> __result)
     {
-        __result = LoadoutSpecialKeywords.RemoveDescriptionKeywordHoverTips(
+        __result = LoadoutKeywordRegistry.RemoveDescriptionKeywordHoverTips(
             __instance,
             __result);
     }

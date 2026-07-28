@@ -720,11 +720,13 @@ public partial class NCardModificationScreen : Control
             string label = LocMan.DynamicVarLoc(dynamicVar);
             int minimum = int.MinValue;
             int maximum = int.MaxValue;
-            if (LoadoutSpecialKeywords.TryGetDynamicVar(name, out var specialVar))
+            if (LoadoutKeywordRegistry.TryGetDynamicVar(
+                    name,
+                    out var keywordVarDefinition))
             {
-                label = LocMan.Loc(specialVar.LabelLocKey, name);
-                minimum = specialVar.Minimum;
-                maximum = specialVar.Maximum;
+                label = LocMan.Loc(keywordVarDefinition.LabelLocKey, name);
+                minimum = keywordVarDefinition.Minimum;
+                maximum = keywordVarDefinition.Maximum;
             }
 
             AddStepperRow(_leftControls, label, current, minimum, maximum, value =>
@@ -1073,12 +1075,13 @@ public partial class NCardModificationScreen : Control
             {
                 _workingState.KeywordOverrides[key] = changed.IsChecked;
                 _temporaryState.KeywordOverrides[key] = changed.IsChecked;
-                bool hasSpecialDefinition = LoadoutSpecialKeywords.TryGet(
+                bool hasKeywordDefinition = LoadoutKeywordRegistry.TryGet(
                     localKeyword,
-                    out LoadoutKeywordModel specialDefinition);
-                if (hasSpecialDefinition)
+                    out LoadoutKeywordModel keywordDefinition);
+                if (hasKeywordDefinition)
                 {
-                    foreach (LoadoutKeywordDynamicVarDefinition dynamicVar in specialDefinition.DynamicVars)
+                    foreach (LoadoutKeywordDynamicVarDefinition dynamicVar
+                             in keywordDefinition.DynamicVars)
                     {
                         if (changed.IsChecked)
                         {
@@ -1097,7 +1100,7 @@ public partial class NCardModificationScreen : Control
                 }
 
                 ApplyWorkingState();
-                if (hasSpecialDefinition)
+                if (hasKeywordDefinition)
                     Callable.From(RebuildLeftControls).CallDeferred();
             };
             grid.AddChild(toggle);
@@ -2276,7 +2279,7 @@ public partial class NCardModificationScreen : Control
 
     private static IReadOnlyList<IHoverTip> GetKeywordHoverTips(CardKeyword keyword)
     {
-        if (LoadoutSpecialKeywords.IsDescriptionKeyword(keyword))
+        if (LoadoutKeywordRegistry.IsDescriptionKeyword(keyword))
             return [];
 
         try

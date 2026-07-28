@@ -431,11 +431,11 @@ public class CardPrinter
 
     public static string GetCardKeywordLabel(CardKeyword keyword)
     {
-	    if (LoadoutSpecialKeywords.TryGet(
+	    if (LoadoutKeywordRegistry.TryGet(
 	            keyword,
-	            out LoadoutKeywordModel specialKeyword))
+	            out LoadoutKeywordModel loadoutKeyword))
 	    {
-		    return LoadoutSpecialKeywords.GetTitle(specialKeyword);
+		    return LoadoutKeywordRegistry.GetTitle(loadoutKeyword);
 	    }
 
 	    try

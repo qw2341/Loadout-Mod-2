@@ -11,6 +11,21 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 
+public sealed class XCostKeyword : LoadoutKeywordModel
+{
+    public static XCostKeyword Instance { get; } = new();
+
+    private XCostKeyword()
+    {
+    }
+
+    public override CardKeyword Keyword => LoadoutKeywords.XCost;
+
+    public override string StorageKey => LoadoutKeywords.XCostKey;
+
+    public override string TitleLocKey => "LOADOUT-X_COST.title";
+}
+
 public static class XCostKeywordMechanics
 {
     private static readonly FieldInfo? EnergyCostField =
