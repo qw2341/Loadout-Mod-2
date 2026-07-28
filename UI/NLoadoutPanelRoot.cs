@@ -344,6 +344,35 @@ public partial class NLoadoutPanelRoot : Control
 		}
 	}
 
+	public long QueueRelicObtainSource(
+		MegaCrit.Sts2.Core.Models.ModelId relicId,
+		Control sourceIcon,
+		int amount)
+	{
+		if (!IsValid(_nativeFeedbackLayer)
+		    || sourceIcon == null
+		    || !IsInstanceValid(sourceIcon))
+		{
+			return 0;
+		}
+
+		try
+		{
+			return _nativeFeedbackLayer.QueueRelicObtainSource(relicId, sourceIcon, amount);
+		}
+		catch (System.Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanelRoot: could not capture relic feedback source for '{relicId}'. {exception.Message}");
+			return 0;
+		}
+	}
+
+	public void CancelRelicObtainSource(long token)
+	{
+		if (IsValid(_nativeFeedbackLayer))
+			_nativeFeedbackLayer.CancelRelicObtainSource(token);
+	}
+
 	public void ClearNativeFeedback()
 	{
 		if (IsValid(_nativeFeedbackLayer))

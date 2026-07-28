@@ -107,8 +107,12 @@ public class LoadoutBag
 
 	    int amount = screen.GetCurrentActivationMultiplier();
 	    LoadoutTargetSelection target = LoadoutTargetService.GetSelected(LastActionService.LoadoutBagKey, LoadoutTargetMode.AllPlayersAndPlayers);
+	    long feedbackToken = QueueLocalRelicObtainSource(selectItem.View, canonicalRelic.Id, amount, target);
 	    if (!LoadoutImmediateMutationService.RequestAddRelic(canonicalRelic.Id, amount, target))
+	    {
+		    NLoadoutPanelRoot.Instance?.CancelRelicObtainSource(feedbackToken);
 		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
+	    }
 
 	    LastActionEntry entry = new()
 	    {
@@ -118,6 +122,42 @@ public class LoadoutBag
 	    };
 	    entry.SetTargetSelection(target);
 	    return Task.FromResult<IReadOnlyList<LastActionEntry>>(new[] { entry });
+    }
+
+    private static long QueueLocalRelicObtainSource(
+	    Control view,
+	    ModelId relicId,
+	    int amount,
+	    LoadoutTargetSelection target)
+    {
+	    if (view is null
+	        || !GodotObject.IsInstanceValid(view)
+	        || !TargetsLocalPlayer(target))
+	    {
+		    return 0;
+	    }
+
+	    Control source = CommonHelpers.TryFindDescendantOrSelf(view, out NRelic relicView)
+	                     && GodotObject.IsInstanceValid(relicView.Icon)
+		    ? relicView.Icon
+		    : view;
+	    return NLoadoutPanelRoot.Instance?.QueueRelicObtainSource(relicId, source, amount) ?? 0;
+    }
+
+    private static bool TargetsLocalPlayer(LoadoutTargetSelection target)
+    {
+	    try
+	    {
+		    MegaCrit.Sts2.Core.Entities.Players.Player localPlayer = CommonHelpers.GetLocalRunPlayer();
+		    return localPlayer is not null
+		           && (target.Scope == LoadoutTargetScope.AllPlayers
+		               || target.Scope == LoadoutTargetScope.Player
+		               && target.PlayerNetId == localPlayer.NetId);
+	    }
+	    catch
+	    {
+		    return false;
+	    }
     }
 
     private static Control CreateRelicGridItem(RelicModel model)

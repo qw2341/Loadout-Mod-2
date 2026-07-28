@@ -23,11 +23,16 @@ using MegaCrit.Sts2.Core.TestSupport;
 public partial class NLoadoutNativeFeedback : Control
 {
     private const int MaxCardPreviews = 50;
+    private const int MaxPendingRelicSources = 50;
+    private const ulong RelicSourceLifetimeMsec = 15000;
     private const float RelicPopDistance = 40f;
     private const float RelicFadeDuration = 0.1f;
-    private const float RelicPopDuration = 0.35f;
+    private const float RelicFlyDuration = 0.35f;
     private static readonly string RelicFlashPath = SceneHelper.GetScenePath("vfx/relic_inventory_flash_vfx");
 
+    private readonly List<PendingRelicSource> _pendingRelicSources = [];
+    private long _nextRelicSourceToken;
+    private int _relicFeedbackGeneration;
     private NCardPreviewContainer _horizontalCards = null!;
     private NMessyCardPreviewContainer _messyCards = null!;
     private NGridCardPreviewContainer _gridCards = null!;
@@ -102,6 +107,21 @@ public partial class NLoadoutNativeFeedback : Control
         if (TestMode.IsOn || !LocalContext.IsMine(relic))
             return;
 
+        bool hasStartRect = TryTakeRelicSource(relic.Id, out Rect2 startRect);
+        int generation = _relicFeedbackGeneration;
+        TaskHelper.RunSafely(PreviewRelicObtainedAfterLayout(
+            relic,
+            hasStartRect,
+            startRect,
+            generation));
+    }
+
+    private async Task PreviewRelicObtainedAfterLayout(
+        RelicModel relic,
+        bool hasStartRect,
+        Rect2 startRect,
+        int generation)
+    {
         NRelicInventory? inventory = NRun.Instance?.GlobalUi?.RelicInventory;
         if (inventory is null)
             return;
@@ -119,7 +139,24 @@ public partial class NLoadoutNativeFeedback : Control
         if (source is null)
             return;
 
+        SignalAwaiter sortAwaiter = ToSignal(inventory, Container.SignalName.SortChildren);
+        inventory.QueueSort();
+        await sortAwaiter;
+        if (generation != _relicFeedbackGeneration
+            || !GodotObject.IsInstanceValid(this)
+            || !GodotObject.IsInstanceValid(inventory)
+            || !GodotObject.IsInstanceValid(source)
+            || !IsInsideTree())
+        {
+            return;
+        }
+
         TextureRect sourceIcon = source.Relic.Icon;
+        Rect2 destinationRect = GetInventoryIconRect(source, sourceIcon);
+        Color iconModulate = sourceIcon.Modulate;
+        iconModulate.A = 1f;
+        Color iconSelfModulate = sourceIcon.SelfModulate;
+        iconSelfModulate.A = 1f;
         TextureRect icon = new()
         {
             Name = $"LoadoutRelicFeedback-{relic.Id}",
@@ -131,15 +168,37 @@ public partial class NLoadoutNativeFeedback : Control
             MouseFilter = MouseFilterEnum.Ignore,
             CustomMinimumSize = sourceIcon.CustomMinimumSize,
             Size = sourceIcon.Size,
-            Scale = sourceIcon.Scale,
             Rotation = sourceIcon.Rotation,
-            PivotOffset = sourceIcon.PivotOffset,
-            Modulate = sourceIcon.Modulate,
-            SelfModulate = sourceIcon.SelfModulate
+            PivotOffset = Vector2.Zero,
+            Modulate = iconModulate,
+            SelfModulate = iconSelfModulate
         };
         _relics.AddChildSafely(icon);
-        icon.GlobalPosition = sourceIcon.GlobalPosition;
-        Vector2 flashPosition = source.GlobalPosition + source.Size * 0.5f;
+        icon.Position = destinationRect.Position;
+        icon.Scale = GetScaleForRect(destinationRect, icon.Size);
+        Vector2 flashPosition = destinationRect.GetCenter();
+
+        if (hasStartRect)
+        {
+            icon.Position = startRect.Position;
+            icon.Scale = GetScaleForRect(startRect, icon.Size);
+
+            Tween flyTween = icon.CreateTween();
+            flyTween.SetEase(Tween.EaseType.Out);
+            flyTween.SetTrans(Tween.TransitionType.Sine);
+            flyTween.TweenProperty(icon, "position", destinationRect.Position, RelicFlyDuration);
+            flyTween.Parallel().TweenProperty(
+                icon,
+                "scale",
+                GetScaleForRect(destinationRect, icon.Size),
+                RelicFlyDuration);
+            flyTween.TweenCallback(Callable.From(() =>
+            {
+                ShowRelicFlash(flashPosition, relic);
+                icon.QueueFreeSafely();
+            }));
+            return;
+        }
 
         Vector2 destination = icon.Position;
         icon.Position = destination + Vector2.Down * RelicPopDistance;
@@ -152,7 +211,7 @@ public partial class NLoadoutNativeFeedback : Control
         tween.Parallel();
         tween.SetEase(Tween.EaseType.Out);
         tween.SetTrans(Tween.TransitionType.Back);
-        tween.TweenProperty(icon, "position:y", destination.Y, RelicPopDuration);
+        tween.TweenProperty(icon, "position:y", destination.Y, RelicFlyDuration);
         tween.TweenCallback(Callable.From(() =>
         {
             ShowRelicFlash(flashPosition, relic);
@@ -160,8 +219,52 @@ public partial class NLoadoutNativeFeedback : Control
         }));
     }
 
+    public long QueueRelicObtainSource(ModelId relicId, Control sourceIcon, int amount)
+    {
+        if (amount <= 0
+            || !GodotObject.IsInstanceValid(sourceIcon)
+            || !GodotObject.IsInstanceValid(_relics))
+        {
+            return 0;
+        }
+
+        RemoveExpiredRelicSources();
+        Rect2 sourceRect = GetRectRelativeTo(sourceIcon, _relics);
+        if (sourceRect.Size.X <= 0f || sourceRect.Size.Y <= 0f)
+            return 0;
+
+        if (_pendingRelicSources.Count >= MaxPendingRelicSources)
+            _pendingRelicSources.RemoveAt(0);
+
+        long token = ++_nextRelicSourceToken;
+        _pendingRelicSources.Add(new PendingRelicSource(
+            token,
+            relicId,
+            sourceRect,
+            amount,
+            Time.GetTicksMsec()));
+        return token;
+    }
+
+    public void CancelRelicObtainSource(long token)
+    {
+        if (token == 0)
+            return;
+
+        for (int index = _pendingRelicSources.Count - 1; index >= 0; index--)
+        {
+            if (_pendingRelicSources[index].Token != token)
+                continue;
+
+            _pendingRelicSources.RemoveAt(index);
+            return;
+        }
+    }
+
     public void Clear()
     {
+        _relicFeedbackGeneration++;
+        _pendingRelicSources.Clear();
         ClearChildren(_horizontalCards);
         ClearChildren(_messyCards);
         ClearChildren(_gridCards);
@@ -244,15 +347,15 @@ public partial class NLoadoutNativeFeedback : Control
         return Task.CompletedTask;
     }
 
-    private void ShowRelicFlash(Vector2 globalPosition, RelicModel relic)
+    private void ShowRelicFlash(Vector2 localPosition, RelicModel relic)
     {
         try
         {
             Node2D flash = PreloadManager.Cache.GetScene(RelicFlashPath)
                 .Instantiate<Node2D>(PackedScene.GenEditState.Disabled);
             flash.GetNode<GpuParticles2D>("Particles").Texture = relic.Icon;
-            flash.GlobalPosition = globalPosition;
             _relics.AddChildSafely(flash);
+            flash.Position = localPosition;
         }
         catch (Exception exception)
         {
@@ -265,6 +368,71 @@ public partial class NLoadoutNativeFeedback : Control
         return _horizontalCards.GetChildCount()
                + _messyCards.GetChildCount()
                + _gridCards.GetChildCount();
+    }
+
+    private bool TryTakeRelicSource(ModelId relicId, out Rect2 sourceRect)
+    {
+        RemoveExpiredRelicSources();
+        for (int index = 0; index < _pendingRelicSources.Count; index++)
+        {
+            PendingRelicSource pending = _pendingRelicSources[index];
+            if (!pending.RelicId.Equals(relicId))
+                continue;
+
+            sourceRect = pending.SourceRect;
+            pending.Remaining--;
+            if (pending.Remaining <= 0)
+                _pendingRelicSources.RemoveAt(index);
+            return true;
+        }
+
+        sourceRect = default;
+        return false;
+    }
+
+    private void RemoveExpiredRelicSources()
+    {
+        ulong now = Time.GetTicksMsec();
+        for (int index = _pendingRelicSources.Count - 1; index >= 0; index--)
+        {
+            if (now - _pendingRelicSources[index].CreatedAtMsec > RelicSourceLifetimeMsec)
+                _pendingRelicSources.RemoveAt(index);
+        }
+    }
+
+    private static Rect2 GetRectRelativeTo(Control source, Control relativeTo)
+    {
+        Transform2D transform = relativeTo.GetGlobalTransformWithCanvas().AffineInverse()
+                                * source.GetGlobalTransformWithCanvas();
+        Vector2 topLeft = transform * Vector2.Zero;
+        Vector2 topRight = transform * new Vector2(source.Size.X, 0f);
+        Vector2 bottomLeft = transform * new Vector2(0f, source.Size.Y);
+        Vector2 bottomRight = transform * source.Size;
+        Vector2 minimum = new(
+            Mathf.Min(Mathf.Min(topLeft.X, topRight.X), Mathf.Min(bottomLeft.X, bottomRight.X)),
+            Mathf.Min(Mathf.Min(topLeft.Y, topRight.Y), Mathf.Min(bottomLeft.Y, bottomRight.Y)));
+        Vector2 maximum = new(
+            Mathf.Max(Mathf.Max(topLeft.X, topRight.X), Mathf.Max(bottomLeft.X, bottomRight.X)),
+            Mathf.Max(Mathf.Max(topLeft.Y, topRight.Y), Mathf.Max(bottomLeft.Y, bottomRight.Y)));
+        return new Rect2(minimum, maximum - minimum);
+    }
+
+    private Rect2 GetInventoryIconRect(NRelicInventoryHolder holder, TextureRect icon)
+    {
+        Rect2 holderRect = GetRectRelativeTo(holder, _relics);
+        Vector2 iconSize = new(
+            holder.Size.X > 0f ? holderRect.Size.X * icon.Size.X / holder.Size.X : icon.Size.X,
+            holder.Size.Y > 0f ? holderRect.Size.Y * icon.Size.Y / holder.Size.Y : icon.Size.Y);
+        return new Rect2(
+            holderRect.Position + (holderRect.Size - iconSize) * 0.5f,
+            iconSize);
+    }
+
+    private static Vector2 GetScaleForRect(Rect2 rect, Vector2 baseSize)
+    {
+        return new Vector2(
+            baseSize.X > 0f ? rect.Size.X / baseSize.X : 1f,
+            baseSize.Y > 0f ? rect.Size.Y / baseSize.Y : 1f);
     }
 
     private void CreateLayers()
@@ -304,5 +472,19 @@ public partial class NLoadoutNativeFeedback : Control
                 canvasItem.Visible = false;
             child.QueueFreeSafely();
         }
+    }
+
+    private sealed class PendingRelicSource(
+        long token,
+        ModelId relicId,
+        Rect2 sourceRect,
+        int remaining,
+        ulong createdAtMsec)
+    {
+        public long Token { get; } = token;
+        public ModelId RelicId { get; } = relicId;
+        public Rect2 SourceRect { get; } = sourceRect;
+        public int Remaining { get; set; } = remaining;
+        public ulong CreatedAtMsec { get; } = createdAtMsec;
     }
 }
