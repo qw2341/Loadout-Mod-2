@@ -433,7 +433,7 @@ public class CardPrinter
     {
 	    if (LoadoutSpecialKeywords.TryGet(
 	            keyword,
-	            out LoadoutSpecialKeywordDefinition specialKeyword))
+	            out LoadoutKeywordModel specialKeyword))
 	    {
 		    return LoadoutSpecialKeywords.GetTitle(specialKeyword);
 	    }

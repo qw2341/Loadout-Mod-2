@@ -35,7 +35,7 @@ internal static class LoadoutKeywordRuntimePatches
     private const string StickyHarmonyId = "Loadout.Keyword.Sticky";
     private const string CardResultHarmonyId = "Loadout.Keyword.CardResultLocation";
     private const string InevitableHarmonyId = "Loadout.Keyword.Inevitable";
-    private const string LessonLearnedHarmonyId = "Loadout.Keyword.LessonLearned";
+    private const string SpecialKeywordHarmonyId = "Loadout.Keyword.Special";
     private const string PostOnPlayHarmonyId = "Loadout.Keyword.PostOnPlay";
 
     private static readonly Harmony InfiniteHarmony = new(InfiniteHarmonyId);
@@ -43,7 +43,7 @@ internal static class LoadoutKeywordRuntimePatches
     private static readonly Harmony StickyHarmony = new(StickyHarmonyId);
     private static readonly Harmony CardResultHarmony = new(CardResultHarmonyId);
     private static readonly Harmony InevitableHarmony = new(InevitableHarmonyId);
-    private static readonly Harmony LessonLearnedHarmony = new(LessonLearnedHarmonyId);
+    private static readonly Harmony SpecialKeywordHarmony = new(SpecialKeywordHarmonyId);
     private static readonly Harmony PostOnPlayHarmony = new(PostOnPlayHarmonyId);
 
     public static bool InfiniteUpgradeEnabled { get; private set; }
@@ -52,7 +52,8 @@ internal static class LoadoutKeywordRuntimePatches
     public static bool PassingEnabled { get; private set; }
     public static bool InevitableEnabled { get; private set; }
     public static bool LividEnabled { get; private set; }
-    public static bool LessonLearnedEnabled { get; private set; }
+    public static bool SpecialKeywordsEnabled { get; private set; }
+    private static bool SpecialKeywordOnPlayEnabled { get; set; }
     private static bool CardResultLocationEnabled { get; set; }
     private static bool PostOnPlayEnabled { get; set; }
 
@@ -70,14 +71,12 @@ internal static class LoadoutKeywordRuntimePatches
             SetInevitableEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid)))
             SetLividEnabled(true);
-        if (IsEnabled(delta, LoadoutKeywords.LessonLearnedKey))
-            SetLessonLearnedEnabled(true);
+        EnableSpecialKeywordsFromOverrides(delta.KeywordOverrides);
     }
 
     public static void EnableFromOverrides(IReadOnlyDictionary<string, bool> overrides)
     {
-        if (IsEnabled(overrides, LoadoutKeywords.LessonLearnedKey))
-            SetLessonLearnedEnabled(true);
+        EnableSpecialKeywordsFromOverrides(overrides);
     }
 
     public static bool HasEnabledInfiniteUpgrade(CardModificationSpec? state)
@@ -133,7 +132,8 @@ internal static class LoadoutKeywordRuntimePatches
         SetPassingEnabled(required.Passing);
         SetInevitableEnabled(required.Inevitable);
         SetLividEnabled(required.Livid);
-        SetLessonLearnedEnabled(required.LessonLearned);
+        SetSpecialKeywordsEnabled(required.SpecialKeywords);
+        SetSpecialKeywordOnPlayEnabled(required.SpecialKeywordOnPlay);
     }
 
     public static void ResetRunPatches()
@@ -144,7 +144,8 @@ internal static class LoadoutKeywordRuntimePatches
         SetPassingEnabled(false);
         SetInevitableEnabled(false);
         SetLividEnabled(false);
-        SetLessonLearnedEnabled(false);
+        SetSpecialKeywordsEnabled(false);
+        SetSpecialKeywordOnPlayEnabled(false);
     }
 
     private static KeywordFeatureState GetRequiredFeatures()
@@ -187,7 +188,7 @@ internal static class LoadoutKeywordRuntimePatches
         state.Passing |= IsEnabled(delta, LoadoutKeywords.PassingKey);
         state.Inevitable |= IsEnabled(delta, LoadoutKeywords.InevitableKey);
         state.Livid |= IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid));
-        state.LessonLearned |= IsEnabled(delta, LoadoutKeywords.LessonLearnedKey);
+        AddSpecialKeywordFeatures(delta.KeywordOverrides, ref state);
     }
 
     private static void AddCardFeatures(IEnumerable<CardModel> cards, ref KeywordFeatureState state)
@@ -200,10 +201,51 @@ internal static class LoadoutKeywordRuntimePatches
             state.Passing |= LoadoutKeywords.Has(card, LoadoutKeywords.Passing);
             state.Inevitable |= LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable);
             state.Livid |= LoadoutKeywords.Has(card, LoadoutKeywords.Livid);
-            state.LessonLearned |= LoadoutKeywords.Has(card, LoadoutKeywords.LessonLearned);
+            foreach (LoadoutKeywordModel model in LoadoutSpecialKeywords.All)
+            {
+                if (!model.IsEnabled(card))
+                    continue;
+
+                state.SpecialKeywords = true;
+                state.SpecialKeywordOnPlay |= model.HasOnPlayEffect;
+            }
             if (state.All)
                 return;
         }
+    }
+
+    private static void AddSpecialKeywordFeatures(
+        IReadOnlyDictionary<string, bool> overrides,
+        ref KeywordFeatureState state)
+    {
+        foreach (LoadoutKeywordModel model in LoadoutSpecialKeywords.All)
+        {
+            if (!IsEnabled(overrides, model.StorageKey))
+                continue;
+
+            state.SpecialKeywords = true;
+            state.SpecialKeywordOnPlay |= model.HasOnPlayEffect;
+        }
+    }
+
+    private static void EnableSpecialKeywordsFromOverrides(
+        IReadOnlyDictionary<string, bool> overrides)
+    {
+        bool anyEnabled = false;
+        bool anyOnPlayEnabled = false;
+        foreach (LoadoutKeywordModel model in LoadoutSpecialKeywords.All)
+        {
+            if (!IsEnabled(overrides, model.StorageKey))
+                continue;
+
+            anyEnabled = true;
+            anyOnPlayEnabled |= model.HasOnPlayEffect;
+        }
+
+        if (anyEnabled)
+            SetSpecialKeywordsEnabled(true);
+        if (anyOnPlayEnabled)
+            SetSpecialKeywordOnPlayEnabled(true);
     }
 
     private static bool IsEnabled(CardModificationDelta delta, string key) =>
@@ -358,37 +400,25 @@ internal static class LoadoutKeywordRuntimePatches
         RefreshPostOnPlayPatch();
     }
 
-    private static void SetLessonLearnedEnabled(bool enabled)
+    private static void SetSpecialKeywordsEnabled(bool enabled)
     {
-        if (enabled == LessonLearnedEnabled)
+        if (enabled == SpecialKeywordsEnabled)
             return;
         if (!enabled)
         {
-            LessonLearnedHarmony.UnpatchAll(LessonLearnedHarmonyId);
-            LessonLearnedEnabled = false;
-            RefreshPostOnPlayPatch();
+            SpecialKeywordHarmony.UnpatchAll(SpecialKeywordHarmonyId);
+            SpecialKeywordsEnabled = false;
             return;
         }
 
-        TryEnable(LessonLearnedHarmony, LessonLearnedHarmonyId, () =>
+        TryEnable(SpecialKeywordHarmony, SpecialKeywordHarmonyId, () =>
         {
-            LessonLearnedHarmony.Patch(
-                AccessTools.Method(
-                    typeof(Hook),
-                    nameof(Hook.BeforeCardPlayed),
-                    [typeof(ICombatState), typeof(CardPlay)])
-                ?? throw new MissingMethodException(
-                    typeof(Hook).FullName,
-                    "BeforeCardPlayed(ICombatState, CardPlay)"),
+            SpecialKeywordHarmony.Patch(
+                LoadoutDescriptionKeywordModel.GetDescriptionTarget(),
                 postfix: new HarmonyMethod(
-                    typeof(LessonLearnedFatalPatch),
-                    nameof(LessonLearnedFatalPatch.Postfix)));
-            LessonLearnedHarmony.Patch(
-                LessonLearnedKeyword.GetDescriptionTarget(),
-                postfix: new HarmonyMethod(
-                    typeof(LessonLearnedDescriptionPatch),
-                    nameof(LessonLearnedDescriptionPatch.Postfix)));
-            LessonLearnedHarmony.Patch(
+                    typeof(LoadoutDescriptionKeywordPatch),
+                    nameof(LoadoutDescriptionKeywordPatch.Postfix)));
+            SpecialKeywordHarmony.Patch(
                 AccessTools.PropertyGetter(
                     typeof(CardModel),
                     nameof(CardModel.HoverTips))
@@ -396,16 +426,23 @@ internal static class LoadoutKeywordRuntimePatches
                     typeof(CardModel).FullName,
                     $"get_{nameof(CardModel.HoverTips)}"),
                 postfix: new HarmonyMethod(
-                    typeof(LessonLearnedHoverTipsPatch),
-                    nameof(LessonLearnedHoverTipsPatch.Postfix)));
-        }, () => LessonLearnedEnabled = true);
+                    typeof(LoadoutDescriptionKeywordHoverTipsPatch),
+                    nameof(LoadoutDescriptionKeywordHoverTipsPatch.Postfix)));
+        }, () => SpecialKeywordsEnabled = true);
+    }
 
+    private static void SetSpecialKeywordOnPlayEnabled(bool enabled)
+    {
+        if (enabled == SpecialKeywordOnPlayEnabled)
+            return;
+
+        SpecialKeywordOnPlayEnabled = enabled;
         RefreshPostOnPlayPatch();
     }
 
     private static void RefreshPostOnPlayPatch()
     {
-        bool enabled = LividEnabled || LessonLearnedEnabled;
+        bool enabled = LividEnabled || SpecialKeywordOnPlayEnabled;
         if (enabled == PostOnPlayEnabled)
             return;
 
@@ -418,6 +455,9 @@ internal static class LoadoutKeywordRuntimePatches
 
         TryEnable(PostOnPlayHarmony, PostOnPlayHarmonyId, () =>
         {
+            HarmonyMethod prefix = new(
+                typeof(PostOnPlayKeywordDispatcher),
+                nameof(PostOnPlayKeywordDispatcher.Prefix));
             HarmonyMethod postfix = new(
                 typeof(PostOnPlayKeywordDispatcher),
                 nameof(PostOnPlayKeywordDispatcher.Postfix));
@@ -430,7 +470,7 @@ internal static class LoadoutKeywordRuntimePatches
             }
 
             foreach (MethodBase target in targets)
-                PostOnPlayHarmony.Patch(target, postfix: postfix);
+                PostOnPlayHarmony.Patch(target, prefix: prefix, postfix: postfix);
         }, () => PostOnPlayEnabled = true);
     }
 
@@ -479,7 +519,8 @@ internal static class LoadoutKeywordRuntimePatches
         public bool Passing;
         public bool Inevitable;
         public bool Livid;
-        public bool LessonLearned;
+        public bool SpecialKeywords;
+        public bool SpecialKeywordOnPlay;
         public readonly bool All =>
             InfiniteUpgrade
             && XCost
@@ -487,6 +528,7 @@ internal static class LoadoutKeywordRuntimePatches
             && Passing
             && Inevitable
             && Livid
-            && LessonLearned;
+            && SpecialKeywords
+            && SpecialKeywordOnPlay;
     }
 }

@@ -325,6 +325,10 @@ public static class CardModificationRuntime
                 SetBaseStarCost(card, card.BaseStarCost + delta.BaseStarCostDelta.Value);
             ApplyKeywordOverrides(card, delta.KeywordOverrides);
             LoadoutSpecialKeywords.SynchronizeDynamicVars(card);
+            // Preview cards reach this path before their first visual refresh.
+            // Enable description/runtime patches immediately even when no live
+            // deck card currently carries the keyword.
+            LoadoutKeywordRuntimePatches.EnableFromOverrides(delta.KeywordOverrides);
             foreach ((string name, decimal value) in delta.DynamicVarDeltas)
             {
                 if (card.DynamicVars.TryGetValue(name, out var dynamicVar)) dynamicVar.BaseValue += value;

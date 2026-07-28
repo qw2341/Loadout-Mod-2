@@ -13,77 +13,33 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 
-public enum LoadoutKeywordPresentation
-{
-    TitleKeyword,
-    DescriptionLine
-}
-
-public enum LoadoutKeywordTextPosition
-{
-    Before,
-    After
-}
-
-public sealed record LoadoutKeywordDynamicVarDefinition(
-    string Name,
-    decimal DefaultValue,
-    int Minimum,
-    int Maximum,
-    string LabelLocKey);
-
-public sealed record LoadoutSpecialKeywordDefinition(
-    CardKeyword Keyword,
-    string StorageKey,
-    LoadoutKeywordPresentation Presentation,
-    LoadoutKeywordTextPosition TextPosition,
-    string TitleLocKey,
-    string CardTextLocKey,
-    IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars);
-
 public static class LoadoutSpecialKeywords
 {
     private static readonly FieldInfo DynamicVarDictionaryField =
         AccessTools.Field(typeof(DynamicVarSet), "_vars")
         ?? throw new MissingFieldException(typeof(DynamicVarSet).FullName, "_vars");
 
-    private sealed record Registration(
-        Func<CardKeyword> GetKeyword,
-        Func<LoadoutSpecialKeywordDefinition> CreateDefinition);
-
-    private static readonly IReadOnlyList<Registration> Registrations =
+    private static readonly IReadOnlyList<LoadoutKeywordModel> Models =
     [
-        new(
-            () => LoadoutKeywords.LessonLearned,
-            LessonLearnedKeyword.CreateDefinition)
+        LessonLearnedKeyword.Instance
     ];
 
-    private static IReadOnlyList<LoadoutSpecialKeywordDefinition> _definitions = [];
-
-    public static IReadOnlyList<LoadoutSpecialKeywordDefinition> All
-    {
-        get
-        {
-            EnsureDefinitions();
-            return _definitions;
-        }
-    }
+    public static IReadOnlyList<LoadoutKeywordModel> All => Models;
 
     public static bool TryGet(
         CardKeyword keyword,
-        out LoadoutSpecialKeywordDefinition definition)
+        out LoadoutKeywordModel model)
     {
-        EnsureDefinitions();
-        foreach (LoadoutSpecialKeywordDefinition candidate in _definitions)
+        foreach (LoadoutKeywordModel candidate in Models)
         {
             if (candidate.Keyword.Equals(keyword))
             {
-                definition = candidate;
+                model = candidate;
                 return true;
             }
         }
 
-        definition = null!;
+        model = null!;
         return false;
     }
 
@@ -91,8 +47,7 @@ public static class LoadoutSpecialKeywords
         string name,
         out LoadoutKeywordDynamicVarDefinition definition)
     {
-        EnsureDefinitions();
-        foreach (LoadoutSpecialKeywordDefinition keyword in _definitions)
+        foreach (LoadoutKeywordModel keyword in Models)
         {
             foreach (LoadoutKeywordDynamicVarDefinition candidate in keyword.DynamicVars)
             {
@@ -110,23 +65,21 @@ public static class LoadoutSpecialKeywords
 
     public static bool IsDescriptionKeyword(CardKeyword keyword)
     {
-        return TryGet(keyword, out LoadoutSpecialKeywordDefinition definition)
-               && definition.Presentation == LoadoutKeywordPresentation.DescriptionLine;
+        return TryGet(keyword, out LoadoutKeywordModel model)
+               && model is LoadoutDescriptionKeywordModel;
     }
 
-    public static string GetTitle(LoadoutSpecialKeywordDefinition definition)
+    public static string GetTitle(LoadoutKeywordModel model)
     {
-        return new LocString("card_keywords", definition.TitleLocKey).GetFormattedText();
+        return model.GetTitle();
     }
 
     public static bool IsEnabled(
         CardModel card,
-        LoadoutSpecialKeywordDefinition definition,
+        LoadoutKeywordModel model,
         IReadOnlyDictionary<string, bool>? overrides = null)
     {
-        return overrides?.TryGetValue(definition.StorageKey, out bool enabled) == true
-            ? enabled
-            : LoadoutKeywords.Has(card, definition.Keyword);
+        return model.IsEnabled(card, overrides);
     }
 
     public static void SynchronizeDynamicVars(
@@ -134,10 +87,10 @@ public static class LoadoutSpecialKeywords
         IReadOnlyDictionary<string, bool>? overrides = null)
     {
         Dictionary<string, DynamicVar> variables = GetMutableVariables(card.DynamicVars);
-        foreach (LoadoutSpecialKeywordDefinition definition in All)
+        foreach (LoadoutKeywordModel model in Models)
         {
-            bool enabled = IsEnabled(card, definition, overrides);
-            foreach (LoadoutKeywordDynamicVarDefinition dynamicVar in definition.DynamicVars)
+            bool enabled = model.IsEnabled(card, overrides);
+            foreach (LoadoutKeywordDynamicVarDefinition dynamicVar in model.DynamicVars)
             {
                 if (enabled)
                 {
@@ -177,21 +130,19 @@ public static class LoadoutSpecialKeywords
         List<string>? before = null;
         List<string>? after = null;
 
-        foreach (LoadoutSpecialKeywordDefinition definition in All)
+        foreach (LoadoutKeywordModel model in Models)
         {
-            if (definition.Presentation != LoadoutKeywordPresentation.DescriptionLine
-                || !LoadoutKeywords.Has(card, definition.Keyword))
+            if (model is not LoadoutDescriptionKeywordModel descriptionKeyword
+                || !model.IsEnabled(card))
             {
                 continue;
             }
 
-            LocString cardText = new("card_keywords", definition.CardTextLocKey);
-            card.DynamicVars.AddTo(cardText);
-            string formatted = cardText.GetFormattedText();
+            string formatted = descriptionKeyword.GetCardText(card);
             if (string.IsNullOrWhiteSpace(formatted))
                 continue;
 
-            if (definition.TextPosition == LoadoutKeywordTextPosition.Before)
+            if (descriptionKeyword.TextPosition == LoadoutKeywordTextPosition.Before)
                 (before ??= []).Add(formatted);
             else
                 (after ??= []).Add(formatted);
@@ -212,16 +163,15 @@ public static class LoadoutSpecialKeywords
         IEnumerable<IHoverTip> hoverTips)
     {
         HashSet<string>? excludedIds = null;
-        foreach (LoadoutSpecialKeywordDefinition definition in All)
+        foreach (LoadoutKeywordModel model in Models)
         {
-            if (definition.Presentation != LoadoutKeywordPresentation.DescriptionLine
-                || !LoadoutKeywords.Has(card, definition.Keyword))
+            if (model.ShowKeywordHoverTip || !model.IsEnabled(card))
             {
                 continue;
             }
 
             excludedIds ??= [];
-            excludedIds.Add(HoverTipFactory.FromKeyword(definition.Keyword).Id);
+            excludedIds.Add(HoverTipFactory.FromKeyword(model.Keyword).Id);
         }
 
         return excludedIds is null
@@ -235,20 +185,26 @@ public static class LoadoutSpecialKeywords
                ?? throw new InvalidOperationException(
                    $"{typeof(DynamicVarSet).FullName}._vars was not a DynamicVar dictionary.");
     }
+}
 
-    private static void EnsureDefinitions()
+public static class LoadoutDescriptionKeywordPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(CardModel __instance, ref string __result)
     {
-        bool current = _definitions.Count == Registrations.Count;
-        for (int index = 0; current && index < Registrations.Count; index++)
-            current = Registrations[index].GetKeyword().Equals(_definitions[index].Keyword);
+        __result = LoadoutSpecialKeywords.AddDescriptionLines(__instance, __result);
+    }
+}
 
-        if (current)
-        {
-            return;
-        }
-
-        _definitions = Registrations
-            .Select(registration => registration.CreateDefinition())
-            .ToArray();
+public static class LoadoutDescriptionKeywordHoverTipsPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(
+        CardModel __instance,
+        ref IEnumerable<IHoverTip> __result)
+    {
+        __result = LoadoutSpecialKeywords.RemoveDescriptionKeywordHoverTips(
+            __instance,
+            __result);
     }
 }

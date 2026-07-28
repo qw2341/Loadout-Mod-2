@@ -1075,7 +1075,7 @@ public partial class NCardModificationScreen : Control
                 _temporaryState.KeywordOverrides[key] = changed.IsChecked;
                 bool hasSpecialDefinition = LoadoutSpecialKeywords.TryGet(
                     localKeyword,
-                    out LoadoutSpecialKeywordDefinition specialDefinition);
+                    out LoadoutKeywordModel specialDefinition);
                 if (hasSpecialDefinition)
                 {
                     foreach (LoadoutKeywordDynamicVarDefinition dynamicVar in specialDefinition.DynamicVars)

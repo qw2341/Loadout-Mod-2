@@ -5,71 +5,79 @@ namespace Loadout.Keywords;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using HarmonyLib;
 using MegaCrit.Sts2.Core.Audio.Debug;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
-using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 
-internal static class LessonLearnedKeyword
+public sealed class LessonLearnedKeyword : LoadoutDescriptionKeywordModel
 {
-    internal const string CardsVar = "LoadoutLessonLearnedCards";
+    public const string CardsVar = "LoadoutLessonLearnedCards";
 
-    internal static LoadoutSpecialKeywordDefinition CreateDefinition()
+    private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition>
+        VariableDefinitions =
+        [
+            new(
+                CardsVar,
+                1m,
+                0,
+                int.MaxValue,
+                "DYNAMIC_VAR_LOADOUT_LESSON_LEARNED_CARDS")
+        ];
+
+    public static LessonLearnedKeyword Instance { get; } = new();
+
+    private LessonLearnedKeyword()
     {
-        return new LoadoutSpecialKeywordDefinition(
-            LoadoutKeywords.LessonLearned,
-            LoadoutKeywords.LessonLearnedKey,
-            LoadoutKeywordPresentation.DescriptionLine,
-            LoadoutKeywordTextPosition.After,
-            "LOADOUT-LESSON_LEARNED.title",
-            "LOADOUT-LESSON_LEARNED.cardText",
-            [
-                new LoadoutKeywordDynamicVarDefinition(
-                    CardsVar,
-                    1m,
-                    0,
-                    int.MaxValue,
-                    "DYNAMIC_VAR_LOADOUT_LESSON_LEARNED_CARDS")
-            ]);
     }
 
-    internal static MethodInfo GetDescriptionTarget()
+    public override CardKeyword Keyword => LoadoutKeywords.LessonLearned;
+
+    public override string StorageKey => LoadoutKeywords.LessonLearnedKey;
+
+    public override string TitleLocKey => "LOADOUT-LESSON_LEARNED.title";
+
+    public override string CardTextLocKey => "LOADOUT-LESSON_LEARNED.cardText";
+
+    public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
+        VariableDefinitions;
+
+    public override bool HasOnPlayEffect => true;
+
+    public override object? CaptureBeforeOnPlay(
+        CardModel card,
+        CardPlay cardPlay)
     {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        MethodInfo? method = typeof(CardModel)
-            .GetMethods(flags)
-            .SingleOrDefault(candidate =>
-            {
-                if (!string.Equals(
-                        candidate.Name,
-                        nameof(CardModel.GetDescriptionForPile),
-                        StringComparison.Ordinal)
-                    || candidate.ReturnType != typeof(string))
-                {
-                    return false;
-                }
+        Creature? target = cardPlay.Target;
+        if (target is null
+            || target.IsDead
+            || target.Powers.Any(power => !power.ShouldOwnerDeathTriggerFatal()))
+        {
+            return null;
+        }
 
-                ParameterInfo[] parameters = candidate.GetParameters();
-                return parameters.Length == 3
-                       && parameters[0].ParameterType == typeof(PileType)
-                       && parameters[2].ParameterType == typeof(Creature);
-            });
-
-        return method ?? throw new MissingMethodException(
-            typeof(CardModel).FullName,
-            "private GetDescriptionForPile(PileType, DescriptionPreviewType, Creature)");
+        // This is the same pre-effect eligibility snapshot Feed takes at the
+        // start of its OnPlay body.
+        return target;
     }
 
-    internal static void Apply(CardModel source)
+    public override Task AfterOnPlay(
+        CardModel card,
+        CardPlay cardPlay,
+        object? capturedState)
+    {
+        if (capturedState is Creature { IsDead: true })
+            Apply(card);
+
+        return Task.CompletedTask;
+    }
+
+    private static void Apply(CardModel source)
     {
         if (!LoadoutSpecialKeywords.TryGetValue(
                 source,
@@ -108,72 +116,5 @@ internal static class LessonLearnedKeyword
                 1f,
                 PitchVariance.Small);
         }
-    }
-}
-
-public static class LessonLearnedDescriptionPatch
-{
-    [HarmonyPostfix]
-    public static void Postfix(CardModel __instance, ref string __result)
-    {
-        __result = LoadoutSpecialKeywords.AddDescriptionLines(__instance, __result);
-    }
-}
-
-public static class LessonLearnedHoverTipsPatch
-{
-    [HarmonyPostfix]
-    public static void Postfix(CardModel __instance, ref IEnumerable<IHoverTip> __result)
-    {
-        __result = LoadoutSpecialKeywords.RemoveDescriptionKeywordHoverTips(
-            __instance,
-            __result);
-    }
-}
-
-public static class LessonLearnedFatalPatch
-{
-    private sealed record FatalSnapshot(Creature Target);
-
-    private static readonly ConditionalWeakTable<CardPlay, FatalSnapshot> Snapshots = new();
-
-    [HarmonyPostfix]
-    public static void Postfix(CardPlay __1, ref Task __result)
-    {
-        CardPlay cardPlay = __1;
-        if (!LoadoutKeywords.Has(cardPlay.Card, LoadoutKeywords.LessonLearned))
-            return;
-
-        __result = CaptureAfterBeforeCardPlayed(__result, cardPlay);
-    }
-
-    public static bool ConsumeIfTriggered(CardPlay cardPlay)
-    {
-        if (!Snapshots.TryGetValue(cardPlay, out FatalSnapshot? snapshot))
-            return false;
-
-        Snapshots.Remove(cardPlay);
-        return snapshot.Target.IsDead;
-    }
-
-    public static void Clear(CardPlay cardPlay)
-    {
-        Snapshots.Remove(cardPlay);
-    }
-
-    private static async Task CaptureAfterBeforeCardPlayed(Task original, CardPlay cardPlay)
-    {
-        await original;
-
-        Creature? target = cardPlay.Target;
-        if (target is null
-            || target.IsDead
-            || target.Powers.Any(power => !power.ShouldOwnerDeathTriggerFatal()))
-        {
-            return;
-        }
-
-        Snapshots.Remove(cardPlay);
-        Snapshots.Add(cardPlay, new FatalSnapshot(target));
     }
 }

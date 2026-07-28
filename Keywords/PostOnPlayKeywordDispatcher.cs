@@ -14,6 +14,14 @@ using MegaCrit.Sts2.Core.Models;
 
 internal static class PostOnPlayKeywordDispatcher
 {
+    private sealed record KeywordEffectState(
+        LoadoutKeywordModel Model,
+        object? CapturedState);
+
+    private sealed record DispatchState(
+        bool Livid,
+        IReadOnlyList<KeywordEffectState> KeywordEffects);
+
     internal static IEnumerable<MethodBase> TargetMethods()
     {
         Type[] parameterTypes = [typeof(PlayerChoiceContext), typeof(CardPlay)];
@@ -24,7 +32,15 @@ internal static class PostOnPlayKeywordDispatcher
                      .Append(typeof(CardModel))
                      .Distinct())
         {
-            MethodInfo? onPlay = AccessTools.Method(type, "OnPlay", parameterTypes);
+            MethodInfo? onPlay = type.GetMethod(
+                "OnPlay",
+                BindingFlags.Instance
+                | BindingFlags.Public
+                | BindingFlags.NonPublic
+                | BindingFlags.DeclaredOnly,
+                binder: null,
+                parameterTypes,
+                modifiers: null);
             if (onPlay is not null && !onPlay.IsStatic && onPlay.ReturnType == typeof(Task))
                 targets.Add(onPlay);
         }
@@ -32,44 +48,61 @@ internal static class PostOnPlayKeywordDispatcher
         return targets;
     }
 
+    [HarmonyPrefix]
+    public static void Prefix(
+        CardModel __instance,
+        CardPlay __1,
+        out object? __state)
+    {
+        CardPlay cardPlay = __1;
+        bool livid = LoadoutKeywords.Has(__instance, LoadoutKeywords.Livid);
+        List<KeywordEffectState>? effects = null;
+
+        foreach (LoadoutKeywordModel model in LoadoutSpecialKeywords.All)
+        {
+            if (!model.HasOnPlayEffect || !model.IsEnabled(__instance))
+                continue;
+
+            (effects ??= []).Add(new KeywordEffectState(
+                model,
+                model.CaptureBeforeOnPlay(__instance, cardPlay)));
+        }
+
+        __state = !livid && effects is null
+            ? null
+            : new DispatchState(livid, effects ?? []);
+    }
+
     [HarmonyPostfix]
     public static void Postfix(
         CardModel __instance,
         CardPlay __1,
+        object? __state,
         ref Task __result)
     {
-        CardPlay cardPlay = __1;
-        bool livid = LoadoutKeywords.Has(__instance, LoadoutKeywords.Livid);
-        bool lessonLearned =
-            LoadoutKeywords.Has(__instance, LoadoutKeywords.LessonLearned);
-        if (!livid && !lessonLearned)
+        if (__state is not DispatchState state)
             return;
 
-        __result = Apply(__result, __instance, cardPlay, livid, lessonLearned);
+        __result = Apply(__result, __instance, __1, state);
     }
 
     private static async Task Apply(
         Task originalOnPlay,
         CardModel source,
         CardPlay cardPlay,
-        bool livid,
-        bool lessonLearned)
+        DispatchState state)
     {
-        try
-        {
-            await originalOnPlay;
+        await originalOnPlay;
 
-            if (lessonLearned && LessonLearnedFatalPatch.ConsumeIfTriggered(cardPlay))
-                LessonLearnedKeyword.Apply(source);
-
-            if (livid)
-                await LividKeyword.Apply(source);
-        }
-        finally
+        foreach (KeywordEffectState effect in state.KeywordEffects)
         {
-            if (lessonLearned)
-                LessonLearnedFatalPatch.Clear(cardPlay);
+            await effect.Model.AfterOnPlay(
+                source,
+                cardPlay,
+                effect.CapturedState);
         }
+
+        if (state.Livid)
+            await LividKeyword.Apply(source);
     }
-
 }
