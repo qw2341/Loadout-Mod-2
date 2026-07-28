@@ -81,7 +81,7 @@ internal static class CardModificationFields
         Data.Add(card, new CardModificationCardData(normalized));
         LoadoutKeywordRuntimePatches.EnableFromDelta(normalized);
         CardModificationDynamicPatches.EnableTemporaryPatches();
-        if (normalized.HasCustomText) CardModificationDynamicPatches.EnableTextPatches();
+        if (normalized.HasCustomText) CardModificationRuntime.MarkCustomTextOverridesPresent();
         if (normalized.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
         return true;
     }

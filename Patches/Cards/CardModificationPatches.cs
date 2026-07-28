@@ -345,26 +345,6 @@ public static class CardModelDescriptionCardModificationPatch
     }
 }
 
-public static class CardModelUpgradeDescriptionCardModificationPatch
-{
-    [HarmonyPrefix]
-    public static void Prefix(CardModel __instance, out bool __state)
-    {
-        __state = CardModificationRuntime.HasCustomTextOverrides(__instance);
-        if (__state)
-            CardModificationRuntime.PushLocStringContext(__instance);
-    }
-
-    [HarmonyFinalizer]
-    public static Exception? Finalizer(bool __state, Exception? __exception)
-    {
-        if (__state)
-            CardModificationRuntime.PopLocStringContext();
-
-        return __exception;
-    }
-}
-
 public static class LocStringRawTextCardModificationPatch
 {
     [HarmonyPostfix]

@@ -20,7 +20,9 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 internal static class CardModificationDynamicPatches
 {
     private const string HarmonyId = "Loadout.CardModification.Dynamic";
+    private const string TextHarmonyId = "Loadout.CardModification.Dynamic.Text";
     private static readonly Harmony Harmony = new(HarmonyId);
+    private static readonly Harmony TextHarmony = new(TextHarmonyId);
     private static bool _temporaryEnabled;
     private static bool _textEnabled;
     private static bool _portraitEnabled;
@@ -54,17 +56,13 @@ internal static class CardModificationDynamicPatches
     {
         if (_textEnabled) return;
         _textEnabled = true;
-        PatchPrefixFinalizer(AccessTools.PropertyGetter(typeof(CardModel), nameof(CardModel.Title))!,
+        PatchPrefixFinalizer(TextHarmony, AccessTools.PropertyGetter(typeof(CardModel), nameof(CardModel.Title))!,
             typeof(CardModelTitleCardModificationPatch), nameof(CardModelTitleCardModificationPatch.Prefix),
             nameof(CardModelTitleCardModificationPatch.Finalizer));
-        PatchPrefixFinalizer(AccessTools.Method(typeof(CardModel), nameof(CardModel.GetDescriptionForPile),
-                [typeof(PileType), typeof(MegaCrit.Sts2.Core.Entities.Creatures.Creature)])!,
+        PatchPrefixFinalizer(TextHarmony, GetDescriptionFormatter(),
             typeof(CardModelDescriptionCardModificationPatch), nameof(CardModelDescriptionCardModificationPatch.Prefix),
             nameof(CardModelDescriptionCardModificationPatch.Finalizer));
-        PatchPrefixFinalizer(AccessTools.Method(typeof(CardModel), nameof(CardModel.GetDescriptionForUpgradePreview))!,
-            typeof(CardModelUpgradeDescriptionCardModificationPatch), nameof(CardModelUpgradeDescriptionCardModificationPatch.Prefix),
-            nameof(CardModelUpgradeDescriptionCardModificationPatch.Finalizer));
-        PatchPostfix(typeof(LocString), nameof(LocString.GetRawText),
+        PatchPostfix(TextHarmony, typeof(LocString), nameof(LocString.GetRawText),
             typeof(LocStringRawTextCardModificationPatch), nameof(LocStringRawTextCardModificationPatch.Postfix));
     }
 
@@ -80,18 +78,27 @@ internal static class CardModificationDynamicPatches
 
     public static void ResetRunPatches()
     {
-        ClearAll();
-        if (PermanentCardModificationStore.HasAnyCustomText) EnableTextPatches();
+        Harmony.UnpatchAll(HarmonyId);
+        _temporaryEnabled = false;
+        _portraitEnabled = false;
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) EnablePortraitPatches();
     }
 
     public static void ClearAll()
     {
         Harmony.UnpatchAll(HarmonyId);
+        TextHarmony.UnpatchAll(TextHarmonyId);
         _temporaryEnabled = false;
         _textEnabled = false;
         _portraitEnabled = false;
     }
+
+    private static void PatchPostfix(Harmony harmony, Type targetType, string targetName, Type patchType, string patchName) =>
+        PatchPostfix(harmony, AccessTools.Method(targetType, targetName)
+                              ?? throw new MissingMethodException(targetType.FullName, targetName), patchType, patchName);
+
+    private static void PatchPostfix(Harmony harmony, System.Reflection.MethodBase target, Type patchType, string patchName) =>
+        harmony.Patch(target, postfix: new HarmonyMethod(patchType, patchName));
 
     private static void PatchPostfix(Type targetType, string targetName, Type patchType, string patchName) =>
         PatchPostfix(AccessTools.Method(targetType, targetName)
@@ -99,6 +106,16 @@ internal static class CardModificationDynamicPatches
 
     private static void PatchPostfix(System.Reflection.MethodBase target, Type patchType, string patchName) =>
         Harmony.Patch(target, postfix: new HarmonyMethod(patchType, patchName));
+
+    private static void PatchPrefixFinalizer(
+        Harmony harmony,
+        System.Reflection.MethodBase target,
+        Type patchType,
+        string prefix,
+        string finalizer) =>
+        harmony.Patch(target,
+            prefix: new HarmonyMethod(patchType, prefix),
+            finalizer: new HarmonyMethod(patchType, finalizer));
 
     private static void PatchPrefixFinalizer(
         Type targetType,
@@ -127,6 +144,25 @@ internal static class CardModificationDynamicPatches
         Harmony.Patch(target,
             prefix: new HarmonyMethod(patchType, prefix),
             postfix: new HarmonyMethod(patchType, postfix));
+
+    private static System.Reflection.MethodInfo GetDescriptionFormatter()
+    {
+        foreach (System.Reflection.MethodInfo method in typeof(CardModel).GetMethods(
+                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic))
+        {
+            if (!string.Equals(method.Name, nameof(CardModel.GetDescriptionForPile), StringComparison.Ordinal)
+                || method.ReturnType != typeof(string))
+                continue;
+
+            System.Reflection.ParameterInfo[] parameters = method.GetParameters();
+            if (parameters.Length == 3
+                && parameters[0].ParameterType == typeof(PileType)
+                && parameters[2].ParameterType == typeof(MegaCrit.Sts2.Core.Entities.Creatures.Creature))
+                return method;
+        }
+
+        throw new MissingMethodException(typeof(CardModel).FullName, nameof(CardModel.GetDescriptionForPile));
+    }
 }
 
 internal static class CardModificationPermanentPatches

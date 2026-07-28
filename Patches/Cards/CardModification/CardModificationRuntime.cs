@@ -49,6 +49,7 @@ public static class CardModificationRuntime
     private static Stack<CardModel>? _locStringContext;
 
     private static bool _registered;
+    private static bool _customTextOverridesMayExist;
 
     public static event Action<ModelId>? PermanentCardDisplayChanged;
 
@@ -65,8 +66,9 @@ public static class CardModificationRuntime
         PermanentCardModificationStore.CardChanged += OnPermanentCardChanged;
         PermanentCardModificationStore.Reloaded += OnPermanentStoreReloaded;
         PermanentCardModificationStore.Register();
+        _customTextOverridesMayExist = PermanentCardModificationStore.HasAnyCustomText;
         LoadoutKeywordRuntimePatches.Reconcile();
-        if (PermanentCardModificationStore.HasAnyCustomText) CardModificationDynamicPatches.EnableTextPatches();
+        CardModificationDynamicPatches.EnableTextPatches();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
         CardModificationNetProtocol.Register();
     }
@@ -85,6 +87,7 @@ public static class CardModificationRuntime
         CanonicalCardModificationRegistry.RestoreAll();
         CardModificationDynamicPatches.ClearAll();
         LoadoutKeywordRuntimePatches.ResetRunPatches();
+        _customTextOverridesMayExist = false;
         _registered = false;
     }
 
@@ -119,6 +122,9 @@ public static class CardModificationRuntime
 
     public static bool HasCustomTextOverrides(CardModel card)
     {
+        if (!_registered || !_customTextOverridesMayExist)
+            return false;
+
         if (PreviewDeltas.TryGetValue(card, out CardModificationDelta? preview) && preview.HasCustomText)
             return true;
         if (CardModificationFields.TryGet(card, out CardModificationCardData data) && data.Delta.HasCustomText)
@@ -126,6 +132,11 @@ public static class CardModificationRuntime
 
         return PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? permanent)
                && permanent.HasCustomText;
+    }
+
+    internal static void MarkCustomTextOverridesPresent()
+    {
+        _customTextOverridesMayExist = true;
     }
 
     public static bool HasPortraitOverrides(CardModel card)
@@ -624,7 +635,7 @@ public static class CardModificationRuntime
             if (temporary.HasCustomText || temporary.HasPortraitOverride)
             {
                 PreviewDeltas.Add(preview, temporary);
-                if (temporary.HasCustomText) CardModificationDynamicPatches.EnableTextPatches();
+                if (temporary.HasCustomText) MarkCustomTextOverridesPresent();
                 if (temporary.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
             }
             return preview;
@@ -1639,7 +1650,7 @@ public static class CardModificationRuntime
         CanonicalCardModificationRegistry.Reconcile(cardId, delta);
         if (delta is not null)
         {
-            if (delta.HasCustomText) CardModificationDynamicPatches.EnableTextPatches();
+            if (delta.HasCustomText) MarkCustomTextOverridesPresent();
             if (delta.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
         }
         AttachmentDisplayCards.Remove(cardId);
@@ -1654,7 +1665,7 @@ public static class CardModificationRuntime
         // boundary before existing live copies are rebuilt below.
         LoadoutKeywordRuntimePatches.Reconcile();
         AttachmentDisplayCards.Clear();
-        if (PermanentCardModificationStore.HasAnyCustomText) CardModificationDynamicPatches.EnableTextPatches();
+        if (PermanentCardModificationStore.HasAnyCustomText) MarkCustomTextOverridesPresent();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
         // Profile swaps replace the whole durable snapshot, so there is no old
         // per-field spec left to drive a selective copy. Rebuild all fields owned

@@ -717,7 +717,7 @@ public partial class NRelicModificationScreen : Control
         AddRelicEditButton(
             "modify_description",
             LocMan.Loc("RELICMODIFIER_MODIFY_DESCRIPTION", "Modify Description"),
-            _workingState.CustomDescription ?? GetDescriptionSafely(_item.Model),
+            _workingState.CustomDescription ?? GetRawDescriptionSafely(_item.Model),
             multiline: true,
             value => _workingState.CustomDescription = EmptyToNull(value));
         AddRelicEditButton(
@@ -1638,6 +1638,12 @@ public partial class NRelicModificationScreen : Control
     {
         try { return relic.DynamicDescription.GetFormattedText(); }
         catch { return relic.Id.Entry; }
+    }
+
+    private static string GetRawDescriptionSafely(RelicModel relic)
+    {
+        try { return relic.DynamicDescription.GetRawText(); }
+        catch { return GetDescriptionSafely(relic); }
     }
 
     private static string GetFlavorSafely(RelicModel relic)
