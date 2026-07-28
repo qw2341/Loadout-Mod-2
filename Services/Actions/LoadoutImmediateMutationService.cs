@@ -1290,7 +1290,8 @@ public static class LoadoutImmediateMutationService
         IReadOnlyList<CardPileAddResult> addedCards;
         try
         {
-            addedCards = await Sts2Compatibility.AddCards(cards, targetPlayer.Deck);
+            using (LoadoutContentAcquisitionRules.IgnoreModelRestrictions())
+                addedCards = await Sts2Compatibility.AddCards(cards, targetPlayer.Deck);
         }
         catch (Exception exception)
         {
@@ -1337,7 +1338,8 @@ public static class LoadoutImmediateMutationService
         {
             // The native batch path runs deck hooks for every fresh card while
             // producing one structural notification and one preview group.
-            addedCards = await Sts2Compatibility.AddCards(cards, targetPlayer.Deck);
+            using (LoadoutContentAcquisitionRules.IgnoreModelRestrictions())
+                addedCards = await Sts2Compatibility.AddCards(cards, targetPlayer.Deck);
         }
         catch (Exception exception)
         {
@@ -1450,7 +1452,9 @@ public static class LoadoutImmediateMutationService
             {
                 try
                 {
-                    PotionProcureResult result = await PotionCmd.TryToProcure(canonicalPotion.ToMutable(), targetPlayer);
+                    PotionProcureResult result;
+                    using (LoadoutContentAcquisitionRules.IgnoreModelRestrictions())
+                        result = await PotionCmd.TryToProcure(canonicalPotion.ToMutable(), targetPlayer);
                     if (!result.success)
                         break;
                 }
