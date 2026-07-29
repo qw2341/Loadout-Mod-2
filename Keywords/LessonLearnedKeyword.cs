@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Audio.Debug;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Commands.Builders;
@@ -160,8 +161,7 @@ internal static class LessonLearnedAttackFatalPatch
         // concrete CardModel.OnPlay implementation for single-target cards.
         if ((!__instance.IsSingleTargeted && !__instance.IsMultiTargeted)
             || __instance.ModelSource is not CardModel source
-            || __instance.CardPlay is not { } cardPlay
-            || !ReferenceEquals(cardPlay.Card, source)
+            || !Sts2Compatibility.MatchesAttackCardPlay(__instance, source)
             || !LoadoutKeywords.Has(source, LoadoutKeywords.LessonLearned))
         {
             return;

@@ -12,6 +12,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Commands.Builders;
 using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -90,6 +91,13 @@ internal static class Sts2Compatibility
     internal static bool UsesNewMultiTargetDamage { get; } =
         MultiTargetDamageMethod.GetParameters().Length == 7;
 
+    private static readonly MethodInfo? AttackCommandCardPlayGetter =
+        AccessTools.PropertyGetter(typeof(AttackCommand), "CardPlay");
+    private static readonly Func<AttackCommand, CardPlay?>? GetAttackCommandCardPlay =
+        CreateAttackCommandCardPlayGetter();
+    internal static bool UsesAttackCommandCardPlay =>
+        AttackCommandCardPlayGetter is not null;
+
     // Maintained newer API shape.
     private static readonly FieldInfo? NewModAssembliesField =
         AccessTools.Field(typeof(Mod), "assemblies");
@@ -122,6 +130,7 @@ internal static class Sts2Compatibility
             $"CardPileCmd.Add={(UsesNewBatchCardAdd ? "newer" : "0.107")}, " +
             $"Hook.ModifyDamage={(UsesNewModifyDamage ? "newer" : "0.107")}, " +
             $"CreatureCmd.Damage multi-target={(UsesNewMultiTargetDamage ? "newer" : "0.107")}, " +
+            $"AttackCommand.CardPlay={(UsesAttackCommandCardPlay ? "newer" : "0.107 fallback")}, " +
             $"MegaAnimationState animations={(SetAnimationMethod.ReturnType == typeof(void) ? "newer" : "0.107")}, " +
             $"card result hook={(UsesNewCardLocation ? "newer" : "0.107")}, " +
             $"card clone-for-player={(UsesNativeCreateCloneForPlayer ? "newer" : "0.107 fallback")}, " +
@@ -199,6 +208,22 @@ internal static class Sts2Compatibility
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(player);
         return CloneCardForPlayer(source, player);
+    }
+
+    internal static bool MatchesAttackCardPlay(
+        AttackCommand command,
+        CardModel source)
+    {
+        if (!ReferenceEquals(command.ModelSource, source))
+            return false;
+
+        // 0.107 only exposes ModelSource for card attribution.
+        if (GetAttackCommandCardPlay is null)
+            return true;
+
+        CardPlay? cardPlay = GetAttackCommandCardPlay(command);
+        return cardPlay is not null
+               && ReferenceEquals(cardPlay.Card, source);
     }
 
     internal static IEnumerable<Assembly> GetModAssemblies(Mod mod)
@@ -482,6 +507,23 @@ internal static class Sts2Compatibility
             typeof(CreatureCmd).FullName,
             "Damage(PlayerChoiceContext, IEnumerable<Creature>, decimal, ValueProp, Creature, CardModel, CardPlay) " +
             "or 0.107 Damage(PlayerChoiceContext, IEnumerable<Creature>, decimal, ValueProp, Creature, CardModel)");
+    }
+
+    private static Func<AttackCommand, CardPlay?>?
+        CreateAttackCommandCardPlayGetter()
+    {
+        if (AttackCommandCardPlayGetter is null)
+            return null;
+
+        if (AttackCommandCardPlayGetter.ReturnType != typeof(CardPlay))
+        {
+            throw new InvalidOperationException(
+                $"Unexpected AttackCommand.CardPlay type: " +
+                $"{AttackCommandCardPlayGetter.ReturnType.FullName}.");
+        }
+
+        return AccessTools.MethodDelegate<Func<AttackCommand, CardPlay?>>(
+            AttackCommandCardPlayGetter);
     }
 
     private static MethodInfo ResolveAnimationMethod(string methodName, Type[] parameterTypes)
