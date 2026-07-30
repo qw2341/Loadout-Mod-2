@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Models;
 
 /// <summary>
@@ -127,7 +128,7 @@ internal static class LoadoutModelRegistry
             yield return model;
         foreach (AncientEventModel model in ModelDb.AllAncients)
             yield return model;
-        foreach (MonsterModel model in ModelDb.All.OfType<MonsterModel>())
+        foreach (MonsterModel model in Sts2Compatibility.EnumerateMonsterModels())
             yield return model;
         foreach (CharacterModel model in ModelDb.AllCharacters.Where(character => character.IsPlayable))
             yield return model;

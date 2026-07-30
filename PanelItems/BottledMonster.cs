@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
+using Loadout.Services.Compatibility;
 using Loadout.Services.LastActions;
 using Loadout.Services.Morphing;
 using Loadout.Services.Targets;
@@ -762,7 +763,7 @@ public static class BottledMonster
             }
         }
 
-        foreach (EncounterModel encounter in ModelDb.EventEncounters
+        foreach (EncounterModel encounter in Sts2Compatibility.EnumerateEncounters()
                      .GroupBy(model => model.Id.ToString(), StringComparer.Ordinal)
                      .Select(group => group.First()))
         {

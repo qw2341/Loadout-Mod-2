@@ -54,6 +54,13 @@ internal static class Sts2Compatibility
     private static readonly Type AbstractModelEnumerableByRef =
         typeof(IEnumerable<AbstractModel>).MakeByRefType();
 
+    private static readonly Func<IEnumerable<AbstractModel>>? AllModelsGetter =
+        ResolveModelDbEnumerableGetter<AbstractModel>("All");
+    private static readonly Func<IEnumerable<EncounterModel>>? EventEncountersGetter =
+        ResolveModelDbEnumerableGetter<EncounterModel>("EventEncounters");
+    private static readonly Func<IEnumerable<EncounterModel>>? AllEncountersGetter =
+        ResolveModelDbEnumerableGetter<EncounterModel>("AllEncounters");
+
     internal static MethodInfo BatchCardAddMethod { get; } = ResolveBatchCardAddMethod();
     internal static bool UsesNewBatchCardAdd { get; } = BatchCardAddMethod.GetParameters().Length == 6;
     private static readonly BatchCardAddInvoker BatchCardAdd = CreateBatchCardAddInvoker();
@@ -125,6 +132,13 @@ internal static class Sts2Compatibility
                 "assemblies (newer) or assembly (0.107 compatibility fallback)");
         }
 
+        if (EventEncountersGetter is null && AllEncountersGetter is null)
+        {
+            throw new MissingMemberException(
+                typeof(ModelDb).FullName,
+                "EventEncounters (newer) or AllEncounters (0.107 compatibility fallback)");
+        }
+
         MainFile.Logger.Info(
             $"[Loadout] STS2 API shape: " +
             $"CardPileCmd.Add={(UsesNewBatchCardAdd ? "newer" : "0.107")}, " +
@@ -134,7 +148,32 @@ internal static class Sts2Compatibility
             $"MegaAnimationState animations={(SetAnimationMethod.ReturnType == typeof(void) ? "newer" : "0.107")}, " +
             $"card result hook={(UsesNewCardLocation ? "newer" : "0.107")}, " +
             $"card clone-for-player={(UsesNativeCreateCloneForPlayer ? "newer" : "0.107 fallback")}, " +
-            $"mod assemblies={(NewModAssembliesField is not null ? "newer" : "0.107")}.");
+            $"mod assemblies={(NewModAssembliesField is not null ? "newer" : "0.107")}, " +
+            $"ModelDb monsters={(AllModelsGetter is not null ? "All (newer)" : "Monsters (0.107)")}, " +
+            $"ModelDb encounters={(EventEncountersGetter is not null ? "acts + EventEncounters (newer)" : "AllEncounters (0.107)")}.");
+    }
+
+    internal static IEnumerable<MonsterModel> EnumerateMonsterModels()
+    {
+        return AllModelsGetter is null
+            ? ModelDb.Monsters
+            : AllModelsGetter().OfType<MonsterModel>();
+    }
+
+    internal static IEnumerable<EncounterModel> EnumerateEncounters()
+    {
+        if (EventEncountersGetter is not null)
+        {
+            return ModelDb.Acts
+                .Where(act => act.Index >= 0)
+                .SelectMany(act => act.AllEncounters)
+                .Concat(EventEncountersGetter());
+        }
+
+        return AllEncountersGetter?.Invoke()
+               ?? throw new MissingMemberException(
+                   typeof(ModelDb).FullName,
+                   "EventEncounters or AllEncounters");
     }
 
     internal static Task<IReadOnlyList<CardPileAddResult>> AddCards(
@@ -270,6 +309,23 @@ internal static class Sts2Compatibility
             typeof(CardPileCmd).FullName,
             "Add(IEnumerable<CardModel>, CardPile, CardPilePosition, AbstractModel, bool, bool) " +
             "or 0.107 Add(IEnumerable<CardModel>, CardPile, CardPilePosition, AbstractModel, bool)");
+    }
+
+    private static Func<IEnumerable<T>>? ResolveModelDbEnumerableGetter<T>(string propertyName)
+    {
+        MethodInfo? getter = AccessTools.PropertyGetter(typeof(ModelDb), propertyName);
+        if (getter is null)
+            return null;
+
+        if (!typeof(IEnumerable<T>).IsAssignableFrom(getter.ReturnType))
+        {
+            throw new InvalidOperationException(
+                $"Unexpected ModelDb.{propertyName} type: {getter.ReturnType.FullName}.");
+        }
+
+        MethodCallExpression call = Expression.Call(getter);
+        UnaryExpression converted = Expression.Convert(call, typeof(IEnumerable<T>));
+        return Expression.Lambda<Func<IEnumerable<T>>>(converted).Compile();
     }
 
     private static Func<CardModel, Player, CardModel> CreateCloneForPlayerInvoker()

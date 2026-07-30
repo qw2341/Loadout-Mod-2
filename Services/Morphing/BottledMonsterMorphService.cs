@@ -121,8 +121,7 @@ public static class BottledMonsterMorphService
 
     public static IReadOnlyList<MonsterModel> GetMonsterModels()
     {
-        return _monsterModels ??= ModelDb.All
-            .OfType<MonsterModel>()
+        return _monsterModels ??= Sts2Compatibility.EnumerateMonsterModels()
             .GroupBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
             .Select(group => group.First())
             .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
@@ -1260,10 +1259,7 @@ public static class BottledMonsterMorphService
 
     private static IReadOnlySet<string> GetCategorizedMonsterIds()
     {
-        return _categorizedMonsterIds ??= ModelDb.Acts
-            .Where(act => act.Index >= 0)
-            .SelectMany(act => act.AllEncounters)
-            .Concat(ModelDb.EventEncounters)
+        return _categorizedMonsterIds ??= Sts2Compatibility.EnumerateEncounters()
             .Where(encounter => encounter.RoomType is RoomType.Monster or RoomType.Elite or RoomType.Boss)
             .SelectMany(encounter => encounter.AllPossibleMonsters)
             .Select(monster => monster.Id.ToString())
