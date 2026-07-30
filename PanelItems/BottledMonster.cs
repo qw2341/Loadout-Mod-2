@@ -27,6 +27,11 @@ public static class BottledMonster
 {
     private const string MorphTargetKey = "bottled_monster_morph";
     private const string MorphTargetDropdownName = "BottledMonsterMorphTargetDropdown";
+    private const string CategorySorterId = "category";
+    private const string MorphRootGroupKey = "morph:forms";
+    private const string MorphOriginalGroupKey = "morph:forms:original";
+    private const string MorphCharactersGroupKey = "morph:forms:characters";
+    private const string OtherRootGroupKey = "monster:other";
     private static readonly Vector2 MonsterButtonSize = new(242f, 168f);
     private static readonly Vector2 PreviewSize = new(242f, 110f);
 
@@ -35,13 +40,14 @@ public static class BottledMonster
         IReadOnlyList<MonsterModel> allMonsters = ModelDb.Monsters
             .GroupBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
             .Select(group => group.First())
-            .OrderBy(FormatMonsterTitle, StringComparer.Ordinal)
+            .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
             .ToList();
-        Dictionary<string, IReadOnlyList<string>> actNamesByMonsterId = BuildActNamesByMonsterId();
-        Dictionary<string, HashSet<RoomType>> roomTypesByMonsterId = BuildRoomTypesByMonsterId();
+        MonsterCatalogData catalog = BuildMonsterCatalogData(allMonsters);
+        MonsterGroupPresentation grouping = BuildMonsterGroupPresentation(catalog, includeMorphGroups: false);
+        MonsterGroupPresentation morphGrouping = BuildMonsterGroupPresentation(catalog, includeMorphGroups: true);
 
-        IReadOnlyList<MorphOption> morphOptions = BuildMorphOptions();
-        NGenericSelectScreen morphScreen = CreateMorphScreen(morphOptions);
+        IReadOnlyList<MorphOption> morphOptions = BuildMorphOptions(allMonsters);
+        NGenericSelectScreen morphScreen = CreateMorphScreen(morphOptions, catalog, morphGrouping);
 
         NLoadoutPanelItem panelItem = CommonHelpers.CreateAndAddLoadoutItem(
             allMonsters,
@@ -49,7 +55,7 @@ public static class BottledMonster
             {
                 GetId = monster => monster.Id.ToString(),
                 GetName = FormatMonsterTitle,
-                GetSearchText = monster => $"{monster.Id} {FormatMonsterTitle(monster)} {CommonHelpers.GetModName(CommonHelpers.GetModelModId(monster))} {GetActSearchText(monster, actNamesByMonsterId)} {GetRoomTypeSearchText(monster, roomTypesByMonsterId)}",
+                GetSearchText = monster => BuildMonsterSearchText(monster, catalog),
                 CreateView = (monster, _) => CreateMonsterGridItem(monster),
                 BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
             },
@@ -58,12 +64,19 @@ public static class BottledMonster
                 builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
                 builder.Materialization(SelectMaterializationMode.Lazy);
                 builder.Layout(4, MonsterButtonSize, 24, 24, fixedSlots: false);
-                AddActFilters(builder);
-                AddMonsterCategoryFilters(builder, roomTypesByMonsterId);
+                AddActFilters(builder, catalog);
+                AddMonsterCategoryFilters(builder, catalog);
                 CommonHelpers.AddModFilters(builder, allMonsters);
-                builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), FormatMonsterTitle, activeByDefault: true, comparer: StringComparer.Ordinal);
-                builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
+                builder.Sorter(
+                    CategorySorterId,
+                    LocMan.Loc("FILTER_GROUP_MONSTER_CATEGORY", "Category"),
+                    (left, right) => CompareMonstersByCategory(left, right, catalog, grouping),
+                    (left, right) => CompareMonstersByCategory(right, left, catalog, grouping),
+                    activeByDefault: true);
+                builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), FormatMonsterTitle, comparer: StringComparer.Ordinal);
+                builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.ToString(), comparer: StringComparer.Ordinal);
                 builder.Sorter("mod", LocMan.Loc("FILTER_GROUP_MODS", "Mods"), CompareMonsterMod);
+                AddMonsterGrouping(builder, catalog, grouping);
             },
             _ => { },
             "BottledMonster.png",
@@ -71,7 +84,8 @@ public static class BottledMonster
             LocMan.Loc("BOTTLEDMONSTER_DESC", "Right-click to summon a monster. Alt + either click opens morph mode. Ctrl + right-click repeats the last summon."),
             HandleSummonMonsterActivatedAsync,
             LastActionService.BottleMonsterKey,
-            ReplayBottleMonsterLastActionAsync);
+            ReplayBottleMonsterLastActionAsync,
+            selectScreenScenePath: CommonHelpers.MonsterSelectScreenScenePath);
 
         panelItem.AlternateBoundScreen = morphScreen;
         panelItem.AlternateBeforeOpen = screen => LoadoutTargetService.UpsertTargetDropdown(
@@ -81,7 +95,7 @@ public static class BottledMonster
             LoadoutTargetMode.PlayersOnly);
     }
 
-    private static IReadOnlyList<MorphOption> BuildMorphOptions()
+    private static IReadOnlyList<MorphOption> BuildMorphOptions(IReadOnlyList<MonsterModel> allMonsters)
     {
         List<MorphOption> options =
         [
@@ -93,31 +107,34 @@ public static class BottledMonster
             .GroupBy(character => character.Id.ToString(), StringComparer.Ordinal)
             .Select(group => group.First())
             .Select(character => new MorphOption($"character:{character.Id}", character, MorphOptionKind.Character)));
-        options.AddRange(ModelDb.Monsters
-            .GroupBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
-            .Select(group => group.First())
+        options.AddRange(allMonsters
             .Select(monster => new MorphOption($"monster:{monster.Id}", monster, MorphOptionKind.Monster)));
         return options;
     }
 
-    private static NGenericSelectScreen CreateMorphScreen(IReadOnlyList<MorphOption> options)
+    private static NGenericSelectScreen CreateMorphScreen(
+        IReadOnlyList<MorphOption> options,
+        MonsterCatalogData catalog,
+        MonsterGroupPresentation grouping)
     {
-        PackedScene scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+        PackedScene scene = GD.Load<PackedScene>(CommonHelpers.MorphSelectScreenScenePath);
         NGenericSelectScreen screen = scene.Instantiate<NGenericSelectScreen>();
         SelectItemAdapter<MorphOption> adapter = new()
         {
             GetId = option => option.Id,
             GetName = FormatMorphOptionTitle,
-            GetSearchText = option => option.Model is null
-                ? $"{FormatMorphOptionTitle(option)} reset original"
-                : $"{option.Model.Id} {FormatMorphOptionTitle(option)} {CommonHelpers.GetModName(CommonHelpers.GetModelModId(option.Model))}",
+            GetSearchText = option => BuildMorphSearchText(option, catalog),
             CreateView = (option, _) => CreateMorphGridItem(option),
             BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
         };
 
-        void Configure(NGenericSelectScreen target)
+        void Configure(NGenericSelectScreen target, bool preserveViews = false)
         {
-            target.Configure(options, adapter, builder => BuildMorphScreen(builder, options));
+            if (preserveViews)
+                target.ConfigurePreservingViews(options, adapter, builder => BuildMorphScreen(builder, options, catalog, grouping));
+            else
+                target.Configure(options, adapter, builder => BuildMorphScreen(builder, options, catalog, grouping));
+
             target.RequestDeferredVisibleRefresh();
         }
 
@@ -125,7 +142,7 @@ public static class BottledMonster
         screen.LocaleChanged += () =>
         {
             SelectScreenUiState state = screen.CaptureUiState();
-            Configure(screen);
+            Configure(screen, preserveViews: true);
             screen.RestoreUiState(state);
         };
         screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
@@ -138,7 +155,11 @@ public static class BottledMonster
         return screen;
     }
 
-    private static void BuildMorphScreen(SelectScreenBuilder<MorphOption> builder, IReadOnlyList<MorphOption> options)
+    private static void BuildMorphScreen(
+        SelectScreenBuilder<MorphOption> builder,
+        IReadOnlyList<MorphOption> options,
+        MonsterCatalogData catalog,
+        MonsterGroupPresentation grouping)
     {
         builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
         builder.Materialization(SelectMaterializationMode.Lazy);
@@ -154,6 +175,8 @@ public static class BottledMonster
             LocMan.Loc("BOTTLEDMONSTER_MORPH_MONSTERS", "Monsters"),
             option => option.Kind == MorphOptionKind.Monster,
             "morph_type");
+        AddMorphActFilters(builder, catalog);
+        AddMorphCategoryFilters(builder, catalog);
 
         IReadOnlyList<string> modIds = options
             .Where(option => option.Model is not null)
@@ -176,9 +199,16 @@ public static class BottledMonster
             }
         }
 
-        builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), CompareMorphOptionName, activeByDefault: true);
+        builder.Sorter(
+            CategorySorterId,
+            LocMan.Loc("FILTER_GROUP_MONSTER_CATEGORY", "Category"),
+            (left, right) => CompareMorphOptionsByCategory(left, right, catalog, grouping),
+            (left, right) => CompareMorphOptionsByCategory(right, left, catalog, grouping),
+            activeByDefault: true);
+        builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), CompareMorphOptionName);
         builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (left, right) => CompareMorphOptions(left, right, option => option.Model?.Id.ToString() ?? string.Empty));
         builder.Sorter("mod", LocMan.Loc("FILTER_GROUP_MODS", "Mods"), (left, right) => CompareMorphOptions(left, right, option => option.Model is null ? string.Empty : CommonHelpers.GetModName(CommonHelpers.GetModelModId(option.Model))));
+        AddMorphGrouping(builder, catalog, grouping);
     }
 
     private static int CompareMorphOptionName(MorphOption left, MorphOption right)
@@ -195,6 +225,80 @@ public static class BottledMonster
         return compared != 0
             ? compared
             : string.Compare(FormatMorphOptionTitle(left), FormatMorphOptionTitle(right), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CompareMorphOptionsByCategory(
+        MorphOption left,
+        MorphOption right,
+        MonsterCatalogData catalog,
+        MonsterGroupPresentation grouping)
+    {
+        int byGroup = grouping.GetLeafOrder(GetMorphGroupKey(left, catalog))
+            .CompareTo(grouping.GetLeafOrder(GetMorphGroupKey(right, catalog)));
+        return byGroup != 0
+            ? byGroup
+            : string.Compare(left.Id, right.Id, StringComparison.Ordinal);
+    }
+
+    private static void AddMorphGrouping(
+        SelectScreenBuilder<MorphOption> builder,
+        MonsterCatalogData catalog,
+        MonsterGroupPresentation grouping)
+    {
+        builder.GroupBySorter(
+            CategorySorterId,
+            option => GetMorphGroupKey(option, catalog),
+            grouping.GetHeader,
+            grouping.GroupOrder,
+            grouping.DescendingGroupOrder);
+        builder.GroupBySorter(
+            "name",
+            option => GetMorphGroupKey(option, catalog),
+            grouping.GetHeader,
+            grouping.GroupOrder,
+            grouping.GroupOrder);
+        builder.GroupBySorter(
+            "id",
+            option => GetMorphGroupKey(option, catalog),
+            grouping.GetHeader,
+            grouping.GroupOrder,
+            grouping.GroupOrder);
+        builder.GroupBySorter(
+            "mod",
+            option => GetMorphGroupKey(option, catalog),
+            grouping.GetHeader,
+            grouping.GroupOrder,
+            grouping.GroupOrder);
+    }
+
+    private static string GetMorphGroupKey(MorphOption option, MonsterCatalogData catalog)
+    {
+        return option.Kind switch
+        {
+            MorphOptionKind.Original => MorphOriginalGroupKey,
+            MorphOptionKind.Character => MorphCharactersGroupKey,
+            _ when option.Model is MonsterModel monster => GetMonsterGroupKey(monster, catalog),
+            _ => OtherRootGroupKey
+        };
+    }
+
+    private static string BuildMorphSearchText(MorphOption option, MonsterCatalogData catalog)
+    {
+        return option.Model switch
+        {
+            MonsterModel monster => BuildMonsterSearchText(monster, catalog),
+            CharacterModel character => string.Join(
+                " ",
+                character.Id.ToString(),
+                FormatCharacterTitle(character),
+                CommonHelpers.GetModName(CommonHelpers.GetModelModId(character)),
+                LocMan.Loc("BOTTLEDMONSTER_MORPH_CHARACTERS", "Characters")),
+            _ => string.Join(
+                " ",
+                FormatMorphOptionTitle(option),
+                LocMan.Loc("BOTTLEDMONSTER_MORPH_ORIGINAL", "Original Form"),
+                "reset original")
+        };
     }
 
     private static void RequestMorph(MorphOption option)
@@ -492,113 +596,400 @@ public static class BottledMonster
         label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
     }
 
-    private static void AddActFilters(SelectScreenBuilder<MonsterModel> builder)
+    private static MonsterCatalogData BuildMonsterCatalogData(IReadOnlyList<MonsterModel> allMonsters)
     {
-        IReadOnlyList<(string Id, string Label, HashSet<string> MonsterIds)> actFilters = ModelDb.Acts
-            .Select(act => (
-                Id: FilterId("act", act.Id.Entry),
-                Label: FormatActTitle(act),
-                MonsterIds: act.AllMonsters.Select(monster => monster.Id.ToString()).ToHashSet(StringComparer.Ordinal)))
-            .Where(filter => filter.MonsterIds.Count > 0)
+        IReadOnlyList<ActModel> acts = ModelDb.Acts
+            .Where(act => act.Index >= 0)
+            .GroupBy(act => act.Id.ToString(), StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderBy(act => act.Index)
+            .ThenBy(act => act.IsDefault ? 0 : 1)
+            .ThenBy(act => act.Id.ToString(), StringComparer.Ordinal)
             .ToList();
+        Dictionary<string, int> actOrderById = acts
+            .Select((act, index) => (act.Id, index))
+            .ToDictionary(pair => pair.Id.ToString(), pair => pair.index, StringComparer.Ordinal);
+        Dictionary<string, List<MonsterMembership>> memberships = new(StringComparer.Ordinal);
+        HashSet<string> actEncounterIds = new(StringComparer.Ordinal);
 
-        if (actFilters.Count == 0)
-            return;
-
-        builder.FilterGroup("act", LocMan.Loc("FILTER_GROUP_ACT", "Act"));
-        foreach ((string id, string label, HashSet<string> monsterIds) in actFilters)
+        foreach (ActModel act in acts)
         {
-            builder.Filter(id, label, monster => monsterIds.Contains(monster.Id.ToString()), "act");
+            foreach (EncounterModel encounter in act.AllEncounters)
+            {
+                actEncounterIds.Add(encounter.Id.ToString());
+                AddEncounterMemberships(memberships, encounter, act);
+            }
         }
+
+        foreach (EncounterModel encounter in ModelDb.EventEncounters
+                     .GroupBy(model => model.Id.ToString(), StringComparer.Ordinal)
+                     .Select(group => group.First()))
+        {
+            if (!actEncounterIds.Contains(encounter.Id.ToString()))
+                AddEncounterMemberships(memberships, encounter, null);
+        }
+
+        Dictionary<string, MonsterPlacement> placements = new(StringComparer.Ordinal);
+        foreach (MonsterModel monster in allMonsters)
+        {
+            string monsterId = monster.Id.ToString();
+            IReadOnlyList<MonsterMembership> allMemberships = memberships.GetValueOrDefault(monsterId) ?? [];
+            IReadOnlyList<MonsterMembership> eligibleActMemberships = allMemberships
+                .Where(membership => membership.Act is not null && IsMonsterRoomType(membership.RoomType))
+                .OrderBy(membership => actOrderById.GetValueOrDefault(membership.Act!.Id.ToString(), int.MaxValue))
+                .ThenBy(membership => GetMonsterCategoryOrder(membership.RoomType))
+                .ToList();
+            IReadOnlyList<ActModel> applicableActs = allMemberships
+                .Where(membership => membership.Act is not null)
+                .Select(membership => membership.Act!)
+                .GroupBy(act => act.Id.ToString(), StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(act => actOrderById.GetValueOrDefault(act.Id.ToString(), int.MaxValue))
+                .ToList();
+            IReadOnlySet<RoomType> roomTypes = allMemberships
+                .Select(membership => membership.RoomType)
+                .ToHashSet();
+
+            string groupKey;
+            if (eligibleActMemberships.Count > 0)
+            {
+                MonsterMembership primary = eligibleActMemberships[0];
+                groupKey = GetActCategoryGroupKey(primary.Act!, primary.RoomType);
+            }
+            else
+            {
+                MonsterMembership? noActMembership = allMemberships
+                    .Where(membership => membership.Act is null && IsMonsterRoomType(membership.RoomType))
+                    .OrderBy(membership => GetMonsterCategoryOrder(membership.RoomType))
+                    .FirstOrDefault();
+                groupKey = noActMembership is null
+                    ? GetOtherCategoryGroupKey(null)
+                    : GetOtherCategoryGroupKey(noActMembership.RoomType);
+            }
+
+            placements[monsterId] = new MonsterPlacement(
+                groupKey,
+                applicableActs,
+                applicableActs.Select(act => act.Id.ToString()).ToHashSet(StringComparer.Ordinal),
+                roomTypes,
+                allMemberships,
+                allMemberships.Any(membership => membership.Act is null),
+                eligibleActMemberships.Count == 0);
+        }
+
+        return new MonsterCatalogData(acts, placements);
+    }
+
+    private static void AddEncounterMemberships(
+        IDictionary<string, List<MonsterMembership>> memberships,
+        EncounterModel encounter,
+        ActModel? act)
+    {
+        foreach (MonsterModel monster in encounter.AllPossibleMonsters)
+        {
+            string monsterId = monster.Id.ToString();
+            if (!memberships.TryGetValue(monsterId, out List<MonsterMembership>? monsterMemberships))
+            {
+                monsterMemberships = [];
+                memberships[monsterId] = monsterMemberships;
+            }
+
+            string? actId = act?.Id.ToString();
+            if (monsterMemberships.Any(existing =>
+                    existing.RoomType == encounter.RoomType
+                    && string.Equals(existing.Act?.Id.ToString(), actId, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            monsterMemberships.Add(new MonsterMembership(act, encounter.RoomType));
+        }
+    }
+
+    private static MonsterGroupPresentation BuildMonsterGroupPresentation(
+        MonsterCatalogData catalog,
+        bool includeMorphGroups)
+    {
+        List<string> groupOrder = [];
+        List<IReadOnlyList<string>> groupBlocks = [];
+        Dictionary<string, SelectGroupHeader> headers = new(StringComparer.Ordinal);
+        Dictionary<string, int> leafOrder = new(StringComparer.Ordinal);
+
+        if (includeMorphGroups)
+        {
+            List<string> morphBlock =
+            [
+                MorphRootGroupKey,
+                MorphOriginalGroupKey,
+                MorphCharactersGroupKey
+            ];
+            headers[MorphRootGroupKey] = SelectGroupHeader.Category(
+                LocMan.Loc("BOTTLEDMONSTER_MORPH_TYPE", "Morph Type"),
+                childGroupPrefix: MorphRootGroupKey + ":");
+            headers[MorphOriginalGroupKey] = new SelectGroupHeader(
+                LocMan.Loc("BOTTLEDMONSTER_MORPH_ORIGINAL", "Original Form"));
+            headers[MorphCharactersGroupKey] = new SelectGroupHeader(
+                LocMan.Loc("BOTTLEDMONSTER_MORPH_CHARACTERS", "Characters"));
+            leafOrder[MorphOriginalGroupKey] = leafOrder.Count;
+            leafOrder[MorphCharactersGroupKey] = leafOrder.Count;
+            groupBlocks.Add(morphBlock);
+            groupOrder.AddRange(morphBlock);
+        }
+
+        foreach (IGrouping<int, ActModel> actsAtIndex in catalog.Acts.GroupBy(act => act.Index))
+        {
+            string rootKey = GetActRootGroupKey(actsAtIndex.Key);
+            List<string> block = [rootKey];
+            headers[rootKey] = SelectGroupHeader.Category(
+                FormatActNumber(actsAtIndex.Key),
+                childGroupPrefix: rootKey + ":");
+
+            foreach (ActModel act in actsAtIndex)
+            {
+                string actKey = GetActGroupKey(act);
+                block.Add(actKey);
+                headers[actKey] = new SelectGroupHeader(
+                    FormatActTitle(act),
+                    childGroupPrefix: actKey + ":");
+
+                foreach (RoomType roomType in MonsterRoomTypes)
+                {
+                    string categoryKey = GetActCategoryGroupKey(act, roomType);
+                    block.Add(categoryKey);
+                    headers[categoryKey] = new SelectGroupHeader(FormatMonsterCategory(roomType));
+                    leafOrder[categoryKey] = leafOrder.Count;
+                }
+            }
+
+            groupBlocks.Add(block);
+            groupOrder.AddRange(block);
+        }
+
+        List<string> otherBlock = [OtherRootGroupKey];
+        headers[OtherRootGroupKey] = SelectGroupHeader.Category(
+            LocMan.Loc("OTHER", "Other"),
+            childGroupPrefix: OtherRootGroupKey + ":");
+        foreach (RoomType roomType in MonsterRoomTypes)
+        {
+            string categoryKey = GetOtherCategoryGroupKey(roomType);
+            otherBlock.Add(categoryKey);
+            headers[categoryKey] = new SelectGroupHeader(FormatMonsterCategory(roomType));
+            leafOrder[categoryKey] = leafOrder.Count;
+        }
+
+        string uncategorizedKey = GetOtherCategoryGroupKey(null);
+        otherBlock.Add(uncategorizedKey);
+        headers[uncategorizedKey] = new SelectGroupHeader(LocMan.Loc("OTHER", "Other"));
+        leafOrder[uncategorizedKey] = leafOrder.Count;
+        groupBlocks.Add(otherBlock);
+        groupOrder.AddRange(otherBlock);
+
+        IReadOnlyList<string> descendingGroupOrder = groupBlocks
+            .AsEnumerable()
+            .Reverse()
+            .SelectMany(block => block)
+            .ToList();
+        return new MonsterGroupPresentation(groupOrder, descendingGroupOrder, headers, leafOrder);
+    }
+
+    private static void AddActFilters(
+        SelectScreenBuilder<MonsterModel> builder,
+        MonsterCatalogData catalog)
+    {
+        builder.FilterGroup("act", LocMan.Loc("FILTER_GROUP_ACT", "Act"));
+        for (int actOrder = 0; actOrder < catalog.Acts.Count; actOrder++)
+        {
+            ActModel act = catalog.Acts[actOrder];
+            string actId = act.Id.ToString();
+            if (!catalog.Placements.Values.Any(placement => placement.ApplicableActIds.Contains(actId)))
+                continue;
+
+            builder.Filter(
+                $"act_{actOrder}",
+                $"{FormatActNumber(act.Index)}: {FormatActTitle(act)}",
+                monster => catalog.TryGetPlacement(monster, out MonsterPlacement placement)
+                           && placement.ApplicableActIds.Contains(actId),
+                "act");
+        }
+
+        builder.Filter(
+            "act_other",
+            LocMan.Loc("OTHER", "Other"),
+            monster => catalog.TryGetPlacement(monster, out MonsterPlacement placement)
+                       && placement.IsOther,
+            "act");
+    }
+
+    private static void AddMorphActFilters(
+        SelectScreenBuilder<MorphOption> builder,
+        MonsterCatalogData catalog)
+    {
+        builder.FilterGroup("act", LocMan.Loc("FILTER_GROUP_ACT", "Act"));
+        for (int actOrder = 0; actOrder < catalog.Acts.Count; actOrder++)
+        {
+            ActModel act = catalog.Acts[actOrder];
+            string actId = act.Id.ToString();
+            if (!catalog.Placements.Values.Any(placement => placement.ApplicableActIds.Contains(actId)))
+                continue;
+
+            builder.Filter(
+                $"act_{actOrder}",
+                $"{FormatActNumber(act.Index)}: {FormatActTitle(act)}",
+                option => option.Model is MonsterModel monster
+                          && catalog.TryGetPlacement(monster, out MonsterPlacement placement)
+                          && placement.ApplicableActIds.Contains(actId),
+                "act");
+        }
+
+        builder.Filter(
+            "act_other",
+            LocMan.Loc("OTHER", "Other"),
+            option => option.Model is MonsterModel monster
+                      && catalog.TryGetPlacement(monster, out MonsterPlacement placement)
+                      && placement.IsOther,
+            "act");
     }
 
     private static void AddMonsterCategoryFilters(
         SelectScreenBuilder<MonsterModel> builder,
-        IReadOnlyDictionary<string, HashSet<RoomType>> roomTypesByMonsterId)
+        MonsterCatalogData catalog)
     {
         builder.FilterGroup("monster_category", LocMan.Loc("FILTER_GROUP_MONSTER_CATEGORY", "Category"));
-        builder.Filter("monster_category_boss", LocMan.Loc("MONSTER_CATEGORY_BOSS", "Boss"), monster => HasRoomType(monster, roomTypesByMonsterId, RoomType.Boss), "monster_category");
-        builder.Filter("monster_category_elite", LocMan.Loc("MONSTER_CATEGORY_ELITE", "Elite"), monster => HasRoomType(monster, roomTypesByMonsterId, RoomType.Elite), "monster_category");
-        builder.Filter("monster_category_monster", LocMan.Loc("MONSTER_CATEGORY_MONSTER", "Monster"), monster => HasRoomType(monster, roomTypesByMonsterId, RoomType.Monster), "monster_category");
+        foreach (RoomType roomType in MonsterRoomTypes)
+        {
+            RoomType capturedRoomType = roomType;
+            builder.Filter(
+                $"monster_category_{roomType.ToString().ToLowerInvariant()}",
+                FormatMonsterCategory(roomType),
+                monster => catalog.TryGetPlacement(monster, out MonsterPlacement placement)
+                           && placement.RoomTypes.Contains(capturedRoomType),
+                "monster_category");
+        }
     }
 
-    private static Dictionary<string, IReadOnlyList<string>> BuildActNamesByMonsterId()
+    private static void AddMorphCategoryFilters(
+        SelectScreenBuilder<MorphOption> builder,
+        MonsterCatalogData catalog)
     {
-        Dictionary<string, List<string>> actNamesByMonsterId = new(StringComparer.Ordinal);
-        foreach (ActModel act in ModelDb.Acts)
+        builder.FilterGroup("monster_category", LocMan.Loc("FILTER_GROUP_MONSTER_CATEGORY", "Category"));
+        foreach (RoomType roomType in MonsterRoomTypes)
         {
-            string actName = FormatActTitle(act);
-            foreach (MonsterModel monster in act.AllMonsters)
-            {
-                string monsterId = monster.Id.ToString();
-                if (!actNamesByMonsterId.TryGetValue(monsterId, out List<string>? actNames))
-                {
-                    actNames = [];
-                    actNamesByMonsterId[monsterId] = actNames;
-                }
+            RoomType capturedRoomType = roomType;
+            builder.Filter(
+                $"monster_category_{roomType.ToString().ToLowerInvariant()}",
+                FormatMonsterCategory(roomType),
+                option => option.Model is MonsterModel monster
+                          && catalog.TryGetPlacement(monster, out MonsterPlacement placement)
+                          && placement.RoomTypes.Contains(capturedRoomType),
+                "monster_category");
+        }
+    }
 
-                if (!actNames.Contains(actName, StringComparer.Ordinal))
-                    actNames.Add(actName);
+    private static void AddMonsterGrouping(
+        SelectScreenBuilder<MonsterModel> builder,
+        MonsterCatalogData catalog,
+        MonsterGroupPresentation grouping)
+    {
+        builder.GroupBySorter(
+            CategorySorterId,
+            monster => GetMonsterGroupKey(monster, catalog),
+            grouping.GetHeader,
+            grouping.GroupOrder,
+            grouping.DescendingGroupOrder);
+        builder.GroupBySorter(
+            "name",
+            monster => GetMonsterGroupKey(monster, catalog),
+            grouping.GetHeader,
+            grouping.GroupOrder,
+            grouping.GroupOrder);
+        builder.GroupBySorter(
+            "id",
+            monster => GetMonsterGroupKey(monster, catalog),
+            grouping.GetHeader,
+            grouping.GroupOrder,
+            grouping.GroupOrder);
+        builder.GroupBySorter(
+            "mod",
+            monster => GetMonsterGroupKey(monster, catalog),
+            grouping.GetHeader,
+            grouping.GroupOrder,
+            grouping.GroupOrder);
+    }
+
+    private static int CompareMonstersByCategory(
+        MonsterModel left,
+        MonsterModel right,
+        MonsterCatalogData catalog,
+        MonsterGroupPresentation grouping)
+    {
+        int byGroup = grouping.GetLeafOrder(GetMonsterGroupKey(left, catalog))
+            .CompareTo(grouping.GetLeafOrder(GetMonsterGroupKey(right, catalog)));
+        return byGroup != 0
+            ? byGroup
+            : string.Compare(left.Id.ToString(), right.Id.ToString(), StringComparison.Ordinal);
+    }
+
+    private static string GetMonsterGroupKey(MonsterModel monster, MonsterCatalogData catalog)
+    {
+        return catalog.TryGetPlacement(monster, out MonsterPlacement placement)
+            ? placement.GroupKey
+            : GetOtherCategoryGroupKey(null);
+    }
+
+    private static string BuildMonsterSearchText(MonsterModel monster, MonsterCatalogData catalog)
+    {
+        List<string> searchParts =
+        [
+            monster.Id.ToString(),
+            FormatMonsterTitle(monster),
+            CommonHelpers.GetModName(CommonHelpers.GetModelModId(monster))
+        ];
+
+        if (catalog.TryGetPlacement(monster, out MonsterPlacement placement))
+        {
+            foreach (ActModel act in placement.ApplicableActs)
+            {
+                searchParts.Add(FormatActNumber(act.Index));
+                searchParts.Add(FormatActTitle(act));
             }
+
+            foreach (RoomType roomType in placement.RoomTypes.OrderBy(GetMonsterCategoryOrder))
+                searchParts.Add(FormatMonsterCategory(roomType));
+
+            if (placement.IsOther)
+                searchParts.Add(LocMan.Loc("OTHER", "Other"));
         }
 
-        return actNamesByMonsterId.ToDictionary(
-            pair => pair.Key,
-            pair => (IReadOnlyList<string>)pair.Value,
-            StringComparer.Ordinal);
+        return string.Join(" ", searchParts.Distinct(StringComparer.Ordinal));
     }
 
-    private static string GetActSearchText(MonsterModel monster, IReadOnlyDictionary<string, IReadOnlyList<string>> actNamesByMonsterId)
+    private static readonly RoomType[] MonsterRoomTypes =
+    [
+        RoomType.Monster,
+        RoomType.Elite,
+        RoomType.Boss
+    ];
+
+    private static bool IsMonsterRoomType(RoomType roomType)
     {
-        return actNamesByMonsterId.TryGetValue(monster.Id.ToString(), out IReadOnlyList<string>? actNames)
-            ? string.Join(" ", actNames)
-            : string.Empty;
+        return roomType is RoomType.Monster or RoomType.Elite or RoomType.Boss;
     }
 
-    private static Dictionary<string, HashSet<RoomType>> BuildRoomTypesByMonsterId()
+    private static int GetMonsterCategoryOrder(RoomType roomType)
     {
-        Dictionary<string, HashSet<RoomType>> roomTypesByMonsterId = new(StringComparer.Ordinal);
-        foreach (ActModel act in ModelDb.Acts)
+        return roomType switch
         {
-            foreach (EncounterModel encounter in act.AllEncounters)
-            {
-                if (encounter.RoomType is not (RoomType.Boss or RoomType.Elite or RoomType.Monster))
-                    continue;
-
-                foreach (MonsterModel monster in encounter.AllPossibleMonsters)
-                {
-                    string monsterId = monster.Id.ToString();
-                    if (!roomTypesByMonsterId.TryGetValue(monsterId, out HashSet<RoomType>? roomTypes))
-                    {
-                        roomTypes = [];
-                        roomTypesByMonsterId[monsterId] = roomTypes;
-                    }
-
-                    roomTypes.Add(encounter.RoomType);
-                }
-            }
-        }
-
-        return roomTypesByMonsterId;
+            RoomType.Monster => 0,
+            RoomType.Elite => 1,
+            RoomType.Boss => 2,
+            _ => 3
+        };
     }
 
-    private static bool HasRoomType(
-        MonsterModel monster,
-        IReadOnlyDictionary<string, HashSet<RoomType>> roomTypesByMonsterId,
-        RoomType roomType)
-    {
-        return roomTypesByMonsterId.TryGetValue(monster.Id.ToString(), out HashSet<RoomType>? roomTypes)
-               && roomTypes.Contains(roomType);
-    }
-
-    private static string GetRoomTypeSearchText(
-        MonsterModel monster,
-        IReadOnlyDictionary<string, HashSet<RoomType>> roomTypesByMonsterId)
-    {
-        return roomTypesByMonsterId.TryGetValue(monster.Id.ToString(), out HashSet<RoomType>? roomTypes)
-            ? string.Join(" ", roomTypes.Select(FormatMonsterCategory))
-            : string.Empty;
-    }
+    private static string GetActRootGroupKey(int actIndex) => $"monster:act:{actIndex}";
+    private static string GetActGroupKey(ActModel act) => $"{GetActRootGroupKey(act.Index)}:act:{act.Id}";
+    private static string GetActCategoryGroupKey(ActModel act, RoomType roomType) => $"{GetActGroupKey(act)}:category:{roomType.ToString().ToLowerInvariant()}";
+    private static string GetOtherCategoryGroupKey(RoomType? roomType) => $"{OtherRootGroupKey}:category:{roomType?.ToString().ToLowerInvariant() ?? "other"}";
 
     private static string FormatMonsterCategory(RoomType roomType)
     {
@@ -638,12 +1029,18 @@ public static class BottledMonster
     {
         try
         {
-            return (act.Index + 1) +": " + act.Title.GetFormattedText();
+            return act.Title.GetFormattedText();
         }
         catch
         {
             return act.Id.Entry;
         }
+    }
+
+    private static string FormatActNumber(int actIndex)
+    {
+        int actNumber = actIndex + 1;
+        return LocMan.Loc("ACT_NUMBER", $"Act {actNumber}", actNumber);
     }
 
     private static MonsterModel? ResolveMonster(string monsterId)
@@ -664,4 +1061,67 @@ public static class BottledMonster
     }
 
     private sealed record MorphOption(string Id, AbstractModel? Model, MorphOptionKind Kind);
+
+    private sealed record MonsterMembership(ActModel? Act, RoomType RoomType);
+
+    private sealed record MonsterPlacement(
+        string GroupKey,
+        IReadOnlyList<ActModel> ApplicableActs,
+        IReadOnlySet<string> ApplicableActIds,
+        IReadOnlySet<RoomType> RoomTypes,
+        IReadOnlyList<MonsterMembership> Memberships,
+        bool HasNoActMembership,
+        bool IsOther);
+
+    private sealed class MonsterCatalogData
+    {
+        public MonsterCatalogData(
+            IReadOnlyList<ActModel> acts,
+            IReadOnlyDictionary<string, MonsterPlacement> placements)
+        {
+            Acts = acts;
+            Placements = placements;
+        }
+
+        public IReadOnlyList<ActModel> Acts { get; }
+        public IReadOnlyDictionary<string, MonsterPlacement> Placements { get; }
+
+        public bool TryGetPlacement(MonsterModel monster, out MonsterPlacement placement)
+        {
+            return Placements.TryGetValue(monster.Id.ToString(), out placement!);
+        }
+    }
+
+    private sealed class MonsterGroupPresentation
+    {
+        private readonly IReadOnlyDictionary<string, SelectGroupHeader> _headers;
+        private readonly IReadOnlyDictionary<string, int> _leafOrder;
+
+        public MonsterGroupPresentation(
+            IReadOnlyList<string> groupOrder,
+            IReadOnlyList<string> descendingGroupOrder,
+            IReadOnlyDictionary<string, SelectGroupHeader> headers,
+            IReadOnlyDictionary<string, int> leafOrder)
+        {
+            GroupOrder = groupOrder;
+            DescendingGroupOrder = descendingGroupOrder;
+            _headers = headers;
+            _leafOrder = leafOrder;
+        }
+
+        public IReadOnlyList<string> GroupOrder { get; }
+        public IReadOnlyList<string> DescendingGroupOrder { get; }
+
+        public SelectGroupHeader GetHeader(string key)
+        {
+            return _headers.TryGetValue(key, out SelectGroupHeader? header)
+                ? header
+                : new SelectGroupHeader(key);
+        }
+
+        public int GetLeafOrder(string key)
+        {
+            return _leafOrder.GetValueOrDefault(key, int.MaxValue);
+        }
+    }
 }

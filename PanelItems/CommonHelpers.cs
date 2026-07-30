@@ -45,6 +45,8 @@ public class CommonHelpers
 
     public const string GenericSelectScreenScenePath = "res://UI/Screens/GenericSelectScreen.tscn";
     public const string EventSelectScreenScenePath = NEventSelectScreen.ScenePath;
+    public const string MonsterSelectScreenScenePath = NMonsterSelectScreen.ScenePath;
+    public const string MorphSelectScreenScenePath = NMorphSelectScreen.ScenePath;
     public const string RelicSelectScreenScenePath = NRelicSelectScreen.ScenePath;
     public const string CardSelectScreenScenePath = NCardSelectScreen.ScenePath;
 
@@ -74,9 +76,13 @@ public class CommonHelpers
         bool activationInFlight = false;
         LastActionCaptureSession captureSession = null;
 
-        void ConfigureScreen(NGenericSelectScreen target)
+        void ConfigureScreen(NGenericSelectScreen target, bool preserveMonsterViews = false)
         {
-            target.Configure(models, adapter, builder);
+            if (preserveMonsterViews && target is NMonsterSelectScreen)
+                target.ConfigurePreservingViews(models, adapter, builder);
+            else
+                target.Configure(models, adapter, builder);
+
             beforeOpen?.Invoke(target);
             target.RequestDeferredVisibleRefresh();
         }
@@ -85,7 +91,7 @@ public class CommonHelpers
         screen.LocaleChanged += () =>
         {
             SelectScreenUiState state = screen.CaptureUiState();
-            ConfigureScreen(screen);
+            ConfigureScreen(screen, preserveMonsterViews: true);
             screen.RestoreUiState(state);
         };
         screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
