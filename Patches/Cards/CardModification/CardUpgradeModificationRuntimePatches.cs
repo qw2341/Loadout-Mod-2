@@ -160,7 +160,7 @@ internal static class CardUpgradeModificationContextPatch
 
 internal static class CardUpgradeModificationRecalculationPatch
 {
-    [HarmonyAfter("Loadout.Keyword.InfiniteUpgrade")]
+    [HarmonyBefore("Loadout.Keyword.InfiniteUpgrade")]
     public static void Prefix(DynamicVarSet __instance)
     {
         CardModel? card = CardUpgradeModificationContextPatch.ActiveCard;

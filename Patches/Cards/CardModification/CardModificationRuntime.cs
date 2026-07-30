@@ -386,7 +386,8 @@ public static class CardModificationRuntime
             canonical,
             card.CurrentUpgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(desired),
-            desired.UpgradeModification);
+            desired.UpgradeModification,
+            desired.KeywordOverrides);
         return CreateDelta(baseline, desired, permanent);
     }
 
@@ -411,7 +412,8 @@ public static class CardModificationRuntime
             canonical,
             card.CurrentUpgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(delta),
-            upgradeModification);
+            upgradeModification,
+            delta.KeywordOverrides);
         return MaterializeSpec(baseline, delta, permanent);
     }
 
@@ -431,7 +433,8 @@ public static class CardModificationRuntime
             canonical,
             card.CurrentUpgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(data.Delta),
-            upgradeModification);
+            upgradeModification,
+            data.Delta.KeywordOverrides);
         CardModificationSpec desired = MaterializeSpec(baseline, data.Delta, permanent);
         CopyNativeFields(baseline, card, previous, desired);
         ApplySpecToCard(card, desired);
@@ -769,7 +772,8 @@ public static class CardModificationRuntime
                 canonical,
                 source.CurrentUpgradeLevel,
                 LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
-                state.UpgradeModification);
+                state.UpgradeModification,
+                state.KeywordOverrides);
             CardModificationDelta temporary = CreateDelta(preview, state, permanent);
             ApplyDeltaToCard(preview, temporary);
             if (temporary.HasCustomText || temporary.HasPortraitOverride)
@@ -804,7 +808,8 @@ public static class CardModificationRuntime
             canonical,
             upgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
-            state.UpgradeModification);
+            state.UpgradeModification,
+            state.KeywordOverrides);
         if (!baseline.IsUpgradable)
             return null;
 
@@ -847,7 +852,8 @@ public static class CardModificationRuntime
             canonical,
             upgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
-            state.UpgradeModification);
+            state.UpgradeModification,
+            state.KeywordOverrides);
         return baseline.IsUpgradable;
     }
 
@@ -1434,7 +1440,8 @@ public static class CardModificationRuntime
             canonical,
             card.CurrentUpgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(next),
-            next.UpgradeModification);
+            next.UpgradeModification,
+            next.KeywordOverrides);
         CopyNativeFields(baseline, card, previous, next, forceAllOwnedFields);
         ApplySpecToCard(card, temporary);
         card.FinalizeUpgradeInternal();
@@ -1444,7 +1451,8 @@ public static class CardModificationRuntime
         CardModel canonical,
         int upgradeLevel,
         bool? infiniteUpgradeOverride = null,
-        CardUpgradeModificationSpec? upgradeModification = null)
+        CardUpgradeModificationSpec? upgradeModification = null,
+        IReadOnlyDictionary<string, bool>? baseKeywordOverrides = null)
     {
         CardModel baseline;
         using (SuppressPermanentApplication())
@@ -1452,6 +1460,12 @@ public static class CardModificationRuntime
 
         if (PermanentCardModificationStore.TryGetDelta(canonical.Id, out CardModificationDelta? permanent))
             ApplyPermanentResidual(baseline, permanent);
+
+        if (baseKeywordOverrides is not null)
+        {
+            ApplyKeywordOverrides(baseline, baseKeywordOverrides);
+            LoadoutKeywordRegistry.SynchronizeDynamicVars(baseline);
+        }
 
         if (infiniteUpgradeOverride.HasValue)
         {
@@ -1849,7 +1863,9 @@ public static class CardModificationRuntime
             BaseStarCostSetter.Invoke(card, [value]);
     }
 
-    private static void ApplyKeywordOverrides(CardModel card, Dictionary<string, bool> overrides)
+    private static void ApplyKeywordOverrides(
+        CardModel card,
+        IReadOnlyDictionary<string, bool> overrides)
     {
         foreach ((string rawKeyword, bool enabled) in overrides)
         {

@@ -81,7 +81,7 @@ internal static class CardModificationPersistence
         CardModificationDelta delta = loaded.Value.Delta
                                       ?? CardModificationRuntime.CreateTemporaryDelta(card, loaded.Value.LegacyAbsolute);
         CardModificationFields.SetDelta(card, delta);
-        CardModificationRuntime.ApplyDeltaToCard(card, delta);
+        CardModificationRuntime.ReapplyTemporaryDelta(card);
     }
 
     private static string? FindString(SavedProperties? props, string name)
