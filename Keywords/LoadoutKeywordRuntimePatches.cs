@@ -123,15 +123,24 @@ internal static class LoadoutKeywordRuntimePatches
             : null;
     }
 
-    public static bool ResolveEffectiveInfiniteUpgrade(
+    public static bool? GetInfiniteUpgradeOverride(
+        CardUpgradeModificationSpec? modification)
+    {
+        return modification?.KeywordOverrides.TryGetValue(
+            LoadoutKeywords.InfiniteUpgradeKey,
+            out bool enabled) == true
+            ? enabled
+            : null;
+    }
+
+    public static bool? ResolveEffectiveInfiniteUpgrade(
         CardModificationSpec? permanent,
         CardModificationDelta? temporary,
         CardModificationSpec? legacyTemporary = null)
     {
         return GetInfiniteUpgradeOverride(temporary)
                ?? GetInfiniteUpgradeOverride(legacyTemporary)
-               ?? GetInfiniteUpgradeOverride(permanent)
-               ?? false;
+               ?? GetInfiniteUpgradeOverride(permanent);
     }
 
     public static void EnsureInfiniteUpgradeEnabled()

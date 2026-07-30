@@ -252,23 +252,32 @@ public static class CardModelFromSerializableCardModificationPatch
             && PermanentCardModificationStore.TryGet(cardId, out CardModificationSpec? savedPermanent)
                 ? savedPermanent
                 : null;
-        bool useInfiniteUpgradeValues = LoadoutKeywordRuntimePatches.ResolveEffectiveInfiniteUpgrade(
+        bool? useInfiniteUpgradeValues = LoadoutKeywordRuntimePatches.ResolveEffectiveInfiniteUpgrade(
             permanent,
             loaded?.Delta,
             loaded?.LegacyAbsolute);
-        if (useInfiniteUpgradeValues)
+        CardUpgradeModificationSpec upgradeModification =
+            CardModificationRuntime.ResolveUpgradeModification(
+                permanent,
+                loaded?.Delta,
+                loaded?.LegacyAbsolute);
+        bool? useUpgradedInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(
+                upgradeModification);
+        if (useInfiniteUpgradeValues == true
+            || useUpgradedInfiniteUpgradeValues == true)
+        {
             LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
+        }
 
         InfiniteUpgradeDeserializationState upgradeState =
             InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
                 save.CurrentUpgradeLevel,
-                useInfiniteUpgradeValues);
+                useInfiniteUpgradeValues,
+                useUpgradedInfiniteUpgradeValues);
         IDisposable upgradeModificationScope =
             CardUpgradeModificationRuntimePatches.BeginOverride(
-                CardModificationRuntime.ResolveUpgradeModification(
-                    permanent,
-                    loaded?.Delta,
-                    loaded?.LegacyAbsolute));
+                upgradeModification);
         __state = new CardDeserializationState(
             loaded,
             upgradeState,

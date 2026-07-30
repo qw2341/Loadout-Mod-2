@@ -34,16 +34,24 @@ public static class InfiniteUpgradeMaxLevelPatch
     [ThreadStatic]
     private static bool? _deserializingInfiniteUpgradeValues;
 
+    [ThreadStatic]
+    private static bool? _deserializingUpgradedInfiniteUpgradeValues;
+
     public static InfiniteUpgradeDeserializationState BeginDeserialization(
         int maxLevel,
-        bool? useInfiniteUpgradeValues = null)
+        bool? useInfiniteUpgradeValues = null,
+        bool? useUpgradedInfiniteUpgradeValues = null)
     {
         InfiniteUpgradeDeserializationState previous = new(
             _deserializingMaxLevel,
-            _deserializingInfiniteUpgradeValues);
+            _deserializingInfiniteUpgradeValues,
+            _deserializingUpgradedInfiniteUpgradeValues);
         _deserializingMaxLevel = Math.Max(_deserializingMaxLevel, maxLevel);
         if (useInfiniteUpgradeValues.HasValue)
             _deserializingInfiniteUpgradeValues = useInfiniteUpgradeValues;
+        if (useUpgradedInfiniteUpgradeValues.HasValue)
+            _deserializingUpgradedInfiniteUpgradeValues =
+                useUpgradedInfiniteUpgradeValues;
         return previous;
     }
 
@@ -51,9 +59,17 @@ public static class InfiniteUpgradeMaxLevelPatch
     {
         _deserializingMaxLevel = previous.MaxLevel;
         _deserializingInfiniteUpgradeValues = previous.UseInfiniteUpgradeValues;
+        _deserializingUpgradedInfiniteUpgradeValues =
+            previous.UseUpgradedInfiniteUpgradeValues;
     }
 
-    public static bool? InfiniteUpgradeValuesOverride => _deserializingInfiniteUpgradeValues;
+    public static bool? ResolveInfiniteUpgradeValues(CardModel card)
+    {
+        return card.CurrentUpgradeLevel > 0
+               && _deserializingUpgradedInfiniteUpgradeValues.HasValue
+            ? _deserializingUpgradedInfiniteUpgradeValues
+            : _deserializingInfiniteUpgradeValues;
+    }
 
     public static IEnumerable<MethodBase> TargetMethods()
     {
@@ -82,7 +98,8 @@ public static class InfiniteUpgradeMaxLevelPatch
 
 public readonly record struct InfiniteUpgradeDeserializationState(
     int MaxLevel,
-    bool? UseInfiniteUpgradeValues);
+    bool? UseInfiniteUpgradeValues,
+    bool? UseUpgradedInfiniteUpgradeValues);
 
 public readonly struct InfiniteUpgradeContextState
 {
@@ -108,7 +125,7 @@ public static class InfiniteUpgradeContextPatch
     public static void Prefix(CardModel __instance, out InfiniteUpgradeContextState __state)
     {
         __state = new InfiniteUpgradeContextState(ActiveCard, IsApplyingNativeUpgrade);
-        bool useInfiniteUpgradeValues = InfiniteUpgradeMaxLevelPatch.InfiniteUpgradeValuesOverride
+        bool useInfiniteUpgradeValues = InfiniteUpgradeMaxLevelPatch.ResolveInfiniteUpgradeValues(__instance)
                                         ?? LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade);
         ActiveCard = useInfiniteUpgradeValues
             ? __instance

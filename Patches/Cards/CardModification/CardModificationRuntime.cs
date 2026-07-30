@@ -1463,15 +1463,24 @@ public static class CardModificationRuntime
         }
 
         bool useInfiniteUpgradeValues = infiniteUpgradeOverride
-                                        ?? LoadoutKeywords.Has(baseline, LoadoutKeywords.InfiniteUpgrade);
-        if (useInfiniteUpgradeValues)
+                                        ?? LoadoutKeywords.Has(
+                                            baseline,
+                                            LoadoutKeywords.InfiniteUpgrade);
+        bool? useUpgradedInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(
+                upgradeModification);
+        if (useInfiniteUpgradeValues
+            || useUpgradedInfiniteUpgradeValues == true)
+        {
             LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
+        }
 
         int count = Math.Max(0, upgradeLevel);
         InfiniteUpgradeDeserializationState deserializationState =
             InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
                 count,
-                useInfiniteUpgradeValues);
+                useInfiniteUpgradeValues,
+                useUpgradedInfiniteUpgradeValues);
         IDisposable upgradeScope =
             CardUpgradeModificationRuntimePatches.BeginOverride(upgradeModification);
         try
