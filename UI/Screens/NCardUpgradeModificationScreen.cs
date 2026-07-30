@@ -48,10 +48,12 @@ public partial class NCardUpgradeModificationScreen : Control
     private NUpgradePreview? _upgradePreview;
     private NBackButton? _backButton;
     private CardModel? _previewSource;
+    private CardModel? _previewUpgrade;
     private HashSet<CardKeyword> _nativeUpgradeKeywords = [];
     private Dictionary<string, DynamicVarEditorDefinition>
         _nativeDynamicVars = new(StringComparer.Ordinal);
     private string _selectedKeywordModId = NCardKeywordEditor.AllModFilterId;
+    private bool _rebuildQueued;
     private bool _wasVisible;
     private bool _saved;
 
@@ -82,7 +84,7 @@ public partial class NCardUpgradeModificationScreen : Control
         _draft = state.UpgradeModification.Clone();
         _save = save;
         if (IsNodeReady())
-            Rebuild();
+            QueueRebuild();
     }
 
     public override void _Ready()
@@ -100,7 +102,7 @@ public partial class NCardUpgradeModificationScreen : Control
         EnsureNativePreview();
         EnsureBackButton();
         VisibilityChanged += OnVisibilityChanged;
-        Rebuild();
+        QueueRebuild();
     }
 
     public override void _ExitTree()
@@ -115,7 +117,8 @@ public partial class NCardUpgradeModificationScreen : Control
         if (_item is null
             || _leftControls is null
             || _rightControls is null
-            || _upgradePreview is null)
+            || _upgradePreview is null
+            || !_upgradePreview.IsNodeReady())
         {
             return;
         }
@@ -124,6 +127,20 @@ public partial class NCardUpgradeModificationScreen : Control
         RebuildLeftControls();
         RebuildKeywordControls();
         RefreshPreview();
+    }
+
+    private void QueueRebuild()
+    {
+        if (_rebuildQueued)
+            return;
+
+        _rebuildQueued = true;
+        Callable.From(() =>
+        {
+            _rebuildQueued = false;
+            if (IsInsideTree())
+                Rebuild();
+        }).CallDeferred();
     }
 
     private void RebuildLeftControls()
@@ -324,24 +341,49 @@ public partial class NCardUpgradeModificationScreen : Control
 
     private void RefreshPreview()
     {
-        if (_upgradePreview is null || _item is null)
+        if (_upgradePreview is null
+            || !_upgradePreview.IsNodeReady()
+            || _item is null)
             return;
 
-        ReleasePreviewCards();
         CardModificationSpec previewState = _baseState.Clone();
         previewState.UpgradeModification = _draft.Clone();
-        _previewSource =
+        CardModel? source =
             CardModificationRuntime.CreateUpgradePreviewSource(
                 _item.Model,
                 previewState);
-        if (_previewSource is null)
+        if (source is null)
         {
-            _upgradePreview.Card = null;
+            ReleasePreviewCards();
             return;
         }
 
-        using (CardUpgradeModificationRuntimePatches.BeginOverride(_draft))
-            _upgradePreview.Card = _previewSource;
+        CardModel? upgraded = null;
+        try
+        {
+            ICardScope scope = source.CardScope
+                               ?? throw new InvalidOperationException(
+                                   "Upgrade preview source has no card scope.");
+            upgraded = scope.CloneCard(source);
+            using (CardUpgradeModificationRuntimePatches.BeginOverride(_draft))
+                upgraded.UpgradeInternal();
+            upgraded.UpgradePreviewType = CardUpgradePreviewType.Deck;
+
+            ReleasePreviewCards();
+            _previewSource = source;
+            _previewUpgrade = upgraded;
+            source = null;
+            upgraded = null;
+            PopulateNativePreview();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"CardModification: failed refreshing upgrade preview for '{_item.Model.Id}'. {exception.Message}");
+            ReleasePreviewCards();
+            CardModificationRuntime.ReleaseUpgradePreviewCard(upgraded);
+            CardModificationRuntime.ReleaseUpgradePreviewCard(source);
+        }
     }
 
     private void ReleasePreviewCards()
@@ -349,21 +391,69 @@ public partial class NCardUpgradeModificationScreen : Control
         if (_upgradePreview is not null
             && GodotObject.IsInstanceValid(_upgradePreview))
         {
-            Control? after = _upgradePreview.GetNodeOrNull<Control>("%After");
-            if (after is not null)
-            {
-                foreach (NPreviewCardHolder holder in after.GetChildren()
-                             .OfType<NPreviewCardHolder>())
-                {
-                    CardModificationRuntime.ReleaseUpgradePreviewCard(
-                        holder.CardNode?.Model);
-                }
-            }
-            _upgradePreview.Card = null;
+            ClearPreviewContainer("%Before");
+            ClearPreviewContainer("%After");
         }
 
+        CardModificationRuntime.ReleaseUpgradePreviewCard(_previewUpgrade);
         CardModificationRuntime.ReleaseUpgradePreviewCard(_previewSource);
+        _previewUpgrade = null;
         _previewSource = null;
+    }
+
+    private void ClearPreviewContainer(string nodeName)
+    {
+        Control? container =
+            _upgradePreview?.GetNodeOrNull<Control>(nodeName);
+        if (container is null)
+            return;
+
+        foreach (Node child in container.GetChildren())
+            child.QueueFreeSafely();
+    }
+
+    private void PopulateNativePreview()
+    {
+        if (_upgradePreview is null
+            || _previewSource is null
+            || _previewUpgrade is null)
+        {
+            return;
+        }
+
+        Control before = _upgradePreview.GetNode<Control>("%Before");
+        Control after = _upgradePreview.GetNode<Control>("%After");
+
+        NCard beforeCard = NCard.Create(_previewSource)
+                           ?? throw new InvalidOperationException(
+                               "Could not create the pre-upgrade card view.");
+        NPreviewCardHolder beforeHolder = NPreviewCardHolder.Create(
+            beforeCard,
+            showHoverTips: true,
+            scaleOnHover: false)
+            ?? throw new InvalidOperationException(
+                "Could not create the pre-upgrade card holder.");
+        beforeHolder.FocusMode = FocusModeEnum.All;
+        before.AddChildSafely(beforeHolder);
+        beforeCard.UpdateVisuals(
+            PileType.Deck,
+            CardPreviewMode.Normal);
+
+        NCard afterCard = NCard.Create(_previewUpgrade)
+                          ?? throw new InvalidOperationException(
+                              "Could not create the upgraded card view.");
+        NPreviewCardHolder afterHolder = NPreviewCardHolder.Create(
+            afterCard,
+            showHoverTips: true,
+            scaleOnHover: false)
+            ?? throw new InvalidOperationException(
+                "Could not create the upgraded card holder.");
+        afterHolder.FocusMode = FocusModeEnum.None;
+        after.AddChildSafely(afterHolder);
+        afterCard.UpdateVisuals(
+            PileType.Deck,
+            CardPreviewMode.Normal);
+        afterCard.ShowUpgradePreview();
     }
 
     private void EnsureNativePreview()
@@ -380,6 +470,13 @@ public partial class NCardUpgradeModificationScreen : Control
             _upgradePreview.Name = "UpgradePreview";
             _upgradePreview.SetAnchorsPreset(LayoutPreset.Center);
             _previewHost.AddChild(_upgradePreview);
+            if (!_upgradePreview.IsNodeReady())
+            {
+                _upgradePreview.Connect(
+                    Node.SignalName.Ready,
+                    Callable.From(QueueRebuild),
+                    (uint)ConnectFlags.OneShot);
+            }
         }
         catch (Exception exception)
         {
