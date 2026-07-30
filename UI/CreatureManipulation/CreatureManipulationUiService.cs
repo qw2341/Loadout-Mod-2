@@ -5,6 +5,7 @@ namespace Loadout.UI.CreatureManipulation;
 using System;
 using System.Collections.Generic;
 using Godot;
+using Loadout.Services.Configuration;
 using Loadout.Services.CreatureManipulation;
 using Loadout.Services.Loadouts;
 using MegaCrit.Sts2.Core.Combat;
@@ -75,6 +76,7 @@ public static class CreatureManipulationUiService
                && node.Entity is { CombatId: not null }
                && CreatureManipulationStateService.CombatEpoch > 0
                && CombatManager.Instance.IsInProgress
+               && LoadoutConfigService.EnableCreatureManipulationPanel
                && LoadoutPanelAccessService.CanLocalPlayerUsePanel()
                && NLoadoutPanelRoot.Instance?.HasOpenScreen != true
                && NPlayerHand.Instance?.InCardPlay != true;

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using Godot;
 using Loadout.PanelItems;
+using Loadout.Services.Configuration;
 using Loadout.Services.CreatureManipulation;
 using Loadout.Services.Loadouts;
 using Loadout.UI.Managers;
@@ -139,14 +140,16 @@ public partial class NCreatureManipulationPanel : PanelContainer
         RefreshVisibleSeparators();
 
         CreatureManipulationStateService.DragAuthoritative += OnAuthoritativeDrag;
-        LoadoutPanelAccessService.AccessChanged += OnAccessChanged;
+        LoadoutPanelAccessService.AccessChanged += OnAvailabilityChanged;
+        LoadoutConfigService.CreatureManipulationPanelVisibilityChanged += OnAvailabilityChanged;
         SetProcessInput(false);
     }
 
     public override void _ExitTree()
     {
         CreatureManipulationStateService.DragAuthoritative -= OnAuthoritativeDrag;
-        LoadoutPanelAccessService.AccessChanged -= OnAccessChanged;
+        LoadoutPanelAccessService.AccessChanged -= OnAvailabilityChanged;
+        LoadoutConfigService.CreatureManipulationPanelVisibilityChanged -= OnAvailabilityChanged;
     }
 
     public void OpenFor(NCreature node, Vector2 cursorPosition)
@@ -337,9 +340,10 @@ public partial class NCreatureManipulationPanel : PanelContainer
             CancelDrag(sendFinal: false);
     }
 
-    private void OnAccessChanged()
+    private void OnAvailabilityChanged()
     {
-        if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
+        if (!LoadoutConfigService.EnableCreatureManipulationPanel
+            || !LoadoutPanelAccessService.CanLocalPlayerUsePanel())
             Close();
     }
 

@@ -10,8 +10,10 @@ using Loadout.UI.Managers;
 public static class LoadoutConfigService
 {
     private static bool _enableDeckLoadoutScreen = true;
+    private static bool _enableCreatureManipulationPanel = true;
 
     public static event Action? DeckLoadoutScreenVisibilityChanged;
+    public static event Action? CreatureManipulationPanelVisibilityChanged;
 
     public static bool EnableDeckLoadoutScreen
     {
@@ -23,6 +25,19 @@ public static class LoadoutConfigService
 
             _enableDeckLoadoutScreen = value;
             DeckLoadoutScreenVisibilityChanged?.Invoke();
+        }
+    }
+
+    public static bool EnableCreatureManipulationPanel
+    {
+        get => _enableCreatureManipulationPanel;
+        set
+        {
+            if (_enableCreatureManipulationPanel == value)
+                return;
+
+            _enableCreatureManipulationPanel = value;
+            CreatureManipulationPanelVisibilityChanged?.Invoke();
         }
     }
 

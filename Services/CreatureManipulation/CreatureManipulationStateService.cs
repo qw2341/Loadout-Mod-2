@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Patches.TildeKey;
 using Loadout.Services.Actions;
+using Loadout.Services.Configuration;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Networking;
 using Loadout.Services.TildeKey;
@@ -354,6 +355,7 @@ public static class CreatureManipulationStateService
         && target.CombatId.HasValue
         && _combatEpoch > 0
         && CombatManager.Instance.IsInProgress
+        && LoadoutConfigService.EnableCreatureManipulationPanel
         && LoadoutPanelAccessService.CanLocalPlayerUsePanel();
 
     private static void HandleRequest(CreatureManipulationRequestMessage message, ulong senderId)

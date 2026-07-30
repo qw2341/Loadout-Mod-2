@@ -35,6 +35,12 @@ public sealed class LoadoutModConfig : SimpleModConfig
         set => LoadoutConfigService.EnableDeckLoadoutScreen = value;
     }
 
+    public static bool EnableCreatureManipulationPanel
+    {
+        get => LoadoutConfigService.EnableCreatureManipulationPanel;
+        set => LoadoutConfigService.EnableCreatureManipulationPanel = value;
+    }
+
     public static LoadoutSkin PanelSkin
     {
         get => LoadoutConfigService.ActiveSkinId.ToLowerInvariant() switch
@@ -71,6 +77,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
 
         optionContainer.AddChild(CreateSectionHeader(GetLabelText("LoadoutPanelSection"), alignToTop: true));
         AddOptionRow(optionContainer, nameof(EnableDeckLoadoutScreen), CreateRawTickboxControl);
+        AddOptionRow(optionContainer, nameof(EnableCreatureManipulationPanel), CreateRawTickboxControl);
         AddOptionRow(optionContainer, nameof(PanelSkin), CreateRawDropdownControl);
         AddOptionRow(optionContainer, nameof(PanelAnimation), CreateRawDropdownControl);
 

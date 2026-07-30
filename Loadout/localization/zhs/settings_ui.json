@@ -2,6 +2,7 @@
   "LOADOUT.mod_title": "Loadout",
   "LOADOUT-LOADOUT_PANEL_SECTION.title": "Loadout 侧边栏",
   "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "在牌组界面显示 Loadout",
+  "LOADOUT-ENABLE_CREATURE_MANIPULATION_PANEL.title": "启用右键快捷生物调试",
   "LOADOUT-PANEL_SKIN.title": "Loadout 侧边栏皮肤",
   "LOADOUT-PANEL_SKIN.Default": "默认",
   "LOADOUT-PANEL_SKIN.Isaac": "以撒",

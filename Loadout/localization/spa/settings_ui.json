@@ -2,6 +2,7 @@
   "LOADOUT.mod_title": "Equipamiento",
   "LOADOUT-LOADOUT_PANEL_SECTION.title": "Panel de equipamiento",
   "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "Activar la pantalla de equipamientos de mazo",
+  "LOADOUT-ENABLE_CREATURE_MANIPULATION_PANEL.title": "Activar el panel de manipulación de criaturas",
   "LOADOUT-PANEL_SKIN.title": "Apariencia del panel de equipamiento",
   "LOADOUT-PANEL_SKIN.Default": "Predeterminado",
   "LOADOUT-PANEL_SKIN.Isaac": "Isaac",

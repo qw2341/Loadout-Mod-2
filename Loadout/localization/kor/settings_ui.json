@@ -2,6 +2,7 @@
   "LOADOUT.mod_title": "로드아웃",
   "LOADOUT-LOADOUT_PANEL_SECTION.title": "로드아웃 패널",
   "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "덱 로드아웃 화면 활성화",
+  "LOADOUT-ENABLE_CREATURE_MANIPULATION_PANEL.title": "생물 조작 패널 활성화",
   "LOADOUT-PANEL_SKIN.title": "로드아웃 패널 스킨",
   "LOADOUT-PANEL_SKIN.Default": "기본",
   "LOADOUT-PANEL_SKIN.Isaac": "Isaac",
