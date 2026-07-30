@@ -75,8 +75,6 @@ public class EventfulCompass
     private const string RoomJumpButtonName = "EventfulCompassGoToButton";
     private static RoomType SelectedRoomType = RoomType.Treasure;
     private static readonly Dictionary<Control, Tween> EventTileHoverTweens = new();
-    private static readonly Dictionary<string, SubViewport> AncientPreviewViewports = new(StringComparer.Ordinal);
-    private static readonly Dictionary<string, Texture2D> AncientPreviewTextures = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, bool> EventPortraitLoadability = new(StringComparer.Ordinal);
 
     private static void UpsertRoomJumpControls(NGenericSelectScreen screen)
@@ -360,16 +358,6 @@ public class EventfulCompass
     private static Texture2D GetAncientBackgroundPreviewTexture(AncientEventModel model, Node viewportOwner)
     {
 	    string id = model.Id.ToString();
-	    if (AncientPreviewTextures.TryGetValue(id, out Texture2D cachedTexture)
-	        && GodotObject.IsInstanceValid(cachedTexture)
-	        && AncientPreviewViewports.TryGetValue(id, out SubViewport cachedViewport)
-	        && GodotObject.IsInstanceValid(cachedViewport))
-	    {
-		    return cachedTexture;
-	    }
-
-	    AncientPreviewTextures.Remove(id);
-	    AncientPreviewViewports.Remove(id);
 
 	    try
 	    {
@@ -379,7 +367,7 @@ public class EventfulCompass
 			    Size = AncientPreviewTextureSize,
 			    TransparentBg = false,
 			    Disable3D = false,
-			    RenderTargetUpdateMode = SubViewport.UpdateMode.Once
+			    RenderTargetUpdateMode = SubViewport.UpdateMode.WhenVisible
 		    };
 
 		    Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);
@@ -390,47 +378,13 @@ public class EventfulCompass
 		    viewport.AddChild(backgroundScene);
 
 		    viewportOwner.AddChild(viewport);
-		    Texture2D texture = viewport.GetTexture();
-		    AncientPreviewViewports[id] = viewport;
-		    AncientPreviewTextures[id] = texture;
-		    _ = DisableAncientPreviewAfterRenderAsync(viewport);
-		    return texture;
+		    return viewport.GetTexture();
 	    }
 	    catch (Exception exception)
 	    {
 		    GD.PushWarning($"LoadoutPanel: could not create ancient background preview for '{model.Id}'. {exception.Message}");
 		    return null;
 	    }
-    }
-
-    private static async Task DisableAncientPreviewAfterRenderAsync(SubViewport viewport)
-    {
-	    if (!GodotObject.IsInstanceValid(viewport) || !viewport.IsInsideTree())
-		    return;
-
-	    SceneTree tree = viewport.GetTree();
-	    await viewport.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-	    await viewport.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-	    if (!GodotObject.IsInstanceValid(viewport))
-		    return;
-
-	    viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled;
-	    viewport.ProcessMode = Node.ProcessModeEnum.Disabled;
-    }
-
-    public static void ReleaseAncientPreviewCache()
-    {
-	    foreach (SubViewport viewport in AncientPreviewViewports.Values)
-	    {
-		    if (!GodotObject.IsInstanceValid(viewport))
-			    continue;
-
-		    viewport.GetParent()?.RemoveChild(viewport);
-		    viewport.QueueFree();
-	    }
-
-	    AncientPreviewViewports.Clear();
-	    AncientPreviewTextures.Clear();
     }
 
     public static void AttachEventTileHoverAnimation(Control tile, TextureRect background, ColorRect shade, float restingShadeAlpha)

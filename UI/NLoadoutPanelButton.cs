@@ -48,12 +48,6 @@ public partial class NLoadoutPanelButton : Button
 
 	public override void _Process(double delta)
 	{
-		if (!Visible)
-		{
-			SetProcess(false);
-			return;
-		}
-
 		_rainbowPhase = Mathf.PosMod(_rainbowPhase + (float)delta * RainbowSpeed * Mathf.Tau, Mathf.Tau);
 		UpdateRainbowColor(_rainbowPhase);
 	}
@@ -123,7 +117,6 @@ public partial class NLoadoutPanelButton : Button
 		bool hasAccess = LoadoutPanelAccessService.CanLocalPlayerUsePanel();
 		Visible = hasAccess && !_nLoadoutPanel.Hidden;
 		Disabled = !Visible;
-		SetProcess(Visible);
 		Modulate = Disabled ? new Color(1f, 1f, 1f, 0.55f) : Colors.White;
 
 		if (_arrowImage is null || !IsInstanceValid(_arrowImage))
