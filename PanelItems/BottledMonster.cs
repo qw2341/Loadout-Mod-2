@@ -32,8 +32,12 @@ public static class BottledMonster
     private const string MorphOriginalGroupKey = "morph:forms:original";
     private const string MorphCharactersGroupKey = "morph:forms:characters";
     private const string OtherRootGroupKey = "monster:other";
+    private const int ActIndexHeaderFontSize = 36;
+    private const int ActNameHeaderFontSize = 30;
+    private const int MonsterTypeHeaderFontSize = 26;
     private static readonly Vector2 MonsterButtonSize = new(242f, 168f);
     private static readonly Vector2 PreviewSize = new(242f, 110f);
+    private static IReadOnlySet<string> _encounterMonsterIds = new HashSet<string>(StringComparer.Ordinal);
 
     public static void Initialize()
     {
@@ -42,12 +46,20 @@ public static class BottledMonster
             .Select(group => group.First())
             .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
             .ToList();
+        _encounterMonsterIds = allMonsters
+            .Select(monster => monster.Id.ToString())
+            .ToHashSet(StringComparer.Ordinal);
         MonsterCatalogData catalog = BuildMonsterCatalogData(allMonsters);
         MonsterGroupPresentation grouping = BuildMonsterGroupPresentation(catalog, includeMorphGroups: false);
-        MonsterGroupPresentation morphGrouping = BuildMonsterGroupPresentation(catalog, includeMorphGroups: true);
 
-        IReadOnlyList<MorphOption> morphOptions = BuildMorphOptions(allMonsters);
-        NGenericSelectScreen morphScreen = CreateMorphScreen(morphOptions, catalog, morphGrouping);
+        IReadOnlyList<MonsterModel> morphMonsters = BottledMonsterMorphService.GetMorphModels()
+            .OfType<MonsterModel>()
+            .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
+            .ToList();
+        MonsterCatalogData morphCatalog = BuildMonsterCatalogData(morphMonsters);
+        MonsterGroupPresentation morphGrouping = BuildMonsterGroupPresentation(morphCatalog, includeMorphGroups: true);
+        IReadOnlyList<MorphOption> morphOptions = BuildMorphOptions(morphMonsters);
+        NGenericSelectScreen morphScreen = CreateMorphScreen(morphOptions, morphCatalog, morphGrouping);
 
         NLoadoutPanelItem panelItem = CommonHelpers.CreateAndAddLoadoutItem(
             allMonsters,
@@ -326,31 +338,17 @@ public static class BottledMonster
 
         if (option.Model is CharacterModel character)
         {
-            try
-            {
-                TextureRect portrait = new()
-                {
-                    Texture = character.CharacterSelectIcon,
-                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                    MouseFilter = Control.MouseFilterEnum.Ignore,
-                    Position = new Vector2(12f, 4f),
-                    Size = new Vector2(218f, 106f)
-                };
-                button.AddChild(portrait);
-            }
-            catch (Exception exception)
-            {
-                GD.PushWarning($"BottledMonsterMorph: could not load character preview '{character.Id}'. {exception.Message}");
-            }
+            Control preview = CreatePreviewContainer();
+            button.AddChild(preview);
+            TryAddCharacterPreview(preview, character);
         }
 
-        float titleY = option.Kind == MorphOptionKind.Original ? 48f : 112f;
+        float titleY = option.Kind == MorphOptionKind.Original ? 48f : 104f;
         MegaLabel title = CommonHelpers.CreateButtonLabel(
             "MorphTitle",
             FormatMorphOptionTitle(option),
             new Vector2(12f, titleY),
-            new Vector2(218f, 48f),
+            new Vector2(218f, option.Kind == MorphOptionKind.Original ? 48f : 42f),
             option.Kind == MorphOptionKind.Original ? 24 : 20,
             HorizontalAlignment.Center,
             StsColors.cream);
@@ -371,6 +369,41 @@ public static class BottledMonster
         }
 
         return button;
+    }
+
+    private static void TryAddCharacterPreview(Control preview, CharacterModel character)
+    {
+        try
+        {
+            NCreatureVisuals visuals = character.CreateVisuals();
+            preview.AddChild(visuals);
+            Callable.From(() => ConfigureDirectVisualPreview(preview, visuals, character)).CallDeferred();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"BottledMonsterMorph: could not load character visual '{character.Id}'. {exception.Message}");
+            TryAddCharacterIconFallback(preview, character);
+        }
+    }
+
+    private static void TryAddCharacterIconFallback(Control preview, CharacterModel character)
+    {
+        try
+        {
+            preview.AddChild(new TextureRect
+            {
+                Texture = character.CharacterSelectIcon,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                Position = new Vector2(12f, 4f),
+                Size = new Vector2(218f, 102f)
+            });
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"BottledMonsterMorph: could not load character icon '{character.Id}'. {exception.Message}");
+        }
     }
 
     private static string FormatMorphOptionTitle(MorphOption option)
@@ -493,15 +526,7 @@ public static class BottledMonster
         };
         button.AddChild(shade);
 
-        Control preview = new()
-        {
-            Name = "MonsterPreview",
-            ClipContents = true,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            Position = Vector2.Zero,
-            Size = PreviewSize,
-            CustomMinimumSize = PreviewSize
-        };
+        Control preview = CreatePreviewContainer();
         button.AddChild(preview);
         TryAddMonsterPreview(preview, model);
 
@@ -529,8 +554,29 @@ public static class BottledMonster
         return button;
     }
 
+    private static Control CreatePreviewContainer()
+    {
+        return new Control
+        {
+            Name = "CreaturePreview",
+            ClipContents = true,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Position = Vector2.Zero,
+            Size = PreviewSize,
+            CustomMinimumSize = PreviewSize
+        };
+    }
+
     private static void TryAddMonsterPreview(Control preview, MonsterModel canonical)
     {
+        if (!_encounterMonsterIds.Contains(canonical.Id.ToString()))
+        {
+            if (!TryAddDirectMonsterPreview(preview, canonical))
+                AddMonsterPreviewTextFallback(preview, canonical);
+
+            return;
+        }
+
         try
         {
             MonsterModel monster = canonical.ToMutable();
@@ -548,16 +594,119 @@ public static class BottledMonster
         }
         catch (Exception exception)
         {
+            ClearPreviewChildren(preview);
+            if (TryAddDirectMonsterPreview(preview, canonical))
+                return;
+
             GD.PushWarning($"LoadoutPanel: could not create local monster preview for '{canonical.Id}'. {exception.Message}");
-            preview.AddChild(CommonHelpers.CreateButtonLabel(
-                "MonsterPreviewFallback",
-                canonical.Id.Entry,
-                new Vector2(12f, 28f),
-                new Vector2(218f, 48f),
-                16,
-                HorizontalAlignment.Center,
-                StsColors.gray));
+            AddMonsterPreviewTextFallback(preview, canonical);
         }
+    }
+
+    private static bool TryAddDirectMonsterPreview(Control preview, MonsterModel canonical)
+    {
+        try
+        {
+            NCreatureVisuals visuals = canonical.CreateVisuals();
+            preview.AddChild(visuals);
+            Callable.From(() => ConfigureDirectVisualPreview(preview, visuals, canonical)).CallDeferred();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ClearPreviewChildren(preview);
+            GD.PushWarning($"LoadoutPanel: could not create direct monster visual for '{canonical.Id}'. {exception.Message}");
+            return false;
+        }
+    }
+
+    private static void ConfigureDirectVisualPreview(
+        Control preview,
+        NCreatureVisuals visuals,
+        AbstractModel model)
+    {
+        if (!GodotObject.IsInstanceValid(preview)
+            || !GodotObject.IsInstanceValid(visuals)
+            || !visuals.IsNodeReady())
+        {
+            return;
+        }
+
+        try
+        {
+            MonsterModel? monster = model as MonsterModel;
+            visuals.UpdatePhobiaMode(monster);
+            if (monster is not null)
+                visuals.SetUpSkin(monster);
+
+            PlayPreviewIdle(visuals);
+            FitDirectVisualPreview(visuals);
+        }
+        catch (Exception exception)
+        {
+            ClearPreviewChildren(preview);
+            GD.PushWarning($"LoadoutPanel: could not configure creature visual preview '{model.Id}'. {exception.Message}");
+            if (model is CharacterModel character)
+                TryAddCharacterIconFallback(preview, character);
+            else if (model is MonsterModel failedMonster)
+                AddMonsterPreviewTextFallback(preview, failedMonster);
+        }
+    }
+
+    private static void FitDirectVisualPreview(NCreatureVisuals visuals)
+    {
+        Rect2 bounds = new(visuals.Bounds.Position, visuals.Bounds.Size);
+        if (bounds.Size.X <= 0f || bounds.Size.Y <= 0f)
+        {
+            visuals.Scale = Vector2.One * 0.28f;
+            visuals.Position = new Vector2(PreviewSize.X * 0.5f, PreviewSize.Y - 10f);
+            return;
+        }
+
+        float scale = MathF.Min(
+            (PreviewSize.X - 28f) / bounds.Size.X,
+            (PreviewSize.Y - 12f) / bounds.Size.Y);
+        scale = Mathf.Clamp(scale, 0.1f, 0.42f);
+        visuals.Scale = Vector2.One * scale;
+        visuals.Position = new Vector2(
+            PreviewSize.X * 0.5f - bounds.GetCenter().X * scale,
+            PreviewSize.Y - 8f - bounds.End.Y * scale);
+    }
+
+    private static void PlayPreviewIdle(NCreatureVisuals visuals)
+    {
+        if (visuals.SpineBody is not { } spine)
+            return;
+
+        foreach (string animation in new[] { "idle_loop", "relaxed_loop", "idle" })
+        {
+            if (!spine.HasAnimation(animation))
+                continue;
+
+            visuals.SpineAnimation.AddAnimation(animation);
+            return;
+        }
+    }
+
+    private static void ClearPreviewChildren(Control preview)
+    {
+        foreach (Node child in preview.GetChildren())
+        {
+            preview.RemoveChild(child);
+            child.QueueFree();
+        }
+    }
+
+    private static void AddMonsterPreviewTextFallback(Control preview, MonsterModel canonical)
+    {
+        preview.AddChild(CommonHelpers.CreateButtonLabel(
+            "MonsterPreviewFallback",
+            canonical.Id.Entry,
+            new Vector2(12f, 28f),
+            new Vector2(218f, 48f),
+            16,
+            HorizontalAlignment.Center,
+            StsColors.gray));
     }
 
     private static void FitPreviewCreature(Control preview, NCreature creatureNode)
@@ -723,13 +872,13 @@ public static class BottledMonster
                 MorphOriginalGroupKey,
                 MorphCharactersGroupKey
             ];
-            headers[MorphRootGroupKey] = SelectGroupHeader.Category(
-                LocMan.Loc("BOTTLEDMONSTER_MORPH_TYPE", "Morph Type"),
+            headers[MorphRootGroupKey] = new SelectGroupHeader(
+                FormatActIndexHeader(LocMan.Loc("BOTTLEDMONSTER_MORPH_TYPE", "Morph Type")),
                 childGroupPrefix: MorphRootGroupKey + ":");
             headers[MorphOriginalGroupKey] = new SelectGroupHeader(
-                LocMan.Loc("BOTTLEDMONSTER_MORPH_ORIGINAL", "Original Form"));
+                FormatActNameHeader(LocMan.Loc("BOTTLEDMONSTER_MORPH_ORIGINAL", "Original Form")));
             headers[MorphCharactersGroupKey] = new SelectGroupHeader(
-                LocMan.Loc("BOTTLEDMONSTER_MORPH_CHARACTERS", "Characters"));
+                FormatActNameHeader(LocMan.Loc("BOTTLEDMONSTER_MORPH_CHARACTERS", "Characters")));
             leafOrder[MorphOriginalGroupKey] = leafOrder.Count;
             leafOrder[MorphCharactersGroupKey] = leafOrder.Count;
             groupBlocks.Add(morphBlock);
@@ -740,8 +889,8 @@ public static class BottledMonster
         {
             string rootKey = GetActRootGroupKey(actsAtIndex.Key);
             List<string> block = [rootKey];
-            headers[rootKey] = SelectGroupHeader.Category(
-                FormatActNumber(actsAtIndex.Key),
+            headers[rootKey] = new SelectGroupHeader(
+                FormatActIndexHeader(FormatActNumber(actsAtIndex.Key)),
                 childGroupPrefix: rootKey + ":");
 
             foreach (ActModel act in actsAtIndex)
@@ -749,14 +898,15 @@ public static class BottledMonster
                 string actKey = GetActGroupKey(act);
                 block.Add(actKey);
                 headers[actKey] = new SelectGroupHeader(
-                    FormatActTitle(act),
+                    FormatActNameHeader(FormatActTitle(act)),
                     childGroupPrefix: actKey + ":");
 
                 foreach (RoomType roomType in MonsterRoomTypes)
                 {
                     string categoryKey = GetActCategoryGroupKey(act, roomType);
                     block.Add(categoryKey);
-                    headers[categoryKey] = new SelectGroupHeader(FormatMonsterCategory(roomType));
+                    headers[categoryKey] = new SelectGroupHeader(
+                        FormatMonsterTypeHeader(FormatMonsterCategory(roomType)));
                     leafOrder[categoryKey] = leafOrder.Count;
                 }
             }
@@ -766,20 +916,22 @@ public static class BottledMonster
         }
 
         List<string> otherBlock = [OtherRootGroupKey];
-        headers[OtherRootGroupKey] = SelectGroupHeader.Category(
-            LocMan.Loc("OTHER", "Other"),
+        headers[OtherRootGroupKey] = new SelectGroupHeader(
+            FormatActIndexHeader(LocMan.Loc("OTHER", "Other")),
             childGroupPrefix: OtherRootGroupKey + ":");
         foreach (RoomType roomType in MonsterRoomTypes)
         {
             string categoryKey = GetOtherCategoryGroupKey(roomType);
             otherBlock.Add(categoryKey);
-            headers[categoryKey] = new SelectGroupHeader(FormatMonsterCategory(roomType));
+            headers[categoryKey] = new SelectGroupHeader(
+                FormatMonsterTypeHeader(FormatMonsterCategory(roomType)));
             leafOrder[categoryKey] = leafOrder.Count;
         }
 
         string uncategorizedKey = GetOtherCategoryGroupKey(null);
         otherBlock.Add(uncategorizedKey);
-        headers[uncategorizedKey] = new SelectGroupHeader(LocMan.Loc("OTHER", "Other"));
+        headers[uncategorizedKey] = new SelectGroupHeader(
+            FormatMonsterTypeHeader(LocMan.Loc("OTHER", "Other")));
         leafOrder[uncategorizedKey] = leafOrder.Count;
         groupBlocks.Add(otherBlock);
         groupOrder.AddRange(otherBlock);
@@ -1041,6 +1193,21 @@ public static class BottledMonster
     {
         int actNumber = actIndex + 1;
         return LocMan.Loc("ACT_NUMBER", $"Act {actNumber}", actNumber);
+    }
+
+    private static string FormatActIndexHeader(string text)
+    {
+        return $"[gold][font_size={ActIndexHeaderFontSize}][b]{text}[/b][/font_size][/gold]";
+    }
+
+    private static string FormatActNameHeader(string text)
+    {
+        return $"[font_size={ActNameHeaderFontSize}][b]{text}[/b][/font_size]";
+    }
+
+    private static string FormatMonsterTypeHeader(string text)
+    {
+        return $"[font_size={MonsterTypeHeaderFontSize}]  {text}[/font_size]";
     }
 
     private static MonsterModel? ResolveMonster(string monsterId)

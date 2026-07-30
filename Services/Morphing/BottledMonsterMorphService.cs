@@ -77,6 +77,7 @@ public static class BottledMonsterMorphService
     private static readonly Dictionary<ulong, RestSiteVisualRuntime> RestSiteVisuals = new();
     private static readonly HashSet<ulong> RestSiteVisualProxyIds = new();
     private static NFakeMerchant? _activeFakeMerchant;
+    private static IReadOnlyList<AbstractModel>? _morphModels;
 
     private static MorphRunSaveData _state = new();
     private static INetGameService? _runNetService;
@@ -115,10 +116,12 @@ public static class BottledMonsterMorphService
 
     public static IReadOnlyList<AbstractModel> GetMorphModels()
     {
-        return ModelDb.AllCharacters
+        return _morphModels ??= ModelDb.AllCharacters
             .Where(character => character.IsPlayable)
             .Cast<AbstractModel>()
-            .Concat(ModelDb.Monsters.Cast<AbstractModel>())
+            .Concat(ModelDb.All
+                .OfType<MonsterModel>()
+                .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal))
             .GroupBy(model => model.Id.ToString(), StringComparer.Ordinal)
             .Select(group => group.First())
             .ToList();
@@ -1174,13 +1177,27 @@ public static class BottledMonsterMorphService
         if (model is MonsterModel monster)
         {
             CreatureAnimator animator = monster.GenerateAnimator(visuals.SpineBody);
-            visuals.SetUpSkin(monster);
+            TrySetUpMonsterSkin(visuals, monster);
             return animator;
         }
 
         return model is CharacterModel character
             ? character.GenerateAnimator(visuals.SpineBody)
             : null;
+    }
+
+    private static void TrySetUpMonsterSkin(NCreatureVisuals visuals, MonsterModel monster)
+    {
+        try
+        {
+            visuals.SetUpSkin(monster);
+        }
+        catch when (monster.IsMutable
+                    && ModelDb.GetByIdOrNull<MonsterModel>(monster.Id) is { } canonical
+                    && !ReferenceEquals(canonical, monster))
+        {
+            visuals.SetUpSkin(canonical);
+        }
     }
 
     private static AbstractModel PrepareVisualModel(AbstractModel model)
