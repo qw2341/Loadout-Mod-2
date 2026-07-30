@@ -68,6 +68,7 @@ public partial class NLoadoutNumberStepper : HBoxContainer
         Minimum = minimum;
         Maximum = Math.Max(minimum, maximum);
         Step = Math.Max(1, step);
+        BuildControlTree();
         SetValue(value, emit: false);
     }
 

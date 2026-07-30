@@ -57,6 +57,15 @@ public sealed class CardAttachmentSpec
 
 public sealed class CardUpgradeModificationSpec
 {
+    [JsonPropertyName("e")]
+    public int? EnergyCostDelta { get; set; }
+
+    [JsonPropertyName("r")]
+    public int? BaseReplayCountDelta { get; set; }
+
+    [JsonPropertyName("s")]
+    public int? BaseStarCostDelta { get; set; }
+
     [JsonPropertyName("d")]
     public Dictionary<string, decimal> DynamicVarDeltas { get; set; } = new(StringComparer.Ordinal);
 
@@ -64,12 +73,20 @@ public sealed class CardUpgradeModificationSpec
     public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
 
     [JsonIgnore]
-    public bool IsEmpty => DynamicVarDeltas.Count == 0 && KeywordOverrides.Count == 0;
+    public bool IsEmpty =>
+        EnergyCostDelta is null
+        && BaseReplayCountDelta is null
+        && BaseStarCostDelta is null
+        && DynamicVarDeltas.Count == 0
+        && KeywordOverrides.Count == 0;
 
     public CardUpgradeModificationSpec Clone()
     {
         return new CardUpgradeModificationSpec
         {
+            EnergyCostDelta = EnergyCostDelta,
+            BaseReplayCountDelta = BaseReplayCountDelta,
+            BaseStarCostDelta = BaseStarCostDelta,
             DynamicVarDeltas = new Dictionary<string, decimal>(DynamicVarDeltas, StringComparer.Ordinal),
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal)
         };
@@ -80,17 +97,32 @@ public sealed class CardUpgradeModificationSpec
         if (other is null)
             return;
 
+        if (other.EnergyCostDelta.HasValue)
+            EnergyCostDelta = other.EnergyCostDelta;
+        if (other.BaseReplayCountDelta.HasValue)
+            BaseReplayCountDelta = other.BaseReplayCountDelta;
+        if (other.BaseStarCostDelta.HasValue)
+            BaseStarCostDelta = other.BaseStarCostDelta;
         foreach ((string key, decimal value) in other.DynamicVarDeltas)
             DynamicVarDeltas[key] = value;
         foreach ((string key, bool value) in other.KeywordOverrides)
             KeywordOverrides[key] = value;
     }
 
-    public void Normalize(bool removeZeroDynamicValues = false)
+    public void Normalize(bool removeZeroValues = false)
     {
+        if (removeZeroValues)
+        {
+            if (EnergyCostDelta == 0)
+                EnergyCostDelta = null;
+            if (BaseReplayCountDelta == 0)
+                BaseReplayCountDelta = null;
+            if (BaseStarCostDelta == 0)
+                BaseStarCostDelta = null;
+        }
         DynamicVarDeltas = DynamicVarDeltas
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key)
-                           && (!removeZeroDynamicValues || pair.Value != 0m))
+                           && (!removeZeroValues || pair.Value != 0m))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         KeywordOverrides = KeywordOverrides
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
@@ -436,7 +468,7 @@ public sealed class CardModificationDelta
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         UpgradeModification ??= new CardUpgradeModificationSpec();
-        UpgradeModification.Normalize(removeZeroDynamicValues: true);
+        UpgradeModification.Normalize(removeZeroValues: true);
         PoolId = NormalizeText(PoolId);
         Type = NormalizeText(Type);
         Rarity = NormalizeText(Rarity);

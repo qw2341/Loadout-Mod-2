@@ -154,6 +154,40 @@ public partial class NCardUpgradeModificationScreen : Control
                 "CARD_MOD_UPGRADE_DELTAS",
                 "Upgrade Deltas")));
 
+        AddStepperRow(
+            _leftControls,
+            LocMan.Loc("CARD_MOD_ENERGY_COST", "Energy Cost"),
+            _draft.EnergyCostDelta ?? 0,
+            int.MinValue,
+            int.MaxValue,
+            value =>
+            {
+                _draft.EnergyCostDelta = value;
+                RefreshPreview();
+            });
+        AddStepperRow(
+            _leftControls,
+            LocMan.Loc("CARD_MOD_REPLAY_COUNT", "Replay Count"),
+            _draft.BaseReplayCountDelta ?? 0,
+            int.MinValue,
+            int.MaxValue,
+            value =>
+            {
+                _draft.BaseReplayCountDelta = value;
+                RefreshPreview();
+            });
+        AddStepperRow(
+            _leftControls,
+            LocMan.Loc("CARD_MOD_STAR_COST", "Star Cost"),
+            _draft.BaseStarCostDelta ?? 0,
+            int.MinValue,
+            int.MaxValue,
+            value =>
+            {
+                _draft.BaseStarCostDelta = value;
+                RefreshPreview();
+            });
+
         Dictionary<string, DynamicVarEditorDefinition> definitions =
             new(_nativeDynamicVars, StringComparer.Ordinal);
         foreach (LoadoutKeywordModel keyword in LoadoutKeywordRegistry.All)
@@ -193,19 +227,18 @@ public partial class NCardUpgradeModificationScreen : Control
         {
             int value = Decimal.ToInt32(
                 _draft.DynamicVarDeltas.GetValueOrDefault(definition.Name));
-            NLoadoutNumberStepper stepper = new();
-            stepper.Init(
+            string name = definition.Name;
+            AddStepperRow(
+                _leftControls,
+                definition.Label,
                 value,
                 definition.Minimum,
-                definition.Maximum);
-            string name = definition.Name;
-            stepper.ValueChanged += next =>
-            {
-                _draft.DynamicVarDeltas[name] = next;
-                RefreshPreview();
-            };
-            _leftControls.AddChild(
-                CreateRow(definition.Label, stepper));
+                definition.Maximum,
+                next =>
+                {
+                    _draft.DynamicVarDeltas[name] = next;
+                    RefreshPreview();
+                });
         }
     }
 
@@ -565,6 +598,20 @@ public partial class NCardUpgradeModificationScreen : Control
         input.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
         row.AddChild(input);
         return row;
+    }
+
+    private static void AddStepperRow(
+        VBoxContainer container,
+        string label,
+        int value,
+        int minimum,
+        int maximum,
+        Action<int> onChanged)
+    {
+        NLoadoutNumberStepper stepper = new();
+        stepper.Init(value, minimum, maximum);
+        stepper.ValueChanged += onChanged;
+        container.AddChild(CreateRow(label, stepper));
     }
 
     private static MegaLabel CreateSectionLabel(string text)

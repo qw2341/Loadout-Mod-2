@@ -459,6 +459,24 @@ public static class CardModificationRuntime
         CardUpgradeModificationSpec delta)
     {
         CardUpgradeModificationSpec result = new();
+        if (delta.EnergyCostDelta.HasValue)
+        {
+            result.EnergyCostDelta = AddIntDeltaClamped(
+                permanent?.EnergyCostDelta ?? 0,
+                delta.EnergyCostDelta.Value);
+        }
+        if (delta.BaseReplayCountDelta.HasValue)
+        {
+            result.BaseReplayCountDelta = AddIntDeltaClamped(
+                permanent?.BaseReplayCountDelta ?? 0,
+                delta.BaseReplayCountDelta.Value);
+        }
+        if (delta.BaseStarCostDelta.HasValue)
+        {
+            result.BaseStarCostDelta = AddIntDeltaClamped(
+                permanent?.BaseStarCostDelta ?? 0,
+                delta.BaseStarCostDelta.Value);
+        }
         foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
         {
             result.DynamicVarDeltas[name] =
@@ -528,6 +546,10 @@ public static class CardModificationRuntime
             if (structuralBaseline?.KeywordOverrides.TryGetValue(key, out bool baselineValue) != true || baselineValue != value)
                 delta.KeywordOverrides[key] = value;
         }
+        AddUpgradeScalarResiduals(
+            desired.UpgradeModification,
+            structuralBaseline?.UpgradeModification,
+            delta.UpgradeModification);
         foreach ((string name, decimal value) in desired.UpgradeModification.DynamicVarDeltas)
         {
             decimal baselineValue = structuralBaseline?.UpgradeModification.DynamicVarDeltas
@@ -550,6 +572,37 @@ public static class CardModificationRuntime
         if (!AttachmentEquals(desired.Affliction, structuralBaseline?.Affliction)) delta.Affliction = desired.Affliction?.Clone();
         delta.Normalize();
         return delta;
+    }
+
+    private static void AddUpgradeScalarResiduals(
+        CardUpgradeModificationSpec desired,
+        CardUpgradeModificationSpec? baseline,
+        CardUpgradeModificationSpec residual)
+    {
+        if (desired.EnergyCostDelta.HasValue)
+        {
+            int difference = SubtractIntClamped(
+                desired.EnergyCostDelta.Value,
+                baseline?.EnergyCostDelta ?? 0);
+            if (difference != 0)
+                residual.EnergyCostDelta = difference;
+        }
+        if (desired.BaseReplayCountDelta.HasValue)
+        {
+            int difference = SubtractIntClamped(
+                desired.BaseReplayCountDelta.Value,
+                baseline?.BaseReplayCountDelta ?? 0);
+            if (difference != 0)
+                residual.BaseReplayCountDelta = difference;
+        }
+        if (desired.BaseStarCostDelta.HasValue)
+        {
+            int difference = SubtractIntClamped(
+                desired.BaseStarCostDelta.Value,
+                baseline?.BaseStarCostDelta ?? 0);
+            if (difference != 0)
+                residual.BaseStarCostDelta = difference;
+        }
     }
 
     private static CardModificationDelta CreatePermanentDelta(
@@ -826,6 +879,26 @@ public static class CardModificationRuntime
         LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
         LoadoutKeywordRuntimePatches.EnableFromOverrides(
             modification.KeywordOverrides);
+
+        int? energyCost = modification.EnergyCostDelta.HasValue
+            ? AddIntDeltaClamped(
+                card.EnergyCost.Canonical,
+                modification.EnergyCostDelta.Value)
+            : null;
+        if (modification.BaseReplayCountDelta.HasValue)
+        {
+            card.BaseReplayCount = AddIntDeltaClamped(
+                card.BaseReplayCount,
+                modification.BaseReplayCountDelta.Value);
+        }
+        if (modification.BaseStarCostDelta.HasValue)
+        {
+            SetBaseStarCost(
+                card,
+                AddIntDeltaClamped(
+                    card.BaseStarCost,
+                    modification.BaseStarCostDelta.Value));
+        }
         foreach ((string name, decimal delta) in modification.DynamicVarDeltas)
         {
             if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
@@ -834,7 +907,9 @@ public static class CardModificationRuntime
         XCostKeywordMechanics.SynchronizeEnergyCost(
             card,
             modification.KeywordOverrides,
-            null);
+            energyCost);
+        if (energyCost.HasValue && !card.EnergyCost.CostsX)
+            SetEnergyCost(card, energyCost.Value);
     }
 
     public static CardModel GetPermanentCardForDisplay(CardModel card)
@@ -1423,6 +1498,15 @@ public static class CardModificationRuntime
         keywordKeys.UnionWith(next.KeywordOverrides.Keys);
         keywordKeys.UnionWith(previous.UpgradeModification.KeywordOverrides.Keys);
         keywordKeys.UnionWith(next.UpgradeModification.KeywordOverrides.Keys);
+        bool hasUpgradeEnergyDefinition =
+            previous.UpgradeModification.EnergyCostDelta.HasValue
+            || next.UpgradeModification.EnergyCostDelta.HasValue;
+        bool hasUpgradeReplayDefinition =
+            previous.UpgradeModification.BaseReplayCountDelta.HasValue
+            || next.UpgradeModification.BaseReplayCountDelta.HasValue;
+        bool hasUpgradeStarDefinition =
+            previous.UpgradeModification.BaseStarCostDelta.HasValue
+            || next.UpgradeModification.BaseStarCostDelta.HasValue;
 
         if (forceAllOwnedFields)
         {
@@ -1442,14 +1526,21 @@ public static class CardModificationRuntime
         if (!forceAllOwnedFields
             && (previous.EnergyCost.HasValue
              || next.EnergyCost.HasValue
+             || hasUpgradeEnergyDefinition
              || keywordKeys.Contains(LoadoutKeywords.XCostKey))
             && !destination.EnergyCost.CostsX)
         {
             SetEnergyCost(destination, source.EnergyCost.Canonical);
         }
-        if (!forceAllOwnedFields && (previous.BaseReplayCount.HasValue || next.BaseReplayCount.HasValue))
+        if (!forceAllOwnedFields
+            && (previous.BaseReplayCount.HasValue
+                || next.BaseReplayCount.HasValue
+                || hasUpgradeReplayDefinition))
             destination.BaseReplayCount = source.BaseReplayCount;
-        if (!forceAllOwnedFields && (previous.BaseStarCost.HasValue || next.BaseStarCost.HasValue))
+        if (!forceAllOwnedFields
+            && (previous.BaseStarCost.HasValue
+                || next.BaseStarCost.HasValue
+                || hasUpgradeStarDefinition))
             SetBaseStarCost(destination, source.BaseStarCost);
 
         if (!forceAllOwnedFields && (previous.PoolId is not null || next.PoolId is not null))
@@ -1522,6 +1613,7 @@ public static class CardModificationRuntime
         if (!forceAllOwnedFields
             && (previous.EnergyCost.HasValue
              || next.EnergyCost.HasValue
+             || hasUpgradeEnergyDefinition
              || keywordKeys.Contains(LoadoutKeywords.XCostKey))
             && !source.EnergyCost.CostsX
             && !destination.EnergyCost.CostsX)
@@ -1721,6 +1813,16 @@ public static class CardModificationRuntime
             string.IsNullOrWhiteSpace(left) ? string.Empty : left.Trim(),
             string.IsNullOrWhiteSpace(right) ? string.Empty : right.Trim(),
             StringComparison.Ordinal);
+    }
+
+    private static int AddIntDeltaClamped(int value, int delta)
+    {
+        return (int)Math.Clamp((long)value + delta, int.MinValue, int.MaxValue);
+    }
+
+    private static int SubtractIntClamped(int value, int baseline)
+    {
+        return (int)Math.Clamp((long)value - baseline, int.MinValue, int.MaxValue);
     }
 
     private static void SetEnergyCost(CardModel card, int value)
