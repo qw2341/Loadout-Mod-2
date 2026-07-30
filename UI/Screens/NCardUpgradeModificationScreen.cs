@@ -14,12 +14,9 @@ using Loadout.Services.Targets;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
-using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Nodes.Cards;
-using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Runs;
@@ -28,7 +25,9 @@ public partial class NCardUpgradeModificationScreen : Control
 {
     private const string ScenePath =
         "res://UI/Screens/CardUpgradeModificationScreen.tscn";
-    private const string NativePreviewPath = "cards/upgrade_preview";
+    private const float EditorRowWidth = 426f;
+    private const float EditorLabelWidth = 184f;
+    private const float StepperWidth = 176f;
 
     private sealed record DynamicVarEditorDefinition(
         string Name,
@@ -45,7 +44,7 @@ public partial class NCardUpgradeModificationScreen : Control
     private VBoxContainer? _rightControls;
     private Control? _previewHost;
     private Control? _backButtonMount;
-    private NUpgradePreview? _upgradePreview;
+    private NCardUpgradePreview? _upgradePreview;
     private NBackButton? _backButton;
     private CardModel? _previewSource;
     private CardModel? _previewUpgrade;
@@ -94,12 +93,14 @@ public partial class NCardUpgradeModificationScreen : Control
         ZIndex = 130;
         _leftControls = GetNodeOrNull<VBoxContainer>(
             "%LeftControls");
+        if (_leftControls is not null)
+            _leftControls.CustomMinimumSize = new Vector2(EditorRowWidth, 0f);
         _rightControls = GetNodeOrNull<VBoxContainer>(
             "%RightControls");
         _previewHost = GetNodeOrNull<Control>("%PreviewHost");
         _backButtonMount = GetNodeOrNull<Control>("%BackButtonMount");
         AddTitle();
-        EnsureNativePreview();
+        EnsureUpgradePreview();
         EnsureBackButton();
         VisibilityChanged += OnVisibilityChanged;
         QueueRebuild();
@@ -402,12 +403,15 @@ public partial class NCardUpgradeModificationScreen : Control
                 upgraded.UpgradeInternal();
             upgraded.UpgradePreviewType = CardUpgradePreviewType.Deck;
 
-            ReleasePreviewCards();
+            _upgradePreview.SetCards(source, upgraded);
+            CardModel? previousSource = _previewSource;
+            CardModel? previousUpgrade = _previewUpgrade;
             _previewSource = source;
             _previewUpgrade = upgraded;
             source = null;
             upgraded = null;
-            PopulateNativePreview();
+            CardModificationRuntime.ReleaseUpgradePreviewCard(previousUpgrade);
+            CardModificationRuntime.ReleaseUpgradePreviewCard(previousSource);
         }
         catch (Exception exception)
         {
@@ -423,10 +427,7 @@ public partial class NCardUpgradeModificationScreen : Control
     {
         if (_upgradePreview is not null
             && GodotObject.IsInstanceValid(_upgradePreview))
-        {
-            ClearPreviewContainer("%Before");
-            ClearPreviewContainer("%After");
-        }
+            _upgradePreview.ClearCards();
 
         CardModificationRuntime.ReleaseUpgradePreviewCard(_previewUpgrade);
         CardModificationRuntime.ReleaseUpgradePreviewCard(_previewSource);
@@ -434,87 +435,23 @@ public partial class NCardUpgradeModificationScreen : Control
         _previewSource = null;
     }
 
-    private void ClearPreviewContainer(string nodeName)
-    {
-        Control? container =
-            _upgradePreview?.GetNodeOrNull<Control>(nodeName);
-        if (container is null)
-            return;
-
-        foreach (Node child in container.GetChildren())
-            child.QueueFreeSafely();
-    }
-
-    private void PopulateNativePreview()
-    {
-        if (_upgradePreview is null
-            || _previewSource is null
-            || _previewUpgrade is null)
-        {
-            return;
-        }
-
-        Control before = _upgradePreview.GetNode<Control>("%Before");
-        Control after = _upgradePreview.GetNode<Control>("%After");
-
-        NCard beforeCard = NCard.Create(_previewSource)
-                           ?? throw new InvalidOperationException(
-                               "Could not create the pre-upgrade card view.");
-        NPreviewCardHolder beforeHolder = NPreviewCardHolder.Create(
-            beforeCard,
-            showHoverTips: true,
-            scaleOnHover: false)
-            ?? throw new InvalidOperationException(
-                "Could not create the pre-upgrade card holder.");
-        beforeHolder.FocusMode = FocusModeEnum.All;
-        before.AddChildSafely(beforeHolder);
-        beforeCard.UpdateVisuals(
-            PileType.Deck,
-            CardPreviewMode.Normal);
-
-        NCard afterCard = NCard.Create(_previewUpgrade)
-                          ?? throw new InvalidOperationException(
-                              "Could not create the upgraded card view.");
-        NPreviewCardHolder afterHolder = NPreviewCardHolder.Create(
-            afterCard,
-            showHoverTips: true,
-            scaleOnHover: false)
-            ?? throw new InvalidOperationException(
-                "Could not create the upgraded card holder.");
-        afterHolder.FocusMode = FocusModeEnum.None;
-        after.AddChildSafely(afterHolder);
-        afterCard.UpdateVisuals(
-            PileType.Deck,
-            CardPreviewMode.Normal);
-        afterCard.ShowUpgradePreview();
-    }
-
-    private void EnsureNativePreview()
+    private void EnsureUpgradePreview()
     {
         if (_previewHost is null || _upgradePreview is not null)
             return;
 
-        try
+        _upgradePreview = new NCardUpgradePreview
         {
-            string path = SceneHelper.GetScenePath(NativePreviewPath);
-            PackedScene scene = PreloadManager.Cache.GetScene(path);
-            _upgradePreview = scene.Instantiate<NUpgradePreview>(
-                PackedScene.GenEditState.Disabled);
-            _upgradePreview.Name = "UpgradePreview";
-            _upgradePreview.SetAnchorsPreset(LayoutPreset.Center);
-            _previewHost.AddChild(_upgradePreview);
-            if (!_upgradePreview.IsNodeReady())
-            {
-                _upgradePreview.Connect(
-                    Node.SignalName.Ready,
-                    Callable.From(QueueRebuild),
-                    (uint)ConnectFlags.OneShot);
-            }
-        }
-        catch (Exception exception)
+            Name = "UpgradePreview"
+        };
+        _upgradePreview.SetAnchorsPreset(LayoutPreset.Center);
+        _previewHost.AddChild(_upgradePreview);
+        if (!_upgradePreview.IsNodeReady())
         {
-            GD.PushWarning(
-                $"CardModification: failed creating native upgrade preview. {exception.Message}");
+            _upgradePreview.Connect(
+                Node.SignalName.Ready,
+                Callable.From(QueueRebuild),
+                (uint)ConnectFlags.OneShot);
         }
     }
 
@@ -584,18 +521,21 @@ public partial class NCardUpgradeModificationScreen : Control
 
     private static Control CreateRow(string label, Control input)
     {
-        HBoxContainer row = new()
+        Control row = new()
         {
-            CustomMinimumSize = new Vector2(0f, 44f),
+            CustomMinimumSize = new Vector2(EditorRowWidth, 44f),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        row.AddThemeConstantOverride("separation", 8);
         MegaLabel text = CreateLabel(label, 21, StsColors.cream);
-        text.CustomMinimumSize = new Vector2(184f, 44f);
-        text.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        text.Position = Vector2.Zero;
+        text.Size = new Vector2(EditorLabelWidth, 44f);
         row.AddChild(text);
-        input.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+        input.Position = new Vector2(
+            EditorRowWidth - StepperWidth,
+            1f);
+        input.Size = new Vector2(StepperWidth, 42f);
+        input.CustomMinimumSize = new Vector2(StepperWidth, 42f);
         row.AddChild(input);
         return row;
     }
