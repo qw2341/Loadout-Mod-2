@@ -88,6 +88,7 @@ public class LoadoutBag
     private const string HextechRelicGroupKey = "relic:hextech";
     private const string HextechCharacterGroupPrefix = "relic:hextech:character:";
     private const string HextechForgeGroupKey = "relic:hextech:forges";
+    private const float RelicCollectionVisualScale = 1.25f;
 
     private static readonly string[] HextechKnownCharacterPoolOrder =
     {
@@ -178,6 +179,9 @@ public class LoadoutBag
 
 	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelic relicView))
 		    return;
+
+	    if (CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder _))
+		    relicView.Scale = Vector2.One * RelicCollectionVisualScale;
 
 	    RelicModel displayModel = RelicModificationStateService.GetEffectivePermanentRelicForDisplay(model);
 	    RelicModel boundModel = relicView.Model;
