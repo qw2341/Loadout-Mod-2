@@ -28,24 +28,30 @@ namespace Loadout.PanelItems;
 
 public class EventfulCompass
 {
-	private static bool InsertedRoomJumpControl = false;
     public static void Initialize()
     {
-	    IReadOnlyList<EventModel> allEvents = ModelDb.AllEvents.Concat(ModelDb.AllAncients).Distinct().ToList();
+	    IReadOnlyList<EventModel> allEvents = ModelDb.AllEvents
+		    .Concat(ModelDb.AllAncients)
+		    .GroupBy(eventModel => eventModel.Id.ToString(), StringComparer.Ordinal)
+		    .Select(group => group.First())
+		    .ToList();
+	    EventCatalogData catalog = BuildEventCatalogData(allEvents);
 
         CommonHelpers.CreateAndAddLoadoutItem(
 			allEvents,
 			new SelectItemAdapter<EventModel>
 			{
 				GetId = eventModel => eventModel.Id.ToString(),
-				GetName = eventModel => CommonHelpers.FormatEventTitle(eventModel),
-				GetSearchText = eventModel => $"{eventModel.Id} {CommonHelpers.FormatEventTitle(eventModel)}",
+				GetName = FormatEventTitle,
+				GetSearchText = eventModel => BuildEventSearchText(eventModel, catalog),
 				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
 			}, builder =>
 			{
+				EventGroupPresentation grouping = BuildEventGroupPresentation(catalog);
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 				builder.Materialization(SelectMaterializationMode.Lazy);
 				builder.Layout(4, EventTileSize, 24, 24);
+				AddActFilters(builder, catalog);
 				builder.FilterGroup("layout", LocMan.Loc("FILTER_GROUP_LAYOUT", "Layout"));
 				builder.Filter("default", LocMan.Loc("LAYOUT_DEFAULT", "Default"), eventModel => eventModel.LayoutType == EventLayoutType.Default, "layout");
 				builder.Filter("combat", LocMan.Loc("LAYOUT_COMBAT", "Combat"), eventModel => eventModel.LayoutType == EventLayoutType.Combat, "layout");
@@ -54,19 +60,44 @@ public class EventfulCompass
 				builder.Filter("shared", LocMan.Loc("SCOPE_SHARED", "Shared"), eventModel => eventModel.IsShared, "sharing");
 				builder.Filter("solo", LocMan.Loc("SCOPE_SOLO", "Solo"), eventModel => !eventModel.IsShared, "sharing");
 				CommonHelpers.AddModFilters(builder, allEvents);
-				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), CommonHelpers.FormatEventTitle, activeByDefault: true, comparer: StringComparer.Ordinal);
+				builder.Sorter(
+					"act",
+					LocMan.Loc("FILTER_GROUP_ACT", "Act"),
+					(left, right) => CompareEventsByAct(left, right, catalog, grouping),
+					(left, right) => CompareEventsByAct(right, left, catalog, grouping),
+					activeByDefault: true);
+				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), FormatEventTitle, comparer: StringComparer.Ordinal);
 				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
+				builder.GroupBySorter(
+					"act",
+					eventModel => GetEventGroupKey(eventModel, catalog),
+					grouping.GetHeader,
+					grouping.GroupOrder,
+					grouping.DescendingGroupOrder);
+				builder.GroupBySorter(
+					"name",
+					eventModel => GetEventGroupKey(eventModel, catalog),
+					grouping.GetHeader,
+					grouping.GroupOrder,
+					grouping.GroupOrder);
+				builder.GroupBySorter(
+					"id",
+					eventModel => GetEventGroupKey(eventModel, catalog),
+					grouping.GetHeader,
+					grouping.GroupOrder,
+					grouping.GroupOrder);
 			}, UpsertRoomJumpControls,
 			"EventfulCompass.png",
 			LocMan.Loc("EVENTFULCOMPASS_TITLE", "Eventful Compass"),
 			LocMan.Loc("EVENTFULCOMPASS_DESC", "Right-click this relic to select the event you want. Ctrl + right click to repeat the last action."),
 			HandleEnterEventActivatedAsync,
 			LastActionService.EventfulCompassKey,
-			ReplayEventfulCompassLastActionAsync);
+			ReplayEventfulCompassLastActionAsync,
+			selectScreenScenePath: CommonHelpers.EventSelectScreenScenePath);
     }
 
     private static readonly Vector2 EventTileSize = new(264f, 144f);
-    private static readonly Vector2I AncientPreviewTextureSize = new(360, 196);
+    private static readonly Vector2I AncientPreviewTextureSize = new(264, 144);
     private const float EventTilePortraitRestAlpha = 0.45f;
     private const float EventTilePortraitHoverAlpha = 0.78f;
     private const float EventTileShadeHoverAlpha = 0.16f;
@@ -79,7 +110,9 @@ public class EventfulCompass
 
     private static void UpsertRoomJumpControls(NGenericSelectScreen screen)
     {
-	    if (InsertedRoomJumpControl) return;
+	    if (screen.FindChild(RoomJumpControlName, true, false) is not null)
+		    return;
+
 	    VBoxContainer controls = new()
 	    {
 		    Name = RoomJumpControlName,
@@ -116,7 +149,6 @@ public class EventfulCompass
 		    SelectedRoomType.ToString());
 
 	    screen.AddCustomSidebarControl(controls);
-	    InsertedRoomJumpControl = true;
     }
 
     private static IReadOnlyList<LoadoutDropdownOption> GetRoomJumpOptions()
@@ -234,6 +266,250 @@ public class EventfulCompass
 		    .FirstOrDefault(eventModel => CommonHelpers.ModelIdMatches(eventModel, eventId));
     }
 
+    private static EventCatalogData BuildEventCatalogData(IReadOnlyList<EventModel> allEvents)
+    {
+	    IReadOnlyList<ActModel> acts = ModelDb.Acts
+		    .Where(act => act.Index >= 0)
+		    .GroupBy(act => act.Id.ToString(), StringComparer.Ordinal)
+		    .Select(group => group.First())
+		    .ToList();
+	    Dictionary<string, List<ActModel>> regularActsByEventId = new(StringComparer.Ordinal);
+	    Dictionary<string, List<ActModel>> ancientActsByEventId = new(StringComparer.Ordinal);
+
+	    foreach (ActModel act in acts)
+	    {
+		    foreach (EventModel eventModel in act.AllEvents)
+			    AddEventActMembership(regularActsByEventId, eventModel.Id.ToString(), act);
+
+		    foreach (AncientEventModel ancient in act.AllAncients)
+			    AddEventActMembership(ancientActsByEventId, ancient.Id.ToString(), act);
+	    }
+
+	    HashSet<string> sharedIds = ModelDb.AllSharedEvents
+		    .Cast<EventModel>()
+		    .Concat(ModelDb.AllSharedAncients)
+		    .Select(eventModel => eventModel.Id.ToString())
+		    .ToHashSet(StringComparer.Ordinal);
+	    Dictionary<string, EventPlacement> placements = new(StringComparer.Ordinal);
+
+	    foreach (EventModel eventModel in allEvents)
+	    {
+		    string eventId = eventModel.Id.ToString();
+		    bool isAncient = eventModel is AncientEventModel;
+		    Dictionary<string, List<ActModel>> memberships = isAncient
+			    ? ancientActsByEventId
+			    : regularActsByEventId;
+		    IReadOnlyList<ActModel> matchedActs = memberships.TryGetValue(eventId, out List<ActModel> eventActs)
+			    ? eventActs
+			    : [];
+		    bool isShared = eventModel.IsShared || sharedIds.Contains(eventId);
+		    bool isOther = isShared || matchedActs.Count == 0;
+		    IReadOnlyList<ActModel> applicableActs = isShared ? acts : matchedActs;
+		    ActModel primaryAct = isOther ? null : matchedActs[0];
+		    string groupKey = isOther
+			    ? isAncient ? OtherAncientsGroupKey : OtherEventsGroupKey
+			    : isAncient
+				    ? GetActAncientsGroupKey(primaryAct.Index)
+				    : GetActEventsGroupKey(primaryAct);
+
+		    placements[eventId] = new EventPlacement(
+			    groupKey,
+			    applicableActs,
+			    applicableActs.Select(act => act.Id.ToString()).ToHashSet(StringComparer.Ordinal),
+			    isOther);
+	    }
+
+	    return new EventCatalogData(acts, placements);
+    }
+
+    private static void AddEventActMembership(
+	    IDictionary<string, List<ActModel>> memberships,
+	    string eventId,
+	    ActModel act)
+    {
+	    if (!memberships.TryGetValue(eventId, out List<ActModel> acts))
+	    {
+		    acts = [];
+		    memberships[eventId] = acts;
+	    }
+
+	    if (!acts.Any(candidate => candidate.Id == act.Id))
+		    acts.Add(act);
+    }
+
+    private static EventGroupPresentation BuildEventGroupPresentation(EventCatalogData catalog)
+    {
+	    List<string> groupOrder = [];
+	    List<IReadOnlyList<string>> groupBlocks = [];
+	    Dictionary<string, SelectGroupHeader> headers = new(StringComparer.Ordinal);
+	    Dictionary<string, int> leafOrder = new(StringComparer.Ordinal);
+
+	    foreach (IGrouping<int, ActModel> actsAtIndex in catalog.Acts.GroupBy(act => act.Index))
+	    {
+		    string rootKey = GetActRootGroupKey(actsAtIndex.Key);
+		    string childPrefix = rootKey + ":";
+		    List<string> block = [rootKey];
+		    headers[rootKey] = SelectGroupHeader.Category(
+			    FormatActNumber(actsAtIndex.Key),
+			    childGroupPrefix: childPrefix);
+
+		    foreach (ActModel act in actsAtIndex)
+		    {
+			    string groupKey = GetActEventsGroupKey(act);
+			    block.Add(groupKey);
+			    headers[groupKey] = new SelectGroupHeader(FormatActTitle(act));
+			    leafOrder[groupKey] = leafOrder.Count;
+		    }
+
+		    string ancientsKey = GetActAncientsGroupKey(actsAtIndex.Key);
+		    block.Add(ancientsKey);
+		    headers[ancientsKey] = new SelectGroupHeader(LocMan.Loc("ANCIENTS", "Ancients"));
+		    leafOrder[ancientsKey] = leafOrder.Count;
+		    groupBlocks.Add(block);
+		    groupOrder.AddRange(block);
+	    }
+
+	    List<string> otherBlock =
+	    [
+		    OtherRootGroupKey,
+		    OtherEventsGroupKey,
+		    OtherAncientsGroupKey
+	    ];
+	    headers[OtherRootGroupKey] = SelectGroupHeader.Category(
+		    LocMan.Loc("OTHER", "Other"),
+		    childGroupPrefix: OtherRootGroupKey + ":");
+	    headers[OtherEventsGroupKey] = new SelectGroupHeader(LocMan.Loc("EVENTS", "Events"));
+	    headers[OtherAncientsGroupKey] = new SelectGroupHeader(LocMan.Loc("ANCIENTS", "Ancients"));
+	    leafOrder[OtherEventsGroupKey] = leafOrder.Count;
+	    leafOrder[OtherAncientsGroupKey] = leafOrder.Count;
+	    groupBlocks.Add(otherBlock);
+	    groupOrder.AddRange(otherBlock);
+
+	    IReadOnlyList<string> descendingGroupOrder = groupBlocks
+		    .AsEnumerable()
+		    .Reverse()
+		    .SelectMany(block => block)
+		    .ToList();
+	    return new EventGroupPresentation(groupOrder, descendingGroupOrder, headers, leafOrder);
+    }
+
+    private static void AddActFilters(
+	    SelectScreenBuilder<EventModel> builder,
+	    EventCatalogData catalog)
+    {
+	    if (catalog.Acts.Count == 0)
+		    return;
+
+	    builder.FilterGroup("act", LocMan.Loc("FILTER_GROUP_ACT", "Act"));
+	    for (int actOrder = 0; actOrder < catalog.Acts.Count; actOrder++)
+	    {
+		    ActModel act = catalog.Acts[actOrder];
+		    string actId = act.Id.ToString();
+		    builder.Filter(
+			    $"act_{actOrder}",
+			    $"{FormatActNumber(act.Index)}: {FormatActTitle(act)}",
+			    eventModel => catalog.TryGetPlacement(eventModel, out EventPlacement placement)
+			                  && placement.ApplicableActIds.Contains(actId),
+			    "act");
+	    }
+
+	    builder.Filter(
+		    "act_other",
+		    LocMan.Loc("OTHER", "Other"),
+		    eventModel => catalog.TryGetPlacement(eventModel, out EventPlacement placement)
+		                  && placement.IsOther,
+		    "act");
+    }
+
+    private static int CompareEventsByAct(
+	    EventModel left,
+	    EventModel right,
+	    EventCatalogData catalog,
+	    EventGroupPresentation grouping)
+    {
+	    int leftOrder = catalog.TryGetPlacement(left, out EventPlacement leftPlacement)
+		    ? grouping.GetLeafOrder(leftPlacement.GroupKey)
+		    : int.MaxValue;
+	    int rightOrder = catalog.TryGetPlacement(right, out EventPlacement rightPlacement)
+		    ? grouping.GetLeafOrder(rightPlacement.GroupKey)
+		    : int.MaxValue;
+	    int byGroup = leftOrder.CompareTo(rightOrder);
+	    return byGroup != 0
+		    ? byGroup
+		    : string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
+    }
+
+    private static string GetEventGroupKey(EventModel eventModel, EventCatalogData catalog)
+    {
+	    if (catalog.TryGetPlacement(eventModel, out EventPlacement placement))
+		    return placement.GroupKey;
+
+	    return eventModel is AncientEventModel
+		    ? OtherAncientsGroupKey
+		    : OtherEventsGroupKey;
+    }
+
+    private static string BuildEventSearchText(EventModel eventModel, EventCatalogData catalog)
+    {
+	    List<string> searchParts =
+	    [
+		    eventModel.Id.ToString(),
+		    FormatEventTitle(eventModel)
+	    ];
+
+	    if (catalog.TryGetPlacement(eventModel, out EventPlacement placement))
+	    {
+		    foreach (ActModel act in placement.ApplicableActs)
+		    {
+			    searchParts.Add(FormatActNumber(act.Index));
+			    searchParts.Add(FormatActTitle(act));
+		    }
+
+		    if (placement.IsOther)
+			    searchParts.Add(LocMan.Loc("OTHER", "Other"));
+	    }
+
+	    return string.Join(" ", searchParts.Distinct(StringComparer.Ordinal));
+    }
+
+    private static string FormatEventTitle(EventModel eventModel)
+    {
+	    try
+	    {
+		    return CommonHelpers.FormatEventTitle(eventModel);
+	    }
+	    catch
+	    {
+		    return eventModel.Id.Entry;
+	    }
+    }
+
+    private static string FormatActTitle(ActModel act)
+    {
+	    try
+	    {
+		    return act.Title.GetFormattedText();
+	    }
+	    catch
+	    {
+		    return act.Id.Entry;
+	    }
+    }
+
+    private static string FormatActNumber(int actIndex)
+    {
+	    int actNumber = actIndex + 1;
+	    return LocMan.Loc("ACT_NUMBER", $"Act {actNumber}", actNumber);
+    }
+
+    private static string GetActRootGroupKey(int actIndex) => $"event:act:{actIndex}";
+    private static string GetActEventsGroupKey(ActModel act) => $"{GetActRootGroupKey(act.Index)}:events:{act.Id}";
+    private static string GetActAncientsGroupKey(int actIndex) => $"{GetActRootGroupKey(actIndex)}:ancients";
+
+    private const string OtherRootGroupKey = "event:other";
+    private const string OtherEventsGroupKey = "event:other:events";
+    private const string OtherAncientsGroupKey = "event:other:ancients";
+
     private static Control CreateEventGridItem(EventModel model)
     {
 	    Button button = CommonHelpers.CreateModelButton(EventTileSize);
@@ -293,7 +569,7 @@ public class EventfulCompass
 	    {
 		    Texture2D ancientPreview = GetAncientBackgroundPreviewTexture(ancientEvent, viewportOwner);
 		    if (ancientPreview is not null)
-			    return CreateTileBackground(ancientPreview);
+			    return CreateTileBackground(ancientPreview, useMipmaps: false);
 	    }
 
 	    if (model.LayoutType != EventLayoutType.Default)
@@ -307,7 +583,7 @@ public class EventfulCompass
 	    try
 	    {
 		    Texture2D portrait = model.CreateInitialPortrait();
-		    return portrait is null ? null : CreateTileBackground(portrait);
+		    return portrait is null ? null : CreateTileBackground(portrait, useMipmaps: true);
 	    }
 	    catch (Exception)
 	    {
@@ -341,11 +617,14 @@ public class EventfulCompass
 	    return loadable;
     }
 
-    public static TextureRect CreateTileBackground(Texture2D texture)
+    public static TextureRect CreateTileBackground(Texture2D texture, bool useMipmaps)
     {
 	    return new TextureRect
 	    {
 		    Texture = texture,
+		    TextureFilter = useMipmaps
+			    ? CanvasItem.TextureFilterEnum.LinearWithMipmaps
+			    : CanvasItem.TextureFilterEnum.Linear,
 		    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
 		    StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
 		    MouseFilter = Control.MouseFilterEnum.Ignore,
@@ -467,5 +746,63 @@ public class EventfulCompass
 	    label.MinFontSize = 19;
 	    label.MaxFontSize = 26;
 	    label.AddThemeFontSizeOverride("font_size", label.MaxFontSize);
+    }
+
+    private sealed class EventCatalogData
+    {
+	    public EventCatalogData(
+		    IReadOnlyList<ActModel> acts,
+		    IReadOnlyDictionary<string, EventPlacement> placements)
+	    {
+		    Acts = acts;
+		    Placements = placements;
+	    }
+
+	    public IReadOnlyList<ActModel> Acts { get; }
+	    public IReadOnlyDictionary<string, EventPlacement> Placements { get; }
+
+	    public bool TryGetPlacement(EventModel eventModel, out EventPlacement placement)
+	    {
+		    return Placements.TryGetValue(eventModel.Id.ToString(), out placement);
+	    }
+    }
+
+    private sealed record EventPlacement(
+	    string GroupKey,
+	    IReadOnlyList<ActModel> ApplicableActs,
+	    IReadOnlySet<string> ApplicableActIds,
+	    bool IsOther);
+
+    private sealed class EventGroupPresentation
+    {
+	    private readonly IReadOnlyDictionary<string, SelectGroupHeader> _headers;
+	    private readonly IReadOnlyDictionary<string, int> _leafOrder;
+
+	    public EventGroupPresentation(
+		    IReadOnlyList<string> groupOrder,
+		    IReadOnlyList<string> descendingGroupOrder,
+		    IReadOnlyDictionary<string, SelectGroupHeader> headers,
+		    IReadOnlyDictionary<string, int> leafOrder)
+	    {
+		    GroupOrder = groupOrder;
+		    DescendingGroupOrder = descendingGroupOrder;
+		    _headers = headers;
+		    _leafOrder = leafOrder;
+	    }
+
+	    public IReadOnlyList<string> GroupOrder { get; }
+	    public IReadOnlyList<string> DescendingGroupOrder { get; }
+
+	    public SelectGroupHeader GetHeader(string key)
+	    {
+		    return _headers.TryGetValue(key, out SelectGroupHeader header)
+			    ? header
+			    : new SelectGroupHeader(key);
+	    }
+
+	    public int GetLeafOrder(string key)
+	    {
+		    return _leafOrder.GetValueOrDefault(key, int.MaxValue);
+	    }
     }
 }

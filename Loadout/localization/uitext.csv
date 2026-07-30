@@ -22,6 +22,7 @@ FILTER_GROUP_KEYWORD,Keyword,关键词,Mot-clé,キーワード,키워드,Palabr
 FILTER_GROUP_TAG,Tag,标签,Étiquette,タグ,태그,Etiqueta
 FILTER_GROUP_COST,Cost,费用,Coût,コスト,비용,Coste
 FILTER_GROUP_ACT,Act,章节,Acte,幕,막,Acto
+ACT_NUMBER,Act {0},第{0}章,Acte {0},第{0}幕,{0}막,Acto {0}
 FILTER_GROUP_MONSTER_CATEGORY,Category,怪物类型,Catégorie,カテゴリー,분류,Categoría
 LOADOUT_TARGET,Target,目标,Cible,対象,대상,Objetivo
 LOADOUT_TARGET_ALL_PLAYERS,All Players,所有玩家,Tous les joueurs,すべてのプレイヤー,모든 플레이어,Todos los jugadores
@@ -64,7 +65,7 @@ RARITY_UNCOMMON,Uncommon,罕见,Peu commune,アンコモン,고급,Poco común
 RARITY_RARE,Rare,稀有,Rare,レア,희귀,Rara
 LAYOUT_DEFAULT,Default,默认,Par défaut,デフォルト,기본,Predeterminado
 LAYOUT_COMBAT,Combat,战斗,Combat,戦闘,전투,Combate
-LAYOUT_ANCIENT,Ancient,远古,Ancien,古代,고대,Antiguo
+LAYOUT_ANCIENT,Ancient,先祖,Ancien,古代,고대,Antiguo
 SCOPE_SHARED,Shared,共享,Partagé,共有,공유,Compartido
 SCOPE_SOLO,Solo,单人,Solo,ソロ,솔로,En solitario
 CATEGORY_EVENT,Event,事件,Événement,イベント,이벤트,Evento
@@ -86,6 +87,8 @@ POWER_GIVER_TARGET_MONSTERS,Monsters,怪物,Monstres,モンスター,몬스터,M
 SHARED,Shared,共享,Partagé,共有,공유,Compartido
 COLORLESS,Colorless,无色,Incolore,無色,무색,Incolora
 EVENT,Event,事件,Événement,イベント,이벤트,Evento
+EVENTS,Events,事件,Événements,イベント,이벤트,Eventos
+ANCIENTS,Ancients,先祖事件,Événements anciens,古代イベント,고대 이벤트,Eventos antiguos
 NONE,None,无,Aucun,なし,없음,Ninguno
 OTHER,Other,其他,Autre,その他,기타,Otro
 ENUM_POTIONRARITY_COMMON,Common,普通,Commune,コモン,일반,Común

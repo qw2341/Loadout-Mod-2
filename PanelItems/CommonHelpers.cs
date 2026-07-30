@@ -44,6 +44,7 @@ public class CommonHelpers
     private const int DynamicRelayoutAnimationItemLimit = 60;
 
     public const string GenericSelectScreenScenePath = "res://UI/Screens/GenericSelectScreen.tscn";
+    public const string EventSelectScreenScenePath = NEventSelectScreen.ScenePath;
     public const string RelicSelectScreenScenePath = NRelicSelectScreen.ScenePath;
     public const string CardSelectScreenScenePath = NCardSelectScreen.ScenePath;
 

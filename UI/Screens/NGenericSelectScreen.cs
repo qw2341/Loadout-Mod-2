@@ -222,6 +222,7 @@ public partial class NGenericSelectScreen : Control
     protected float CurrentScrollOffset => _scrollY;
     protected float TargetScrollOffset => _targetScrollY;
     protected bool IsScrollMotionSettled => Mathf.Abs(_scrollY - _targetScrollY) < 0.5f;
+    protected ulong CurrentLayoutGeneration => _layoutGeneration;
     public bool IsConfiguredForCurrentLocale => string.Equals(_configuredLocaleLanguage, GetCurrentLocaleLanguage(), StringComparison.Ordinal);
     public bool IsFirstOpenPrewarmed => _hiddenPrewarmCompleted;
 
@@ -887,17 +888,13 @@ public partial class NGenericSelectScreen : Control
         if (screenName.Contains("BottledMonster", StringComparison.Ordinal))
             return 1;
 
-        if (screenName.Contains("EventfulCompass", StringComparison.Ordinal))
-            return 2;
-
         return DefaultHiddenPrewarmBatchSize;
     }
 
     protected virtual double GetHiddenPrewarmFrameBudgetMsec()
     {
         string screenName = Name.ToString();
-        if (screenName.Contains("BottledMonster", StringComparison.Ordinal)
-            || screenName.Contains("EventfulCompass", StringComparison.Ordinal))
+        if (screenName.Contains("BottledMonster", StringComparison.Ordinal))
         {
             return 0.35d;
         }
@@ -910,8 +907,7 @@ public partial class NGenericSelectScreen : Control
     protected virtual double GetEagerMaterializeFrameBudgetMsec()
     {
         string screenName = Name.ToString();
-        if (screenName.Contains("BottledMonster", StringComparison.Ordinal)
-            || screenName.Contains("EventfulCompass", StringComparison.Ordinal))
+        if (screenName.Contains("BottledMonster", StringComparison.Ordinal))
         {
             return 0.5d;
         }
@@ -1327,6 +1323,10 @@ public partial class NGenericSelectScreen : Control
     }
 
     protected virtual void OnItemsAdded(IReadOnlyList<IGenericSelectItem> addedItems)
+    {
+    }
+
+    protected virtual void OnItemViewMaterialized(Control view)
     {
     }
 
@@ -3310,6 +3310,7 @@ public partial class NGenericSelectScreen : Control
         view.Visible = true;
 
         TrackVisibleLayoutNode(view);
+        OnItemViewMaterialized(view);
 
         if (needsView || (updateExistingView && !_itemsUpdatedForCurrentLayout.Contains(item)))
         {
@@ -4103,6 +4104,11 @@ public partial class NGenericSelectScreen : Control
             if (item.View is Control view && GodotObject.IsInstanceValid(view))
                 destination.Add(view);
         }
+    }
+
+    protected void RefreshSpecializationViewportCulling()
+    {
+        UpdateViewportCulling(force: true);
     }
 
     private static bool IsControlInsideVerticalWindow(Control control, float cullTop, float cullBottom)
