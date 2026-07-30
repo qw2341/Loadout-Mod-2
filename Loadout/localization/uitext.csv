@@ -39,8 +39,8 @@ CARD_MOD_REPLAY_COUNT,Replay Count,重放,Nombre de répétitions,再使用回�
 CARD_MOD_STAR_COST,Star Cost,辉星,Coût d'étoiles,スターコスト,별 비용,Coste de estrellas
 CARD_MOD_CARD_FIELDS,Card Fields,卡牌字段,Champs de la carte,カード項目,카드 필드,Campos de la carta
 CARD_MOD_ATTACHMENTS,Attachments,附加效果,Effets attachés,付加効果,부가 효과,Efectos adjuntos
-CARD_MOD_MODIFY_UPGRADE,Modify Upgrade,修改升级,Modifier l'amélioration,アップグレードを変更,강화 변경,Modificar mejora
-CARD_MOD_UPGRADE_DELTAS,Upgrade Deltas,升级增量,Différences d'amélioration,アップグレード差分,강화 변화량,Deltas de mejora
+CARD_MOD_MODIFY_UPGRADE,Modify Upgrade,升级修改,Modifier l'amélioration,アップグレードを変更,강화 변경,Modificar mejora
+CARD_MOD_UPGRADE_DELTAS,Upgrade Adjustments,升级变更,Différences d'amélioration,アップグレード差分,강화 변화량,Deltas de mejora
 CARD_MOD_UPGRADE_NO_DYNAMIC_VARS,No dynamic variables,没有动态变量,Aucune variable dynamique,動的変数はありません,동적 변수가 없습니다,No hay variables dinámicas
 CARD_MOD_ENCHANTMENT,Enchantment,附魔,Enchantement,エンチャント,마법 부여,Encantamiento
 CARD_MOD_AFFLICTION,Affliction,负面附加,Affliction,災厄,고통,Aflicción
