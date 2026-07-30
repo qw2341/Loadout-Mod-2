@@ -5,8 +5,6 @@ namespace Loadout.UI.Screens;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using BaseLib.Patches.Content;
 using Godot;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
@@ -37,37 +35,13 @@ public partial class NCardModificationScreen : Control
         Description
     }
 
-    private sealed record KeywordCatalogEntry(
-        CardKeyword Keyword,
-        string Label,
-        string ModId,
-        string ModName);
-
-    private sealed record KeywordContentBlock(
-        string? Header,
-        IReadOnlyList<KeywordCatalogEntry> Entries);
-
     private const string ScenePath = "res://UI/Screens/CardModificationScreen.tscn";
     private const string NoneOptionId = "__none__";
-    private const string AllKeywordModFilterId = "__all_keyword_mods__";
-    private const string BaseGameKeywordModId = "slaythespire2";
-    private const string BaseLibKeywordModId = "BaseLib";
-    private const string OtherKeywordModId = "__other_keyword_mod__";
     private const float SidePanelWidth = 438f;
     private const float ActionButtonWidth = 318f;
     private const float CardEditButtonWidth = 246f;
     private const float ActionButtonHeight = 42f;
-    private const float KeywordContentWidth = 426f;
     private const float KeywordPanelTopMargin = 24f;
-    private const float KeywordToggleHeight = 44f;
-    private const float KeywordRowSeparation = 2f;
-    private const float KeywordScrollbarWidth = 48f;
-    private const float KeywordScrollbarEndCapSize = 48f;
-    private const float KeywordGroupHeaderHeight = 36f;
-    private const float KeywordHeaderGridGap = 2f;
-    private const float KeywordGroupSeparation = 10f;
-    private const int KeywordColumns = 2;
-    private const int KeywordVisibleRows = 7;
     private const float HoverTipCardGap = 22f;
     private const float HoverTipViewportMargin = 24f;
     private const float HoverTipWidth = 360f;
@@ -106,8 +80,7 @@ public partial class NCardModificationScreen : Control
     private bool _isClosing;
     private bool _hasBeenVisible;
     private bool _awaitingResetConfirmation;
-    private IReadOnlyList<KeywordCatalogEntry>? _keywordCatalog;
-    private string _selectedKeywordModId = AllKeywordModFilterId;
+    private string _selectedKeywordModId = NCardKeywordEditor.AllModFilterId;
 
     public static NCardModificationScreen Create()
     {
@@ -130,8 +103,7 @@ public partial class NCardModificationScreen : Control
         _items = items?.Count > 0 ? items.ToList() : [item];
         _itemIndex = Math.Max(0, _items.FindIndex(candidate => SameOwnedItem(candidate, item)));
         _parentScrollRestore = parentScrollRestore;
-        _keywordCatalog = null;
-        _selectedKeywordModId = AllKeywordModFilterId;
+        _selectedKeywordModId = NCardKeywordEditor.AllModFilterId;
         LoadItem(_items[_itemIndex]);
 
         if (IsNodeReady())
@@ -614,6 +586,7 @@ public partial class NCardModificationScreen : Control
         AddCardEditActions();
         AddKeywordControls();
         AddAttachmentControls();
+        AddModifyUpgradeAction();
 
         if (CanSavePermanent())
         {
@@ -834,262 +807,98 @@ public partial class NCardModificationScreen : Control
             });
     }
 
+    private void AddModifyUpgradeAction()
+    {
+        if (_item is null || _rightControls is null)
+            return;
+
+        NLoadoutActionButton button = CreateActionButton(
+            "modify_upgrade",
+            LocMan.Loc(
+                "CARD_MOD_MODIFY_UPGRADE",
+                "Modify Upgrade"));
+        ConnectActionButton(button, OpenUpgradeModificationScreen);
+        _rightControls.AddChild(button);
+        ConfigureActionButtonSize(button);
+        button.SetEnabled(
+            CardModificationRuntime.CanModifyUpgrade(
+                _item.Model,
+                _workingState));
+    }
+
+    private void OpenUpgradeModificationScreen()
+    {
+        if (_item is null || NLoadoutPanelRoot.Instance is null)
+            return;
+
+        NCardUpgradeModificationScreen screen =
+            NCardUpgradeModificationScreen.Create();
+        screen.Init(
+            _item,
+            _workingState,
+            ApplyUpgradeModificationDraft);
+        NLoadoutPanelRoot.Instance.OpenScreen(screen);
+    }
+
+    private void ApplyUpgradeModificationDraft(
+        CardUpgradeModificationSpec draft)
+    {
+        if (_item is null)
+            return;
+
+        _workingState.UpgradeModification = draft.Clone();
+        _temporaryState.UpgradeModification = draft.Clone();
+        ApplyWorkingState();
+        CommitPendingTemporaryModification();
+    }
+
     private void AddKeywordControls()
     {
         if (_item is null || _rightControls is null)
             return;
 
-        _rightControls.AddChild(CreateSectionLabel(LocMan.Loc("FILTER_GROUP_KEYWORD", "Keyword")));
-
-        IReadOnlyList<KeywordCatalogEntry> catalog = GetKeywordCatalog();
-        IReadOnlyList<IGrouping<string, KeywordCatalogEntry>> sources = GetOrderedKeywordSources(catalog);
-        HashSet<string> availableSourceIds = sources
-            .Select(source => source.Key)
-            .ToHashSet(StringComparer.Ordinal);
-        if (_selectedKeywordModId != AllKeywordModFilterId
-            && !availableSourceIds.Contains(_selectedKeywordModId))
-        {
-            _selectedKeywordModId = AllKeywordModFilterId;
-        }
-
-        List<LoadoutDropdownOption> filterOptions =
-        [
-            new LoadoutDropdownOption(AllKeywordModFilterId, SelectScreenLoc.Text("ALL", "All"))
-        ];
-        filterOptions.AddRange(sources.Select(source =>
-        {
-            KeywordCatalogEntry first = source.First();
-            return new LoadoutDropdownOption(source.Key, first.ModName);
-        }));
-
-        NSelectFilterDropdown modFilter = new()
-        {
-            Name = "KeywordModFilter",
-            CustomMinimumSize = new Vector2(KeywordContentWidth, 52f),
-            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-            DropdownWidth = 420f
-        };
-        modFilter.SetItems(
-            LocMan.Loc("FILTER_GROUP_MODS", "Mods"),
-            filterOptions,
-            _selectedKeywordModId);
-        _rightControls.AddChild(modFilter);
-
-        VBoxContainer contentHost = new()
-        {
-            Name = "KeywordContentHost",
-            CustomMinimumSize = new Vector2(KeywordContentWidth, 0f),
-            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        _rightControls.AddChild(contentHost);
-        RebuildKeywordContent(contentHost, catalog);
-
-        modFilter.SelectedItemChanged += selectedId =>
-        {
-            if (string.Equals(_selectedKeywordModId, selectedId, StringComparison.Ordinal))
-                return;
-
-            _selectedKeywordModId = availableSourceIds.Contains(selectedId)
-                ? selectedId
-                : AllKeywordModFilterId;
-            RebuildKeywordContent(contentHost, catalog);
-        };
-    }
-
-    private void RebuildKeywordContent(
-        VBoxContainer contentHost,
-        IReadOnlyList<KeywordCatalogEntry> catalog)
-    {
-        if (_item is null || !GodotObject.IsInstanceValid(contentHost))
-            return;
-
-        ClearChildren(contentHost);
-
-        IReadOnlyList<KeywordContentBlock> blocks = BuildKeywordContentBlocks(catalog);
-        float contentHeight = GetKeywordContentHeight(blocks);
-        float maximumVisibleHeight = GetKeywordGridHeight(KeywordVisibleRows);
-        bool needsScrolling = contentHeight > maximumVisibleHeight;
-        float visibleHeight = Math.Min(contentHeight, maximumVisibleHeight);
-        float contentWidth = needsScrolling
-            ? KeywordContentWidth - KeywordScrollbarWidth
-            : KeywordContentWidth;
-
-        VBoxContainer content = CreateKeywordContent(blocks, contentWidth);
-        content.CustomMinimumSize = new Vector2(contentWidth, contentHeight);
-
-        if (!needsScrolling)
-        {
-            contentHost.AddChild(content);
-            return;
-        }
-
-        NScrollableContainer scroll = new()
-        {
-            Name = "KeywordScroll",
-            CustomMinimumSize = new Vector2(KeywordContentWidth, visibleHeight),
-            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-            MouseFilter = MouseFilterEnum.Stop
-        };
-
-        Control mask = new()
-        {
-            Name = "Mask",
-            ClipContents = true,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        mask.SetAnchorsPreset(LayoutPreset.FullRect);
-        mask.OffsetRight = -KeywordScrollbarWidth;
-        scroll.AddChild(mask);
-
-        content.Name = "Content";
-        content.SetAnchorsPreset(LayoutPreset.TopWide);
-        mask.AddChild(content);
-
-        NScrollbar scrollbar = CreateGameScrollbar();
-        scrollbar.Name = "Scrollbar";
-        scrollbar.CustomMinimumSize = new Vector2(KeywordScrollbarWidth, 0f);
-        scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
-        scrollbar.OffsetLeft = -KeywordScrollbarWidth;
-        // The native track caps are 48px and intentionally extend beyond the
-        // NScrollbar range. Inset the range by that amount so both caps, the
-        // body, and the handle form one complete scrollbar inside the viewport.
-        scrollbar.OffsetTop = KeywordScrollbarEndCapSize;
-        scrollbar.OffsetRight = 0f;
-        scrollbar.OffsetBottom = -KeywordScrollbarEndCapSize;
-        scroll.AddChild(scrollbar);
-        scroll.DisableScrollingIfContentFits();
-        contentHost.AddChild(scroll);
-        Callable.From(() =>
-        {
-            if (GodotObject.IsInstanceValid(scroll) && GodotObject.IsInstanceValid(content))
-                scroll.SetContent(content);
-        }).CallDeferred();
-    }
-
-    private IReadOnlyList<KeywordContentBlock> BuildKeywordContentBlocks(
-        IReadOnlyList<KeywordCatalogEntry> catalog)
-    {
-        if (_selectedKeywordModId != AllKeywordModFilterId)
-        {
-            IReadOnlyList<KeywordCatalogEntry> filtered = catalog
-                .Where(entry => string.Equals(entry.ModId, _selectedKeywordModId, StringComparison.Ordinal))
-                .OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(entry => Convert.ToInt32(entry.Keyword))
-                .ToList();
-            return filtered.Count == 0
-                ? []
-                : [new KeywordContentBlock(null, filtered)];
-        }
-
-        List<KeywordContentBlock> blocks = [];
-        IReadOnlyList<KeywordCatalogEntry> core = catalog
-            .Where(entry => IsCoreKeywordSource(entry.ModId))
-            .OrderBy(entry => GetKeywordSourceRank(entry.ModId))
-            .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(entry => Convert.ToInt32(entry.Keyword))
-            .ToList();
-        if (core.Count > 0)
-            blocks.Add(new KeywordContentBlock(null, core));
-
-        foreach (IGrouping<string, KeywordCatalogEntry> source in GetOrderedKeywordSources(catalog)
-                     .Where(source => !IsCoreKeywordSource(source.Key)))
-        {
-            IReadOnlyList<KeywordCatalogEntry> entries = source
-                .OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(entry => Convert.ToInt32(entry.Keyword))
-                .ToList();
-            blocks.Add(new KeywordContentBlock(source.First().ModName, entries));
-        }
-
-        return blocks;
-    }
-
-    private VBoxContainer CreateKeywordContent(
-        IReadOnlyList<KeywordContentBlock> blocks,
-        float contentWidth)
-    {
-        VBoxContainer content = new()
-        {
-            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        content.AddThemeConstantOverride("separation", (int)KeywordGroupSeparation);
-
-        foreach (KeywordContentBlock block in blocks)
-        {
-            if (block.Header is null)
+        IReadOnlySet<CardKeyword> localKeywords =
+            GetKeywordsSafely(_item.Model).ToHashSet();
+        NCardKeywordEditor editor = new();
+        editor.Init(
+            _items.Select(item => item.Model).Append(_item.Model).ToList(),
+            keyword =>
             {
-                content.AddChild(CreateKeywordGrid(block.Entries, contentWidth));
-                continue;
-            }
-
-            VBoxContainer group = new()
+                string key = LoadoutKeywords.GetStorageKey(keyword);
+                return _workingState.KeywordOverrides.TryGetValue(
+                    key,
+                    out bool saved)
+                    ? saved
+                    : localKeywords.Contains(keyword);
+            },
+            (keyword, enabled) =>
             {
-                CustomMinimumSize = new Vector2(contentWidth, GetKeywordBlockHeight(block)),
-                SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-                MouseFilter = MouseFilterEnum.Ignore
-            };
-            group.AddThemeConstantOverride("separation", (int)KeywordHeaderGridGap);
-            group.AddChild(CreateKeywordGroupHeader(block.Header));
-            group.AddChild(CreateKeywordGrid(block.Entries, contentWidth));
-            content.AddChild(group);
-        }
-
-        return content;
-    }
-
-    private GridContainer CreateKeywordGrid(
-        IReadOnlyList<KeywordCatalogEntry> entries,
-        float gridWidth)
-    {
-        int rowCount = (entries.Count + KeywordColumns - 1) / KeywordColumns;
-        float toggleWidth = (gridWidth - 8f) / KeywordColumns;
-        GridContainer grid = new()
-        {
-            Columns = KeywordColumns,
-            CustomMinimumSize = new Vector2(gridWidth, GetKeywordGridHeight(rowCount)),
-            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        grid.AddThemeConstantOverride("h_separation", 8);
-        grid.AddThemeConstantOverride("v_separation", (int)KeywordRowSeparation);
-
-        IReadOnlySet<CardKeyword> localKeywords = GetKeywordsSafely(_item!.Model).ToHashSet();
-        foreach (KeywordCatalogEntry entry in entries)
-        {
-            CardKeyword localKeyword = entry.Keyword;
-            string key = LoadoutKeywords.GetStorageKey(localKeyword);
-            bool isChecked = _workingState.KeywordOverrides.TryGetValue(key, out bool saved)
-                ? saved
-                : localKeywords.Contains(localKeyword);
-
-            NLoadoutToggle toggle = new()
-            {
-                CustomMinimumSize = new Vector2(toggleWidth, KeywordToggleHeight),
-                SizeFlagsHorizontal = SizeFlags.ShrinkBegin
-            };
-            toggle.SetHoverTipsFactory(() => GetKeywordHoverTips(localKeyword));
-            toggle.Init($"keyword_{key}", entry.Label, isChecked);
-            toggle.Toggled += changed =>
-            {
-                _workingState.KeywordOverrides[key] = changed.IsChecked;
-                _temporaryState.KeywordOverrides[key] = changed.IsChecked;
-                bool hasKeywordDefinition = LoadoutKeywordRegistry.TryGet(
-                    localKeyword,
-                    out LoadoutKeywordModel keywordDefinition);
-                if (hasKeywordDefinition)
+                string key = LoadoutKeywords.GetStorageKey(keyword);
+                _workingState.KeywordOverrides[key] = enabled;
+                _temporaryState.KeywordOverrides[key] = enabled;
+                bool hasDefinition = LoadoutKeywordRegistry.TryGet(
+                    keyword,
+                    out LoadoutKeywordModel definition);
+                if (hasDefinition)
                 {
                     foreach (LoadoutKeywordDynamicVarDefinition dynamicVar
-                             in keywordDefinition.DynamicVars)
+                             in definition.DynamicVars)
                     {
-                        if (changed.IsChecked)
+                        if (enabled)
                         {
                             decimal initial = dynamicVar.DefaultValue;
-                            if (_item.Model.DynamicVars.TryGetValue(dynamicVar.Name, out var existing))
+                            if (_item.Model.DynamicVars.TryGetValue(
+                                    dynamicVar.Name,
+                                    out var existing))
+                            {
                                 initial = existing.BaseValue;
-                            _workingState.DynamicVars.TryAdd(dynamicVar.Name, initial);
-                            _temporaryState.DynamicVars.TryAdd(dynamicVar.Name, initial);
+                            }
+                            _workingState.DynamicVars.TryAdd(
+                                dynamicVar.Name,
+                                initial);
+                            _temporaryState.DynamicVars.TryAdd(
+                                dynamicVar.Name,
+                                initial);
                         }
                         else
                         {
@@ -1100,159 +909,15 @@ public partial class NCardModificationScreen : Control
                 }
 
                 ApplyWorkingState();
-                if (hasKeywordDefinition)
+                if (hasDefinition)
                     Callable.From(RebuildLeftControls).CallDeferred();
-            };
-            grid.AddChild(toggle);
-        }
-
-        return grid;
-    }
-
-    private static float GetKeywordContentHeight(IReadOnlyList<KeywordContentBlock> blocks)
-    {
-        if (blocks.Count == 0)
-            return 0f;
-
-        return blocks.Sum(GetKeywordBlockHeight)
-               + ((blocks.Count - 1) * KeywordGroupSeparation);
-    }
-
-    private static float GetKeywordBlockHeight(KeywordContentBlock block)
-    {
-        int rowCount = (block.Entries.Count + KeywordColumns - 1) / KeywordColumns;
-        float height = GetKeywordGridHeight(rowCount);
-        if (block.Header is not null)
-            height += KeywordGroupHeaderHeight + KeywordHeaderGridGap;
-        return height;
-    }
-
-    private static MegaLabel CreateKeywordGroupHeader(string text)
-    {
-        MegaLabel label = CreateLabel(text, 22, StsColors.gold);
-        label.CustomMinimumSize = new Vector2(0f, KeywordGroupHeaderHeight);
-        return label;
-    }
-
-    private static IReadOnlyList<IGrouping<string, KeywordCatalogEntry>> GetOrderedKeywordSources(
-        IReadOnlyList<KeywordCatalogEntry> catalog)
-    {
-        return catalog
-            .GroupBy(entry => entry.ModId, StringComparer.Ordinal)
-            .OrderBy(source => GetKeywordSourceRank(source.Key))
-            .ThenBy(
-                source => GetKeywordSourceRank(source.Key) == 3
-                    ? source.First().ModName
-                    : string.Empty,
-                StringComparer.OrdinalIgnoreCase)
-            .ThenBy(source => source.Key, StringComparer.Ordinal)
-            .ToList();
-    }
-
-    private static bool IsCoreKeywordSource(string modId)
-    {
-        return string.Equals(modId, BaseGameKeywordModId, StringComparison.OrdinalIgnoreCase)
-               || string.Equals(modId, BaseLibKeywordModId, StringComparison.OrdinalIgnoreCase)
-               || string.Equals(modId, MainFile.ModId, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int GetKeywordSourceRank(string modId)
-    {
-        if (string.Equals(modId, BaseGameKeywordModId, StringComparison.OrdinalIgnoreCase))
-            return 0;
-        if (string.Equals(modId, BaseLibKeywordModId, StringComparison.OrdinalIgnoreCase))
-            return 1;
-        if (string.Equals(modId, MainFile.ModId, StringComparison.OrdinalIgnoreCase))
-            return 2;
-        if (string.Equals(modId, OtherKeywordModId, StringComparison.Ordinal))
-            return 4;
-        return 3;
-    }
-
-    private static float GetKeywordGridHeight(int rowCount)
-    {
-        return rowCount <= 0
-            ? 0f
-            : (rowCount * KeywordToggleHeight) + ((rowCount - 1) * KeywordRowSeparation);
-    }
-
-    private static NScrollbar CreateGameScrollbar()
-    {
-        NScrollbar scrollbar = new()
+            },
+            _selectedKeywordModId,
+            selectedId =>
         {
-            MinValue = 0,
-            MaxValue = 100,
-            Step = 1,
-            MouseFilter = MouseFilterEnum.Stop
-        };
-
-        TextureRect trackBody = new()
-        {
-            Name = "TrackBody",
-            Modulate = new Color(0.164706f, 0.290196f, 0.321569f, 1f),
-            Texture = LoadScrollbarTexture("res://images/atlases/ui_atlas.sprites/scrollbar_track_center.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        trackBody.SetAnchorsPreset(LayoutPreset.FullRect);
-        scrollbar.AddChild(trackBody);
-
-        TextureRect trackTop = new()
-        {
-            Name = "TrackTop",
-            Modulate = trackBody.Modulate,
-            Texture = LoadScrollbarTexture("res://images/atlases/ui_atlas.sprites/scrollbar_track_edge2.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        trackTop.SetAnchorsPreset(LayoutPreset.TopWide);
-        trackTop.OffsetTop = -KeywordScrollbarEndCapSize;
-        scrollbar.AddChild(trackTop);
-
-        TextureRect trackBottom = new()
-        {
-            Name = "TrackBot",
-            Modulate = trackBody.Modulate,
-            Texture = trackTop.Texture,
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            FlipV = true,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        trackBottom.SetAnchorsPreset(LayoutPreset.BottomWide);
-        trackBottom.OffsetBottom = KeywordScrollbarEndCapSize;
-        scrollbar.AddChild(trackBottom);
-
-        TextureRect handle = new()
-        {
-            Name = "Handle",
-            UniqueNameInOwner = true,
-            Texture = LoadScrollbarTexture("res://images/atlases/ui_atlas.sprites/scrollbar_train_large.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            PivotOffset = new Vector2(36f, 36f),
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        handle.SetAnchorsPreset(LayoutPreset.TopLeft);
-        handle.Position = new Vector2(-12f, -36f);
-        handle.Size = new Vector2(72f, 72f);
-        scrollbar.AddChild(handle);
-
-        AssignOwnerRecursive(scrollbar, scrollbar);
-        return scrollbar;
-    }
-
-    private static Texture2D? LoadScrollbarTexture(string path)
-    {
-        return ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
-    }
-
-    private static void AssignOwnerRecursive(Node root, Node owner)
-    {
-        foreach (Node child in root.GetChildren())
-        {
-            child.Owner = owner;
-            AssignOwnerRecursive(child, owner);
-        }
+            _selectedKeywordModId = selectedId;
+        });
+        _rightControls.AddChild(editor);
     }
 
     private void AddAttachmentEditor<TModel>(
@@ -2130,141 +1795,6 @@ public partial class NCardModificationScreen : Control
                || string.Equals(model.Id.Entry, id, StringComparison.OrdinalIgnoreCase);
     }
 
-    private IReadOnlyList<KeywordCatalogEntry> GetKeywordCatalog()
-    {
-        return _keywordCatalog ??= BuildKeywordCatalog();
-    }
-
-    private IReadOnlyList<KeywordCatalogEntry> BuildKeywordCatalog()
-    {
-        HashSet<CardKeyword> nativeKeywords = Enum.GetValues<CardKeyword>()
-            .Where(keyword => keyword != CardKeyword.None)
-            .ToHashSet();
-        HashSet<CardKeyword> loadoutKeywords = LoadoutKeywords.All
-            .Where(keyword => keyword != CardKeyword.None)
-            .ToHashSet();
-        HashSet<CardKeyword> availableKeywords = new(nativeKeywords);
-        availableKeywords.UnionWith(loadoutKeywords);
-
-        IReadOnlyDictionary<Assembly, string> modIdsByAssembly =
-            CommonHelpers.GetLoadedModIdsByAssembly();
-
-        try
-        {
-            foreach (int rawKeyword in CustomKeywords.KeywordIDs.Keys.ToList())
-                AddAvailableKeyword(availableKeywords, (CardKeyword)rawKeyword);
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning(
-                $"CardModification: failed to read BaseLib's registered keyword catalog. {exception.Message}");
-        }
-
-        Dictionary<CardKeyword, HashSet<string>> usageOwners = [];
-        foreach (CardModel model in ModelDb.AllCards)
-            AddCardKeywordUsage(model, modIdsByAssembly, availableKeywords, usageOwners);
-        foreach (LoadoutOwnedItem<CardModel> item in _items)
-            AddCardKeywordUsage(item.Model, modIdsByAssembly, availableKeywords, usageOwners);
-        if (_item is not null)
-            AddCardKeywordUsage(_item.Model, modIdsByAssembly, availableKeywords, usageOwners);
-
-        return availableKeywords
-            .Where(keyword => keyword != CardKeyword.None)
-            .Select(keyword =>
-            {
-                string modId = ResolveKeywordModId(
-                    keyword,
-                    nativeKeywords,
-                    loadoutKeywords,
-                    usageOwners);
-                string modName = string.Equals(modId, OtherKeywordModId, StringComparison.Ordinal)
-                    ? LocMan.Loc("OTHER", "Other")
-                    : CommonHelpers.GetModName(modId);
-                return new KeywordCatalogEntry(
-                    keyword,
-                    GetKeywordLabelSafely(keyword),
-                    modId,
-                    modName);
-            })
-            .ToList();
-    }
-
-    private static string GetKeywordLabelSafely(CardKeyword keyword)
-    {
-        try
-        {
-            string label = CardPrinter.GetCardKeywordLabel(keyword);
-            return string.IsNullOrWhiteSpace(label)
-                ? keyword.ToString()
-                : label;
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning(
-                $"CardModification: failed to localize keyword '{Convert.ToInt32(keyword)}'. " +
-                $"{exception.Message}");
-            return keyword.ToString();
-        }
-    }
-
-    private static void AddCardKeywordUsage(
-        CardModel card,
-        IReadOnlyDictionary<Assembly, string> modIdsByAssembly,
-        ISet<CardKeyword> availableKeywords,
-        IDictionary<CardKeyword, HashSet<string>> usageOwners)
-    {
-        Assembly assembly = card.GetType().Assembly;
-        string? modId = assembly == typeof(CardModel).Assembly
-            ? BaseGameKeywordModId
-            : modIdsByAssembly.GetValueOrDefault(assembly);
-
-        foreach (CardKeyword keyword in GetKeywordsSafely(card))
-        {
-            if (!AddAvailableKeyword(availableKeywords, keyword))
-                continue;
-            if (string.IsNullOrWhiteSpace(modId))
-                continue;
-
-            if (!usageOwners.TryGetValue(keyword, out HashSet<string>? owners))
-            {
-                owners = new HashSet<string>(StringComparer.Ordinal);
-                usageOwners[keyword] = owners;
-            }
-            owners.Add(modId);
-        }
-    }
-
-    private static bool AddAvailableKeyword(
-        ISet<CardKeyword> availableKeywords,
-        CardKeyword keyword)
-    {
-        if (keyword == CardKeyword.None)
-            return false;
-
-        availableKeywords.Add(keyword);
-        return true;
-    }
-
-    private static string ResolveKeywordModId(
-        CardKeyword keyword,
-        IReadOnlySet<CardKeyword> nativeKeywords,
-        IReadOnlySet<CardKeyword> loadoutKeywords,
-        IReadOnlyDictionary<CardKeyword, HashSet<string>> usageOwners)
-    {
-        if (nativeKeywords.Contains(keyword))
-            return BaseGameKeywordModId;
-        if (loadoutKeywords.Contains(keyword))
-            return MainFile.ModId;
-
-        if (usageOwners.TryGetValue(keyword, out HashSet<string>? owners)
-            && owners.Count == 1)
-        {
-            return owners.First();
-        }
-
-        return OtherKeywordModId;
-    }
-
     private static IEnumerable<CardKeyword> GetKeywordsSafely(CardModel card)
     {
         try
@@ -2273,22 +1803,6 @@ public partial class NCardModificationScreen : Control
         }
         catch
         {
-            return [];
-        }
-    }
-
-    private static IReadOnlyList<IHoverTip> GetKeywordHoverTips(CardKeyword keyword)
-    {
-        if (LoadoutKeywordRegistry.IsDescriptionKeyword(keyword))
-            return [];
-
-        try
-        {
-            return [HoverTipFactory.FromKeyword(keyword)];
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning($"CardModification: failed to create hover tip for keyword '{keyword}'. {exception.Message}");
             return [];
         }
     }

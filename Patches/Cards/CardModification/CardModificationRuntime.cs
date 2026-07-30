@@ -18,6 +18,7 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -35,6 +36,10 @@ public static class CardModificationRuntime
     private static readonly FieldInfo? CardPoolField = AccessTools.Field(typeof(CardModel), "_pool");
     private static readonly FieldInfo? CardEnergyCostField = AccessTools.Field(typeof(CardModel), "_energyCost");
     private static readonly FieldInfo? CardKeywordsField = AccessTools.Field(typeof(CardModel), "_keywords");
+    private static readonly FieldInfo? CardCurrentUpgradeLevelField =
+        AccessTools.Field(typeof(CardModel), "_currentUpgradeLevel");
+    private static readonly FieldInfo? DynamicVarDictionaryField =
+        AccessTools.Field(typeof(DynamicVarSet), "_vars");
     private static readonly FieldInfo? EnergyCostCanonicalField = AccessTools.Field(typeof(CardEnergyCost), "<Canonical>k__BackingField");
     private static readonly MethodInfo? BaseStarCostSetter = AccessTools.PropertySetter(typeof(CardModel), nameof(CardModel.BaseStarCost));
     private static readonly MethodInfo? NCardFindOnTableByCard = AccessTools.Method(typeof(NCard), nameof(NCard.FindOnTable), [typeof(CardModel)]);
@@ -70,6 +75,7 @@ public static class CardModificationRuntime
         LoadoutKeywordRuntimePatches.Reconcile();
         CardModificationDynamicPatches.EnableTextPatches();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
+        if (PermanentCardModificationStore.HasAnyUpgradeModifications) CardUpgradeModificationRuntimePatches.Enable();
         CardModificationNetProtocol.Register();
     }
 
@@ -86,6 +92,7 @@ public static class CardModificationRuntime
         PreviewDeltas = new ConditionalWeakTable<CardModel, CardModificationDelta>();
         CanonicalCardModificationRegistry.RestoreAll();
         CardModificationDynamicPatches.ClearAll();
+        CardUpgradeModificationRuntimePatches.ClearAll();
         LoadoutKeywordRuntimePatches.ResetRunPatches();
         _customTextOverridesMayExist = false;
         _registered = false;
@@ -246,6 +253,9 @@ public static class CardModificationRuntime
                && SameStructuralValue(previous?.PortraitPath, next?.PortraitPath)
                && SameStructuralValue(previous?.BetaPortraitPath, next?.BetaPortraitPath)
                && KeywordOverridesEquivalent(previous?.KeywordOverrides, next?.KeywordOverrides)
+               && KeywordOverridesEquivalent(
+                   previous?.UpgradeModification.KeywordOverrides,
+                   next?.UpgradeModification.KeywordOverrides)
             ? LoadoutCardVisualRefreshKind.Lightweight
             : LoadoutCardVisualRefreshKind.Reload;
     }
@@ -374,7 +384,8 @@ public static class CardModificationRuntime
         CardModel baseline = CreateBaseline(
             canonical,
             card.CurrentUpgradeLevel,
-            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(desired));
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(desired),
+            desired.UpgradeModification);
         return CreateDelta(baseline, desired, permanent);
     }
 
@@ -389,11 +400,18 @@ public static class CardModificationRuntime
     {
         CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
         if (canonical is null) return new CardModificationSpec();
+        CardModificationSpec permanent = PermanentCardModificationStore.Get(card.Id);
+        CardUpgradeModificationSpec temporaryUpgrade = MaterializeUpgradeModification(
+            permanent.UpgradeModification,
+            delta.UpgradeModification);
+        CardUpgradeModificationSpec upgradeModification = permanent.UpgradeModification.Clone();
+        upgradeModification.MergeFrom(temporaryUpgrade);
         CardModel baseline = CreateBaseline(
             canonical,
             card.CurrentUpgradeLevel,
-            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(delta));
-        return MaterializeSpec(baseline, delta);
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(delta),
+            upgradeModification);
+        return MaterializeSpec(baseline, delta, permanent);
     }
 
     public static void ReapplyTemporaryDelta(CardModel card)
@@ -402,13 +420,54 @@ public static class CardModificationRuntime
         CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
         if (canonical is null) return;
         CardModificationSpec previous = GetEffectiveSpec(card);
+        CardModificationSpec permanent = PermanentCardModificationStore.Get(card.Id);
+        CardUpgradeModificationSpec temporaryUpgrade = MaterializeUpgradeModification(
+            permanent.UpgradeModification,
+            data.Delta.UpgradeModification);
+        CardUpgradeModificationSpec upgradeModification = permanent.UpgradeModification.Clone();
+        upgradeModification.MergeFrom(temporaryUpgrade);
         CardModel baseline = CreateBaseline(
             canonical,
             card.CurrentUpgradeLevel,
-            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(data.Delta));
-        CardModificationSpec desired = MaterializeSpec(baseline, data.Delta);
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(data.Delta),
+            upgradeModification);
+        CardModificationSpec desired = MaterializeSpec(baseline, data.Delta, permanent);
         CopyNativeFields(baseline, card, previous, desired);
         ApplySpecToCard(card, desired);
+    }
+
+    public static CardUpgradeModificationSpec ResolveUpgradeModification(
+        CardModificationSpec? permanent,
+        CardModificationDelta? temporary,
+        CardModificationSpec? legacyTemporary = null)
+    {
+        CardUpgradeModificationSpec result =
+            permanent?.UpgradeModification.Clone() ?? new CardUpgradeModificationSpec();
+        if (temporary is not null)
+        {
+            result.MergeFrom(MaterializeUpgradeModification(
+                permanent?.UpgradeModification,
+                temporary.UpgradeModification));
+        }
+        result.MergeFrom(legacyTemporary?.UpgradeModification);
+        result.Normalize();
+        return result;
+    }
+
+    private static CardUpgradeModificationSpec MaterializeUpgradeModification(
+        CardUpgradeModificationSpec? permanent,
+        CardUpgradeModificationSpec delta)
+    {
+        CardUpgradeModificationSpec result = new();
+        foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
+        {
+            result.DynamicVarDeltas[name] =
+                (permanent?.DynamicVarDeltas.GetValueOrDefault(name) ?? 0m) + difference;
+        }
+        foreach ((string key, bool value) in delta.KeywordOverrides)
+            result.KeywordOverrides[key] = value;
+        result.Normalize();
+        return result;
     }
 
     private static CardModificationDelta CreateDelta(
@@ -468,6 +527,24 @@ public static class CardModificationRuntime
         {
             if (structuralBaseline?.KeywordOverrides.TryGetValue(key, out bool baselineValue) != true || baselineValue != value)
                 delta.KeywordOverrides[key] = value;
+        }
+        foreach ((string name, decimal value) in desired.UpgradeModification.DynamicVarDeltas)
+        {
+            decimal baselineValue = structuralBaseline?.UpgradeModification.DynamicVarDeltas
+                .GetValueOrDefault(name) ?? 0m;
+            decimal difference = value - baselineValue;
+            if (difference != 0m)
+                delta.UpgradeModification.DynamicVarDeltas[name] = difference;
+        }
+        foreach ((string key, bool value) in desired.UpgradeModification.KeywordOverrides)
+        {
+            if (structuralBaseline?.UpgradeModification.KeywordOverrides.TryGetValue(
+                    key,
+                    out bool baselineValue) != true
+                || baselineValue != value)
+            {
+                delta.UpgradeModification.KeywordOverrides[key] = value;
+            }
         }
         if (!AttachmentEquals(desired.Enchantment, structuralBaseline?.Enchantment)) delta.Enchantment = desired.Enchantment?.Clone();
         if (!AttachmentEquals(desired.Affliction, structuralBaseline?.Affliction)) delta.Affliction = desired.Affliction?.Clone();
@@ -533,6 +610,7 @@ public static class CardModificationRuntime
         delta.KeywordOverrides = new Dictionary<string, bool>(desired.KeywordOverrides, StringComparer.Ordinal);
         delta.Enchantment = desired.Enchantment?.Clone();
         delta.Affliction = desired.Affliction?.Clone();
+        delta.UpgradeModification = desired.UpgradeModification.Clone();
         delta.Normalize();
         return delta;
     }
@@ -546,7 +624,10 @@ public static class CardModificationRuntime
                && string.Equals(left.ModelId, right.ModelId, StringComparison.Ordinal);
     }
 
-    private static CardModificationSpec MaterializeSpec(CardModel baseline, CardModificationDelta delta)
+    private static CardModificationSpec MaterializeSpec(
+        CardModel baseline,
+        CardModificationDelta delta,
+        CardModificationSpec? structuralBaseline = null)
     {
         CardModificationSpec spec = new()
         {
@@ -562,7 +643,10 @@ public static class CardModificationRuntime
             BetaPortraitPath = delta.BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
             Enchantment = delta.Enchantment?.Clone(),
-            Affliction = delta.Affliction?.Clone()
+            Affliction = delta.Affliction?.Clone(),
+            UpgradeModification = MaterializeUpgradeModification(
+                structuralBaseline?.UpgradeModification,
+                delta.UpgradeModification)
         };
         foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
         {
@@ -601,7 +685,8 @@ public static class CardModificationRuntime
             BetaPortraitPath = delta.BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
             Enchantment = delta.Enchantment?.Clone(),
-            Affliction = delta.Affliction?.Clone()
+            Affliction = delta.Affliction?.Clone(),
+            UpgradeModification = delta.UpgradeModification.Clone()
         };
         foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
         {
@@ -629,7 +714,8 @@ public static class CardModificationRuntime
             CardModel preview = CreateBaseline(
                 canonical,
                 source.CurrentUpgradeLevel,
-                LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state));
+                LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
+                state.UpgradeModification);
             CardModificationDelta temporary = CreateDelta(preview, state, permanent);
             ApplyDeltaToCard(preview, temporary);
             if (temporary.HasCustomText || temporary.HasPortraitOverride)
@@ -645,6 +731,110 @@ public static class CardModificationRuntime
             GD.PushWarning($"CardModification: failed creating preview for '{source.Id}'. {exception.Message}");
             return source;
         }
+    }
+
+    public static CardModel? CreateUpgradePreviewSource(
+        CardModel source,
+        CardModificationSpec state)
+    {
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(source.Id);
+        ICardScope? cardScope = source.CardScope;
+        if (canonical is null
+            || source.Owner is null
+            || source.Pile is null
+            || cardScope is null)
+            return null;
+
+        int upgradeLevel = source.IsUpgradable ? source.CurrentUpgradeLevel : 0;
+        CardModel baseline = CreateBaseline(
+            canonical,
+            upgradeLevel,
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
+            state.UpgradeModification);
+        if (!baseline.IsUpgradable)
+            return null;
+
+        CardModel scratch = cardScope.CloneCard(source);
+        CardModificationFields.Clear(scratch);
+        CardCurrentUpgradeLevelField?.SetValue(scratch, upgradeLevel);
+        CopyNativeFields(
+            baseline,
+            scratch,
+            new CardModificationSpec(),
+            state,
+            forceAllOwnedFields: true);
+        ApplySpecToCard(scratch, state);
+        scratch.FinalizeUpgradeInternal();
+
+        CardModificationDelta previewDelta =
+            CreateTemporaryDelta(scratch, state);
+        if (previewDelta.HasCustomText || previewDelta.HasPortraitOverride)
+        {
+            PreviewDeltas.Remove(scratch);
+            PreviewDeltas.Add(scratch, previewDelta);
+        }
+        return scratch;
+    }
+
+    public static bool CanModifyUpgrade(
+        CardModel source,
+        CardModificationSpec state)
+    {
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(source.Id);
+        if (canonical is null || source.Owner is null || source.Pile is null)
+            return false;
+
+        int upgradeLevel = source.IsUpgradable
+            ? source.CurrentUpgradeLevel
+            : 0;
+        CardModel baseline = CreateBaseline(
+            canonical,
+            upgradeLevel,
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
+            state.UpgradeModification);
+        return baseline.IsUpgradable;
+    }
+
+    public static void ReleaseUpgradePreviewCard(CardModel? card)
+    {
+        if (card is null || card.IsCanonical)
+            return;
+
+        try
+        {
+            ICardScope? cardScope = card.CardScope;
+            if (cardScope is null)
+                return;
+            cardScope.RemoveCard(card);
+            card.HasBeenRemovedFromState = true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning(
+                $"CardModification: could not release upgrade preview card '{card.Id}'. {exception.Message}");
+        }
+    }
+
+    internal static void ApplyUpgradeModification(
+        CardModel card,
+        CardUpgradeModificationSpec modification)
+    {
+        if (modification.IsEmpty)
+            return;
+
+        ApplyKeywordOverrides(card, modification.KeywordOverrides);
+        LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
+        LoadoutKeywordRuntimePatches.EnableFromOverrides(
+            modification.KeywordOverrides);
+        foreach ((string name, decimal delta) in modification.DynamicVarDeltas)
+        {
+            if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
+                dynamicVar.UpgradeValueBy(delta);
+        }
+        XCostKeywordMechanics.SynchronizeEnergyCost(
+            card,
+            modification.KeywordOverrides,
+            null);
     }
 
     public static CardModel GetPermanentCardForDisplay(CardModel card)
@@ -1165,7 +1355,8 @@ public static class CardModificationRuntime
         CardModel baseline = CreateBaseline(
             canonical,
             card.CurrentUpgradeLevel,
-            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(next));
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(next),
+            next.UpgradeModification);
         CopyNativeFields(baseline, card, previous, next, forceAllOwnedFields);
         ApplySpecToCard(card, temporary);
         card.FinalizeUpgradeInternal();
@@ -1174,7 +1365,8 @@ public static class CardModificationRuntime
     private static CardModel CreateBaseline(
         CardModel canonical,
         int upgradeLevel,
-        bool? infiniteUpgradeOverride = null)
+        bool? infiniteUpgradeOverride = null,
+        CardUpgradeModificationSpec? upgradeModification = null)
     {
         CardModel baseline;
         using (SuppressPermanentApplication())
@@ -1202,6 +1394,8 @@ public static class CardModificationRuntime
             InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
                 count,
                 useInfiniteUpgradeValues);
+        IDisposable upgradeScope =
+            CardUpgradeModificationRuntimePatches.BeginOverride(upgradeModification);
         try
         {
             for (int i = 0; i < count && baseline.IsUpgradable; i++)
@@ -1212,6 +1406,7 @@ public static class CardModificationRuntime
         }
         finally
         {
+            upgradeScope.Dispose();
             InfiniteUpgradeMaxLevelPatch.EndDeserialization(deserializationState);
         }
         return baseline;
@@ -1226,6 +1421,8 @@ public static class CardModificationRuntime
     {
         HashSet<string> keywordKeys = new(previous.KeywordOverrides.Keys, StringComparer.Ordinal);
         keywordKeys.UnionWith(next.KeywordOverrides.Keys);
+        keywordKeys.UnionWith(previous.UpgradeModification.KeywordOverrides.Keys);
+        keywordKeys.UnionWith(next.UpgradeModification.KeywordOverrides.Keys);
 
         if (forceAllOwnedFields)
         {
@@ -1281,16 +1478,24 @@ public static class CardModificationRuntime
         LoadoutKeywordRegistry.SynchronizeDynamicVars(destination);
         if (forceAllOwnedFields)
         {
-            foreach ((string name, var sourceVar) in source.DynamicVars)
+            if (DynamicVarDictionaryField?.GetValue(destination.DynamicVars)
+                    is Dictionary<string, DynamicVar> destinationVars)
             {
-                if (destination.DynamicVars.TryGetValue(name, out var destinationVar))
-                    destinationVar.BaseValue = sourceVar.BaseValue;
+                destinationVars.Clear();
+                foreach ((string name, DynamicVar sourceVar) in source.DynamicVars)
+                {
+                    DynamicVar clone = sourceVar.Clone();
+                    clone.SetOwner(destination);
+                    destinationVars[name] = clone;
+                }
             }
         }
         else
         {
             HashSet<string> dynamicVarNames = new(previous.DynamicVars.Keys, StringComparer.Ordinal);
             dynamicVarNames.UnionWith(next.DynamicVars.Keys);
+            dynamicVarNames.UnionWith(previous.UpgradeModification.DynamicVarDeltas.Keys);
+            dynamicVarNames.UnionWith(next.UpgradeModification.DynamicVarDeltas.Keys);
             foreach (string name in dynamicVarNames)
             {
                 if (source.DynamicVars.TryGetValue(name, out var sourceVar)
@@ -1302,7 +1507,18 @@ public static class CardModificationRuntime
         }
 
         if (keywordKeys.Contains(LoadoutKeywords.XCostKey))
-            XCostKeywordMechanics.SynchronizeEnergyCost(destination, next.KeywordOverrides, next.EnergyCost);
+        {
+            Dictionary<string, bool> xCostOverrides =
+                new(next.KeywordOverrides, StringComparer.Ordinal)
+                {
+                    [LoadoutKeywords.XCostKey] =
+                        LoadoutKeywords.Has(source, LoadoutKeywords.XCost)
+                };
+            XCostKeywordMechanics.SynchronizeEnergyCost(
+                destination,
+                xCostOverrides,
+                next.EnergyCost);
+        }
         if (!forceAllOwnedFields
             && (previous.EnergyCost.HasValue
              || next.EnergyCost.HasValue
@@ -1652,6 +1868,7 @@ public static class CardModificationRuntime
         {
             if (delta.HasCustomText) MarkCustomTextOverridesPresent();
             if (delta.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+            if (!delta.UpgradeModification.IsEmpty) CardUpgradeModificationRuntimePatches.Enable();
         }
         AttachmentDisplayCards.Remove(cardId);
         PermanentCardDisplayChanged?.Invoke(cardId);
@@ -1667,6 +1884,7 @@ public static class CardModificationRuntime
         AttachmentDisplayCards.Clear();
         if (PermanentCardModificationStore.HasAnyCustomText) MarkCustomTextOverridesPresent();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
+        if (PermanentCardModificationStore.HasAnyUpgradeModifications) CardUpgradeModificationRuntimePatches.Enable();
         // Profile swaps replace the whole durable snapshot, so there is no old
         // per-field spec left to drive a selective copy. Rebuild all fields owned
         // by the card editor for matching live cards once, preserving their sparse

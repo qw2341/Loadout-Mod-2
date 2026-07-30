@@ -75,10 +75,23 @@ internal static class LoadoutKeywordRuntimePatches
         if (IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid)))
             SetLividEnabled(true);
         EnableDescriptionKeywordsFromOverrides(delta.KeywordOverrides);
+        EnableFromOverrides(delta.UpgradeModification.KeywordOverrides);
     }
 
     public static void EnableFromOverrides(IReadOnlyDictionary<string, bool> overrides)
     {
+        if (IsEnabled(overrides, LoadoutKeywords.InfiniteUpgradeKey))
+            SetInfiniteUpgradeEnabled(true);
+        if (IsEnabled(overrides, LoadoutKeywords.XCostKey))
+            SetXCostEnabled(true);
+        if (IsEnabled(overrides, LoadoutKeywords.StickyKey))
+            SetStickyEnabled(true);
+        if (IsEnabled(overrides, LoadoutKeywords.PassingKey))
+            SetPassingEnabled(true);
+        if (IsEnabled(overrides, LoadoutKeywords.InevitableKey))
+            SetInevitableEnabled(true);
+        if (IsEnabled(overrides, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid)))
+            SetLividEnabled(true);
         EnableDescriptionKeywordsFromOverrides(overrides);
     }
 
@@ -204,6 +217,27 @@ internal static class LoadoutKeywordRuntimePatches
         state.Inevitable |= IsEnabled(delta, LoadoutKeywords.InevitableKey);
         state.Livid |= IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid));
         AddDescriptionKeywordFeatures(delta.KeywordOverrides, ref state);
+        state.InfiniteUpgrade |= IsEnabled(
+            delta.UpgradeModification.KeywordOverrides,
+            LoadoutKeywords.InfiniteUpgradeKey);
+        state.XCost |= IsEnabled(
+            delta.UpgradeModification.KeywordOverrides,
+            LoadoutKeywords.XCostKey);
+        state.Sticky |= IsEnabled(
+            delta.UpgradeModification.KeywordOverrides,
+            LoadoutKeywords.StickyKey);
+        state.Passing |= IsEnabled(
+            delta.UpgradeModification.KeywordOverrides,
+            LoadoutKeywords.PassingKey);
+        state.Inevitable |= IsEnabled(
+            delta.UpgradeModification.KeywordOverrides,
+            LoadoutKeywords.InevitableKey);
+        state.Livid |= IsEnabled(
+            delta.UpgradeModification.KeywordOverrides,
+            LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid));
+        AddDescriptionKeywordFeatures(
+            delta.UpgradeModification.KeywordOverrides,
+            ref state);
     }
 
     private static void AddCardFeatures(IEnumerable<CardModel> cards, ref KeywordFeatureState state)

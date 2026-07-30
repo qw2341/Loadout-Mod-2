@@ -263,7 +263,16 @@ public static class CardModelFromSerializableCardModificationPatch
             InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
                 save.CurrentUpgradeLevel,
                 useInfiniteUpgradeValues);
-        __state = new CardDeserializationState(loaded, upgradeState);
+        IDisposable upgradeModificationScope =
+            CardUpgradeModificationRuntimePatches.BeginOverride(
+                CardModificationRuntime.ResolveUpgradeModification(
+                    permanent,
+                    loaded?.Delta,
+                    loaded?.LegacyAbsolute));
+        __state = new CardDeserializationState(
+            loaded,
+            upgradeState,
+            upgradeModificationScope);
 
         // An owned attachment is reconstructed by the permanent/temporary spec.
         // Prevent the native saved copy from being stacked underneath it first.
@@ -287,6 +296,7 @@ public static class CardModelFromSerializableCardModificationPatch
     [HarmonyFinalizer]
     public static Exception? Finalizer(CardDeserializationState __state, Exception? __exception)
     {
+        __state.UpgradeModificationScope.Dispose();
         InfiniteUpgradeMaxLevelPatch.EndDeserialization(__state.UpgradeState);
         return __exception;
     }
@@ -294,7 +304,8 @@ public static class CardModelFromSerializableCardModificationPatch
 
 public readonly record struct CardDeserializationState(
     CardModificationLoadData? Loaded,
-    InfiniteUpgradeDeserializationState UpgradeState);
+    InfiniteUpgradeDeserializationState UpgradeState,
+    IDisposable UpgradeModificationScope);
 
 public static class ChecksumTrackerCardModificationSerializationPatch
 {
@@ -505,6 +516,7 @@ public static class RunManagerCleanUpCardModificationPatch
     public static void Prefix()
     {
         CardModificationDynamicPatches.ResetRunPatches();
+        CardUpgradeModificationRuntimePatches.ResetRunPatches();
         LoadoutKeywordRuntimePatches.ResetRunPatches();
         TildeKeyStateService.OnRunCleaningUp();
         LoadoutImmediateMutationService.OnRunCleaningUp();

@@ -81,6 +81,8 @@ internal static class CardModificationFields
         Data.Add(card, new CardModificationCardData(normalized));
         LoadoutKeywordRuntimePatches.EnableFromDelta(normalized);
         CardModificationDynamicPatches.EnableTemporaryPatches();
+        if (!normalized.UpgradeModification.IsEmpty)
+            CardUpgradeModificationRuntimePatches.Enable();
         if (normalized.HasCustomText) CardModificationRuntime.MarkCustomTextOverridesPresent();
         if (normalized.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
         return true;
@@ -184,6 +186,7 @@ internal static class CardModificationCodec
         return serialized.Contains("\"energyCost\":", StringComparison.Ordinal)
                || serialized.Contains("\"dynamicVars\":", StringComparison.Ordinal)
                || serialized.Contains("\"keywordOverrides\":", StringComparison.Ordinal)
+               || serialized.Contains("\"upgradeModification\":", StringComparison.Ordinal)
                || serialized.Contains("\"customDescription\":", StringComparison.Ordinal);
     }
 
@@ -231,6 +234,9 @@ internal static class CardModificationCodec
         [JsonPropertyName("f")]
         public CompactAttachment? Affliction { get; set; }
 
+        [JsonPropertyName("u")]
+        public CardUpgradeModificationSpec? UpgradeModification { get; set; }
+
         public static CompactSpec FromSpec(CardModificationSpec spec)
         {
             return new CompactSpec
@@ -252,7 +258,10 @@ internal static class CardModificationCodec
                     ? null
                     : new SortedDictionary<string, bool>(spec.KeywordOverrides, StringComparer.Ordinal),
                 Enchantment = CompactAttachment.FromSpec(spec.Enchantment),
-                Affliction = CompactAttachment.FromSpec(spec.Affliction)
+                Affliction = CompactAttachment.FromSpec(spec.Affliction),
+                UpgradeModification = spec.UpgradeModification.IsEmpty
+                    ? null
+                    : spec.UpgradeModification.Clone()
             };
         }
 
@@ -277,7 +286,9 @@ internal static class CardModificationCodec
                     ? new Dictionary<string, bool>(StringComparer.Ordinal)
                     : new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
                 Enchantment = Enchantment?.ToSpec(),
-                Affliction = Affliction?.ToSpec()
+                Affliction = Affliction?.ToSpec(),
+                UpgradeModification = UpgradeModification?.Clone()
+                    ?? new CardUpgradeModificationSpec()
             };
         }
     }

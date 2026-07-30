@@ -21,7 +21,7 @@ using MegaCrit.Sts2.Core.Saves;
 /// </summary>
 public static class PermanentCardModificationStore
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private const string PermanentPath = "loadout/services/card_modifications/permanent.json";
 
     private static readonly object Gate = new();
@@ -136,6 +136,16 @@ public static class PermanentCardModificationStore
             EnsureLoaded();
             return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta =>
                 delta.Enchantment is not null || delta.Affliction is not null);
+        }
+    }
+
+    public static bool HasAnyUpgradeModifications
+    {
+        get
+        {
+            EnsureLoaded();
+            return (_useHostCards ? _hostCards : _profileCards).Values.Any(
+                delta => !delta.UpgradeModification.IsEmpty);
         }
     }
 
@@ -407,7 +417,7 @@ public static class PermanentCardModificationStore
                 continue;
 
             CardModificationDelta? delta;
-            if (save.SchemaVersion >= CurrentSchemaVersion)
+            if (save.SchemaVersion >= 2)
             {
                 delta = element.Deserialize<CardModificationDelta>(JsonOptions);
             }

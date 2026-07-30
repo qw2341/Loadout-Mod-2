@@ -55,6 +55,49 @@ public sealed class CardAttachmentSpec
     }
 }
 
+public sealed class CardUpgradeModificationSpec
+{
+    [JsonPropertyName("d")]
+    public Dictionary<string, decimal> DynamicVarDeltas { get; set; } = new(StringComparer.Ordinal);
+
+    [JsonPropertyName("k")]
+    public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
+
+    [JsonIgnore]
+    public bool IsEmpty => DynamicVarDeltas.Count == 0 && KeywordOverrides.Count == 0;
+
+    public CardUpgradeModificationSpec Clone()
+    {
+        return new CardUpgradeModificationSpec
+        {
+            DynamicVarDeltas = new Dictionary<string, decimal>(DynamicVarDeltas, StringComparer.Ordinal),
+            KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal)
+        };
+    }
+
+    public void MergeFrom(CardUpgradeModificationSpec? other)
+    {
+        if (other is null)
+            return;
+
+        foreach ((string key, decimal value) in other.DynamicVarDeltas)
+            DynamicVarDeltas[key] = value;
+        foreach ((string key, bool value) in other.KeywordOverrides)
+            KeywordOverrides[key] = value;
+    }
+
+    public void Normalize(bool removeZeroDynamicValues = false)
+    {
+        DynamicVarDeltas = DynamicVarDeltas
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key)
+                           && (!removeZeroDynamicValues || pair.Value != 0m))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        KeywordOverrides = KeywordOverrides
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+    }
+}
+
 /// <summary>
 /// A sparse description of fields changed by the card modifier. Permanent specs are
 /// stored once per ModelId; temporary specs are attached only to modified card copies.
@@ -104,6 +147,9 @@ public sealed class CardModificationSpec
     [JsonPropertyName("affliction")]
     public CardAttachmentSpec? Affliction { get; set; }
 
+    [JsonPropertyName("upgradeModification")]
+    public CardUpgradeModificationSpec UpgradeModification { get; set; } = new();
+
     [JsonIgnore]
     public bool IsEmpty =>
         EnergyCost is null
@@ -119,7 +165,8 @@ public sealed class CardModificationSpec
         && string.IsNullOrWhiteSpace(BetaPortraitPath)
         && KeywordOverrides.Count == 0
         && (Enchantment is null || Enchantment.IsEmpty)
-        && (Affliction is null || Affliction.IsEmpty);
+        && (Affliction is null || Affliction.IsEmpty)
+        && UpgradeModification.IsEmpty;
 
     [JsonIgnore]
     public bool HasNativeMutations =>
@@ -132,7 +179,8 @@ public sealed class CardModificationSpec
         || !string.IsNullOrWhiteSpace(Rarity)
         || KeywordOverrides.Count > 0
         || Enchantment is not null
-        || Affliction is not null;
+        || Affliction is not null
+        || !UpgradeModification.IsEmpty;
 
     [JsonIgnore]
     public bool HasCustomText =>
@@ -162,7 +210,8 @@ public sealed class CardModificationSpec
             BetaPortraitPath = BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             Enchantment = Enchantment?.Clone(),
-            Affliction = Affliction?.Clone()
+            Affliction = Affliction?.Clone(),
+            UpgradeModification = UpgradeModification.Clone()
         };
     }
 
@@ -199,6 +248,7 @@ public sealed class CardModificationSpec
             Enchantment = other.Enchantment.Clone();
         if (other.Affliction is not null)
             Affliction = other.Affliction.Clone();
+        UpgradeModification.MergeFrom(other.UpgradeModification);
     }
 
     public void Normalize()
@@ -209,6 +259,8 @@ public sealed class CardModificationSpec
         KeywordOverrides = KeywordOverrides
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        UpgradeModification ??= new CardUpgradeModificationSpec();
+        UpgradeModification.Normalize();
 
         CardAttachmentSpec? enchantment = Enchantment;
         NormalizeAttachment(ref enchantment);
@@ -301,6 +353,9 @@ public sealed class CardModificationDelta
     [JsonPropertyName("f")]
     public CardAttachmentSpec? Affliction { get; set; }
 
+    [JsonPropertyName("u")]
+    public CardUpgradeModificationSpec UpgradeModification { get; set; } = new();
+
     [JsonIgnore]
     public bool IsEmpty =>
         EnergyDelta is null
@@ -317,7 +372,8 @@ public sealed class CardModificationDelta
         && string.IsNullOrWhiteSpace(BetaPortraitPath)
         && KeywordOverrides.Count == 0
         && (Enchantment is null || Enchantment.IsEmpty)
-        && (Affliction is null || Affliction.IsEmpty);
+        && (Affliction is null || Affliction.IsEmpty)
+        && UpgradeModification.IsEmpty;
 
     [JsonIgnore]
     public bool HasNativeMutations =>
@@ -331,7 +387,8 @@ public sealed class CardModificationDelta
         || !string.IsNullOrWhiteSpace(Rarity)
         || KeywordOverrides.Count > 0
         || Enchantment is not null
-        || Affliction is not null;
+        || Affliction is not null
+        || !UpgradeModification.IsEmpty;
 
     [JsonIgnore]
     public bool HasCustomText =>
@@ -362,7 +419,8 @@ public sealed class CardModificationDelta
             BetaPortraitPath = BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             Enchantment = Enchantment?.Clone(),
-            Affliction = Affliction?.Clone()
+            Affliction = Affliction?.Clone(),
+            UpgradeModification = UpgradeModification.Clone()
         };
     }
 
@@ -377,6 +435,8 @@ public sealed class CardModificationDelta
         KeywordOverrides = KeywordOverrides
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        UpgradeModification ??= new CardUpgradeModificationSpec();
+        UpgradeModification.Normalize(removeZeroDynamicValues: true);
         PoolId = NormalizeText(PoolId);
         Type = NormalizeText(Type);
         Rarity = NormalizeText(Rarity);
