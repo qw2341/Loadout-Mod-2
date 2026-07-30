@@ -162,7 +162,7 @@ public class LoadoutBag
 
     private static Control CreateRelicGridItem(RelicModel model)
     {
-	    NRelicCollectionEntry holder = NRelicCollectionEntry.Create(model, ModelVisibility.Visible);
+	    NRelicBasicHolder holder = NRelicBasicHolder.Create(model);
 	    if (holder is null)
 		    return CommonHelpers.CreateTextModelGridItem(model, CommonHelpers.FormatRelicTitle(model), model.Id.Entry, LocMan.Loc("CATEGORY_RELIC", "Relic"));
 
@@ -179,14 +179,14 @@ public class LoadoutBag
 	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelic relicView))
 		    return;
 
+	    RelicModel displayModel = RelicModificationStateService.GetEffectivePermanentRelicForDisplay(model);
 	    RelicModel boundModel = relicView.Model;
-	    if (boundModel is null || !boundModel.Id.Equals(model.Id))
-		    relicView.Model = model;
+	    if (!ReferenceEquals(boundModel, displayModel))
+		    relicView.Model = displayModel;
 
 	    if (!relicView.IsNodeReady())
 		    return;
 		
-	    RelicModel displayModel = RelicModificationStateService.GetEffectivePermanentRelicForDisplay(model);
 	    relicView.Icon.SelfModulate = Colors.White;
 	    displayModel.UpdateTexture(relicView.Icon);
     }
@@ -502,7 +502,9 @@ public class LoadoutBag
 		    string expectedBody = useChinese ? zhBody : enBody;
 		    if (!string.IsNullOrWhiteSpace(formatted)
 		        && formatted.Contains(expectedTitle, StringComparison.Ordinal)
-		        && formatted.Contains(expectedBody, StringComparison.Ordinal))
+		        && formatted.Contains(expectedBody, StringComparison.Ordinal)
+		        && formatted.Contains("[gold]", StringComparison.OrdinalIgnoreCase)
+		        && formatted.Contains("[font_size=", StringComparison.OrdinalIgnoreCase))
 		    {
 			    return new SelectGroupHeader(formatted, childGroupPrefix: childGroupPrefix);
 		    }
@@ -515,8 +517,10 @@ public class LoadoutBag
 	    bool fallbackToChinese = starterHeader.Contains("初始：", StringComparison.Ordinal);
 	    string fallbackTitle = fallbackToChinese ? zhTitle : enTitle;
 	    string fallbackBody = fallbackToChinese ? zhBody : enBody;
-	    string exactHeader = $"[gold][font_size=28][b]{fallbackTitle}[/b][/font_size][/gold] {fallbackBody}";
-	    return new SelectGroupHeader(exactHeader, childGroupPrefix: childGroupPrefix);
+	    return SelectGroupHeader.Category(
+		    fallbackTitle.TrimEnd(':', '：'),
+		    fallbackBody,
+		    childGroupPrefix: childGroupPrefix);
     }
 
     private static SelectGroupHeader GetRelicGroupHeader(string key, RelicGroupingData groupingData)
