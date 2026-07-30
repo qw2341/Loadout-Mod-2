@@ -41,24 +41,16 @@ public static class BottledMonster
 
     public static void Initialize()
     {
-        IReadOnlyList<MonsterModel> allMonsters = ModelDb.Monsters
-            .GroupBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
-            .Select(group => group.First())
-            .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
-            .ToList();
-        _encounterMonsterIds = allMonsters
+        IReadOnlyList<MonsterModel> allMonsters = BottledMonsterMorphService.GetMonsterModels();
+        _encounterMonsterIds = ModelDb.Monsters
             .Select(monster => monster.Id.ToString())
             .ToHashSet(StringComparer.Ordinal);
         MonsterCatalogData catalog = BuildMonsterCatalogData(allMonsters);
         MonsterGroupPresentation grouping = BuildMonsterGroupPresentation(catalog, includeMorphGroups: false);
 
-        IReadOnlyList<MonsterModel> morphMonsters = BottledMonsterMorphService.GetMorphModels()
-            .OfType<MonsterModel>()
-            .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
-            .ToList();
-        MonsterCatalogData morphCatalog = BuildMonsterCatalogData(morphMonsters);
+        MonsterCatalogData morphCatalog = BuildMonsterCatalogData(allMonsters);
         MonsterGroupPresentation morphGrouping = BuildMonsterGroupPresentation(morphCatalog, includeMorphGroups: true);
-        IReadOnlyList<MorphOption> morphOptions = BuildMorphOptions(morphMonsters);
+        IReadOnlyList<MorphOption> morphOptions = BuildMorphOptions(allMonsters);
         NGenericSelectScreen morphScreen = CreateMorphScreen(morphOptions, morphCatalog, morphGrouping);
 
         NLoadoutPanelItem panelItem = CommonHelpers.CreateAndAddLoadoutItem(
@@ -1212,7 +1204,8 @@ public static class BottledMonster
 
     private static MonsterModel? ResolveMonster(string monsterId)
     {
-        return ModelDb.Monsters.FirstOrDefault(monster => CommonHelpers.ModelIdMatches(monster, monsterId));
+        return BottledMonsterMorphService.GetMonsterModels()
+            .FirstOrDefault(monster => CommonHelpers.ModelIdMatches(monster, monsterId));
     }
 
     private static string FilterId(string prefix, string raw)

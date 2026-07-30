@@ -127,7 +127,7 @@ internal static class LoadoutModelRegistry
             yield return model;
         foreach (AncientEventModel model in ModelDb.AllAncients)
             yield return model;
-        foreach (MonsterModel model in ModelDb.Monsters)
+        foreach (MonsterModel model in ModelDb.All.OfType<MonsterModel>())
             yield return model;
         foreach (CharacterModel model in ModelDb.AllCharacters.Where(character => character.IsPlayable))
             yield return model;

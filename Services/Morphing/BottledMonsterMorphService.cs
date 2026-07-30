@@ -29,6 +29,8 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Monsters;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
@@ -40,6 +42,7 @@ using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
 public static class BottledMonsterMorphService
@@ -77,7 +80,9 @@ public static class BottledMonsterMorphService
     private static readonly Dictionary<ulong, RestSiteVisualRuntime> RestSiteVisuals = new();
     private static readonly HashSet<ulong> RestSiteVisualProxyIds = new();
     private static NFakeMerchant? _activeFakeMerchant;
+    private static IReadOnlyList<MonsterModel>? _monsterModels;
     private static IReadOnlyList<AbstractModel>? _morphModels;
+    private static IReadOnlySet<string>? _categorizedMonsterIds;
 
     private static MorphRunSaveData _state = new();
     private static INetGameService? _runNetService;
@@ -114,17 +119,46 @@ public static class BottledMonsterMorphService
         ClearRuntimeState();
     }
 
+    public static IReadOnlyList<MonsterModel> GetMonsterModels()
+    {
+        return _monsterModels ??= ModelDb.All
+            .OfType<MonsterModel>()
+            .GroupBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
+            .ToList();
+    }
+
     public static IReadOnlyList<AbstractModel> GetMorphModels()
     {
         return _morphModels ??= ModelDb.AllCharacters
             .Where(character => character.IsPlayable)
             .Cast<AbstractModel>()
-            .Concat(ModelDb.All
-                .OfType<MonsterModel>()
-                .OrderBy(monster => monster.Id.ToString(), StringComparer.Ordinal))
+            .Concat(GetMonsterModels())
             .GroupBy(model => model.Id.ToString(), StringComparer.Ordinal)
             .Select(group => group.First())
             .ToList();
+    }
+
+    public static bool ShouldFlipMonsterMorph(MonsterModel monster)
+    {
+        return monster is Architect
+               || GetCategorizedMonsterIds().Contains(monster.Id.ToString());
+    }
+
+    public static void SyncSurroundedFacing(SurroundedPower power)
+    {
+        Player? player = power.Owner?.Player;
+        if (player is null
+            || !MorphModelsByPlayer.TryGetValue(player.NetId, out AbstractModel? model)
+            || model is not MonsterModel monster
+            || NCombatRoom.Instance?.GetCreatureNode(player.Creature) is not { } creatureNode
+            || !GodotObject.IsInstanceValid(creatureNode))
+        {
+            return;
+        }
+
+        ApplyMonsterFacing(creatureNode.Visuals, monster, power.Facing);
     }
 
     public static void ApplySynchronizedMorph(ModelId modelId, LoadoutTargetSelection target)
@@ -730,7 +764,11 @@ public static class BottledMonsterMorphService
             else if (visualModel is MonsterModel monster)
             {
                 NMorphedRestSiteCharacter monsterVisual = new();
-                monsterVisual.Initialize(monster, monster.CreateVisuals(), flippedSlot);
+                monsterVisual.Initialize(
+                    monster,
+                    monster.CreateVisuals(),
+                    flippedSlot,
+                    ShouldFlipMonsterMorph(monster));
                 newVisual = monsterVisual;
             }
 
@@ -911,7 +949,7 @@ public static class BottledMonsterMorphService
     private static NMerchantCharacter CreateMonsterMerchantVisual(MonsterModel monster)
     {
         NMorphedMerchantCharacter merchantCharacter = new();
-        merchantCharacter.Initialize(monster, monster.CreateVisuals());
+        merchantCharacter.Initialize(monster, monster.CreateVisuals(), ShouldFlipMonsterMorph(monster));
         return merchantCharacter;
     }
 
@@ -937,8 +975,9 @@ public static class BottledMonsterMorphService
             if (visualModel is MonsterModel monster)
             {
                 newVisual.UpdatePhobiaMode(monster);
-                newVisual.SetUpSkin(monster);
-                FlipMonsterVisuals(newVisual);
+                SetUpMonsterSkin(newVisual, monster);
+                if (ShouldFlipMonsterMorph(monster))
+                    FlipMonsterVisuals(newVisual);
             }
 
             PlayRelaxedOrIdle(newVisual);
@@ -1005,8 +1044,13 @@ public static class BottledMonsterMorphService
             newVisuals.Position = Vector2.Zero;
             newVisuals.Modulate = oldModulate;
             newVisuals.UpdatePhobiaMode(visualModel as MonsterModel);
-            if (visualModel is MonsterModel)
-                FlipMonsterVisuals(newVisuals);
+            if (visualModel is MonsterModel monster)
+            {
+                ApplyMonsterFacing(
+                    newVisuals,
+                    monster,
+                    creatureNode.Entity.GetPower<SurroundedPower>()?.Facing);
+            }
 
             CreatureAnimator? animator = CreateAnimator(visualModel, newVisuals);
             VisualsField.SetValue(creatureNode, newVisuals);
@@ -1177,7 +1221,7 @@ public static class BottledMonsterMorphService
         if (model is MonsterModel monster)
         {
             CreatureAnimator animator = monster.GenerateAnimator(visuals.SpineBody);
-            TrySetUpMonsterSkin(visuals, monster);
+            SetUpMonsterSkin(visuals, monster);
             return animator;
         }
 
@@ -1186,7 +1230,7 @@ public static class BottledMonsterMorphService
             : null;
     }
 
-    private static void TrySetUpMonsterSkin(NCreatureVisuals visuals, MonsterModel monster)
+    public static void SetUpMonsterSkin(NCreatureVisuals visuals, MonsterModel monster)
     {
         try
         {
@@ -1214,10 +1258,50 @@ public static class BottledMonsterMorphService
         return visualMonster;
     }
 
+    private static IReadOnlySet<string> GetCategorizedMonsterIds()
+    {
+        return _categorizedMonsterIds ??= ModelDb.Acts
+            .Where(act => act.Index >= 0)
+            .SelectMany(act => act.AllEncounters)
+            .Concat(ModelDb.EventEncounters)
+            .Where(encounter => encounter.RoomType is RoomType.Monster or RoomType.Elite or RoomType.Boss)
+            .SelectMany(encounter => encounter.AllPossibleMonsters)
+            .Select(monster => monster.Id.ToString())
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static void ApplyMonsterFacing(
+        NCreatureVisuals visuals,
+        MonsterModel monster,
+        SurroundedPower.Direction? facing)
+    {
+        bool invertPlayerFacing = ShouldFlipMonsterMorph(monster);
+        if (!facing.HasValue)
+        {
+            if (invertPlayerFacing)
+                FlipMonsterVisuals(visuals);
+            return;
+        }
+
+        bool faceLeft = facing == SurroundedPower.Direction.Left;
+        bool useNegativeScale = invertPlayerFacing ? !faceLeft : faceLeft;
+        SetBodyHorizontalScaleSign(visuals.GetNodeOrNull<Node2D>("%Visuals"), useNegativeScale);
+        SetBodyHorizontalScaleSign(visuals.GetNodeOrNull<Node2D>("%PhobiaModeVisuals"), useNegativeScale);
+    }
+
     private static void FlipMonsterVisuals(NCreatureVisuals visuals)
     {
         FlipBody(visuals.GetNodeOrNull<Node2D>("%Visuals"));
         FlipBody(visuals.GetNodeOrNull<Node2D>("%PhobiaModeVisuals"));
+    }
+
+    private static void SetBodyHorizontalScaleSign(Node2D? body, bool negative)
+    {
+        if (body is null)
+            return;
+
+        float magnitude = MathF.Abs(body.Scale.X);
+        body.Scale = new Vector2(negative ? -magnitude : magnitude, body.Scale.Y);
     }
 
     private static void FlipBody(Node2D? body)

@@ -51,7 +51,7 @@ public static class LoadoutSummonMonsterService
         if (combatState is null)
             return;
 
-        MonsterModel? canonicalMonster = ModelDb.Monsters.FirstOrDefault(monster => LoadoutModelIdSafety.Matches(monster, monsterId));
+        MonsterModel? canonicalMonster = ModelDb.GetByIdOrNull<MonsterModel>(monsterId);
         if (canonicalMonster is null)
         {
             GD.PushWarning($"LoadoutSummonMonster: unknown monster '{monsterId}'.");

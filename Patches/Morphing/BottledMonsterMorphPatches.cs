@@ -2,10 +2,12 @@
 
 namespace Loadout.Patches.Morphing;
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using Loadout.Services.Morphing;
@@ -14,6 +16,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
@@ -145,6 +148,35 @@ public static class BottledMonsterMorphCreatureReadyPatch
     }
 }
 
+[HarmonyPatch(typeof(NCreatureVisuals), nameof(NCreatureVisuals.SetUpSkin))]
+public static class BottledMonsterSpecialMonsterSkinPatch
+{
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(
+        NCreatureVisuals __instance,
+        MonsterModel model,
+        Exception? __exception)
+    {
+        if (__exception is null
+            || !model.IsMutable
+            || ModelDb.GetByIdOrNull<MonsterModel>(model.Id) is not { } canonical
+            || ReferenceEquals(canonical, model))
+        {
+            return __exception;
+        }
+
+        try
+        {
+            __instance.SetUpSkin(canonical);
+            return null;
+        }
+        catch
+        {
+            return __exception;
+        }
+    }
+}
+
 [HarmonyPatch(typeof(NCreature), nameof(NCreature.SetAnimationTrigger))]
 public static class BottledMonsterMorphAnimationPatch
 {
@@ -152,6 +184,22 @@ public static class BottledMonsterMorphAnimationPatch
     public static bool Prefix(NCreature __instance, string trigger)
     {
         return !BottledMonsterMorphService.TryHandleAnimation(__instance, trigger);
+    }
+}
+
+[HarmonyPatch(typeof(SurroundedPower), "FaceDirection", typeof(SurroundedPower.Direction))]
+public static class BottledMonsterMorphSurroundedFacingPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(SurroundedPower __instance, ref Task __result)
+    {
+        __result = SyncFacingAfterNativeAsync(__result, __instance);
+    }
+
+    private static async Task SyncFacingAfterNativeAsync(Task nativeTask, SurroundedPower power)
+    {
+        await nativeTask;
+        BottledMonsterMorphService.SyncSurroundedFacing(power);
     }
 }
 

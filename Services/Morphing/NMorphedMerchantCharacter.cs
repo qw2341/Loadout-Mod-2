@@ -16,11 +16,13 @@ public partial class NMorphedMerchantCharacter : NMerchantCharacter
 
     private MonsterModel? _monster;
     private NCreatureVisuals? _visuals;
+    private bool _flipMonster;
 
-    public void Initialize(MonsterModel monster, NCreatureVisuals visuals)
+    public void Initialize(MonsterModel monster, NCreatureVisuals visuals, bool flipMonster)
     {
         _monster = monster;
         _visuals = visuals;
+        _flipMonster = flipMonster;
         visuals.Position = Vector2.Zero;
         AddChild(visuals);
     }
@@ -31,9 +33,12 @@ public partial class NMorphedMerchantCharacter : NMerchantCharacter
             return;
 
         _visuals.UpdatePhobiaMode(_monster);
-        _visuals.SetUpSkin(_monster);
-        FlipBody(_visuals.GetNodeOrNull<Node2D>("%Visuals"));
-        FlipBody(_visuals.GetNodeOrNull<Node2D>("%PhobiaModeVisuals"));
+        BottledMonsterMorphService.SetUpMonsterSkin(_visuals, _monster);
+        if (_flipMonster)
+        {
+            FlipBody(_visuals.GetNodeOrNull<Node2D>("%Visuals"));
+            FlipBody(_visuals.GetNodeOrNull<Node2D>("%PhobiaModeVisuals"));
+        }
         _visuals.Scale *= MerchantScaleMultiplier;
         _visuals.Position = new Vector2(0, 50);
         PlayMorphAnimation("relaxed_loop", loop: true);

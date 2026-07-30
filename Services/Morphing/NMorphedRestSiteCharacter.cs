@@ -14,12 +14,14 @@ public partial class NMorphedRestSiteCharacter : Node2D
     private MonsterModel? _monster;
     private NCreatureVisuals? _visuals;
     private bool _flippedSlot;
+    private bool _flipMonster;
 
-    public void Initialize(MonsterModel monster, NCreatureVisuals visuals, bool flippedSlot)
+    public void Initialize(MonsterModel monster, NCreatureVisuals visuals, bool flippedSlot, bool flipMonster)
     {
         _monster = monster;
         _visuals = visuals;
         _flippedSlot = flippedSlot;
+        _flipMonster = flipMonster;
         visuals.Position = Vector2.Zero;
         AddChild(visuals);
     }
@@ -30,9 +32,12 @@ public partial class NMorphedRestSiteCharacter : Node2D
             return;
 
         _visuals.UpdatePhobiaMode(_monster);
-        _visuals.SetUpSkin(_monster);
-        FlipBody(_visuals.GetNodeOrNull<Node2D>("%Visuals"));
-        FlipBody(_visuals.GetNodeOrNull<Node2D>("%PhobiaModeVisuals"));
+        BottledMonsterMorphService.SetUpMonsterSkin(_visuals, _monster);
+        if (_flipMonster)
+        {
+            FlipBody(_visuals.GetNodeOrNull<Node2D>("%Visuals"));
+            FlipBody(_visuals.GetNodeOrNull<Node2D>("%PhobiaModeVisuals"));
+        }
         _visuals.Scale *= RestSiteScaleMultiplier;
         if (_flippedSlot)
             Scale = new Vector2(-Scale.X, Scale.Y);
