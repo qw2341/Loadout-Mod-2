@@ -676,7 +676,7 @@ public static class BottledMonster
             if (!spine.HasAnimation(animation))
                 continue;
 
-            visuals.SpineAnimation.AddAnimation(animation);
+            Sts2Compatibility.AddAnimation(spine.GetAnimationState(), animation);
             return;
         }
     }
