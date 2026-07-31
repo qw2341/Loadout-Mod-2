@@ -16,14 +16,19 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 
 public sealed class LessonLearnedKeyword : LoadoutKeywordModel
 {
     public const string CardsVar = "LoadoutLessonLearnedCards";
+
+    private const int FinalResultPreviewThreshold = 20;
 
     private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition>
         VariableDefinitions =
@@ -84,6 +89,11 @@ public sealed class LessonLearnedKeyword : LoadoutKeywordModel
         if (candidates.Count == 0)
             return;
 
+        bool showEachUpgrade =
+            upgradeCount < FinalResultPreviewThreshold;
+        List<CardModel>? upgradedCards = null;
+        HashSet<CardModel>? upgradedCardSet = null;
+
         LessonLearnedCombatEndGuard.Enter();
         try
         {
@@ -101,7 +111,9 @@ public sealed class LessonLearnedKeyword : LoadoutKeywordModel
                 int previousUpgradeLevel = selected.CurrentUpgradeLevel;
                 CardCmd.Upgrade(
                     selected,
-                    CardPreviewStyle.HorizontalLayout);
+                    showEachUpgrade
+                        ? CardPreviewStyle.HorizontalLayout
+                        : CardPreviewStyle.None);
                 if (!selected.IsUpgradable)
                     candidates.RemoveAt(selectedIndex);
 
@@ -111,9 +123,29 @@ public sealed class LessonLearnedKeyword : LoadoutKeywordModel
                     continue;
                 }
 
-                // CardCmd.Upgrade supplies the native NCardUpgradeVfx. The
-                // card-smith sound is presentation-only, so only the owning
-                // local peer plays it.
+                if (showEachUpgrade)
+                {
+                    NDebugAudioManager.Instance?.Play(
+                        TmpSfx.cardSmith,
+                        1f,
+                        PitchVariance.Small);
+                    continue;
+                }
+
+                upgradedCardSet ??=
+                    new HashSet<CardModel>(
+                        ReferenceEqualityComparer.Instance);
+                if (upgradedCardSet.Add(selected))
+                    (upgradedCards ??= []).Add(selected);
+            }
+
+            if (upgradedCards is null)
+                return;
+
+            foreach (CardModel card in upgradedCards)
+            {
+                NRun.Instance?.GlobalUi.CardPreviewContainer.AddChildSafely(
+                    NCardUpgradeVfx.Create(card));
                 NDebugAudioManager.Instance?.Play(
                     TmpSfx.cardSmith,
                     1f,
