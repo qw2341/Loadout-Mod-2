@@ -9,8 +9,8 @@ using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
 using Godot;
 using Loadout.Patches.Loadouts;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Saving;
-using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
 using Loadout.Services.Networking;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -26,11 +26,12 @@ public static class LoadoutPanelAccessService
     private const string RunFilePrefix = "panel_access_run";
 
     private static readonly HashSet<StartRunLobby> RegisteredLobbies = [];
-    private static readonly Dictionary<StartRunLobby, Action<LobbyPlayer>> LobbyConnectedHandlers = new();
+    private static readonly Dictionary<StartRunLobby, Delegate> LobbyConnectedHandlers = new();
     private static readonly HashSet<LoadRunLobby> RegisteredLoadLobbies = [];
 
     private static INetGameService? _runNetService;
     private static RunLobby? _runLobby;
+    private static Delegate? _playerRejoinedHandler;
     private static bool _hostAllowsGuests;
     private static long? _loadedRunStartTime;
 
@@ -82,14 +83,15 @@ public static class LoadoutPanelAccessService
         {
             SetHostAllowsGuestsForNewLobby(false);
 
-            Action<LobbyPlayer> connected = player => SendAccessToLobbyPlayer(lobby, player.id);
+            Delegate connected = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
+                lobby,
+                playerId => SendAccessToLobbyPlayer(lobby, playerId));
             LobbyConnectedHandlers[lobby] = connected;
-            lobby.PlayerConnected += connected;
 
-            foreach (LobbyPlayer player in lobby.Players)
+            foreach (ulong playerId in Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby))
             {
-                if (player.id != lobby.NetService.NetId)
-                    SendAccessToLobbyPlayer(lobby, player.id);
+                if (playerId != lobby.NetService.NetId)
+                    SendAccessToLobbyPlayer(lobby, playerId);
             }
         }
         else if (lobby.NetService.Type == NetGameType.Client)
@@ -104,8 +106,8 @@ public static class LoadoutPanelAccessService
             return;
 
         lobby.NetService.UnregisterMessageHandler<LoadoutPanelAccessMessage>(HandleAccessMessage);
-        if (LobbyConnectedHandlers.Remove(lobby, out Action<LobbyPlayer>? connected))
-            lobby.PlayerConnected -= connected;
+        if (LobbyConnectedHandlers.Remove(lobby, out Delegate? connected))
+            Sts2Compatibility.UnsubscribeStartRunLobbyPlayerConnected(lobby, connected);
 
         if (clearClientAccess && lobby.NetService.Type == NetGameType.Client)
             SetHostAllowsGuestsForNewLobby(false);
@@ -122,7 +124,7 @@ public static class LoadoutPanelAccessService
             ApplyAccess(false);
             TryLoadRunAccess(lobby.Run.StartTime);
 
-            foreach (ulong playerId in lobby.ConnectedPlayerIds)
+            foreach (ulong playerId in Sts2Compatibility.EnumerateLoadRunLobbyPlayerIds(lobby))
                 SendAccessToLoadLobbyPlayer(lobby, playerId);
         }
         else if (lobby.NetService.Type == NetGameType.Client)
@@ -146,7 +148,7 @@ public static class LoadoutPanelAccessService
         if (lobby is null
             || lobby.NetService.Type != NetGameType.Host
             || playerId == lobby.NetService.NetId
-            || !lobby.ConnectedPlayerIds.Contains(playerId))
+            || !Sts2Compatibility.EnumerateLoadRunLobbyPlayerIds(lobby).Contains(playerId))
         {
             return;
         }
@@ -254,7 +256,11 @@ public static class LoadoutPanelAccessService
         UnbindRunLobby();
         _runLobby = runLobby;
         if (_runLobby is not null)
-            _runLobby.PlayerRejoined += OnPlayerRejoined;
+        {
+            _playerRejoinedHandler = Sts2Compatibility.SubscribeRunLobbyPlayerRejoined(
+                _runLobby,
+                OnPlayerRejoined);
+        }
     }
 
     private static void UnbindRunLobby()
@@ -262,7 +268,10 @@ public static class LoadoutPanelAccessService
         if (_runLobby is null)
             return;
 
-        _runLobby.PlayerRejoined -= OnPlayerRejoined;
+        if (_playerRejoinedHandler is not null)
+            Sts2Compatibility.UnsubscribeRunLobbyPlayerRejoined(_runLobby, _playerRejoinedHandler);
+
+        _playerRejoinedHandler = null;
         _runLobby = null;
     }
 
@@ -289,10 +298,10 @@ public static class LoadoutPanelAccessService
             if (lobby.NetService.Type != NetGameType.Host)
                 continue;
 
-            foreach (LobbyPlayer player in lobby.Players)
+            foreach (ulong playerId in Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby))
             {
-                if (player.id != lobby.NetService.NetId)
-                    SendAccessToLobbyPlayer(lobby, player.id);
+                if (playerId != lobby.NetService.NetId)
+                    SendAccessToLobbyPlayer(lobby, playerId);
             }
         }
 
@@ -301,7 +310,7 @@ public static class LoadoutPanelAccessService
             if (lobby.NetService.Type != NetGameType.Host)
                 continue;
 
-            foreach (ulong playerId in lobby.ConnectedPlayerIds)
+            foreach (ulong playerId in Sts2Compatibility.EnumerateLoadRunLobbyPlayerIds(lobby))
                 SendAccessToLoadLobbyPlayer(lobby, playerId);
         }
 

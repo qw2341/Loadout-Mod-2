@@ -9,7 +9,6 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using BaseLib.Abstracts;
 using Godot;
-using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -18,6 +17,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Runs;
 using Loadout.Services.Targets;
 using Loadout.Services.Actions;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Networking;
 using Loadout.Patches.Cards.CardModification;
@@ -30,7 +30,7 @@ public static class CardModificationNetProtocol
     private const int MaxStateJsonLength = 256 * 1024;
 
     private static readonly HashSet<StartRunLobby> RegisteredLobbies = [];
-    private static readonly Dictionary<StartRunLobby, Action<LobbyPlayer>> LobbyConnectedHandlers = new();
+    private static readonly Dictionary<StartRunLobby, Delegate> LobbyConnectedHandlers = new();
     private static readonly object OperationSequenceGate = new();
     private static readonly SortedDictionary<int, LoadoutCardModificationOperationPayload> PendingOperationApplies = new();
     private static INetGameService? _runNetService;
@@ -70,16 +70,17 @@ public static class CardModificationNetProtocol
         lobby.NetService.RegisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
         lobby.NetService.RegisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
 
-        Action<LobbyPlayer> connected = player => SendPermanentSnapshotToLobbyPlayer(lobby, player.id);
+        Delegate connected = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
+            lobby,
+            playerId => SendPermanentSnapshotToLobbyPlayer(lobby, playerId));
         LobbyConnectedHandlers[lobby] = connected;
-        lobby.PlayerConnected += connected;
 
         if (lobby.NetService.Type == NetGameType.Host)
         {
-            foreach (LobbyPlayer player in lobby.Players)
+            foreach (ulong playerId in Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby))
             {
-                if (player.id != lobby.NetService.NetId)
-                    SendPermanentSnapshotToLobbyPlayer(lobby, player.id);
+                if (playerId != lobby.NetService.NetId)
+                    SendPermanentSnapshotToLobbyPlayer(lobby, playerId);
             }
         }
     }
@@ -92,8 +93,8 @@ public static class CardModificationNetProtocol
         lobby.NetService.UnregisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
         lobby.NetService.UnregisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
 
-        if (LobbyConnectedHandlers.Remove(lobby, out Action<LobbyPlayer>? connected))
-            lobby.PlayerConnected -= connected;
+        if (LobbyConnectedHandlers.Remove(lobby, out Delegate? connected))
+            Sts2Compatibility.UnsubscribeStartRunLobbyPlayerConnected(lobby, connected);
 
         if (clearClientOverlay && lobby.NetService.Type == NetGameType.Client)
         {
@@ -521,10 +522,10 @@ public static class CardModificationNetProtocol
             if (lobby.NetService.Type != NetGameType.Host)
                 continue;
 
-            foreach (LobbyPlayer player in lobby.Players)
+            foreach (ulong playerId in Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby))
             {
-                if (player.id != lobby.NetService.NetId)
-                    SendPermanentSnapshotToLobbyPlayer(lobby, player.id);
+                if (playerId != lobby.NetService.NetId)
+                    SendPermanentSnapshotToLobbyPlayer(lobby, playerId);
             }
         }
 

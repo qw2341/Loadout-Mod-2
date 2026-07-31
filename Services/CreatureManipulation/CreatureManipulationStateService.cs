@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Patches.TildeKey;
 using Loadout.Services.Actions;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Configuration;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Networking;
@@ -49,6 +50,7 @@ public static class CreatureManipulationStateService
 
     private static INetGameService? _netService;
     private static RunLobby? _runLobby;
+    private static Delegate? _playerRejoinedHandler;
     private static int _combatEpoch;
     private static int _dragSequence;
     private static long _nextDragSession;
@@ -938,7 +940,9 @@ public static class CreatureManipulationStateService
         _runLobby = lobby;
         if (_runLobby is not null)
         {
-            _runLobby.PlayerRejoined += OnPlayerRejoined;
+            _playerRejoinedHandler = Sts2Compatibility.SubscribeRunLobbyPlayerRejoined(
+                _runLobby,
+                OnPlayerRejoined);
             _runLobby.RemotePlayerDisconnected += OnRemotePlayerDisconnected;
             _runLobby.LocalPlayerDisconnected += OnLocalPlayerDisconnected;
         }
@@ -948,7 +952,10 @@ public static class CreatureManipulationStateService
     {
         if (_runLobby is null)
             return;
-        _runLobby.PlayerRejoined -= OnPlayerRejoined;
+        if (_playerRejoinedHandler is not null)
+            Sts2Compatibility.UnsubscribeRunLobbyPlayerRejoined(_runLobby, _playerRejoinedHandler);
+
+        _playerRejoinedHandler = null;
         _runLobby.RemotePlayerDisconnected -= OnRemotePlayerDisconnected;
         _runLobby.LocalPlayerDisconnected -= OnLocalPlayerDisconnected;
         _runLobby = null;

@@ -3,6 +3,7 @@
 namespace Loadout.Services.Compatibility;
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -21,12 +22,13 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
 
 /// <summary>
-/// Resolves the two supported STS2 API shapes once: the maintained newer API
-/// and the legacy 0.107 API. Gameplay call sites use cached compiled delegates,
+/// Resolves the two supported STS2 API shapes once: the 0.110 beta API
+/// and the 0.107 release API. Gameplay call sites use cached compiled delegates,
 /// so compatibility probing never adds reflection to hot paths.
 /// </summary>
 internal static class Sts2Compatibility
@@ -61,6 +63,35 @@ internal static class Sts2Compatibility
     private static readonly Func<IEnumerable<EncounterModel>>? AllEncountersGetter =
         ResolveModelDbEnumerableGetter<EncounterModel>("AllEncounters");
 
+    private static readonly EventInfo StartRunLobbyPlayerConnectedEvent =
+        ResolveEvent(typeof(StartRunLobby), "PlayerConnected");
+    private static readonly Type StartRunLobbyPlayerType =
+        ResolvePlayerEventPayloadType(
+            StartRunLobbyPlayerConnectedEvent,
+            "MegaCrit.Sts2.Core.Entities.Multiplayer.LobbyPlayer",
+            "MegaCrit.Sts2.Core.Entities.Multiplayer.StartRunLobbyPlayer");
+    private static readonly PropertyInfo StartRunLobbyPlayersProperty =
+        ResolveProperty(typeof(StartRunLobby), "Players");
+    private static readonly Func<StartRunLobby, IEnumerable> GetStartRunLobbyPlayers =
+        CreateStartRunLobbyPlayersGetter();
+    private static readonly Func<object, ulong> GetStartRunLobbyPlayerId =
+        CreatePlayerIdAccessor(StartRunLobbyPlayerType);
+
+    private static readonly EventInfo RunLobbyPlayerRejoinedEvent =
+        ResolveEvent(typeof(RunLobby), "PlayerRejoined");
+    private static readonly Type RunLobbyPlayerRejoinedPayloadType =
+        ResolvePlayerEventPayloadType(
+            RunLobbyPlayerRejoinedEvent,
+            typeof(ulong).FullName!,
+            "MegaCrit.Sts2.Core.Entities.Multiplayer.RunLobbyPlayer");
+    private static readonly Func<object, ulong> GetRunLobbyPlayerId =
+        CreatePlayerIdAccessor(RunLobbyPlayerRejoinedPayloadType);
+
+    private static readonly PropertyInfo LoadRunLobbyPlayerIdsProperty =
+        ResolveProperty(typeof(LoadRunLobby), "PlayerIds", "ConnectedPlayerIds");
+    private static readonly Func<LoadRunLobby, IEnumerable<ulong>> GetLoadRunLobbyPlayerIds =
+        CreateLoadRunLobbyPlayerIdsGetter();
+
     internal static MethodInfo BatchCardAddMethod { get; } = ResolveBatchCardAddMethod();
     internal static bool UsesNewBatchCardAdd { get; } = BatchCardAddMethod.GetParameters().Length == 6;
     private static readonly BatchCardAddInvoker BatchCardAdd = CreateBatchCardAddInvoker();
@@ -85,7 +116,7 @@ internal static class Sts2Compatibility
     internal static bool UsesNewCardLocation { get; } =
         string.Equals(StickyCardPlayResultMethod.Name, "ModifyCardPlayResultLocation", StringComparison.Ordinal);
 
-    // CreateCloneForPlayer was added after 0.107. Keep the newer-only method
+    // CreateCloneForPlayer was added after 0.107. Keep the 0.110-only method
     // reflection-only so loading/JITing this compatibility class on 0.107 never
     // resolves a missing metadata reference.
     private static readonly MethodInfo? NativeCreateCloneForPlayerMethod =
@@ -105,7 +136,7 @@ internal static class Sts2Compatibility
     internal static bool UsesAttackCommandCardPlay =>
         AttackCommandCardPlayGetter is not null;
 
-    // Maintained newer API shape.
+    // 0.110 API shape.
     private static readonly FieldInfo? NewModAssembliesField =
         AccessTools.Field(typeof(Mod), "assemblies");
 
@@ -129,28 +160,93 @@ internal static class Sts2Compatibility
         {
             throw new MissingFieldException(
                 typeof(Mod).FullName,
-                "assemblies (newer) or assembly (0.107 compatibility fallback)");
+                "assemblies (0.110) or assembly (0.107 compatibility fallback)");
         }
 
         if (EventEncountersGetter is null && AllEncountersGetter is null)
         {
             throw new MissingMemberException(
                 typeof(ModelDb).FullName,
-                "EventEncounters (newer) or AllEncounters (0.107 compatibility fallback)");
+                "EventEncounters (0.110) or AllEncounters (0.107 compatibility fallback)");
         }
 
         MainFile.Logger.Info(
             $"[Loadout] STS2 API shape: " +
-            $"CardPileCmd.Add={(UsesNewBatchCardAdd ? "newer" : "0.107")}, " +
-            $"Hook.ModifyDamage={(UsesNewModifyDamage ? "newer" : "0.107")}, " +
-            $"CreatureCmd.Damage multi-target={(UsesNewMultiTargetDamage ? "newer" : "0.107")}, " +
-            $"AttackCommand.CardPlay={(UsesAttackCommandCardPlay ? "newer" : "0.107 fallback")}, " +
-            $"MegaAnimationState animations={(SetAnimationMethod.ReturnType == typeof(void) ? "newer" : "0.107")}, " +
-            $"card result hook={(UsesNewCardLocation ? "newer" : "0.107")}, " +
-            $"card clone-for-player={(UsesNativeCreateCloneForPlayer ? "newer" : "0.107 fallback")}, " +
-            $"mod assemblies={(NewModAssembliesField is not null ? "newer" : "0.107")}, " +
-            $"ModelDb monsters={(AllModelsGetter is not null ? "All (newer)" : "Monsters (0.107)")}, " +
-            $"ModelDb encounters={(EventEncountersGetter is not null ? "acts + EventEncounters (newer)" : "AllEncounters (0.107)")}.");
+            $"CardPileCmd.Add={(UsesNewBatchCardAdd ? "0.110" : "0.107")}, " +
+            $"Hook.ModifyDamage={(UsesNewModifyDamage ? "0.110" : "0.107")}, " +
+            $"CreatureCmd.Damage multi-target={(UsesNewMultiTargetDamage ? "0.110" : "0.107")}, " +
+            $"AttackCommand.CardPlay={(UsesAttackCommandCardPlay ? "0.110" : "0.107 fallback")}, " +
+            $"MegaAnimationState animations={(SetAnimationMethod.ReturnType == typeof(void) ? "0.110" : "0.107")}, " +
+            $"card result hook={(UsesNewCardLocation ? "0.110" : "0.107")}, " +
+            $"card clone-for-player={(UsesNativeCreateCloneForPlayer ? "0.110" : "0.107 fallback")}, " +
+            $"mod assemblies={(NewModAssembliesField is not null ? "0.110" : "0.107")}, " +
+            $"ModelDb monsters={(AllModelsGetter is not null ? "All (0.110)" : "Monsters (0.107)")}, " +
+            $"ModelDb encounters={(EventEncountersGetter is not null ? "acts + EventEncounters (0.110)" : "AllEncounters (0.107)")}, " +
+            $"start lobby players={(StartRunLobbyPlayerType.Name == "StartRunLobbyPlayer" ? "0.110" : "0.107")}, " +
+            $"run lobby rejoin={(RunLobbyPlayerRejoinedPayloadType == typeof(ulong) ? "0.107" : "0.110")}, " +
+            $"load lobby player ids={(LoadRunLobbyPlayerIdsProperty.Name == "PlayerIds" ? "0.110" : "0.107")}.");
+    }
+
+    internal static IEnumerable<ulong> EnumerateStartRunLobbyPlayerIds(StartRunLobby lobby)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+
+        foreach (object player in GetStartRunLobbyPlayers(lobby))
+            yield return GetStartRunLobbyPlayerId(player);
+    }
+
+    internal static IEnumerable<ulong> EnumerateLoadRunLobbyPlayerIds(LoadRunLobby lobby)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        return GetLoadRunLobbyPlayerIds(lobby);
+    }
+
+    internal static Delegate SubscribeStartRunLobbyPlayerConnected(
+        StartRunLobby lobby,
+        Action<ulong> handler)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        ArgumentNullException.ThrowIfNull(handler);
+
+        Delegate adapter = CreatePlayerIdEventAdapter(
+            StartRunLobbyPlayerConnectedEvent,
+            GetStartRunLobbyPlayerId,
+            handler);
+        StartRunLobbyPlayerConnectedEvent.AddEventHandler(lobby, adapter);
+        return adapter;
+    }
+
+    internal static void UnsubscribeStartRunLobbyPlayerConnected(
+        StartRunLobby lobby,
+        Delegate adapter)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        ArgumentNullException.ThrowIfNull(adapter);
+        StartRunLobbyPlayerConnectedEvent.RemoveEventHandler(lobby, adapter);
+    }
+
+    internal static Delegate SubscribeRunLobbyPlayerRejoined(
+        RunLobby lobby,
+        Action<ulong> handler)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        ArgumentNullException.ThrowIfNull(handler);
+
+        Delegate adapter = CreatePlayerIdEventAdapter(
+            RunLobbyPlayerRejoinedEvent,
+            GetRunLobbyPlayerId,
+            handler);
+        RunLobbyPlayerRejoinedEvent.AddEventHandler(lobby, adapter);
+        return adapter;
+    }
+
+    internal static void UnsubscribeRunLobbyPlayerRejoined(
+        RunLobby lobby,
+        Delegate adapter)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        ArgumentNullException.ThrowIfNull(adapter);
+        RunLobbyPlayerRejoinedEvent.RemoveEventHandler(lobby, adapter);
     }
 
     internal static IEnumerable<MonsterModel> EnumerateMonsterModels()
@@ -194,7 +290,7 @@ internal static class Sts2Compatibility
         AbstractModel? clonedBy = null,
         bool skipVisuals = false)
     {
-        // This overload is unchanged between 0.107 and the newer API.
+        // This overload is unchanged between 0.107 and 0.110.
         return CardPileCmd.Add(cards, newPileType, position, clonedBy, skipVisuals);
     }
 
@@ -279,7 +375,7 @@ internal static class Sts2Compatibility
 
     private static MethodInfo ResolveBatchCardAddMethod()
     {
-        // Maintained newer API shape.
+        // 0.110 API shape.
         MethodInfo? method = AccessTools.Method(
             typeof(CardPileCmd),
             nameof(CardPileCmd.Add),
@@ -345,7 +441,7 @@ internal static class Sts2Compatibility
                 player).Compile();
         }
 
-        // 0.107 compatibility fallback. The 0.109 native implementation is
+        // 0.107 compatibility fallback. The 0.110 native implementation is
         // exactly: CardModel clone = source.CreateClone(); clone._owner = player.
         // Resolve both members by reflection and compile the sequence once, so
         // the gameplay hot path is still a direct cached delegate invocation.
@@ -406,7 +502,7 @@ internal static class Sts2Compatibility
 
     private static MethodInfo ResolveModifyDamageMethod()
     {
-        // Maintained newer API shape.
+        // 0.110 API shape.
         MethodInfo? method = AccessTools.Method(
             typeof(Hook),
             nameof(Hook.ModifyDamage),
@@ -490,8 +586,8 @@ internal static class Sts2Compatibility
 
     private static MethodInfo ResolveStickyCardPlayResultMethod()
     {
-        // The newer return type intentionally stays reflection-only so the
-        // compiled mod does not reference beta/newer-only CardLocation.
+        // The 0.110 return type intentionally stays reflection-only so the
+        // compiled mod does not reference beta-only CardLocation.
         MethodInfo? method = typeof(Hook)
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .SingleOrDefault(candidate =>
@@ -531,7 +627,7 @@ internal static class Sts2Compatibility
 
     private static MethodInfo ResolveMultiTargetDamageMethod()
     {
-        // Maintained newer API shape; CardPlay was added after cardSource.
+        // 0.110 API shape; CardPlay was added after cardSource.
         MethodInfo? method = AccessTools.Method(
             typeof(CreatureCmd),
             nameof(CreatureCmd.Damage),
@@ -590,10 +686,10 @@ internal static class Sts2Compatibility
             throw new MissingMethodException(
                 typeof(MegaAnimationState).FullName,
                 $"{methodName}({string.Join(", ", parameterTypes.Select(type => type.Name))}) " +
-                "returning void (newer) or MegaTrackEntry (0.107 compatibility fallback)");
+                "returning void (0.110) or MegaTrackEntry (0.107 compatibility fallback)");
         }
 
-        // Maintained newer API returns void. The 0.107-only compatibility fallback
+        // 0.110 returns void. The 0.107-only compatibility fallback
         // returns MegaTrackEntry; the cached delegate intentionally discards it.
         return method;
     }
@@ -615,9 +711,151 @@ internal static class Sts2Compatibility
         return Expression.Lambda<TDelegate>(body, parameters).Compile();
     }
 
-    private static string ResolveControllerAction(string newerFieldName, string legacyFieldName)
+    private static EventInfo ResolveEvent(Type declaringType, string eventName)
     {
-        FieldInfo? field = AccessTools.Field(typeof(Controller), newerFieldName);
+        return declaringType.GetEvent(
+                   eventName,
+                   BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+               ?? throw new MissingMemberException(declaringType.FullName, eventName);
+    }
+
+    private static PropertyInfo ResolveProperty(Type declaringType, params string[] propertyNames)
+    {
+        foreach (string propertyName in propertyNames)
+        {
+            PropertyInfo? property = AccessTools.Property(declaringType, propertyName);
+            if (property is not null)
+                return property;
+        }
+
+        throw new MissingMemberException(
+            declaringType.FullName,
+            string.Join(" or ", propertyNames));
+    }
+
+    private static Type ResolvePlayerEventPayloadType(
+        EventInfo eventInfo,
+        params string[] allowedTypeNames)
+    {
+        Type? eventHandlerType = eventInfo.EventHandlerType;
+        if (eventHandlerType is null
+            || !eventHandlerType.IsGenericType
+            || eventHandlerType.GetGenericTypeDefinition() != typeof(Action<>))
+        {
+            throw new InvalidOperationException(
+                $"Unexpected {eventInfo.DeclaringType?.FullName}.{eventInfo.Name} handler type: " +
+                $"{eventHandlerType?.FullName ?? "<null>"}.");
+        }
+
+        Type payloadType = eventHandlerType.GetGenericArguments()[0];
+        if (!allowedTypeNames.Contains(payloadType.FullName, StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Unexpected {eventInfo.DeclaringType?.FullName}.{eventInfo.Name} payload type: " +
+                $"{payloadType.FullName}.");
+        }
+
+        return payloadType;
+    }
+
+    private static Func<object, ulong> CreatePlayerIdAccessor(Type playerType)
+    {
+        ParameterExpression player = Expression.Parameter(typeof(object), "player");
+        if (playerType == typeof(ulong))
+        {
+            return Expression.Lambda<Func<object, ulong>>(
+                Expression.Convert(player, typeof(ulong)),
+                player).Compile();
+        }
+
+        FieldInfo idField = AccessTools.Field(playerType, "id")
+                            ?? throw new MissingFieldException(playerType.FullName, "id");
+        if (idField.FieldType != typeof(ulong))
+        {
+            throw new InvalidOperationException(
+                $"Unexpected {playerType.FullName}.id type: {idField.FieldType.FullName}.");
+        }
+
+        return Expression.Lambda<Func<object, ulong>>(
+            Expression.Field(Expression.Convert(player, playerType), idField),
+            player).Compile();
+    }
+
+    private static Func<StartRunLobby, IEnumerable> CreateStartRunLobbyPlayersGetter()
+    {
+        if (!typeof(IEnumerable).IsAssignableFrom(StartRunLobbyPlayersProperty.PropertyType))
+        {
+            throw new InvalidOperationException(
+                $"Unexpected StartRunLobby.Players type: " +
+                $"{StartRunLobbyPlayersProperty.PropertyType.FullName}.");
+        }
+
+        Type? playerType = StartRunLobbyPlayersProperty.PropertyType
+            .GetInterfaces()
+            .Append(StartRunLobbyPlayersProperty.PropertyType)
+            .FirstOrDefault(type =>
+                type.IsGenericType
+                && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            ?.GetGenericArguments()[0];
+        if (playerType != StartRunLobbyPlayerType)
+        {
+            throw new InvalidOperationException(
+                $"StartRunLobby.Players contains {playerType?.FullName ?? "<unknown>"}, " +
+                $"but PlayerConnected supplies {StartRunLobbyPlayerType.FullName}.");
+        }
+
+        ParameterExpression lobby = Expression.Parameter(typeof(StartRunLobby), "lobby");
+        MethodInfo getter = StartRunLobbyPlayersProperty.GetMethod
+                            ?? throw new MissingMethodException(
+                                typeof(StartRunLobby).FullName,
+                                "get_Players");
+        return Expression.Lambda<Func<StartRunLobby, IEnumerable>>(
+            Expression.Convert(Expression.Call(lobby, getter), typeof(IEnumerable)),
+            lobby).Compile();
+    }
+
+    private static Func<LoadRunLobby, IEnumerable<ulong>> CreateLoadRunLobbyPlayerIdsGetter()
+    {
+        if (!typeof(IEnumerable<ulong>).IsAssignableFrom(LoadRunLobbyPlayerIdsProperty.PropertyType))
+        {
+            throw new InvalidOperationException(
+                $"Unexpected LoadRunLobby.{LoadRunLobbyPlayerIdsProperty.Name} type: " +
+                $"{LoadRunLobbyPlayerIdsProperty.PropertyType.FullName}.");
+        }
+
+        ParameterExpression lobby = Expression.Parameter(typeof(LoadRunLobby), "lobby");
+        MethodInfo getter = LoadRunLobbyPlayerIdsProperty.GetMethod
+                            ?? throw new MissingMethodException(
+                                typeof(LoadRunLobby).FullName,
+                                $"get_{LoadRunLobbyPlayerIdsProperty.Name}");
+        return Expression.Lambda<Func<LoadRunLobby, IEnumerable<ulong>>>(
+            Expression.Convert(Expression.Call(lobby, getter), typeof(IEnumerable<ulong>)),
+            lobby).Compile();
+    }
+
+    private static Delegate CreatePlayerIdEventAdapter(
+        EventInfo eventInfo,
+        Func<object, ulong> playerIdAccessor,
+        Action<ulong> handler)
+    {
+        Type eventHandlerType = eventInfo.EventHandlerType
+                                ?? throw new MissingMemberException(
+                                    eventInfo.DeclaringType?.FullName,
+                                    eventInfo.Name);
+        Type payloadType = eventHandlerType.GetGenericArguments()[0];
+        ParameterExpression payload = Expression.Parameter(payloadType, "player");
+        InvocationExpression playerId = Expression.Invoke(
+            Expression.Constant(playerIdAccessor),
+            Expression.Convert(payload, typeof(object)));
+        InvocationExpression invokeHandler = Expression.Invoke(
+            Expression.Constant(handler),
+            playerId);
+        return Expression.Lambda(eventHandlerType, invokeHandler, payload).Compile();
+    }
+
+    private static string ResolveControllerAction(string betaFieldName, string legacyFieldName)
+    {
+        FieldInfo? field = AccessTools.Field(typeof(Controller), betaFieldName);
         if (field is null)
         {
             // 0.107-only compatibility fallback; remove or replace when 0.107 support is dropped.
@@ -631,6 +869,6 @@ internal static class Sts2Compatibility
 
         throw new MissingFieldException(
             typeof(Controller).FullName,
-            $"{newerFieldName} or 0.107 {legacyFieldName}");
+            $"{betaFieldName} (0.110) or {legacyFieldName} (0.107)");
     }
 }

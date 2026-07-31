@@ -9,9 +9,9 @@ using BaseLib.Abstracts;
 using Godot;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Networking;
 using Loadout.Services.Targets;
-using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -24,7 +24,7 @@ public static class RelicModificationMultiplayerSyncService
 {
     private const int MaxSnapshotLength = 256 * 1024;
     private static readonly HashSet<StartRunLobby> Lobbies = [];
-    private static readonly Dictionary<StartRunLobby, Action<LobbyPlayer>> ConnectedHandlers = new();
+    private static readonly Dictionary<StartRunLobby, Delegate> ConnectedHandlers = new();
     private static INetGameService? _runNetService;
     private static bool _registered;
     private static string? _pendingHostSnapshot;
@@ -50,18 +50,19 @@ public static class RelicModificationMultiplayerSyncService
     {
         if (!_registered || !Lobbies.Add(lobby)) return;
         lobby.NetService.RegisterMessageHandler<LoadoutRelicModificationPermanentSyncMessage>(HandleSnapshot);
-        Action<LobbyPlayer> connected = player => SendSnapshot(lobby.NetService, player.id);
+        Delegate connected = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
+            lobby,
+            playerId => SendSnapshot(lobby.NetService, playerId));
         ConnectedHandlers[lobby] = connected;
-        lobby.PlayerConnected += connected;
         if (lobby.NetService.Type == NetGameType.Host)
-            foreach (LobbyPlayer player in lobby.Players.Where(player => player.id != lobby.NetService.NetId)) SendSnapshot(lobby.NetService, player.id);
+            foreach (ulong playerId in Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby).Where(playerId => playerId != lobby.NetService.NetId)) SendSnapshot(lobby.NetService, playerId);
     }
 
     public static void UnregisterLobby(StartRunLobby lobby, bool clearOverlay)
     {
         if (!Lobbies.Remove(lobby)) return;
         lobby.NetService.UnregisterMessageHandler<LoadoutRelicModificationPermanentSyncMessage>(HandleSnapshot);
-        if (ConnectedHandlers.Remove(lobby, out Action<LobbyPlayer>? handler)) lobby.PlayerConnected -= handler;
+        if (ConnectedHandlers.Remove(lobby, out Delegate? handler)) Sts2Compatibility.UnsubscribeStartRunLobbyPlayerConnected(lobby, handler);
         if (clearOverlay && lobby.NetService.Type == NetGameType.Client) RelicModificationStateService.ClearHostPermanentOverlay();
     }
 
@@ -86,7 +87,7 @@ public static class RelicModificationMultiplayerSyncService
     {
         LoadoutRelicModificationPermanentSyncMessage message = new() { Payload = RelicModificationStateService.ExportPermanentSnapshot() };
         foreach (StartRunLobby lobby in Lobbies.Where(lobby => lobby.NetService.Type == NetGameType.Host))
-            foreach (LobbyPlayer player in lobby.Players.Where(player => player.id != lobby.NetService.NetId)) lobby.NetService.SendMessage(message, player.id);
+            foreach (ulong playerId in Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby).Where(playerId => playerId != lobby.NetService.NetId)) lobby.NetService.SendMessage(message, playerId);
         try
         {
             INetGameService net = RunManager.Instance.NetService;

@@ -87,6 +87,7 @@ public static class BottledMonsterMorphService
     private static MorphRunSaveData _state = new();
     private static INetGameService? _runNetService;
     private static RunLobby? _runLobby;
+    private static Delegate? _playerRejoinedHandler;
 
     public static void OnRunLaunched()
     {
@@ -1718,7 +1719,11 @@ public static class BottledMonsterMorphService
         UnbindRunLobby();
         _runLobby = runLobby;
         if (_runLobby is not null)
-            _runLobby.PlayerRejoined += OnPlayerRejoined;
+        {
+            _playerRejoinedHandler = Sts2Compatibility.SubscribeRunLobbyPlayerRejoined(
+                _runLobby,
+                OnPlayerRejoined);
+        }
     }
 
     private static void UnbindRunLobby()
@@ -1726,7 +1731,10 @@ public static class BottledMonsterMorphService
         if (_runLobby is null)
             return;
 
-        _runLobby.PlayerRejoined -= OnPlayerRejoined;
+        if (_playerRejoinedHandler is not null)
+            Sts2Compatibility.UnsubscribeRunLobbyPlayerRejoined(_runLobby, _playerRejoinedHandler);
+
+        _playerRejoinedHandler = null;
         _runLobby = null;
     }
 

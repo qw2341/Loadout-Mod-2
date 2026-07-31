@@ -8,8 +8,8 @@ using System.Linq;
 using System.Text.Json;
 using Godot;
 using Loadout.PanelItems;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Networking;
-using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -21,7 +21,7 @@ using MegaCrit.Sts2.Core.Runs;
 public static class LoadoutHostSharingService
 {
     private static readonly HashSet<StartRunLobby> RegisteredLobbies = [];
-    private static readonly Dictionary<StartRunLobby, Action<LobbyPlayer>> LobbyConnectedHandlers = new();
+    private static readonly Dictionary<StartRunLobby, Delegate> LobbyConnectedHandlers = new();
     private static readonly List<SavedLoadout> RemoteLoadouts = [];
 
     private static INetGameService? _runNetService;
@@ -68,16 +68,17 @@ public static class LoadoutHostSharingService
 
         lobby.NetService.RegisterMessageHandler<LoadoutHostCatalogMessage>(HandleHostCatalog);
 
-        Action<LobbyPlayer> connected = player => SendCatalogToLobbyPlayer(lobby, player.id);
+        Delegate connected = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
+            lobby,
+            playerId => SendCatalogToLobbyPlayer(lobby, playerId));
         LobbyConnectedHandlers[lobby] = connected;
-        lobby.PlayerConnected += connected;
 
         if (lobby.NetService.Type == NetGameType.Host)
         {
-            foreach (LobbyPlayer player in lobby.Players)
+            foreach (ulong playerId in Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby))
             {
-                if (player.id != lobby.NetService.NetId)
-                    SendCatalogToLobbyPlayer(lobby, player.id);
+                if (playerId != lobby.NetService.NetId)
+                    SendCatalogToLobbyPlayer(lobby, playerId);
             }
         }
     }
@@ -88,8 +89,8 @@ public static class LoadoutHostSharingService
             return;
 
         lobby.NetService.UnregisterMessageHandler<LoadoutHostCatalogMessage>(HandleHostCatalog);
-        if (LobbyConnectedHandlers.Remove(lobby, out Action<LobbyPlayer>? connected))
-            lobby.PlayerConnected -= connected;
+        if (LobbyConnectedHandlers.Remove(lobby, out Delegate? connected))
+            Sts2Compatibility.UnsubscribeStartRunLobbyPlayerConnected(lobby, connected);
 
         if (clearRemoteCatalog && lobby.NetService.Type == NetGameType.Client)
             ClearRemoteCatalog();
@@ -137,10 +138,10 @@ public static class LoadoutHostSharingService
             if (lobby.NetService.Type != NetGameType.Host)
                 continue;
 
-            foreach (LobbyPlayer player in lobby.Players)
+            foreach (ulong playerId in Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby))
             {
-                if (player.id != lobby.NetService.NetId)
-                    SendCatalogToLobbyPlayer(lobby, player.id);
+                if (playerId != lobby.NetService.NetId)
+                    SendCatalogToLobbyPlayer(lobby, playerId);
             }
         }
 
