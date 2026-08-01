@@ -65,6 +65,7 @@ public static class BottledMonsterMorphService
     private static readonly FieldInfo? SpineAnimatorField = AccessTools.Field(typeof(NCreature), "_spineAnimator");
     private static readonly FieldInfo? TempScaleField = AccessTools.Field(typeof(NCreature), "_tempScale");
     private static readonly FieldInfo? ScaleTweenField = AccessTools.Field(typeof(NCreature), "_scaleTween");
+    private static readonly FieldInfo? FormVfxHolderField = AccessTools.Field(typeof(NCreatureVisuals), "_formVfxHolder");
     private static readonly MethodInfo? ConnectAnimatorSignalsMethod = AccessTools.Method(typeof(NCreature), "ConnectSpineAnimatorSignals");
     private static readonly MethodInfo? UpdateBoundsMethod = AccessTools.Method(typeof(NCreature), "UpdateBounds", [typeof(NCreatureVisuals)]);
     private static readonly MethodInfo? SetOrbManagerPositionMethod = AccessTools.Method(typeof(NCreature), "SetOrbManagerPosition");
@@ -1040,6 +1041,7 @@ public static class BottledMonsterMorphService
             float newIntrinsicDefaultScale = GetValidScale(newVisuals.DefaultScale, 1f);
 
             creatureNode.AddChild(newVisuals);
+            EnsurePlayerFormVfxHolder(creatureNode, newVisuals);
             creatureNode.MoveChild(newVisuals, Math.Max(0, oldIndex));
             newVisuals.Position = Vector2.Zero;
             newVisuals.Modulate = oldModulate;
@@ -1123,6 +1125,31 @@ public static class BottledMonsterMorphService
 
             GD.PushWarning($"BottledMonsterMorph: could not install '{visualModel.Id}' on player creature. {exception.Message}");
         }
+    }
+
+    private static void EnsurePlayerFormVfxHolder(NCreature creatureNode, NCreatureVisuals visuals)
+    {
+        if (creatureNode.Entity.Player is null || FormVfxHolderField is null)
+            return;
+
+        if (FormVfxHolderField.GetValue(visuals) is Control holder
+            && GodotObject.IsInstanceValid(holder))
+        {
+            return;
+        }
+
+        holder = visuals.GetNodeOrNull<Control>("%FormVfx")
+                 ?? visuals.GetNodeOrNull<Control>("FormVfx")
+                 ?? new Control
+                 {
+                     Name = "FormVfx",
+                     MouseFilter = Control.MouseFilterEnum.Ignore
+                 };
+
+        if (holder.GetParent() is null)
+            visuals.AddChild(holder);
+
+        FormVfxHolderField.SetValue(visuals, holder);
     }
 
     private static void TrackCombatScaleRuntime(NCreature creatureNode)
