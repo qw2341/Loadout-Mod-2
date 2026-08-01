@@ -309,18 +309,17 @@ public partial class NGenericSelectScreen : Control
         if (!IsVisibleInTree() || _scrollMask is null)
             return;
 
-        if (@event is not InputEventMouseButton { Pressed: true } mouseButton)
+        float drag = ScrollHelper.GetDragForScrollEvent(@event);
+        if (Mathf.IsZeroApprox(drag))
             return;
 
-        if (mouseButton.ButtonIndex != MouseButton.WheelUp && mouseButton.ButtonIndex != MouseButton.WheelDown)
+        Vector2 pointerPosition = @event is InputEventMouseButton mouseButton
+            ? mouseButton.GlobalPosition
+            : GetViewport().GetMousePosition();
+        if (!_scrollMask.GetGlobalRect().HasPoint(pointerPosition))
             return;
 
-        if (!_scrollMask.GetGlobalRect().HasPoint(mouseButton.GlobalPosition))
-            return;
-
-        float drag = ScrollHelper.GetDragForScrollEvent(@event) * ScrollSpeedMultiplier;
-        if (!Mathf.IsZeroApprox(drag))
-            SetTargetScroll(_targetScrollY - drag);
+        SetTargetScroll(_targetScrollY - drag * ScrollSpeedMultiplier);
 
         GetViewport().SetInputAsHandled();
     }
