@@ -120,6 +120,7 @@ public static class TildeKeyStateService
     private const int DefaultDrawPerTurn = 5;
     private const int DefaultHandSize = 10;
     private const int DefaultDamageMultiplier = 100;
+    private const string GoldStatId = "gold";
     private const string RelicCounterLockBadgeName = "LoadoutTildeRelicCounterLockBadge";
 
     private static readonly object SyncRoot = new();
@@ -152,7 +153,7 @@ public static class TildeKeyStateService
         new("current_hp", "Current HP", player => player.Creature.CurrentHp, SetCurrentHpDirect),
         new("max_hp", "Max HP", player => player.Creature.MaxHp, SetMaxHpDirect),
         new("block", "Block", player => player.Creature.Block, SetBlockDirect),
-        new("gold", "Gold", player => player.Gold, (player, value) => player.Gold = value),
+        new(GoldStatId, "Gold", player => player.Gold, (player, value) => player.Gold = value),
         new("max_energy", "Max Energy", player => player.MaxEnergy, (player, value) => player.MaxEnergy = value),
         new("combat_energy", "Combat Energy", player => player.PlayerCombatState?.Energy, (player, value) =>
         {
@@ -191,6 +192,12 @@ public static class TildeKeyStateService
 
     [ThreadStatic]
     private static int _lockReapplyDepth;
+
+    [ThreadStatic]
+    private static bool _isApplyingGoldStat;
+
+    [ThreadStatic]
+    private static ulong _applyingGoldPlayerNetId;
 
     public static event Action? StateChanged;
 
@@ -256,7 +263,30 @@ public static class TildeKeyStateService
     internal static void ReassertPlayerLocks(Player player)
     {
         if (_lockReapplyDepth > 0) return;
-        ReassertLocks(player, "gold", "max_energy", "base_orb_slots");
+        ReassertLocks(player, GoldStatId, "max_energy", "base_orb_slots");
+    }
+
+    internal static bool TryGetImmediateGoldDisplayValue(Player player, out int value)
+    {
+        if (_isApplyingGoldStat && _applyingGoldPlayerNetId == player.NetId)
+        {
+            value = player.Gold;
+            return true;
+        }
+
+        lock (SyncRoot)
+        {
+            if (GetPlayerStateLocked(player.NetId, create: false, out TildeKeyPlayerState? state)
+                && state?.Stats.TryGetValue(GoldStatId, out TildeKeySavedStat? saved) == true
+                && saved.Locked)
+            {
+                value = saved.Value;
+                return true;
+            }
+        }
+
+        value = 0;
+        return false;
     }
 
     internal static void ReassertCombatLocks(PlayerCombatState combatState)
@@ -366,7 +396,7 @@ public static class TildeKeyStateService
                         case "block":
                             creature = true;
                             break;
-                        case "gold":
+                        case GoldStatId:
                         case "max_energy":
                         case "base_orb_slots":
                             player = true;
@@ -1127,7 +1157,26 @@ public static class TildeKeyStateService
     {
         try
         {
-            definition.SetValue(player, value);
+            if (!string.Equals(definition.Id, GoldStatId, StringComparison.Ordinal))
+            {
+                definition.SetValue(player, value);
+                return;
+            }
+
+            bool previousApplyingGoldStat = _isApplyingGoldStat;
+            ulong previousApplyingGoldPlayerNetId = _applyingGoldPlayerNetId;
+            _isApplyingGoldStat = true;
+            _applyingGoldPlayerNetId = player.NetId;
+            try
+            {
+                definition.SetValue(player, value);
+                TildeKeyGoldDisplayPatch.SnapIfLocalPlayer(player);
+            }
+            finally
+            {
+                _isApplyingGoldStat = previousApplyingGoldStat;
+                _applyingGoldPlayerNetId = previousApplyingGoldPlayerNetId;
+            }
         }
         catch (Exception exception)
         {

@@ -16,6 +16,7 @@ using Loadout.Services.Actions;
 using Loadout.Services.Compatibility;
 using Loadout.Services.CreatureManipulation;
 using Loadout.Services.TildeKey;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -27,11 +28,13 @@ using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
+using MegaCrit.sts2.Core.Nodes.TopBar;
 
 /// <summary>
 /// BaseLib's max-hand-size helper walks the complete run deck and every combat
@@ -151,6 +154,50 @@ public static class TildeKeyPlayerLockBoundaryPatch
     }
 
     public static void Postfix(Player __instance) => TildeKeyStateService.ReassertPlayerLocks(__instance);
+}
+
+[HarmonyPatch(typeof(NTopBarGold), "UpdateGold")]
+public static class TildeKeyGoldDisplayPatch
+{
+    private static readonly AccessTools.FieldRef<NTopBarGold, Player?> PlayerField =
+        AccessTools.FieldRefAccess<NTopBarGold, Player?>("_player");
+    private static readonly AccessTools.FieldRef<NTopBarGold, MegaLabel> GoldLabelField =
+        AccessTools.FieldRefAccess<NTopBarGold, MegaLabel>("_goldLabel");
+    private static readonly AccessTools.FieldRef<NTopBarGold, int> CurrentGoldField =
+        AccessTools.FieldRefAccess<NTopBarGold, int>("_currentGold");
+    private static readonly AccessTools.FieldRef<NTopBarGold, int> AdditionalGoldField =
+        AccessTools.FieldRefAccess<NTopBarGold, int>("_additionalGold");
+
+    [HarmonyPrefix]
+    public static bool Prefix(NTopBarGold __instance)
+    {
+        Player? player = PlayerField(__instance);
+        if (player is null || !TildeKeyStateService.TryGetImmediateGoldDisplayValue(player, out int value))
+            return true;
+
+        Snap(__instance, value);
+        return false;
+    }
+
+    internal static void SnapIfLocalPlayer(Player player)
+    {
+        NTopBarGold? display = NRun.Instance?.GlobalUi?.TopBar?.Gold;
+        if (display is null
+            || !GodotObject.IsInstanceValid(display)
+            || PlayerField(display)?.NetId != player.NetId)
+        {
+            return;
+        }
+
+        Snap(display, player.Gold);
+    }
+
+    private static void Snap(NTopBarGold display, int value)
+    {
+        CurrentGoldField(display) = value;
+        AdditionalGoldField(display) = 0;
+        GoldLabelField(display).SetTextAutoSize($"{value}");
+    }
 }
 
 public static class TildeKeyCombatStatLockBoundaryPatch
