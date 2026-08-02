@@ -104,7 +104,10 @@ public class EventfulCompass
     private const string RoomJumpControlName = "EventfulCompassRoomJumpControls";
     private const string RoomJumpDropdownName = "EventfulCompassRoomDropdown";
     private const string RoomJumpButtonName = "EventfulCompassGoToButton";
+    private const string ActJumpDropdownName = "EventfulCompassActDropdown";
+    private const string ActJumpButtonName = "EventfulCompassGoToActButton";
     private static RoomType SelectedRoomType = RoomType.Treasure;
+    private static string SelectedActId = string.Empty;
     private static readonly Dictionary<Control, Tween> EventTileHoverTweens = new();
     private static readonly Dictionary<string, bool> EventPortraitLoadability = new(StringComparer.Ordinal);
 
@@ -117,7 +120,7 @@ public class EventfulCompass
 	    {
 		    Name = RoomJumpControlName,
 		    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-		    CustomMinimumSize = new Vector2(0f, 102f),
+		    CustomMinimumSize = new Vector2(0f, 212f),
 		    MouseFilter = Control.MouseFilterEnum.Ignore
 	    };
 	    controls.AddThemeConstantOverride("separation", 8);
@@ -148,6 +151,37 @@ public class EventfulCompass
 		    GetRoomJumpOptions(),
 		    SelectedRoomType.ToString());
 
+	    IReadOnlyList<ActModel> acts = GetActJumpModels();
+	    SelectedActId = ResolveSelectedActId(acts);
+
+	    NLoadoutDropdown actDropdown = new()
+	    {
+		    Name = ActJumpDropdownName,
+		    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		    CustomMinimumSize = new Vector2(256f, 52f),
+		    DropdownWidth = 286f,
+		    MaxVisibleItems = 8
+	    };
+	    actDropdown.SelectedItemChanged += OnActJumpDropdownChanged;
+	    controls.AddChild(actDropdown);
+
+	    NLoadoutActionButton goToActButton = new()
+	    {
+		    Name = ActJumpButtonName,
+		    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		    CustomMinimumSize = new Vector2(0f, 42f)
+	    };
+	    goToActButton.Init("go_to_act", LocMan.Loc("GO_TO_ROOM", "Go To"));
+	    goToActButton.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => HandleGoToActPressed()));
+	    controls.AddChild(goToActButton);
+
+	    actDropdown.SetItems(
+		    LocMan.Loc("FILTER_GROUP_ACT", "Act"),
+		    acts.Select(act => new LoadoutDropdownOption(
+			    act.Id.ToString(),
+			    $"{FormatActNumber(act.Index)}: {FormatActTitle(act)}")),
+		    SelectedActId);
+
 	    screen.AddCustomSidebarControl(controls);
     }
 
@@ -176,6 +210,66 @@ public class EventfulCompass
     {
 	    if (Enum.TryParse(selectedId, ignoreCase: true, out RoomType roomType) && roomType != RoomType.Unassigned)
 		    SelectedRoomType = roomType;
+    }
+
+    private static IReadOnlyList<ActModel> GetActJumpModels()
+    {
+	    return ModelDb.Acts
+		    .Where(act => act.Index >= 0)
+		    .GroupBy(act => act.Id.ToString(), StringComparer.Ordinal)
+		    .Select(group => group.First())
+		    .OrderBy(act => act.Index)
+		    .ThenBy(act => act.IsDefault ? 0 : 1)
+		    .ThenBy(FormatActTitle, StringComparer.Ordinal)
+		    .ThenBy(act => act.Id.ToString(), StringComparer.Ordinal)
+		    .ToList();
+    }
+
+    private static string ResolveSelectedActId(IReadOnlyList<ActModel> acts)
+    {
+	    ActModel selectedAct = acts.FirstOrDefault(act => act.Id.ToString() == SelectedActId);
+	    if (selectedAct is not null)
+		    return selectedAct.Id.ToString();
+
+	    Player localPlayer = CommonHelpers.GetLocalRunPlayer();
+	    string currentActId = localPlayer?.RunState?.Act?.Id.ToString() ?? string.Empty;
+	    selectedAct = acts.FirstOrDefault(act => act.Id.ToString() == currentActId)
+	                  ?? acts.FirstOrDefault();
+	    return selectedAct?.Id.ToString() ?? string.Empty;
+    }
+
+    private static void OnActJumpDropdownChanged(string selectedId)
+    {
+	    if (ResolveAct(selectedId) is not null)
+		    SelectedActId = selectedId;
+    }
+
+    private static void HandleGoToActPressed()
+    {
+	    ActModel act = ResolveAct(SelectedActId);
+	    Player localPlayer = CommonHelpers.GetLocalRunPlayer();
+	    if (act is null || localPlayer is null || !RunManager.Instance.IsInProgress)
+	    {
+		    GD.PushWarning($"LoadoutPanel: cannot go to act '{SelectedActId}' because no valid act or local run player was resolved.");
+		    return;
+	    }
+
+	    try
+	    {
+		    if (!LoadoutImmediateMutationService.RequestGoToAct(act.Id))
+			    GD.PushWarning($"LoadoutPanel: failed to request act jump to '{act.Id}'.");
+	    }
+	    catch (Exception exception)
+	    {
+		    GD.PushError($"LoadoutPanel: failed to request act jump to '{act.Id}': {exception}");
+	    }
+    }
+
+    private static ActModel ResolveAct(string actId)
+    {
+	    return ModelDb.Acts.FirstOrDefault(act =>
+		    act.Index >= 0
+		    && string.Equals(act.Id.ToString(), actId, StringComparison.Ordinal));
     }
 
     private static void HandleGoToRoomPressed()

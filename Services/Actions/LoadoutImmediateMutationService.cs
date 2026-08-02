@@ -366,6 +366,18 @@ public static class LoadoutImmediateMutationService
                && RequestNetworkedConsoleCommand($"room {roomType}");
     }
 
+    public static bool RequestGoToAct(ModelId actId)
+    {
+        if (LoadoutModelIdSafety.IsNoneOrEmpty(actId))
+            return false;
+
+        ActModel? act = ModelDb.Acts.FirstOrDefault(candidate =>
+            candidate.Index >= 0
+            && LoadoutModelIdSafety.Matches(candidate, actId));
+        return act is not null
+               && RequestNetworkedConsoleCommand($"act {act.Id.Entry}");
+    }
+
     private static bool RequestNetworkedConsoleCommand(string command)
     {
         Player? localPlayer = GetLocalRunPlayer();

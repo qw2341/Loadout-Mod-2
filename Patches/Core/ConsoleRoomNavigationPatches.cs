@@ -47,6 +47,21 @@ public static class RoomConsoleCmdProcessPatch
     }
 }
 
+[HarmonyPatch(typeof(ActConsoleCmd), nameof(ActConsoleCmd.Process))]
+public static class ActConsoleCmdProcessPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(string[] args)
+    {
+	    if (args.Length != 1 || !RunManager.Instance.IsInProgress)
+		    return;
+
+	    string actName = args[0].ToUpperInvariant();
+	    if (ModelDb.Acts.Any(act => act.Index >= 0 && act.Id.Entry == actName))
+		    ConsoleNavigationScreenCloser.CloseRunNavigationScreens();
+    }
+}
+
 public static class ConsoleNavigationScreenCloser
 {
     public static void CloseRunNavigationScreens()
