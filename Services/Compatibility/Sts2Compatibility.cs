@@ -357,8 +357,9 @@ internal static class Sts2Compatibility
             return true;
 
         CardPlay? cardPlay = GetAttackCommandCardPlay(command);
-        return cardPlay is not null
-               && ReferenceEquals(cardPlay.Card, source);
+        // Target-only mod helpers can omit CardPlay.
+        return cardPlay is null
+               || ReferenceEquals(cardPlay.Card, source);
     }
 
     internal static IEnumerable<Assembly> GetModAssemblies(Mod mod)
