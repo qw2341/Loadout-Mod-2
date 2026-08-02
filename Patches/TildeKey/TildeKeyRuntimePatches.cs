@@ -146,7 +146,7 @@ public static class TildeKeyPlayerLockBoundaryPatch
 {
     public static IEnumerable<MethodBase> TargetMethods()
     {
-        foreach (string name in new[] { nameof(Player.Gold), nameof(Player.MaxEnergy), nameof(Player.BaseOrbSlotCount) })
+        foreach (string name in new[] { nameof(Player.MaxEnergy), nameof(Player.BaseOrbSlotCount) })
         {
             MethodInfo? setter = AccessTools.PropertySetter(typeof(Player), name);
             if (setter is not null) yield return setter;
@@ -154,6 +154,14 @@ public static class TildeKeyPlayerLockBoundaryPatch
     }
 
     public static void Postfix(Player __instance) => TildeKeyStateService.ReassertPlayerLocks(__instance);
+}
+
+[HarmonyPatch(typeof(NRun), nameof(NRun._Process))]
+public static class TildeKeyGoldFrameLockPatch
+{
+    [HarmonyPrefix]
+    [HarmonyPriority(Priority.First)]
+    public static void Prefix() => TildeKeyStateService.ReassertLockedGoldEveryFrame();
 }
 
 [HarmonyPatch(typeof(NTopBarGold), "UpdateGold")]

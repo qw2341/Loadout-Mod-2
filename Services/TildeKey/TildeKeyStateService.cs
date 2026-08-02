@@ -263,7 +263,48 @@ public static class TildeKeyStateService
     internal static void ReassertPlayerLocks(Player player)
     {
         if (_lockReapplyDepth > 0) return;
-        ReassertLocks(player, GoldStatId, "max_energy", "base_orb_slots");
+        ReassertLocks(player, "max_energy", "base_orb_slots");
+    }
+
+    internal static void ReassertLockedGoldEveryFrame()
+    {
+        if (_lockReapplyDepth > 0)
+            return;
+
+        RunState? runState = GetCurrentRunStateOrNull();
+        if (runState is null)
+            return;
+
+        for (int index = 0; index < runState.Players.Count; index++)
+        {
+            Player player = runState.Players[index];
+            int lockedValue;
+            lock (SyncRoot)
+            {
+                if (!GetPlayerStateLocked(player.NetId, create: false, out TildeKeyPlayerState? state)
+                    || state is null
+                    || !state.Stats.TryGetValue(GoldStatId, out TildeKeySavedStat? saved)
+                    || saved is not { Locked: true })
+                {
+                    continue;
+                }
+
+                lockedValue = saved.Value;
+            }
+
+            if (player.Gold == lockedValue)
+                continue;
+
+            _lockReapplyDepth++;
+            try
+            {
+                ApplyStat(DefinitionById[GoldStatId], player, lockedValue);
+            }
+            finally
+            {
+                _lockReapplyDepth--;
+            }
+        }
     }
 
     internal static bool TryGetImmediateGoldDisplayValue(Player player, out int value)
@@ -397,6 +438,7 @@ public static class TildeKeyStateService
                             creature = true;
                             break;
                         case GoldStatId:
+                            break;
                         case "max_energy":
                         case "base_orb_slots":
                             player = true;
@@ -448,6 +490,13 @@ public static class TildeKeyStateService
     public static int GetDisplayValue(TildeKeyStatDefinition definition, LoadoutTargetSelection target)
     {
         Player? player = ResolveTargetPlayers(target).FirstOrDefault();
+        if (player is not null
+            && TryGetSavedStat(player.NetId, definition.Id, out TildeKeySavedStat? lockedSaved)
+            && lockedSaved is { Locked: true })
+        {
+            return lockedSaved.Value;
+        }
+
         if (player is not null && definition.GetValue(player) is { } currentValue)
             return currentValue;
 
