@@ -59,6 +59,7 @@ public partial class NLoadoutDropdown : NDropdown
     public int LabelMinFontSize { get; set; } = 18;
     public int LabelMaxFontSize { get; set; } = 28;
     public int ItemFontSize { get; set; } = 24;
+    public bool ExpandToAvailableWidth { get; set; } = true;
 
     public event Action<string>? SelectedItemChanged;
 
@@ -269,7 +270,7 @@ public partial class NLoadoutDropdown : NDropdown
         if (_items.Count == 0)
         {
             RefreshCurrentItemIcon(null);
-            RefreshCurrentItemColor(null);
+            RefreshCurrentItemColor();
             _currentOptionLabel.SetTextAutoSize(_labelPrefix);
             return;
         }
@@ -285,16 +286,16 @@ public partial class NLoadoutDropdown : NDropdown
             ? selectedItem.Label
             : $"{_labelPrefix}: {selectedItem.Label}";
         RefreshCurrentItemIcon(selectedItem.Icon);
-        RefreshCurrentItemColor(selectedItem.TextColor);
+        RefreshCurrentItemColor();
         _currentOptionLabel.SetTextAutoSize(label);
     }
 
-    private void RefreshCurrentItemColor(Color? textColor)
+    private void RefreshCurrentItemColor()
     {
         if (_currentOptionLabel is null)
             return;
 
-        _currentOptionLabel.AddThemeColorOverride("font_color", textColor ?? StsColors.gold);
+        _currentOptionLabel.AddThemeColorOverride("font_color", StsColors.gold);
     }
 
     private void RefreshCurrentItemIcon(Texture2D? icon)
@@ -529,7 +530,7 @@ public partial class NLoadoutDropdown : NDropdown
 
         float requestedWidth = CustomMinimumSize.X > 0f ? CustomMinimumSize.X : 256f;
         CustomMinimumSize = new Vector2(requestedWidth, ButtonHeight);
-        SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        SizeFlagsHorizontal = ExpandToAvailableWidth ? SizeFlags.ExpandFill : SizeFlags.ShrinkEnd;
         FocusMode = FocusModeEnum.All;
         MouseFilter = MouseFilterEnum.Stop;
 

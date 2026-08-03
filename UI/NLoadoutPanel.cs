@@ -88,6 +88,7 @@ public partial class NLoadoutPanel : Panel
 
 	public static NLoadoutPanel? Instance;
 	private static bool _configPreviewVisible;
+	public static bool ConfigPreviewVisible => _configPreviewVisible;
 
 	private bool _loadoutItemInitializationAttempted;
 	private bool _loadoutItemsAdded;
@@ -260,6 +261,7 @@ public partial class NLoadoutPanel : Panel
 
 		Instance.InitializePanelState();
 		Instance.SnapToTargetPosition();
+		Instance.VisibilityStateChanged?.Invoke();
 	}
 
 	private void SetPanelState(bool hidden, bool shown, bool notify = true)

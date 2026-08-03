@@ -36,6 +36,9 @@ public enum LoadoutPanelAnimation
 
 public sealed class LoadoutModConfig : SimpleModConfig
 {
+    private const float BaseLibDropdownWidth = 324f;
+    private const float BaseLibDropdownHeight = 64f;
+
     private static readonly PropertyInfo HoverTipTitleProperty =
         typeof(HoverTip).GetProperty(nameof(HoverTip.Title), BindingFlags.Instance | BindingFlags.Public)
         ?? throw new MissingMemberException(typeof(HoverTip).FullName, nameof(HoverTip.Title));
@@ -211,8 +214,12 @@ public sealed class LoadoutModConfig : SimpleModConfig
         NLoadoutDropdown dropdown = new()
         {
             Name = "CompanionDropdown",
-            DropdownWidth = 320f,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+            DropdownWidth = BaseLibDropdownWidth,
+            ButtonHeight = BaseLibDropdownHeight,
+            CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+            ExpandToAvailableWidth = false
         };
         dropdown.SetItems(string.Empty, options, Companion);
         dropdown.SelectedItemChanged += selectedId =>
@@ -220,7 +227,16 @@ public sealed class LoadoutModConfig : SimpleModConfig
             Companion = selectedId;
             Changed();
         };
-        return dropdown;
+        Control positioner = new()
+        {
+            CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight),
+            FocusMode = Control.FocusModeEnum.None,
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        positioner.AddChild(dropdown);
+        return positioner;
     }
 
     private static HoverTip CreateCompanionHoverTip(string title, string description, Texture2D? icon = null)

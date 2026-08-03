@@ -22,8 +22,8 @@ public partial class NLoadoutPanelButton : Button
 	private const double CompanionExitSeconds = 0.18;
 	private const double CompanionPressPeekSeconds = 1.35;
 	private static readonly Vector2 CompanionSize = new(56f, 64f);
-	private static readonly Vector2 CompanionHiddenPosition = new(-52f, 38f);
-	private static readonly Vector2 CompanionVisiblePosition = new(18f, 18f);
+	private static readonly Vector2 CompanionHiddenPosition = new(-52f, 30f);
+	private static readonly Vector2 CompanionVisiblePosition = new(16f, -38f);
 
 	private NLoadoutPanel _nLoadoutPanel = null!;
 	private TextureRect _tabImage = null!;
@@ -35,15 +35,18 @@ public partial class NLoadoutPanelButton : Button
 	private Tween? _companionHoldTween;
 	private float _rainbowPhase;
 	private bool _mouseInside;
+	private bool _panelHovered;
 	private bool _pressPeekActive;
 	private bool _signalsConnected;
 
 	public override void _Ready()
 	{
 		_nLoadoutPanel = GetParent<NLoadoutPanel>();
+
 		BuildVisuals();
 		_nLoadoutPanel.VisibilityStateChanged += RefreshState;
 		LoadoutPanelAccessService.AccessChanged += RefreshState;
+
 		LoadoutCompanionRegistry.ActiveCompanionChanged += OnActiveCompanionChanged;
 		LoadoutCompanionRegistry.PresentationRequested += OnCompanionPresentationRequested;
 		Pressed += OnPressed;
@@ -56,6 +59,7 @@ public partial class NLoadoutPanelButton : Button
 
 	public override void _ExitTree()
 	{
+		SetProcessInput(false);
 		ClearCompanionPresentation();
 
 		if (!_signalsConnected)
@@ -67,6 +71,7 @@ public partial class NLoadoutPanelButton : Button
 		Resized -= OnResized;
 		_nLoadoutPanel.VisibilityStateChanged -= RefreshState;
 		LoadoutPanelAccessService.AccessChanged -= RefreshState;
+
 		LoadoutCompanionRegistry.ActiveCompanionChanged -= OnActiveCompanionChanged;
 		LoadoutCompanionRegistry.PresentationRequested -= OnCompanionPresentationRequested;
 		_signalsConnected = false;
@@ -76,6 +81,24 @@ public partial class NLoadoutPanelButton : Button
 	{
 		_rainbowPhase = Mathf.PosMod(_rainbowPhase + (float)delta * RainbowSpeed * Mathf.Tau, Mathf.Tau);
 		UpdateRainbowColor(_rainbowPhase);
+	}
+
+	public override void _Input(InputEvent inputEvent)
+	{
+		if (inputEvent is not InputEventMouseMotion mouseMotion)
+			return;
+
+		bool panelHovered = !_nLoadoutPanel.Hidden
+		                    && _nLoadoutPanel.Shown
+		                    && _nLoadoutPanel.GetGlobalRect().HasPoint(mouseMotion.GlobalPosition);
+		if (panelHovered == _panelHovered)
+			return;
+
+		_panelHovered = panelHovered;
+		if (_panelHovered)
+			ShowCompanion();
+		else if (!_pressPeekActive && !_mouseInside)
+			HideCompanion();
 	}
 
 	private void BuildVisuals()
@@ -105,6 +128,8 @@ public partial class NLoadoutPanelButton : Button
 		_companionImage.Material = null;
 		_companionImage.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
 		_companionImage.Size = CompanionSize;
+		_companionImage.PivotOffset = CompanionSize * 0.5f;
+		_companionImage.Rotation = Mathf.Pi * 0.25f;
 		_companionImage.Position = CompanionHiddenPosition;
 		_companionImage.Modulate = Colors.Transparent;
 		_companionImage.Visible = false;
@@ -155,16 +180,17 @@ public partial class NLoadoutPanelButton : Button
 	private void OnMouseExited()
 	{
 		_mouseInside = false;
-		if (!_pressPeekActive)
+		if (!_pressPeekActive && !_panelHovered)
 			HideCompanion();
 	}
 
 	private void RefreshState()
 	{
-		bool hasAccess = LoadoutPanelAccessService.CanLocalPlayerUsePanel();
+		bool hasAccess = NLoadoutPanel.ConfigPreviewVisible || LoadoutPanelAccessService.CanLocalPlayerUsePanel();
 		Visible = hasAccess && !_nLoadoutPanel.Hidden;
 		Disabled = !Visible;
 		Modulate = Disabled ? new Color(1f, 1f, 1f, 0.55f) : Colors.White;
+		RefreshPanelHoverInput();
 		if (Disabled)
 			ClearCompanionPresentation();
 
@@ -188,11 +214,20 @@ public partial class NLoadoutPanelButton : Button
 			: LoadoutCompanionRegistry.GetTexture(_companion);
 
 		_companionImage.Texture = texture;
+		RefreshPanelHoverInput();
 		if (texture is null)
 			return;
 
-		if (_mouseInside && !Disabled && Visible)
+		if ((_mouseInside || _panelHovered) && !Disabled && Visible)
 			ShowCompanion();
+	}
+
+	private void RefreshPanelHoverInput()
+	{
+		SetProcessInput(_companion is not null
+		                && !Disabled
+		                && Visible
+		                && _nLoadoutPanel is { Hidden: false, Shown: true });
 	}
 
 	private void OnCompanionPresentationRequested(LoadoutCompanionPresentationRequest request)
@@ -222,7 +257,7 @@ public partial class NLoadoutPanelButton : Button
 		{
 			_pressPeekActive = false;
 			_companionHoldTween = null;
-			if (!_mouseInside)
+			if (!_mouseInside && !_panelHovered)
 				HideCompanion();
 		}));
 	}
@@ -294,6 +329,7 @@ public partial class NLoadoutPanelButton : Button
 	private void ClearCompanionPresentation()
 	{
 		_mouseInside = false;
+		_panelHovered = false;
 		_pressPeekActive = false;
 		KillTween(ref _companionMotionTween);
 		KillTween(ref _companionHoldTween);
