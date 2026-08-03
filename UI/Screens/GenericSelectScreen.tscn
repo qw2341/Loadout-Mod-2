@@ -1,8 +1,6 @@
-[gd_scene load_steps=10 format=3 uid="uid://cjjun3absrcb7"]
+[gd_scene load_steps=8 format=3 uid="uid://cjjun3absrcb7"]
 
 [ext_resource type="Script" path="res://UI/Screens/NGenericSelectScreen.cs" id="1_generic"]
-[ext_resource type="FontVariation" path="res://Loadout/themes/default/kreon_bold_glyph_space_one.tres" id="2_bold"]
-[ext_resource type="FontVariation" path="res://Loadout/themes/default/kreon_regular_shared.tres" id="3_regular"]
 [ext_resource type="Script" path="res://src/Core/Nodes/CommonUi/NSearchBar.cs" id="4_searchbar"]
 [ext_resource type="Script" path="res://src/Core/Nodes/GodotExtensions/NMegaLineEdit.cs" id="5_lineedit"]
 [ext_resource type="Script" path="res://src/Core/Nodes/Screens/CardLibrary/NClearSearchButton.cs" id="6_clear"]
@@ -142,7 +140,6 @@ custom_minimum_size = Vector2(0, 34)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 25
-theme_override_fonts/font = ExtResource("2_bold")
 text = "Select"
 vertical_alignment = 1
 
@@ -160,7 +157,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_fonts/font = ExtResource("3_regular")
 theme_override_font_sizes/font_size = 24
 placeholder_text = "Search"
 script = ExtResource("5_lineedit")
@@ -206,7 +202,6 @@ custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 16
-theme_override_fonts/font = ExtResource("2_bold")
 text = "Sort"
 vertical_alignment = 1
 
@@ -221,7 +216,6 @@ custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 16
-theme_override_fonts/font = ExtResource("2_bold")
 text = "Filters"
 vertical_alignment = 1
 
@@ -242,7 +236,6 @@ custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 17
-theme_override_fonts/font = ExtResource("2_bold")
 text = "Selected: 0"
 vertical_alignment = 1
 

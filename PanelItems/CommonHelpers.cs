@@ -1011,10 +1011,6 @@ public class CommonHelpers
 
     public static Font LoadGameFont()
     {
-        const string localPath = "res://Loadout/themes/default/kreon_bold_glyph_space_one.tres";
-        if (ResourceLoader.Exists(localPath))
-            return GD.Load<Font>(localPath);
-
         return GD.Load<Font>("res://themes/kreon_bold_glyph_space_one.tres");
     }
 

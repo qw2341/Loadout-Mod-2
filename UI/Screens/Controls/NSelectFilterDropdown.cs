@@ -640,10 +640,6 @@ public partial class NLoadoutDropdown : NDropdown
 
     private static Font? LoadFont(string path)
     {
-        string localPath = path.Replace("res://themes/", "res://Loadout/themes/default/");
-        if (ResourceLoader.Exists(localPath))
-            return GD.Load<Font>(localPath);
-
         return ResourceLoader.Exists(path) ? GD.Load<Font>(path) : null;
     }
 

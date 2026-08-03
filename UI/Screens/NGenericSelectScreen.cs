@@ -1713,6 +1713,8 @@ public partial class NGenericSelectScreen : Control
         _cancelClickable = GetNodeOrNull<NClickableControl>(CancelButtonPath);
         _selectedCountLabel = GetNodeOrNull<Control>(SelectedCountLabelPath);
 
+        ApplySceneFonts();
+
         if (_searchLineEdit is null)
             GD.PushWarning($"{nameof(NGenericSelectScreen)}: missing search line edit at '{SearchLineEditPath}'. Search will be disabled.");
 
@@ -1723,6 +1725,20 @@ public partial class NGenericSelectScreen : Control
             GD.PushError($"{nameof(NGenericSelectScreen)}: missing item grid at '{ItemGridPath}'. The select screen cannot render items.");
 
         ApplyLocalizedSceneText();
+    }
+
+    private void ApplySceneFonts()
+    {
+        if (LoadGameFont("res://themes/kreon_bold_glyph_space_one.tres") is { } boldFont)
+        {
+            GetNodeOrNull<Control>("Sidebar/MarginContainer/TopVBox/TitleLabel")?.AddThemeFontOverride("font", boldFont);
+            GetNodeOrNull<Control>("Sidebar/MarginContainer/TopVBox/SortLabel")?.AddThemeFontOverride("font", boldFont);
+            GetNodeOrNull<Control>("Sidebar/MarginContainer/TopVBox/FilterLabel")?.AddThemeFontOverride("font", boldFont);
+            _selectedCountLabel?.AddThemeFontOverride("font", boldFont);
+        }
+
+        if (LoadGameFont("res://themes/kreon_regular_shared.tres") is { } regularFont)
+            _searchLineEdit?.AddThemeFontOverride("font", regularFont);
     }
 
     private void ApplyLocalizedSceneText()
@@ -4507,10 +4523,6 @@ public partial class NGenericSelectScreen : Control
 
     private static Font? LoadGameFont(string path)
     {
-        string localPath = path.Replace("res://themes/", "res://Loadout/themes/default/");
-        if (ResourceLoader.Exists(localPath))
-            return GD.Load<Font>(localPath);
-
         return ResourceLoader.Exists(path) ? GD.Load<Font>(path) : null;
     }
 
