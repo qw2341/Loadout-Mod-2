@@ -4,6 +4,7 @@ namespace Loadout.Services.Configuration;
 
 using System;
 using Godot;
+using Loadout.Companions;
 using Loadout.UI;
 using Loadout.UI.Managers;
 
@@ -51,6 +52,12 @@ public static class LoadoutConfigService
     {
         get => LoadoutPanelItemAnimationManager.ActiveAnimationId;
         set => LoadoutPanelItemAnimationManager.SetActiveAnimation(value);
+    }
+
+    public static string ActiveCompanionId
+    {
+        get => LoadoutCompanionRegistry.ActiveCompanionId;
+        set => LoadoutCompanionRegistry.SetActiveCompanion(value);
     }
 
     public static void SetConfigPanelPreviewVisible(bool visible)

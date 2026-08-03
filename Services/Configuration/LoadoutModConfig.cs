@@ -3,14 +3,21 @@
 namespace Loadout.Config;
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using BaseLib.Config;
 using BaseLib.Config.UI;
 using Godot;
+using Loadout.Companions;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.Configuration;
 using Loadout.Services.RelicModification;
+using Loadout.UI.Screens.Controls;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Runs;
 
 public enum LoadoutSkin
 {
@@ -29,6 +36,10 @@ public enum LoadoutPanelAnimation
 
 public sealed class LoadoutModConfig : SimpleModConfig
 {
+    private static readonly PropertyInfo HoverTipTitleProperty =
+        typeof(HoverTip).GetProperty(nameof(HoverTip.Title), BindingFlags.Instance | BindingFlags.Public)
+        ?? throw new MissingMemberException(typeof(HoverTip).FullName, nameof(HoverTip.Title));
+
     public static bool EnableDeckLoadoutScreen
     {
         get => LoadoutConfigService.EnableDeckLoadoutScreen;
@@ -71,6 +82,12 @@ public sealed class LoadoutModConfig : SimpleModConfig
             : "yellow_glow_pulse";
     }
 
+    public static string Companion
+    {
+        get => LoadoutConfigService.ActiveCompanionId;
+        set => LoadoutConfigService.ActiveCompanionId = value;
+    }
+
     public override void SetupConfigUI(Control optionContainer)
     {
         AddPreviewLifetime(optionContainer);
@@ -80,6 +97,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         AddOptionRow(optionContainer, nameof(EnableCreatureManipulationPanel), CreateRawTickboxControl);
         AddOptionRow(optionContainer, nameof(PanelSkin), CreateRawDropdownControl);
         AddOptionRow(optionContainer, nameof(PanelAnimation), CreateRawDropdownControl);
+        AddOptionRow(optionContainer, nameof(Companion), CreateCompanionDropdownControl);
 
         optionContainer.AddChild(CreateSectionHeader(GetLabelText("CardModificationsSection")));
         var resetStatus = CreateRawLabelControl(GetLabelText("ResetStatusReady"), 22);
@@ -156,6 +174,61 @@ public sealed class LoadoutModConfig : SimpleModConfig
         Control control = controlFactory(property);
         Control label = CreateRawLabelControl(GetLabelText(propertyName), 28);
         optionContainer.AddChild(new NConfigOptionRow(ModPrefix, propertyName, label, control));
+    }
+
+    private Control CreateCompanionDropdownControl(PropertyInfo _)
+    {
+        LoadoutCompanionRegistry.Initialize();
+        HoverTip noneHoverTip = CreateCompanionHoverTip(
+            GetLabelText("CompanionNoneName"),
+            GetLabelText("CompanionNoneDescription"));
+
+        List<LoadoutDropdownOption> options =
+        [
+            new LoadoutDropdownOption(
+                LoadoutCompanionRegistry.NoneId,
+                GetLabelText("CompanionNoneName"),
+                () => [noneHoverTip],
+                TextColor: StsColors.cream)
+        ];
+
+        foreach (LoadoutCompanion companion in LoadoutCompanionRegistry.Companions)
+        {
+            string name = GetLabelText(companion.NameLocalizationKey);
+            string description = GetLabelText(companion.TooltipLocalizationKey);
+            Texture2D? icon = LoadoutCompanionRegistry.GetTexture(companion);
+            Color textColor = companion.SelectionColor ?? StsColors.cream;
+            HoverTip hoverTip = CreateCompanionHoverTip(name, description, icon);
+
+            options.Add(new LoadoutDropdownOption(
+                companion.CompanionId,
+                name,
+                () => [hoverTip],
+                icon,
+                textColor));
+        }
+
+        NLoadoutDropdown dropdown = new()
+        {
+            Name = "CompanionDropdown",
+            DropdownWidth = 320f,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        dropdown.SetItems(string.Empty, options, Companion);
+        dropdown.SelectedItemChanged += selectedId =>
+        {
+            Companion = selectedId;
+            Changed();
+        };
+        return dropdown;
+    }
+
+    private static HoverTip CreateCompanionHoverTip(string title, string description, Texture2D? icon = null)
+    {
+        HoverTip hoverTip = new(new LocString("static_hover_tips", "SETTINGS.title"), description, icon);
+        object boxedHoverTip = hoverTip;
+        HoverTipTitleProperty.SetValue(boxedHoverTip, title);
+        return (HoverTip)boxedHoverTip;
     }
 
     private static void AddPreviewLifetime(Control optionContainer)

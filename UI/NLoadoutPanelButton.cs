@@ -1,8 +1,13 @@
+#nullable enable
+
 using Godot;
+using Loadout.Companions;
 using Loadout.UI.Managers;
 using Loadout.Services.Loadouts;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 
 namespace Loadout.UI;
 
@@ -13,11 +18,24 @@ public partial class NLoadoutPanelButton : Button
 	private const string TabTextureFileName = "SidePanelTab.png";
 	private const string ArrowTextureFileName = "SidePanelArrow.png";
 	private const float RainbowSpeed = 0.12f;
+	private const double CompanionEnterSeconds = 0.28;
+	private const double CompanionExitSeconds = 0.18;
+	private const double CompanionPressPeekSeconds = 1.35;
+	private static readonly Vector2 CompanionSize = new(56f, 64f);
+	private static readonly Vector2 CompanionHiddenPosition = new(-52f, 38f);
+	private static readonly Vector2 CompanionVisiblePosition = new(18f, 18f);
 
-	private NLoadoutPanel _nLoadoutPanel;
-	private TextureRect _tabImage;
-	private TextureRect _arrowImage;
+	private NLoadoutPanel _nLoadoutPanel = null!;
+	private TextureRect _tabImage = null!;
+	private TextureRect _arrowImage = null!;
+	private TextureRect _companionImage = null!;
+	private LoadoutCompanion? _companion;
+	private NSpeechBubbleVfx? _speechBubble;
+	private Tween? _companionMotionTween;
+	private Tween? _companionHoldTween;
 	private float _rainbowPhase;
+	private bool _mouseInside;
+	private bool _pressPeekActive;
 	private bool _signalsConnected;
 
 	public override void _Ready()
@@ -26,8 +44,11 @@ public partial class NLoadoutPanelButton : Button
 		BuildVisuals();
 		_nLoadoutPanel.VisibilityStateChanged += RefreshState;
 		LoadoutPanelAccessService.AccessChanged += RefreshState;
+		LoadoutCompanionRegistry.ActiveCompanionChanged += OnActiveCompanionChanged;
+		LoadoutCompanionRegistry.PresentationRequested += OnCompanionPresentationRequested;
 		Pressed += OnPressed;
 		MouseEntered += OnMouseEntered;
+		MouseExited += OnMouseExited;
 		Resized += OnResized;
 		_signalsConnected = true;
 		RefreshState();
@@ -35,14 +56,19 @@ public partial class NLoadoutPanelButton : Button
 
 	public override void _ExitTree()
 	{
+		ClearCompanionPresentation();
+
 		if (!_signalsConnected)
 			return;
 
 		Pressed -= OnPressed;
 		MouseEntered -= OnMouseEntered;
+		MouseExited -= OnMouseExited;
 		Resized -= OnResized;
 		_nLoadoutPanel.VisibilityStateChanged -= RefreshState;
 		LoadoutPanelAccessService.AccessChanged -= RefreshState;
+		LoadoutCompanionRegistry.ActiveCompanionChanged -= OnActiveCompanionChanged;
+		LoadoutCompanionRegistry.PresentationRequested -= OnCompanionPresentationRequested;
 		_signalsConnected = false;
 	}
 
@@ -66,14 +92,23 @@ public partial class NLoadoutPanelButton : Button
 		AddThemeStyleboxOverride("focus", EmptyStyle);
 		AddThemeStyleboxOverride("disabled", EmptyStyle);
 
+		_companionImage = GetNodeOrNull<TextureRect>("CompanionImage") ?? CreateTextureRect("CompanionImage", false);
 		_tabImage = GetNodeOrNull<TextureRect>("TabImage") ?? CreateTextureRect("TabImage", true);
 		_arrowImage = GetNodeOrNull<TextureRect>("ArrowImage") ?? CreateTextureRect("ArrowImage", false);
+		MoveChild(_companionImage, 0);
 
 		_tabImage.Texture = LoadPanelTexture(TabTextureFileName);
 		_tabImage.StretchMode = TextureRect.StretchModeEnum.Scale;
 		_arrowImage.Texture = LoadPanelTexture(ArrowTextureFileName);
 		_tabImage.Material = null;
 		_arrowImage.Material = null;
+		_companionImage.Material = null;
+		_companionImage.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
+		_companionImage.Size = CompanionSize;
+		_companionImage.Position = CompanionHiddenPosition;
+		_companionImage.Modulate = Colors.Transparent;
+		_companionImage.Visible = false;
+		RefreshCompanion();
 		OnResized();
 	}
 
@@ -104,12 +139,24 @@ public partial class NLoadoutPanelButton : Button
 
 		_nLoadoutPanel.ToggleShown();
 		RefreshState();
+		BeginTimedCompanionPeek(CompanionPressPeekSeconds);
 	}
 
 	private void OnMouseEntered()
 	{
+		_mouseInside = true;
 		if (!Disabled)
+		{
 			SfxCmd.Play(FmodSfx.uiHover);
+			ShowCompanion();
+		}
+	}
+
+	private void OnMouseExited()
+	{
+		_mouseInside = false;
+		if (!_pressPeekActive)
+			HideCompanion();
 	}
 
 	private void RefreshState()
@@ -118,11 +165,162 @@ public partial class NLoadoutPanelButton : Button
 		Visible = hasAccess && !_nLoadoutPanel.Hidden;
 		Disabled = !Visible;
 		Modulate = Disabled ? new Color(1f, 1f, 1f, 0.55f) : Colors.White;
+		if (Disabled)
+			ClearCompanionPresentation();
 
 		if (_arrowImage is null || !IsInstanceValid(_arrowImage))
 			return;
 
 		_arrowImage.Rotation = _nLoadoutPanel.Shown ? Mathf.Pi : 0f;
+	}
+
+	private void OnActiveCompanionChanged(string _)
+	{
+		RefreshCompanion();
+	}
+
+	private void RefreshCompanion()
+	{
+		ClearCompanionPresentation();
+		_companion = LoadoutCompanionRegistry.GetActiveCompanion();
+		Texture2D? texture = _companion is null
+			? null
+			: LoadoutCompanionRegistry.GetTexture(_companion);
+
+		_companionImage.Texture = texture;
+		if (texture is null)
+			return;
+
+		if (_mouseInside && !Disabled && Visible)
+			ShowCompanion();
+	}
+
+	private void OnCompanionPresentationRequested(LoadoutCompanionPresentationRequest request)
+	{
+		if (_companion is null
+		    || !string.Equals(_companion.CompanionId, request.Companion.CompanionId, System.StringComparison.OrdinalIgnoreCase))
+		{
+			return;
+		}
+
+		BeginTimedCompanionPeek(request.Seconds);
+		if (!string.IsNullOrWhiteSpace(request.Text))
+			ShowCompanionSpeech(request.Text, request.Seconds);
+	}
+
+	private void BeginTimedCompanionPeek(double seconds)
+	{
+		if (_companion is null || Disabled || !Visible)
+			return;
+
+		ShowCompanion();
+		_pressPeekActive = true;
+		KillTween(ref _companionHoldTween);
+		_companionHoldTween = CreateTween();
+		_companionHoldTween.TweenInterval(System.Math.Max(0.1, seconds));
+		_companionHoldTween.TweenCallback(Callable.From(() =>
+		{
+			_pressPeekActive = false;
+			_companionHoldTween = null;
+			if (!_mouseInside)
+				HideCompanion();
+		}));
+	}
+
+	private void ShowCompanion()
+	{
+		if (_companion is null || _companionImage.Texture is null || Disabled || !Visible)
+			return;
+
+		KillTween(ref _companionMotionTween);
+		_companionImage.Visible = true;
+		_companionMotionTween = CreateTween();
+		_companionMotionTween.TweenProperty(
+			_companionImage,
+			"position",
+			CompanionVisiblePosition,
+			CompanionEnterSeconds)
+			.SetTrans(Tween.TransitionType.Back)
+			.SetEase(Tween.EaseType.Out);
+		_companionMotionTween.Parallel().TweenProperty(
+			_companionImage,
+			"modulate",
+			Colors.White,
+			CompanionEnterSeconds * 0.6);
+	}
+
+	private void HideCompanion()
+	{
+		if (_companionImage.Texture is null || !_companionImage.Visible)
+			return;
+
+		KillTween(ref _companionMotionTween);
+		_companionMotionTween = CreateTween();
+		_companionMotionTween.TweenProperty(
+			_companionImage,
+			"position",
+			CompanionHiddenPosition,
+			CompanionExitSeconds)
+			.SetTrans(Tween.TransitionType.Quad)
+			.SetEase(Tween.EaseType.In);
+		_companionMotionTween.Parallel().TweenProperty(
+			_companionImage,
+			"modulate",
+			Colors.Transparent,
+			CompanionExitSeconds);
+		_companionMotionTween.TweenCallback(Callable.From(() =>
+		{
+			_companionImage.Visible = false;
+			_companionMotionTween = null;
+		}));
+	}
+
+	private void ShowCompanionSpeech(string text, double seconds)
+	{
+		ClearCompanionSpeech();
+		Vector2 speechPosition = GlobalPosition + CompanionVisiblePosition + new Vector2(CompanionSize.X, 4f);
+		_speechBubble = NSpeechBubbleVfx.Create(
+			text,
+			DialogueSide.Left,
+			speechPosition,
+			seconds,
+			VfxColor.Blue);
+		if (_speechBubble is null)
+			return;
+
+		NLoadoutPanelRoot.Instance?.AddChild(_speechBubble);
+	}
+
+	private void ClearCompanionPresentation()
+	{
+		_mouseInside = false;
+		_pressPeekActive = false;
+		KillTween(ref _companionMotionTween);
+		KillTween(ref _companionHoldTween);
+		ClearCompanionSpeech();
+
+		if (_companionImage is null || !IsInstanceValid(_companionImage))
+			return;
+
+		_companionImage.Position = CompanionHiddenPosition;
+		_companionImage.Modulate = Colors.Transparent;
+		_companionImage.Visible = false;
+	}
+
+	private void ClearCompanionSpeech()
+	{
+		if (_speechBubble is not null && IsInstanceValid(_speechBubble))
+			_speechBubble.QueueFree();
+
+		_speechBubble = null;
+	}
+
+	private static void KillTween(ref Tween? tween)
+	{
+		if (tween is not null && IsInstanceValid(tween))
+			tween.Kill();
+
+		tween = null;
 	}
 
 	private void OnResized()

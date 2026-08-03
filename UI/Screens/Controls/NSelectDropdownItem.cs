@@ -24,21 +24,24 @@ public partial class NSelectDropdownItem : NDropdownItem
 
     private string _pendingLabel = "DropdownItem";
     private Texture2D? _pendingIcon;
+    private Color? _pendingTextColor;
     private ColorRect? _highlight;
     private TextureRect? _icon;
     private Func<IReadOnlyList<IHoverTip>>? _hoverTipsFactory;
     private bool _hoverTipsVisible;
 
-    public void Init(string optionId, string label, Texture2D? icon = null)
+    public void Init(string optionId, string label, Texture2D? icon = null, Color? textColor = null)
     {
         OptionId = optionId;
         _pendingLabel = label;
         _pendingIcon = icon;
+        _pendingTextColor = textColor;
 
         if (IsNodeReady())
         {
             Text = label;
             RefreshIconLayout();
+            ApplyTextColor();
         }
     }
 
@@ -60,6 +63,7 @@ public partial class NSelectDropdownItem : NDropdownItem
         ApplyFontSize();
         Text = _pendingLabel;
         RefreshIconLayout();
+        ApplyTextColor();
     }
 
     public override void _ExitTree()
@@ -144,6 +148,13 @@ public partial class NSelectDropdownItem : NDropdownItem
     private void ApplyFontSize()
     {
         GetNodeOrNull<MegaLabel>("Label")?.AddThemeFontSizeOverride("font_size", FontSize);
+    }
+
+    private void ApplyTextColor()
+    {
+        GetNodeOrNull<MegaLabel>("Label")?.AddThemeColorOverride(
+            "font_color",
+            _pendingTextColor ?? StsColors.cream);
     }
 
     private void RefreshIconLayout()

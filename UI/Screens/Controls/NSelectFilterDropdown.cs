@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,7 +20,8 @@ public readonly record struct LoadoutDropdownOption(
     string Id,
     string Label,
     Func<IReadOnlyList<IHoverTip>>? HoverTipsFactory = null,
-    Texture2D? Icon = null);
+    Texture2D? Icon = null,
+    Color? TextColor = null);
 
 public partial class NLoadoutDropdown : NDropdown
 {
@@ -46,6 +48,7 @@ public partial class NLoadoutDropdown : NDropdown
     private ulong _pendingFallbackReleaseFrame;
     private ulong _lastToggleFrame;
     private bool _isButtonHovered;
+    private bool _currentHoverTipsVisible;
     private bool _signalsConnected;
 
     public float DropdownWidth { get; set; } = DefaultDropdownWidth;
@@ -72,8 +75,8 @@ public partial class NLoadoutDropdown : NDropdown
         _dismisser.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(OnDismisserReleased));
         MouseEntered += OnButtonHoverStart;
         MouseExited += OnButtonHoverEnd;
-        FocusEntered += RefreshButtonHighlight;
-        FocusExited += RefreshButtonHighlight;
+        FocusEntered += OnButtonFocusStart;
+        FocusExited += OnButtonFocusEnd;
         _signalsConnected = true;
         _isReady = true;
         ApplyItems();
@@ -89,8 +92,8 @@ public partial class NLoadoutDropdown : NDropdown
         {
             MouseEntered -= OnButtonHoverStart;
             MouseExited -= OnButtonHoverEnd;
-            FocusEntered -= RefreshButtonHighlight;
-            FocusExited -= RefreshButtonHighlight;
+            FocusEntered -= OnButtonFocusStart;
+            FocusExited -= OnButtonFocusEnd;
 
             if (_container is not null)
                 _container.GuiInput -= OnContainerGuiInput;
@@ -102,6 +105,7 @@ public partial class NLoadoutDropdown : NDropdown
         }
 
         _itemIdsByNode.Clear();
+        ClearCurrentHoverTips();
         _dropdownOriginalParent = null;
         _dropdownContainer = null;
         _buttonHoverHighlight = null;
@@ -146,6 +150,7 @@ public partial class NLoadoutDropdown : NDropdown
 
     public void SetItems(string labelPrefix, IEnumerable<LoadoutDropdownOption> items, string selectedItemId)
     {
+        ClearCurrentHoverTips();
         _labelPrefix = labelPrefix;
         _selectedItemId = selectedItemId;
         _items.Clear();
@@ -157,6 +162,7 @@ public partial class NLoadoutDropdown : NDropdown
 
     public void SetSelectedItem(string selectedItemId)
     {
+        ClearCurrentHoverTips();
         _selectedItemId = selectedItemId;
 
         if (_isReady)
@@ -231,7 +237,7 @@ public partial class NLoadoutDropdown : NDropdown
                 MouseFilter = MouseFilterEnum.Stop
             };
             item.FontSize = ItemFontSize;
-            item.Init(option.Id, option.Label, option.Icon);
+            item.Init(option.Id, option.Label, option.Icon, option.TextColor);
             item.SetHoverTipsFactory(option.HoverTipsFactory);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(OnDropdownItemSelected));
             _dropdownItems.AddChild(item);
@@ -263,6 +269,7 @@ public partial class NLoadoutDropdown : NDropdown
         if (_items.Count == 0)
         {
             RefreshCurrentItemIcon(null);
+            RefreshCurrentItemColor(null);
             _currentOptionLabel.SetTextAutoSize(_labelPrefix);
             return;
         }
@@ -278,7 +285,16 @@ public partial class NLoadoutDropdown : NDropdown
             ? selectedItem.Label
             : $"{_labelPrefix}: {selectedItem.Label}";
         RefreshCurrentItemIcon(selectedItem.Icon);
+        RefreshCurrentItemColor(selectedItem.TextColor);
         _currentOptionLabel.SetTextAutoSize(label);
+    }
+
+    private void RefreshCurrentItemColor(Color? textColor)
+    {
+        if (_currentOptionLabel is null)
+            return;
+
+        _currentOptionLabel.AddThemeColorOverride("font_color", textColor ?? StsColors.gold);
     }
 
     private void RefreshCurrentItemIcon(Texture2D? icon)
@@ -298,6 +314,7 @@ public partial class NLoadoutDropdown : NDropdown
         if (_dropdownContainer is null)
             return;
 
+        ClearCurrentHoverTips();
         _isOpen = true;
         RefreshButtonHighlight();
         if (UseFullScreenDismisser)
@@ -375,12 +392,69 @@ public partial class NLoadoutDropdown : NDropdown
 
         _isButtonHovered = true;
         RefreshButtonHighlight();
+        ShowCurrentHoverTips();
     }
 
     private void OnButtonHoverEnd()
     {
         _isButtonHovered = false;
         RefreshButtonHighlight();
+        if (!HasFocus())
+            ClearCurrentHoverTips();
+    }
+
+    private void OnButtonFocusStart()
+    {
+        RefreshButtonHighlight();
+        ShowCurrentHoverTips();
+    }
+
+    private void OnButtonFocusEnd()
+    {
+        RefreshButtonHighlight();
+        if (!_isButtonHovered)
+            ClearCurrentHoverTips();
+    }
+
+    private void ShowCurrentHoverTips()
+    {
+        if (_currentHoverTipsVisible || _isOpen || !IsEnabled)
+            return;
+
+        LoadoutDropdownOption selectedItem = _items.FirstOrDefault(item => item.Id == _selectedItemId);
+        if (selectedItem.HoverTipsFactory is null)
+            return;
+
+        try
+        {
+            List<IHoverTip> tips = selectedItem.HoverTipsFactory()
+                .Where(tip => tip is not null)
+                .ToList();
+            if (tips.Count == 0)
+                return;
+
+            NHoverTipSet.Remove(this);
+            NHoverTipSet? tipSet = NHoverTipSet.CreateAndShow(
+                this,
+                IHoverTip.RemoveDupes(tips),
+                HoverTip.GetHoverTipAlignment(this));
+            if (tipSet is null)
+                return;
+
+            tipSet.SetFollowOwner();
+            NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+            _currentHoverTipsVisible = true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Dropdown selection '{_selectedItemId}' hover tip failed. {exception.Message}");
+        }
+    }
+
+    private void ClearCurrentHoverTips()
+    {
+        NHoverTipSet.Remove(this);
+        _currentHoverTipsVisible = false;
     }
 
     private void RefreshButtonHighlight()
