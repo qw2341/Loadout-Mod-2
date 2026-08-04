@@ -20,10 +20,9 @@ public partial class NLoadoutPanelButton : Button
 	private const float RainbowSpeed = 0.12f;
 	private const double CompanionEnterSeconds = 0.28;
 	private const double CompanionExitSeconds = 0.18;
-	private const double CompanionPressPeekSeconds = 1.35;
-	private static readonly Vector2 CompanionSize = new(56f, 64f);
-	private static readonly Vector2 CompanionHiddenPosition = new(-52f, 30f);
-	private static readonly Vector2 CompanionVisiblePosition = new(16f, -38f);
+	private static readonly Vector2 CompanionSize = new(48f, 56f);
+	private static readonly Vector2 CompanionHiddenPosition = new(-44f, 32f);
+	private static readonly Vector2 CompanionVisiblePosition = new(10f, -10f);
 
 	private NLoadoutPanel _nLoadoutPanel = null!;
 	private TextureRect _tabImage = null!;
@@ -164,7 +163,6 @@ public partial class NLoadoutPanelButton : Button
 
 		_nLoadoutPanel.ToggleShown();
 		RefreshState();
-		BeginTimedCompanionPeek(CompanionPressPeekSeconds);
 	}
 
 	private void OnMouseEntered()
@@ -193,6 +191,13 @@ public partial class NLoadoutPanelButton : Button
 		RefreshPanelHoverInput();
 		if (Disabled)
 			ClearCompanionPresentation();
+		else if (!_nLoadoutPanel.Shown)
+		{
+			_pressPeekActive = false;
+			KillTween(ref _companionHoldTween);
+			ClearCompanionSpeech();
+			HideCompanion();
+		}
 
 		if (_arrowImage is null || !IsInstanceValid(_arrowImage))
 			return;
@@ -224,10 +229,14 @@ public partial class NLoadoutPanelButton : Button
 
 	private void RefreshPanelHoverInput()
 	{
-		SetProcessInput(_companion is not null
-		                && !Disabled
-		                && Visible
-		                && _nLoadoutPanel is { Hidden: false, Shown: true });
+		bool trackPanelHover = _companion is not null
+		                       && !Disabled
+		                       && Visible
+		                       && _nLoadoutPanel is { Hidden: false, Shown: true };
+		if (!trackPanelHover)
+			_panelHovered = false;
+
+		SetProcessInput(trackPanelHover);
 	}
 
 	private void OnCompanionPresentationRequested(LoadoutCompanionPresentationRequest request)
