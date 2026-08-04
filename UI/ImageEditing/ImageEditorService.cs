@@ -11,8 +11,6 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 
 public static class ImageEditorService
 {
-    private const string ImagePatterns = "*.png,*.jpg,*.jpeg,*.webp,*.bmp";
-    private const string ImageMimeTypes = "image/png,image/jpeg,image/webp,image/bmp";
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase
         : StringComparison.Ordinal;
@@ -29,11 +27,11 @@ public static class ImageEditorService
         _busy = true;
         try
         {
-            string? sourcePath = await PickImageFileAsync(request.Title);
+            string? sourcePath = await PickImageFileAsync(request.Title, request.InitialOpenDirectory);
             if (string.IsNullOrWhiteSpace(sourcePath))
                 return ImageEditResult.Cancelled();
 
-            Image source = Image.LoadFromFile(ProjectSettings.GlobalizePath(sourcePath));
+            Image source = ImageMediaLoader.LoadFromFile(ProjectSettings.GlobalizePath(sourcePath));
             if (source is null || source.IsEmpty())
                 return ImageEditResult.Failed("The selected file could not be loaded as an image.");
 
@@ -127,7 +125,7 @@ public static class ImageEditorService
         }
     }
 
-    private static Task<string?> PickImageFileAsync(string title)
+    private static Task<string?> PickImageFileAsync(string title, string? initialOpenDirectory)
     {
         if (Engine.GetMainLoop() is not SceneTree tree || tree.Root is null)
             return Task.FromResult<string?>(null);
@@ -142,8 +140,11 @@ public static class ImageEditorService
             Access = FileDialog.AccessEnum.Filesystem,
             UseNativeDialog = true,
             Exclusive = true,
-            Filters = [$"{ImagePatterns};{LocMan.GameLoc("settings_ui", "LOADOUT-IMAGE_EDITOR_IMAGE_FILES.title", "Image Files")};{ImageMimeTypes}"]
+            Filters = [$"{ImageMediaLoader.FileDialogPatterns};{LocMan.GameLoc("settings_ui", "LOADOUT-IMAGE_EDITOR_IMAGE_FILES.title", "Image Files")};{ImageMediaLoader.FileDialogMimeTypes}"]
         };
+        string? resolvedInitialDirectory = ResolveInitialOpenDirectory(initialOpenDirectory);
+        if (resolvedInitialDirectory is not null)
+            dialog.CurrentDir = resolvedInitialDirectory;
 
         void Complete(string? path)
         {
@@ -168,6 +169,29 @@ public static class ImageEditorService
             throw;
         }
         return completion.Task;
+    }
+
+    private static string? ResolveInitialOpenDirectory(string? requestedDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(requestedDirectory))
+            return null;
+
+        try
+        {
+            string trimmed = requestedDirectory.Trim();
+            string resolved = trimmed.StartsWith("user://", StringComparison.OrdinalIgnoreCase)
+                ? ProjectSettings.GlobalizePath(trimmed)
+                : trimmed;
+            if (!Path.IsPathFullyQualified(resolved))
+                return null;
+
+            resolved = Path.GetFullPath(resolved);
+            return Directory.Exists(resolved) ? resolved : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string? ValidateRequest(ImageEditRequest request)

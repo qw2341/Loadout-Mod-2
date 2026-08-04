@@ -853,8 +853,9 @@ public partial class NLoadoutDropdownContainer : Control
         }
 
         bool needsScrollbar = IsScrollbarNeeded();
-        Size = new Vector2(Size.X, needsScrollbar ? _maxHeight : _contentHeight);
-        CustomMinimumSize = new Vector2(CustomMinimumSize.X, Size.Y);
+        float desiredHeight = needsScrollbar ? _maxHeight : _contentHeight;
+        CustomMinimumSize = new Vector2(CustomMinimumSize.X, desiredHeight);
+        Size = new Vector2(Size.X, desiredHeight);
 
         if (_scrollbar is not null)
             _scrollbar.Visible = needsScrollbar;

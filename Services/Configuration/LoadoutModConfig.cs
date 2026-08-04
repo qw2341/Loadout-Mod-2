@@ -51,7 +51,6 @@ public sealed class LoadoutModConfig : SimpleModConfig
 
     private NLoadoutDropdown? _companionDropdown;
     private Control? _deleteCustomCompanionButton;
-    private MegaRichTextLabel? _customCompanionStatus;
 
     public static bool EnableDeckLoadoutScreen
     {
@@ -272,7 +271,8 @@ public sealed class LoadoutModConfig : SimpleModConfig
         HBoxContainer actions = new()
         {
             Name = "CustomCompanionActions",
-            CustomMinimumSize = new Vector2(0f, 54f),
+            Alignment = BoxContainer.AlignmentMode.End,
+            CustomMinimumSize = new Vector2(0f, BaseLibDropdownHeight),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         actions.AddThemeConstantOverride("separation", 12);
@@ -281,22 +281,18 @@ public sealed class LoadoutModConfig : SimpleModConfig
             GetLabelText("CreateCustomCompanion"),
             () => TaskHelper.RunSafely(CreateCustomCompanionAsync()));
         createButton.Name = "CreateCustomCompanion";
-        createButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        createButton.CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight);
+        createButton.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
         actions.AddChild(createButton);
 
         _deleteCustomCompanionButton = CreateRawButtonControl(
             GetLabelText("DeleteCustomCompanion"),
             () => TaskHelper.RunSafely(DeleteSelectedCustomCompanionAsync()));
         _deleteCustomCompanionButton.Name = "DeleteCustomCompanion";
-        _deleteCustomCompanionButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _deleteCustomCompanionButton.CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight);
+        _deleteCustomCompanionButton.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
         actions.AddChild(_deleteCustomCompanionButton);
         optionContainer.AddChild(actions);
-
-        _customCompanionStatus = CreateRawLabelControl(string.Empty, 22);
-        _customCompanionStatus.Name = "CustomCompanionStatus";
-        _customCompanionStatus.CustomMinimumSize = new Vector2(0f, 42f);
-        _customCompanionStatus.HorizontalAlignment = HorizontalAlignment.Center;
-        optionContainer.AddChild(_customCompanionStatus);
         RefreshCustomCompanionDeleteVisibility();
     }
 
@@ -310,7 +306,8 @@ public sealed class LoadoutModConfig : SimpleModConfig
             CustomCompanionStore.DirectoryPath,
             imageFileName,
             GetLabelText("CreateCustomCompanion"),
-            AllowDisplayNameEditing: true);
+            AllowDisplayNameEditing: true,
+            InitialOpenDirectory: GetDefaultImageOpenDirectory());
 
         ImageEditResult result = await ImageEditorService.PickAndEditAsync(request);
         if (result.Status == ImageEditStatus.Cancelled)
@@ -319,7 +316,6 @@ public sealed class LoadoutModConfig : SimpleModConfig
         {
             if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
                 GD.PushWarning($"Loadout: custom companion image editing failed. {result.ErrorMessage}");
-            SetCustomCompanionStatus(GetLabelText("CustomCompanionCreateFailed"), success: false);
             return;
         }
 
@@ -345,7 +341,6 @@ public sealed class LoadoutModConfig : SimpleModConfig
                 TryDeleteNewImage(result.SavedPath);
             }
             GD.PushError($"Loadout: failed to register custom companion '{companionId}'. {error ?? "The companion registry rejected the new entry."}");
-            SetCustomCompanionStatus(GetLabelText("CustomCompanionCreateFailed"), success: false);
             return;
         }
 
@@ -353,9 +348,6 @@ public sealed class LoadoutModConfig : SimpleModConfig
         Changed();
         RefreshCompanionDropdown();
         RefreshCustomCompanionDeleteVisibility();
-        SetCustomCompanionStatus(
-            FormatLabelText("CustomCompanionCreateSucceeded", companion.DisplayName),
-            success: true);
     }
 
     private async Task DeleteSelectedCustomCompanionAsync()
@@ -372,14 +364,14 @@ public sealed class LoadoutModConfig : SimpleModConfig
             || !GodotObject.IsInstanceValid(modalContainer)
             || modalContainer.OpenModal is not null)
         {
-            SetCustomCompanionStatus(GetLabelText("CustomCompanionDeleteFailed"), success: false);
+            GD.PushWarning("Loadout: custom companion deletion confirmation could not open because the modal UI is unavailable or busy.");
             return;
         }
 
         NGenericPopup? popup = NGenericPopup.Create();
         if (popup is null)
         {
-            SetCustomCompanionStatus(GetLabelText("CustomCompanionDeleteFailed"), success: false);
+            GD.PushWarning("Loadout: custom companion deletion confirmation popup could not be created.");
             return;
         }
 
@@ -397,7 +389,6 @@ public sealed class LoadoutModConfig : SimpleModConfig
         if (!CustomCompanionStore.TryRemove(companion.CompanionId, out string? error))
         {
             GD.PushError($"Loadout: failed to delete custom companion '{companion.CompanionId}'. {error}");
-            SetCustomCompanionStatus(GetLabelText("CustomCompanionDeleteFailed"), success: false);
             return;
         }
 
@@ -406,9 +397,6 @@ public sealed class LoadoutModConfig : SimpleModConfig
         Changed();
         RefreshCompanionDropdown();
         RefreshCustomCompanionDeleteVisibility();
-        SetCustomCompanionStatus(
-            FormatLabelText("CustomCompanionDeleteSucceeded", companion.DisplayName),
-            success: true);
         if (!string.IsNullOrWhiteSpace(error))
             GD.PushWarning($"Loadout: custom companion was removed with a file cleanup warning. {error}");
     }
@@ -419,14 +407,14 @@ public sealed class LoadoutModConfig : SimpleModConfig
             button.Visible = LoadoutCompanionRegistry.GetCompanion(Companion)?.IsCustom == true;
     }
 
-    private void SetCustomCompanionStatus(string text, bool success)
+    private static string? GetDefaultImageOpenDirectory()
     {
-        if (_customCompanionStatus is not { } status || !GodotObject.IsInstanceValid(status))
-            return;
-        status.Text = text;
-        status.AddThemeColorOverride(
-            "default_color",
-            success ? new Color("85D98B") : new Color("F07C72"));
+        string pictures = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyPictures);
+        if (!string.IsNullOrWhiteSpace(pictures) && Directory.Exists(pictures))
+            return pictures;
+
+        string home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+        return !string.IsNullOrWhiteSpace(home) && Directory.Exists(home) ? home : null;
     }
 
     private string FormatLabelText(string key, string companionName)

@@ -30,7 +30,8 @@ public sealed record ImageEditRequest(
     string OutputFileName,
     string Title,
     string? InitialDisplayName = null,
-    bool AllowDisplayNameEditing = false);
+    bool AllowDisplayNameEditing = false,
+    string? InitialOpenDirectory = null);
 
 public sealed record ImageEditResult(
     ImageEditStatus Status,

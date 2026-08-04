@@ -19,6 +19,7 @@ public partial class NImageEditorModal : Control, IScreenContext
 
     private ImageEditRequest _request = null!;
     private Image _source = null!;
+    private PanelContainer _editorPanel = null!;
     private NImageEditorCanvas _canvas = null!;
     private LineEdit? _nameEdit;
     private MegaLabel _toolLabel = null!;
@@ -43,8 +44,13 @@ public partial class NImageEditorModal : Control, IScreenContext
     public override void _Ready()
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
+        OffsetLeft = 0f;
+        OffsetTop = 0f;
+        OffsetRight = 0f;
+        OffsetBottom = 0f;
         MouseFilter = MouseFilterEnum.Stop;
         FocusMode = FocusModeEnum.All;
+        Resized += LayoutEditorPanel;
         if (!_initialized)
             throw new InvalidOperationException("The image editor modal must be initialized before entering the tree.");
         BuildUi();
@@ -52,6 +58,7 @@ public partial class NImageEditorModal : Control, IScreenContext
 
     public override void _ExitTree()
     {
+        Resized -= LayoutEditorPanel;
         if (!_completed)
         {
             _completed = true;
@@ -74,22 +81,12 @@ public partial class NImageEditorModal : Control, IScreenContext
         if (GetChildCount() > 0)
             return;
 
-        MarginContainer outerMargin = new()
-        {
-            Name = "OuterMargin",
-            MouseFilter = MouseFilterEnum.Stop
-        };
-        outerMargin.SetAnchorsPreset(LayoutPreset.FullRect);
-        outerMargin.AddThemeConstantOverride("margin_left", 54);
-        outerMargin.AddThemeConstantOverride("margin_top", 36);
-        outerMargin.AddThemeConstantOverride("margin_right", 54);
-        outerMargin.AddThemeConstantOverride("margin_bottom", 36);
-        AddChild(outerMargin);
-
-        PanelContainer panel = new()
+        _editorPanel = new PanelContainer
         {
             Name = "EditorPanel",
-            MouseFilter = MouseFilterEnum.Stop
+            MouseFilter = MouseFilterEnum.Stop,
+            GrowHorizontal = GrowDirection.Both,
+            GrowVertical = GrowDirection.Both
         };
         StyleBoxFlat panelStyle = new()
         {
@@ -104,15 +101,16 @@ public partial class NImageEditorModal : Control, IScreenContext
             CornerRadiusBottomLeft = 8,
             CornerRadiusBottomRight = 8
         };
-        panel.AddThemeStyleboxOverride("panel", panelStyle);
-        outerMargin.AddChild(panel);
+        _editorPanel.AddThemeStyleboxOverride("panel", panelStyle);
+        _editorPanel.SetAnchorsPreset(LayoutPreset.Center);
+        AddChild(_editorPanel);
 
         MarginContainer contentMargin = new();
         contentMargin.AddThemeConstantOverride("margin_left", 24);
         contentMargin.AddThemeConstantOverride("margin_top", 18);
         contentMargin.AddThemeConstantOverride("margin_right", 24);
         contentMargin.AddThemeConstantOverride("margin_bottom", 18);
-        panel.AddChild(contentMargin);
+        _editorPanel.AddChild(contentMargin);
 
         VBoxContainer root = new();
         root.AddThemeConstantOverride("separation", 12);
@@ -137,7 +135,26 @@ public partial class NImageEditorModal : Control, IScreenContext
         body.AddChild(CreateToolsPanel());
         root.AddChild(CreateBottomButtons());
 
+        LayoutEditorPanel();
         Callable.From(() => _saveButton.GrabFocus()).CallDeferred();
+    }
+
+    private void LayoutEditorPanel()
+    {
+        if (_editorPanel is null || !GodotObject.IsInstanceValid(_editorPanel))
+            return;
+
+        Vector2 availableSize = new(
+            Mathf.Max(1f, Size.X - 108f),
+            Mathf.Max(1f, Size.Y - 72f));
+        Vector2 panelSize = new(
+            Mathf.Min(1540f, availableSize.X),
+            Mathf.Min(920f, availableSize.Y));
+        _editorPanel.SetAnchorsPreset(LayoutPreset.Center);
+        _editorPanel.OffsetLeft = panelSize.X * -0.5f;
+        _editorPanel.OffsetTop = panelSize.Y * -0.5f;
+        _editorPanel.OffsetRight = panelSize.X * 0.5f;
+        _editorPanel.OffsetBottom = panelSize.Y * 0.5f;
     }
 
     private Control CreateNameRow()
