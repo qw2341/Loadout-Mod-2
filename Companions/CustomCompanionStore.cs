@@ -276,14 +276,11 @@ public static class CustomCompanionStore
 
             try
             {
-                ImageMediaDocument document = ImageMediaLoader.LoadDocumentFromFile(imagePath);
-                if (document.Frames.Count == 0)
+                ImageMediaMetadata metadata = ImageMediaLoader.ReadMetadata(imagePath);
+                if (metadata.FrameCount <= 0)
                     return "The companion image file is corrupt or unsupported.";
-                foreach (ImageMediaFrame frame in document.Frames)
-                {
-                    if (frame.Image.GetWidth() != 192 || frame.Image.GetHeight() != 224)
-                        return "Every companion animation frame must be 192 by 224 pixels.";
-                }
+                if (metadata.Width != 192 || metadata.Height != 224)
+                    return "Every companion animation frame must be 192 by 224 pixels.";
             }
             catch (Exception exception)
             {

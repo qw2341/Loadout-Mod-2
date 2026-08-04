@@ -21,7 +21,8 @@ public readonly record struct LoadoutDropdownOption(
     string Label,
     Func<IReadOnlyList<IHoverTip>>? HoverTipsFactory = null,
     Texture2D? Icon = null,
-    Color? TextColor = null);
+    Color? TextColor = null,
+    Func<Texture2D?>? IconFactory = null);
 
 public partial class NLoadoutDropdown : NDropdown
 {
@@ -316,6 +317,7 @@ public partial class NLoadoutDropdown : NDropdown
             return;
 
         ClearCurrentHoverTips();
+        ResolveLazyIcons();
         _isOpen = true;
         RefreshButtonHighlight();
         if (UseFullScreenDismisser)
@@ -348,6 +350,33 @@ public partial class NLoadoutDropdown : NDropdown
             item.UnhoverSelection();
 
         _dropdownItems.GetChildren().OfType<NDropdownItem>().FirstOrDefault()?.TryGrabFocus();
+    }
+
+    private void ResolveLazyIcons()
+    {
+        NSelectDropdownItem[] itemNodes = _dropdownItems.GetChildren().OfType<NSelectDropdownItem>().ToArray();
+        int count = Math.Min(_items.Count, itemNodes.Length);
+        for (int i = 0; i < count; i++)
+        {
+            LoadoutDropdownOption option = _items[i];
+            if (option.Icon is not null || option.IconFactory is null)
+                continue;
+
+            Texture2D? icon = null;
+            try
+            {
+                icon = option.IconFactory();
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"Dropdown option '{option.Id}' icon failed. {exception.Message}");
+            }
+
+            _items[i] = option with { Icon = icon, IconFactory = null };
+            itemNodes[i].SetIcon(icon);
+        }
+
+        RefreshCurrentItemLabel();
     }
 
     public void CloseLoadoutDropdown(bool restoreFocus = true)

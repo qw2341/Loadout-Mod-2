@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
-using Loadout.Companions;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
@@ -215,7 +214,6 @@ public static class UIAttach
 
         _servicesRegistered = true;
 
-        LoadoutCompanionRegistry.Initialize();
         PowerGiverStateService.Register();
         LastActionService.Register();
         CardModificationRuntime.Register();

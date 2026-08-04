@@ -209,6 +209,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         {
             Companion = selectedId;
             Changed();
+            Callable.From(RefreshCompanionDropdown).CallDeferred();
             RefreshCustomCompanionActionVisibility();
         };
         Control positioner = new()
@@ -245,8 +246,14 @@ public sealed class LoadoutModConfig : SimpleModConfig
                 : companion.DisplayName;
             string description = companion.UsesLocalizedConfigText
                 ? GetLabelText(companion.TooltipLocalizationKey)
-                : FormatLabelText("CustomCompanionDescription", companion.DisplayName);
-            Texture2D? icon = LoadoutCompanionRegistry.GetTexture(companion);
+                : FormatCustomCompanionDescription(companion.DisplayName);
+            bool isSelected = string.Equals(companion.CompanionId, Companion, StringComparison.OrdinalIgnoreCase);
+            Texture2D? icon = isSelected
+                ? LoadoutCompanionRegistry.GetTexture(companion)
+                : LoadoutCompanionRegistry.GetCachedTexture(companion);
+            Func<Texture2D?>? iconFactory = icon is null
+                ? () => LoadoutCompanionRegistry.GetTexture(companion)
+                : null;
             Color textColor = companion.SelectionColor ?? StsColors.cream;
             HoverTip hoverTip = CreateCompanionHoverTip(name, description, icon);
 
@@ -255,7 +262,8 @@ public sealed class LoadoutModConfig : SimpleModConfig
                 name,
                 () => [hoverTip],
                 icon,
-                textColor));
+                textColor,
+                iconFactory));
         }
 
         return options;
@@ -491,9 +499,11 @@ public sealed class LoadoutModConfig : SimpleModConfig
         return !string.IsNullOrWhiteSpace(home) && Directory.Exists(home) ? home : null;
     }
 
-    private string FormatLabelText(string key, string companionName)
+    private static string FormatCustomCompanionDescription(string companionName)
     {
-        return GetLabelText(key).Replace("{Name}", companionName, StringComparison.Ordinal);
+        LocString description = new("settings_ui", "LOADOUT-CUSTOM_COMPANION_DESCRIPTION.title");
+        description.Add("Name", companionName);
+        return description.GetFormattedText();
     }
 
     private static void TryDeleteNewImage(string path)

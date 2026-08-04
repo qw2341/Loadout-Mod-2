@@ -50,6 +50,13 @@ public partial class NSelectDropdownItem : NDropdownItem
         _hoverTipsFactory = hoverTipsFactory;
     }
 
+    public void SetIcon(Texture2D? icon)
+    {
+        _pendingIcon = icon;
+        if (IsNodeReady())
+            RefreshIconLayout();
+    }
+
     public void ClearHoverTips()
     {
         NHoverTipSet.Remove(this);

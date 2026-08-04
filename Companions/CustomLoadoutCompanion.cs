@@ -2,8 +2,6 @@
 
 namespace Loadout.Companions;
 
-using MegaCrit.Sts2.Core.Models;
-
 public sealed class CustomLoadoutCompanion : LoadoutCompanion
 {
     private string _companionId = "custom-template";
@@ -20,11 +18,11 @@ public sealed class CustomLoadoutCompanion : LoadoutCompanion
 
     public static CustomLoadoutCompanion Create(string companionId, string displayName, string spritePath)
     {
-        CustomLoadoutCompanion canonical = ModelDb.GetById<CustomLoadoutCompanion>(ModelDb.GetId<CustomLoadoutCompanion>());
-        CustomLoadoutCompanion companion = (CustomLoadoutCompanion)canonical.MutableClone();
-        companion._companionId = companionId;
-        companion._displayName = displayName;
-        companion._spritePath = spritePath;
-        return companion;
+        return new CustomLoadoutCompanion
+        {
+            _companionId = companionId,
+            _displayName = displayName,
+            _spritePath = spritePath
+        };
     }
 }

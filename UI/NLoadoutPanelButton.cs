@@ -6,8 +6,6 @@ using Loadout.UI.Managers;
 using Loadout.Services.Loadouts;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Nodes.Vfx;
-using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 
 namespace Loadout.UI;
 
@@ -28,17 +26,14 @@ public partial class NLoadoutPanelButton : Button
 	private TextureRect _tabImage = null!;
 	private TextureRect _arrowImage = null!;
 	private TextureRect _companionImage = null!;
-	private Timer _companionAnimationTimer = null!;
+	private Timer? _companionAnimationTimer;
 	private LoadoutCompanion? _companion;
 	private CompanionTextureSequence? _companionTextureSequence;
-	private NSpeechBubbleVfx? _speechBubble;
 	private Tween? _companionMotionTween;
-	private Tween? _companionHoldTween;
 	private float _rainbowPhase;
 	private bool _mouseInside;
 	private bool _panelHovered;
 	private bool _hasOpenLoadoutScreen;
-	private bool _pressPeekActive;
 	private bool _signalsConnected;
 	private int _companionAnimationFrame;
 
@@ -53,7 +48,6 @@ public partial class NLoadoutPanelButton : Button
 		NLoadoutPanelRoot.OpenScreenStateChanged += OnOpenScreenStateChanged;
 
 		LoadoutCompanionRegistry.ActiveCompanionChanged += OnActiveCompanionChanged;
-		LoadoutCompanionRegistry.PresentationRequested += OnCompanionPresentationRequested;
 		Pressed += OnPressed;
 		MouseEntered += OnMouseEntered;
 		MouseExited += OnMouseExited;
@@ -74,14 +68,12 @@ public partial class NLoadoutPanelButton : Button
 		MouseEntered -= OnMouseEntered;
 		MouseExited -= OnMouseExited;
 		Resized -= OnResized;
-		_companionAnimationTimer.Timeout -= AdvanceCompanionAnimation;
-		_companionAnimationTimer.Stop();
+		DestroyCompanionAnimationTimer();
 		_nLoadoutPanel.VisibilityStateChanged -= RefreshState;
 		LoadoutPanelAccessService.AccessChanged -= RefreshState;
 		NLoadoutPanelRoot.OpenScreenStateChanged -= OnOpenScreenStateChanged;
 
 		LoadoutCompanionRegistry.ActiveCompanionChanged -= OnActiveCompanionChanged;
-		LoadoutCompanionRegistry.PresentationRequested -= OnCompanionPresentationRequested;
 		_signalsConnected = false;
 	}
 
@@ -106,7 +98,7 @@ public partial class NLoadoutPanelButton : Button
 		_panelHovered = panelHovered;
 		if (_panelHovered)
 			ShowCompanion();
-		else if (!_pressPeekActive && !_mouseInside)
+		else if (!_mouseInside)
 			HideCompanion();
 	}
 
@@ -125,14 +117,6 @@ public partial class NLoadoutPanelButton : Button
 		AddThemeStyleboxOverride("disabled", EmptyStyle);
 
 		_companionImage = GetNodeOrNull<TextureRect>("CompanionImage") ?? CreateTextureRect("CompanionImage", false);
-		_companionAnimationTimer = GetNodeOrNull<Timer>("CompanionAnimationTimer") ?? new Timer
-		{
-			Name = "CompanionAnimationTimer",
-			OneShot = true
-		};
-		if (_companionAnimationTimer.GetParent() is null)
-			AddChild(_companionAnimationTimer);
-		_companionAnimationTimer.Timeout += AdvanceCompanionAnimation;
 		_tabImage = GetNodeOrNull<TextureRect>("TabImage") ?? CreateTextureRect("TabImage", true);
 		_arrowImage = GetNodeOrNull<TextureRect>("ArrowImage") ?? CreateTextureRect("ArrowImage", false);
 		MoveChild(_companionImage, 0);
@@ -196,7 +180,7 @@ public partial class NLoadoutPanelButton : Button
 	private void OnMouseExited()
 	{
 		_mouseInside = false;
-		if (!_pressPeekActive && !_panelHovered)
+		if (!_panelHovered)
 			HideCompanion();
 	}
 
@@ -211,9 +195,6 @@ public partial class NLoadoutPanelButton : Button
 			ClearCompanionPresentation();
 		else if (!_nLoadoutPanel.Shown)
 		{
-			_pressPeekActive = false;
-			KillTween(ref _companionHoldTween);
-			ClearCompanionSpeech();
 			HideCompanion();
 		}
 
@@ -231,27 +212,34 @@ public partial class NLoadoutPanelButton : Button
 	private void RefreshCompanion()
 	{
 		ClearCompanionPresentation();
-		_companionAnimationTimer.Stop();
+		DestroyCompanionAnimationTimer();
 		_companionAnimationFrame = 0;
 		_companion = LoadoutCompanionRegistry.GetActiveCompanion();
-		_companionTextureSequence = _companion is null
-			? null
-			: LoadoutCompanionRegistry.GetTextureSequence(_companion);
-		Texture2D? texture = _companionTextureSequence?.Frames[0];
-
-		_companionImage.Texture = texture;
-		RestartCompanionAnimation();
+		_companionTextureSequence = null;
+		_companionImage.Texture = null;
 		RefreshPanelHoverInput();
-		if (texture is null)
-			return;
 
 		if ((_mouseInside || _panelHovered) && !Disabled && Visible && !HasOpenLoadoutScreen())
 			ShowCompanion();
 	}
 
+	private void EnsureCompanionTextureLoaded()
+	{
+		if (_companion is null || _companionTextureSequence is not null)
+			return;
+
+		_companionTextureSequence = LoadoutCompanionRegistry.GetTextureSequence(_companion);
+		_companionAnimationFrame = 0;
+		_companionImage.Texture = _companionTextureSequence?.Frames[0];
+	}
+
 	private void AdvanceCompanionAnimation()
 	{
-		if (_companionTextureSequence is not { Frames.Count: > 1 } sequence)
+		if (_companionTextureSequence is not { Frames.Count: > 1 } sequence
+		    || !_companionImage.Visible
+		    || Disabled
+		    || !Visible
+		    || HasOpenLoadoutScreen())
 			return;
 		_companionAnimationFrame = (_companionAnimationFrame + 1) % sequence.Frames.Count;
 		_companionImage.Texture = sequence.Frames[_companionAnimationFrame];
@@ -260,13 +248,58 @@ public partial class NLoadoutPanelButton : Button
 
 	private void RestartCompanionAnimation()
 	{
-		if (_companionTextureSequence is not { Frames.Count: > 1 } sequence)
+		if (_companionTextureSequence is not { Frames.Count: > 1 } sequence
+		    || !_companionImage.Visible
+		    || Disabled
+		    || !Visible
+		    || HasOpenLoadoutScreen())
 			return;
-		_companionAnimationTimer.WaitTime = System.Math.Clamp(
+		Timer timer = EnsureCompanionAnimationTimer();
+		timer.WaitTime = System.Math.Clamp(
 			sequence.Durations[_companionAnimationFrame],
 			0.02,
 			10.0);
-		_companionAnimationTimer.Start();
+		timer.Start();
+	}
+
+	private Timer EnsureCompanionAnimationTimer()
+	{
+		if (_companionAnimationTimer is not null && IsInstanceValid(_companionAnimationTimer))
+			return _companionAnimationTimer;
+
+		_companionAnimationTimer = GetNodeOrNull<Timer>("CompanionAnimationTimer") ?? new Timer
+		{
+			Name = "CompanionAnimationTimer",
+			OneShot = true
+		};
+		if (_companionAnimationTimer.GetParent() is null)
+			AddChild(_companionAnimationTimer);
+		_companionAnimationTimer.Timeout += AdvanceCompanionAnimation;
+		return _companionAnimationTimer;
+	}
+
+	private void DestroyCompanionAnimationTimer()
+	{
+		if (_companionAnimationTimer is null || !IsInstanceValid(_companionAnimationTimer))
+		{
+			_companionAnimationTimer = null;
+			return;
+		}
+
+		_companionAnimationTimer.Stop();
+		_companionAnimationTimer.Timeout -= AdvanceCompanionAnimation;
+		_companionAnimationTimer.QueueFree();
+		_companionAnimationTimer = null;
+	}
+
+	private void OnOpenScreenStateChanged(bool hasOpenScreen)
+	{
+		_hasOpenLoadoutScreen = hasOpenScreen;
+		RefreshPanelHoverInput();
+		if (!hasOpenScreen)
+			return;
+
+		HideCompanion();
 	}
 
 	private void RefreshPanelHoverInput()
@@ -282,54 +315,9 @@ public partial class NLoadoutPanelButton : Button
 		SetProcessInput(trackPanelHover);
 	}
 
-	private void OnOpenScreenStateChanged(bool hasOpenScreen)
-	{
-		_hasOpenLoadoutScreen = hasOpenScreen;
-		RefreshPanelHoverInput();
-		if (!hasOpenScreen)
-			return;
-
-		_pressPeekActive = false;
-		KillTween(ref _companionHoldTween);
-		ClearCompanionSpeech();
-		HideCompanion();
-	}
-
-	private void OnCompanionPresentationRequested(LoadoutCompanionPresentationRequest request)
-	{
-		if (_companion is null
-		    || HasOpenLoadoutScreen()
-		    || !string.Equals(_companion.CompanionId, request.Companion.CompanionId, System.StringComparison.OrdinalIgnoreCase))
-		{
-			return;
-		}
-
-		BeginTimedCompanionPeek(request.Seconds);
-		if (!string.IsNullOrWhiteSpace(request.Text))
-			ShowCompanionSpeech(request.Text, request.Seconds);
-	}
-
-	private void BeginTimedCompanionPeek(double seconds)
-	{
-		if (_companion is null || Disabled || !Visible)
-			return;
-
-		ShowCompanion();
-		_pressPeekActive = true;
-		KillTween(ref _companionHoldTween);
-		_companionHoldTween = CreateTween();
-		_companionHoldTween.TweenInterval(System.Math.Max(0.1, seconds));
-		_companionHoldTween.TweenCallback(Callable.From(() =>
-		{
-			_pressPeekActive = false;
-			_companionHoldTween = null;
-			if (!_mouseInside && !_panelHovered)
-				HideCompanion();
-		}));
-	}
-
 	private void ShowCompanion()
 	{
+		EnsureCompanionTextureLoaded();
 		if (_companion is null
 		    || _companionImage.Texture is null
 		    || Disabled
@@ -339,6 +327,7 @@ public partial class NLoadoutPanelButton : Button
 
 		KillTween(ref _companionMotionTween);
 		_companionImage.Visible = true;
+		RestartCompanionAnimation();
 		_companionMotionTween = CreateTween();
 		_companionMotionTween.TweenProperty(
 			_companionImage,
@@ -356,6 +345,7 @@ public partial class NLoadoutPanelButton : Button
 
 	private void HideCompanion()
 	{
+		_companionAnimationTimer?.Stop();
 		if (_companionImage.Texture is null || !_companionImage.Visible)
 			return;
 
@@ -380,30 +370,12 @@ public partial class NLoadoutPanelButton : Button
 		}));
 	}
 
-	private void ShowCompanionSpeech(string text, double seconds)
-	{
-		ClearCompanionSpeech();
-		Vector2 speechPosition = GlobalPosition + CompanionVisiblePosition + new Vector2(CompanionSize.X, 4f);
-		_speechBubble = NSpeechBubbleVfx.Create(
-			text,
-			DialogueSide.Left,
-			speechPosition,
-			seconds,
-			VfxColor.Blue);
-		if (_speechBubble is null)
-			return;
-
-		NLoadoutPanelRoot.Instance?.AddChild(_speechBubble);
-	}
-
 	private void ClearCompanionPresentation()
 	{
+		_companionAnimationTimer?.Stop();
 		_mouseInside = false;
 		_panelHovered = false;
-		_pressPeekActive = false;
 		KillTween(ref _companionMotionTween);
-		KillTween(ref _companionHoldTween);
-		ClearCompanionSpeech();
 
 		if (_companionImage is null || !IsInstanceValid(_companionImage))
 			return;
@@ -411,14 +383,6 @@ public partial class NLoadoutPanelButton : Button
 		_companionImage.Position = CompanionHiddenPosition;
 		_companionImage.Modulate = Colors.Transparent;
 		_companionImage.Visible = false;
-	}
-
-	private void ClearCompanionSpeech()
-	{
-		if (_speechBubble is not null && IsInstanceValid(_speechBubble))
-			_speechBubble.QueueFree();
-
-		_speechBubble = null;
 	}
 
 	private static void KillTween(ref Tween? tween)
