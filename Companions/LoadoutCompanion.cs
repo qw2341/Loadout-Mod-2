@@ -16,6 +16,8 @@ public abstract class LoadoutCompanion : AbstractModel
     public virtual string NameLocalizationKey => $"{ConfigLocalizationKey}Name";
     public virtual string TooltipLocalizationKey => $"{ConfigLocalizationKey}Description";
     public virtual Rect2? SpriteRegion => null;
+    public virtual bool IsCustom => false;
+    public virtual bool UsesLocalizedConfigText => true;
     public virtual bool IsGameplayAffecting => false;
     public virtual Color? SelectionColor => IsGameplayAffecting ? new Color("EFC851") : null;
 

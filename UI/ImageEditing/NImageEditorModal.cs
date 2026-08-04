@@ -1,0 +1,386 @@
+#nullable enable
+
+namespace Loadout.UI.ImageEditing;
+
+using System;
+using System.Threading.Tasks;
+using Godot;
+using Loadout.UI.Managers;
+using Loadout.UI.Screens.Controls;
+using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
+
+public partial class NImageEditorModal : Control, IScreenContext
+{
+    private readonly TaskCompletionSource<EditorSessionResult> _completion = new();
+
+    private ImageEditRequest _request = null!;
+    private Image _source = null!;
+    private NImageEditorCanvas _canvas = null!;
+    private LineEdit? _nameEdit;
+    private MegaLabel _toolLabel = null!;
+    private HSlider _zoomSlider = null!;
+    private NLoadoutActionButton _saveButton = null!;
+    private bool _initialized;
+    private bool _completed;
+
+    public Control? DefaultFocusedControl => _saveButton;
+
+    public Task<EditorSessionResult> Completion => _completion.Task;
+
+    public void Initialize(Image source, ImageEditRequest request)
+    {
+        _source = source;
+        _request = request;
+        _initialized = true;
+        if (IsNodeReady())
+            BuildUi();
+    }
+
+    public override void _Ready()
+    {
+        SetAnchorsPreset(LayoutPreset.FullRect);
+        MouseFilter = MouseFilterEnum.Stop;
+        FocusMode = FocusModeEnum.All;
+        if (!_initialized)
+            throw new InvalidOperationException("The image editor modal must be initialized before entering the tree.");
+        BuildUi();
+    }
+
+    public override void _ExitTree()
+    {
+        if (!_completed)
+        {
+            _completed = true;
+            _completion.TrySetResult(new EditorSessionResult(false, null, null));
+        }
+        base._ExitTree();
+    }
+
+    public override void _UnhandledInput(InputEvent inputEvent)
+    {
+        if (inputEvent is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
+        {
+            Cancel();
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
+    private void BuildUi()
+    {
+        if (GetChildCount() > 0)
+            return;
+
+        MarginContainer outerMargin = new()
+        {
+            Name = "OuterMargin",
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        outerMargin.SetAnchorsPreset(LayoutPreset.FullRect);
+        outerMargin.AddThemeConstantOverride("margin_left", 54);
+        outerMargin.AddThemeConstantOverride("margin_top", 36);
+        outerMargin.AddThemeConstantOverride("margin_right", 54);
+        outerMargin.AddThemeConstantOverride("margin_bottom", 36);
+        AddChild(outerMargin);
+
+        PanelContainer panel = new()
+        {
+            Name = "EditorPanel",
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        StyleBoxFlat panelStyle = new()
+        {
+            BgColor = new Color("171A22F5"),
+            BorderColor = new Color("B88B38"),
+            BorderWidthLeft = 3,
+            BorderWidthTop = 3,
+            BorderWidthRight = 3,
+            BorderWidthBottom = 3,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8
+        };
+        panel.AddThemeStyleboxOverride("panel", panelStyle);
+        outerMargin.AddChild(panel);
+
+        MarginContainer contentMargin = new();
+        contentMargin.AddThemeConstantOverride("margin_left", 24);
+        contentMargin.AddThemeConstantOverride("margin_top", 18);
+        contentMargin.AddThemeConstantOverride("margin_right", 24);
+        contentMargin.AddThemeConstantOverride("margin_bottom", 18);
+        panel.AddChild(contentMargin);
+
+        VBoxContainer root = new();
+        root.AddThemeConstantOverride("separation", 12);
+        contentMargin.AddChild(root);
+        root.AddChild(CreateLabel(_request.Title, 34, StsColors.gold, HorizontalAlignment.Center));
+
+        if (_request.AllowDisplayNameEditing)
+            root.AddChild(CreateNameRow());
+
+        HBoxContainer body = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        body.AddThemeConstantOverride("separation", 18);
+        root.AddChild(body);
+
+        _canvas = new NImageEditorCanvas { Name = "Canvas" };
+        _canvas.Initialize(_source, _request.Frame);
+        _canvas.RelativeZoomChanged += OnCanvasZoomChanged;
+        body.AddChild(_canvas);
+        body.AddChild(CreateToolsPanel());
+        root.AddChild(CreateBottomButtons());
+
+        Callable.From(() => _saveButton.GrabFocus()).CallDeferred();
+    }
+
+    private Control CreateNameRow()
+    {
+        HBoxContainer row = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 48f)
+        };
+        row.AddThemeConstantOverride("separation", 12);
+        MegaLabel label = CreateLabel(EditorText("IMAGE_EDITOR_NAME", "Name"), 23, StsColors.cream);
+        label.CustomMinimumSize = new Vector2(130f, 44f);
+        row.AddChild(label);
+
+        _nameEdit = new LineEdit
+        {
+            Text = _request.InitialDisplayName?.Trim() ?? string.Empty,
+            PlaceholderText = EditorText("IMAGE_EDITOR_NAME_PLACEHOLDER", "Custom companion name"),
+            MaxLength = 80,
+            CustomMinimumSize = new Vector2(360f, 44f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            FocusMode = FocusModeEnum.All
+        };
+        Font? font = LoadFont("res://themes/kreon_regular_shared.tres");
+        if (font is not null)
+            _nameEdit.AddThemeFontOverride("font", font);
+        _nameEdit.AddThemeFontSizeOverride("font_size", 22);
+        row.AddChild(_nameEdit);
+        return row;
+    }
+
+    private Control CreateToolsPanel()
+    {
+        VBoxContainer tools = new()
+        {
+            Name = "Tools",
+            CustomMinimumSize = new Vector2(275f, 0f),
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        tools.AddThemeConstantOverride("separation", 7);
+
+        _toolLabel = CreateLabel(EditorText("IMAGE_EDITOR_TOOL_PAN", "Tool: Move"), 22, StsColors.gold, HorizontalAlignment.Center);
+        tools.AddChild(_toolLabel);
+        tools.AddChild(CreateToolButton("pan", EditorText("IMAGE_EDITOR_PAN", "Move image"), ImageEditorTool.Pan));
+        tools.AddChild(CreateToolButton("erase", EditorText("IMAGE_EDITOR_ERASE", "Eraser"), ImageEditorTool.Erase));
+        tools.AddChild(CreateToolButton("restore", EditorText("IMAGE_EDITOR_RESTORE", "Restore"), ImageEditorTool.Restore));
+
+        tools.AddChild(CreateSliderLabel(EditorText("IMAGE_EDITOR_ZOOM", "Zoom")));
+        _zoomSlider = CreateSlider(0.1, 12.0, 0.05, 1.0);
+        _zoomSlider.ValueChanged += value => _canvas.SetRelativeZoom((float)value);
+        tools.AddChild(_zoomSlider);
+
+        tools.AddChild(CreateSliderLabel(EditorText("IMAGE_EDITOR_BRUSH_SIZE", "Brush size")));
+        HSlider brushSlider = CreateSlider(4.0, 160.0, 2.0, 42.0);
+        brushSlider.ValueChanged += value => _canvas.BrushSize = (float)value;
+        tools.AddChild(brushSlider);
+
+        tools.AddChild(CreateSliderLabel(EditorText("IMAGE_EDITOR_TOLERANCE", "Background tolerance")));
+        HSlider toleranceSlider = CreateSlider(0.01, 0.5, 0.01, 0.14);
+        toleranceSlider.ValueChanged += value => _canvas.BackgroundTolerance = (float)value;
+        tools.AddChild(toleranceSlider);
+
+        tools.AddChild(CreateButton("auto_remove", EditorText("IMAGE_EDITOR_AUTO_REMOVE", "Remove background"), _canvas.RemoveBackground));
+        NLoadoutActionButton undoButton = CreateButton("undo", EditorText("IMAGE_EDITOR_UNDO", "Undo"), _canvas.Undo);
+        _canvas.UndoAvailabilityChanged += undoButton.SetEnabled;
+        tools.AddChild(undoButton);
+        Callable.From(undoButton.Disable).CallDeferred();
+        tools.AddChild(CreateButton("fit", EditorText("IMAGE_EDITOR_FIT", "Fit image"), _canvas.FitToFrame));
+        tools.AddChild(CreateButton("reset", EditorText("IMAGE_EDITOR_RESET", "Reset image"), _canvas.ResetAll));
+
+        MegaLabel instructions = CreateLabel(
+            EditorText("IMAGE_EDITOR_INSTRUCTIONS", "Drag to move. Use the mouse wheel to zoom."),
+            18,
+            new Color("C9C2B3"),
+            HorizontalAlignment.Center);
+        instructions.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        instructions.SizeFlagsVertical = SizeFlags.ExpandFill;
+        instructions.VerticalAlignment = VerticalAlignment.Bottom;
+        tools.AddChild(instructions);
+        return tools;
+    }
+
+    private Control CreateBottomButtons()
+    {
+        HBoxContainer row = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 54f),
+            Alignment = BoxContainer.AlignmentMode.End
+        };
+        row.AddThemeConstantOverride("separation", 14);
+        NLoadoutActionButton cancel = CreateButton("cancel", EditorText("IMAGE_EDITOR_CANCEL", "Cancel"), Cancel);
+        cancel.CustomMinimumSize = new Vector2(220f, 48f);
+        _saveButton = CreateButton("save", EditorText("IMAGE_EDITOR_SAVE", "Save image"), Save);
+        _saveButton.CustomMinimumSize = new Vector2(220f, 48f);
+        row.AddChild(cancel);
+        row.AddChild(_saveButton);
+        cancel.FocusNeighborRight = cancel.GetPathTo(_saveButton);
+        _saveButton.FocusNeighborLeft = _saveButton.GetPathTo(cancel);
+        return row;
+    }
+
+    private NLoadoutActionButton CreateToolButton(string id, string label, ImageEditorTool tool)
+    {
+        return CreateButton(id, label, () =>
+        {
+            _canvas.Tool = tool;
+            _toolLabel.SetTextAutoSize(tool switch
+            {
+                ImageEditorTool.Erase => EditorText("IMAGE_EDITOR_TOOL_ERASE", "Tool: Eraser"),
+                ImageEditorTool.Restore => EditorText("IMAGE_EDITOR_TOOL_RESTORE", "Tool: Restore"),
+                _ => EditorText("IMAGE_EDITOR_TOOL_PAN", "Tool: Move")
+            });
+        });
+    }
+
+    private static NLoadoutActionButton CreateButton(string id, string label, Action onReleased)
+    {
+        NLoadoutActionButton button = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 46f),
+            FocusMode = FocusModeEnum.All,
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        button.Init(id, label);
+        button.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => onReleased()));
+        return button;
+    }
+
+    private static MegaLabel CreateSliderLabel(string text)
+    {
+        MegaLabel label = CreateLabel(text, 18, StsColors.cream);
+        label.CustomMinimumSize = new Vector2(0f, 26f);
+        label.VerticalAlignment = VerticalAlignment.Bottom;
+        return label;
+    }
+
+    private static HSlider CreateSlider(double minimum, double maximum, double step, double value)
+    {
+        return new HSlider
+        {
+            MinValue = minimum,
+            MaxValue = maximum,
+            Step = step,
+            Value = value,
+            Scrollable = false,
+            FocusMode = FocusModeEnum.All,
+            CustomMinimumSize = new Vector2(0f, 30f)
+        };
+    }
+
+    private static MegaLabel CreateLabel(
+        string text,
+        int fontSize,
+        Color color,
+        HorizontalAlignment alignment = HorizontalAlignment.Left)
+    {
+        MegaLabel label = new()
+        {
+            Text = text,
+            AutoSizeEnabled = false,
+            MinFontSize = Math.Max(12, fontSize - 6),
+            MaxFontSize = fontSize,
+            HorizontalAlignment = alignment,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        label.AddThemeColorOverride("font_color", color);
+        Font? font = LoadFont("res://themes/kreon_bold_shared.tres");
+        if (font is not null)
+            label.AddThemeFontOverride("font", font);
+        label.AddThemeFontSizeOverride("font_size", fontSize);
+        return label;
+    }
+
+    private static Font? LoadFont(string path)
+    {
+        return ResourceLoader.Exists(path) ? ResourceLoader.Load<Font>(path) : null;
+    }
+
+    private void OnCanvasZoomChanged(float relativeZoom)
+    {
+        if (_zoomSlider is not null && !Mathf.IsEqualApprox((float)_zoomSlider.Value, relativeZoom))
+            _zoomSlider.SetValueNoSignal(relativeZoom);
+    }
+
+    private void Save()
+    {
+        string? name = _nameEdit?.Text.Trim();
+        if (_request.AllowDisplayNameEditing && string.IsNullOrWhiteSpace(name))
+        {
+            _nameEdit?.GrabFocus();
+            return;
+        }
+
+        try
+        {
+            Complete(new EditorSessionResult(true, _canvas.RenderOutput(), name));
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"Loadout: image editor output rendering failed. {exception}");
+            Complete(new EditorSessionResult(false, null, name, exception.Message));
+        }
+    }
+
+    private void Cancel()
+    {
+        Complete(new EditorSessionResult(false, null, null));
+    }
+
+    private void Complete(EditorSessionResult result)
+    {
+        if (_completed)
+            return;
+
+        _completed = true;
+        try
+        {
+            NModalContainer? modalContainer = NModalContainer.Instance;
+            if (modalContainer is not null
+                && GodotObject.IsInstanceValid(modalContainer)
+                && ReferenceEquals(modalContainer.OpenModal, this))
+            {
+                modalContainer.Clear();
+            }
+            else
+            {
+                QueueFree();
+            }
+        }
+        finally
+        {
+            _completion.TrySetResult(result);
+        }
+    }
+
+    public readonly record struct EditorSessionResult(
+        bool Accepted,
+        Image? Image,
+        string? DisplayName,
+        string? ErrorMessage = null);
+
+    private static string EditorText(string key, string fallback)
+    {
+        return LocMan.GameLoc("settings_ui", $"LOADOUT-{key}.title", fallback);
+    }
+}

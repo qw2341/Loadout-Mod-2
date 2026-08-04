@@ -22,7 +22,7 @@ public partial class NLoadoutPanelButton : Button
 	private const double CompanionExitSeconds = 0.18;
 	private static readonly Vector2 CompanionSize = new(48f, 56f);
 	private static readonly Vector2 CompanionHiddenPosition = new(-44f, 32f);
-	private static readonly Vector2 CompanionVisiblePosition = new(10f, -10f);
+	private static readonly Vector2 CompanionVisiblePosition = new(15f, -15f);
 
 	private NLoadoutPanel _nLoadoutPanel = null!;
 	private TextureRect _tabImage = null!;

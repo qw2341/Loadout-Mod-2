@@ -4,6 +4,7 @@ namespace Loadout.Companions;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Godot;
@@ -24,6 +25,9 @@ public static class LoadoutCompanionRegistry
     private static bool _initialized;
 
     public static event Action<string>? ActiveCompanionChanged;
+    public static event Action? CompanionsChanged;
+    public static event Action<CustomLoadoutCompanion>? CustomCompanionAdded;
+    public static event Action<string>? CustomCompanionRemoved;
     public static event Action<LoadoutCompanionPresentationRequest>? PresentationRequested;
 
     public static string ActiveCompanionId => _activeCompanionId;
@@ -35,27 +39,21 @@ public static class LoadoutCompanionRegistry
             return true;
 
         Type[] companionTypes = GetCompanionTypes();
-        if (companionTypes.Length > 0 && companionTypes.Any(type => !ModelDb.Contains(type)))
+        if (!ModelDb.Contains(typeof(CustomLoadoutCompanion))
+            || companionTypes.Length > 0 && companionTypes.Any(type => !ModelDb.Contains(type)))
             return false;
 
         CompanionsById.Clear();
         foreach (Type type in companionTypes)
         {
             LoadoutCompanion companion = ModelDb.GetById<LoadoutCompanion>(ModelDb.GetId(type));
-            string id = NormalizeId(companion.CompanionId);
-            if (id == NoneId || CompanionsById.ContainsKey(id))
-            {
-                GD.PushWarning($"Loadout companion '{type.FullName}' has an invalid or duplicate id '{companion.CompanionId}'.");
-                continue;
-            }
-
-            CompanionsById[id] = companion;
+            TryRegisterCompanion(companion, type.FullName ?? type.Name);
         }
 
-        _companions = CompanionsById.Values
-            .OrderBy(companion => companion.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(companion => companion.CompanionId, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        foreach (CustomLoadoutCompanion companion in CustomCompanionStore.LoadCompanions())
+            TryRegisterCompanion(companion, companion.DisplayName);
+
+        RebuildCompanionList();
         _initialized = true;
 
         string resolvedId = ResolveId(_activeCompanionId);
@@ -66,6 +64,56 @@ public static class LoadoutCompanionRegistry
         }
 
         return true;
+    }
+
+    public static bool AddCustomCompanion(CustomLoadoutCompanion companion)
+    {
+        ArgumentNullException.ThrowIfNull(companion);
+        if (!Initialize() || !companion.IsCustom)
+            return false;
+
+        string id = NormalizeId(companion.CompanionId);
+        if (id == NoneId || CompanionsById.ContainsKey(id))
+            return false;
+
+        CompanionsById[id] = companion;
+        InvalidateTextureCache(id);
+        RebuildCompanionList();
+        CustomCompanionAdded?.Invoke(companion);
+        CompanionsChanged?.Invoke();
+        return true;
+    }
+
+    public static bool RemoveCustomCompanion(string companionId)
+    {
+        if (!Initialize())
+            return false;
+
+        string id = NormalizeId(companionId);
+        if (!CompanionsById.TryGetValue(id, out LoadoutCompanion? companion) || !companion.IsCustom)
+            return false;
+
+        if (string.Equals(_activeCompanionId, id, StringComparison.OrdinalIgnoreCase))
+            SetActiveCompanion(NoneId);
+        CompanionsById.Remove(id);
+        InvalidateTextureCache(id);
+        RebuildCompanionList();
+        CustomCompanionRemoved?.Invoke(id);
+        CompanionsChanged?.Invoke();
+        return true;
+    }
+
+    public static void InvalidateTextureCache(string companionId)
+    {
+        string id = NormalizeId(companionId);
+        TexturesById.Remove(id);
+        MissingTextures.Remove(id);
+    }
+
+    public static LoadoutCompanion? GetCompanion(string? companionId)
+    {
+        Initialize();
+        return CompanionsById.GetValueOrDefault(NormalizeId(companionId));
     }
 
     public static void SetActiveCompanion(string? companionId)
@@ -91,13 +139,12 @@ public static class LoadoutCompanionRegistry
         if (TexturesById.TryGetValue(id, out Texture2D? cached))
             return cached;
 
-        if (MissingTextures.Contains(id) || !ResourceLoader.Exists(companion.SpritePath))
+        if (MissingTextures.Contains(id))
         {
-            MissingTextures.Add(id);
             return null;
         }
 
-        Texture2D? texture = GD.Load<Texture2D>(companion.SpritePath);
+        Texture2D? texture = LoadTexture(companion.SpritePath);
         if (texture is null)
         {
             MissingTextures.Add(id);
@@ -152,14 +199,19 @@ public static class LoadoutCompanionRegistry
         {
             return typeof(LoadoutCompanion).Assembly
                 .GetTypes()
-                .Where(type => !type.IsAbstract && type.IsSubclassOf(typeof(LoadoutCompanion)))
+                .Where(type => type != typeof(CustomLoadoutCompanion)
+                               && !type.IsAbstract
+                               && type.IsSubclassOf(typeof(LoadoutCompanion)))
                 .OrderBy(type => type.FullName, StringComparer.Ordinal)
                 .ToArray();
         }
         catch (ReflectionTypeLoadException exception)
         {
             return exception.Types
-                .Where(type => type is not null && !type.IsAbstract && type.IsSubclassOf(typeof(LoadoutCompanion)))
+                .Where(type => type is not null
+                               && type != typeof(CustomLoadoutCompanion)
+                               && !type.IsAbstract
+                               && type.IsSubclassOf(typeof(LoadoutCompanion)))
                 .Cast<Type>()
                 .OrderBy(type => type.FullName, StringComparer.Ordinal)
                 .ToArray();
@@ -178,5 +230,50 @@ public static class LoadoutCompanionRegistry
         return string.IsNullOrWhiteSpace(companionId)
             ? NoneId
             : companionId.Trim().ToLowerInvariant();
+    }
+
+    private static bool TryRegisterCompanion(LoadoutCompanion companion, string sourceName)
+    {
+        string id = NormalizeId(companion.CompanionId);
+        if (id == NoneId || CompanionsById.ContainsKey(id))
+        {
+            GD.PushWarning($"Loadout companion '{sourceName}' has an invalid or duplicate id '{companion.CompanionId}'.");
+            return false;
+        }
+
+        CompanionsById[id] = companion;
+        return true;
+    }
+
+    private static void RebuildCompanionList()
+    {
+        _companions = CompanionsById.Values
+            .OrderBy(companion => companion.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(companion => companion.CompanionId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static Texture2D? LoadTexture(string path)
+    {
+        if (path.StartsWith("res://", StringComparison.OrdinalIgnoreCase) && ResourceLoader.Exists(path))
+            return ResourceLoader.Load<Texture2D>(path, null, ResourceLoader.CacheMode.Reuse);
+
+        try
+        {
+            string globalPath = ProjectSettings.GlobalizePath(path);
+            if (!File.Exists(globalPath))
+                return null;
+
+            Image image = Image.LoadFromFile(globalPath);
+            if (image is null || image.IsEmpty())
+                return null;
+            image.GenerateMipmaps();
+            return ImageTexture.CreateFromImage(image);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Loadout: failed to load companion image '{path}'. {exception.Message}");
+            return null;
+        }
     }
 }
