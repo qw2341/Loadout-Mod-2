@@ -1,4 +1,9 @@
 {
+  "LOADOUT-EDIT_CUSTOM_COMPANION.title": "Edit Custom Companion",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "Brush mode",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "Brush",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_FILL.title": "Fill",
+  "LOADOUT-IMAGE_EDITOR_REDO.title": "Redo",
   "LOADOUT-CREATE_CUSTOM_COMPANION.title": "Create Custom Companion",
   "LOADOUT-DELETE_CUSTOM_COMPANION.title": "Delete Custom Companion",
   "LOADOUT-CUSTOM_COMPANION_DEFAULT_NAME.title": "Custom Companion",
@@ -23,7 +28,7 @@
   "LOADOUT-IMAGE_EDITOR_UNDO.title": "Undo",
   "LOADOUT-IMAGE_EDITOR_FIT.title": "Fit image",
   "LOADOUT-IMAGE_EDITOR_RESET.title": "Reset image",
-  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "Drag to move. Use the mouse wheel to zoom.",
+  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "Drag to move. Brush beyond the frame edge for softer cuts. Use the mouse wheel to zoom.",
   "LOADOUT-IMAGE_EDITOR_CANCEL.title": "Cancel",
   "LOADOUT-IMAGE_EDITOR_SAVE.title": "Save image",
   "LOADOUT.mod_title": "Loadout",

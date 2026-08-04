@@ -38,7 +38,8 @@ public sealed record ImageEditResult(
     string? SavedPath = null,
     Image? OutputImage = null,
     string? DisplayName = null,
-    string? ErrorMessage = null)
+    string? ErrorMessage = null,
+    ImageMediaDocument? OutputDocument = null)
 {
     public bool Saved => Status == ImageEditStatus.Saved;
 

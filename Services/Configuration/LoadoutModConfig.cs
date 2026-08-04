@@ -50,6 +50,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         ?? throw new MissingMemberException(typeof(HoverTip).FullName, nameof(HoverTip.Title));
 
     private NLoadoutDropdown? _companionDropdown;
+    private Control? _editCustomCompanionButton;
     private Control? _deleteCustomCompanionButton;
 
     public static bool EnableDeckLoadoutScreen
@@ -208,7 +209,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         {
             Companion = selectedId;
             Changed();
-            RefreshCustomCompanionDeleteVisibility();
+            RefreshCustomCompanionActionVisibility();
         };
         Control positioner = new()
         {
@@ -285,6 +286,14 @@ public sealed class LoadoutModConfig : SimpleModConfig
         createButton.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
         actions.AddChild(createButton);
 
+        _editCustomCompanionButton = CreateRawButtonControl(
+            GetLabelText("EditCustomCompanion"),
+            () => TaskHelper.RunSafely(EditSelectedCustomCompanionAsync()));
+        _editCustomCompanionButton.Name = "EditCustomCompanion";
+        _editCustomCompanionButton.CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight);
+        _editCustomCompanionButton.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
+        actions.AddChild(_editCustomCompanionButton);
+
         _deleteCustomCompanionButton = CreateRawButtonControl(
             GetLabelText("DeleteCustomCompanion"),
             () => TaskHelper.RunSafely(DeleteSelectedCustomCompanionAsync()));
@@ -293,7 +302,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         _deleteCustomCompanionButton.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
         actions.AddChild(_deleteCustomCompanionButton);
         optionContainer.AddChild(actions);
-        RefreshCustomCompanionDeleteVisibility();
+        RefreshCustomCompanionActionVisibility();
     }
 
     private async Task CreateCustomCompanionAsync()
@@ -347,7 +356,69 @@ public sealed class LoadoutModConfig : SimpleModConfig
         Companion = companion.CompanionId;
         Changed();
         RefreshCompanionDropdown();
-        RefreshCustomCompanionDeleteVisibility();
+        RefreshCustomCompanionActionVisibility();
+    }
+
+    private async Task EditSelectedCustomCompanionAsync()
+    {
+        LoadoutCompanion? selected = LoadoutCompanionRegistry.GetCompanion(Companion);
+        if (selected is not CustomLoadoutCompanion customCompanion)
+        {
+            RefreshCustomCompanionActionVisibility();
+            return;
+        }
+
+        string sourcePath = ProjectSettings.GlobalizePath(customCompanion.SpritePath);
+        try
+        {
+            ImageMediaDocument source = ImageMediaLoader.LoadDocumentFromFile(sourcePath);
+            ImageEditRequest request = new(
+                ImageEditFramePresets.Companion,
+                CustomCompanionStore.DirectoryPath,
+                Path.GetFileName(sourcePath),
+                GetLabelText("EditCustomCompanion"),
+                customCompanion.DisplayName,
+                AllowDisplayNameEditing: true);
+            ImageEditResult result = await ImageEditorService.EditAsync(source, request);
+            if (result.Status == ImageEditStatus.Cancelled)
+                return;
+            if (!result.Saved || string.IsNullOrWhiteSpace(result.SavedPath))
+            {
+                if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+                    GD.PushWarning($"Loadout: custom companion image editing failed. {result.ErrorMessage}");
+                return;
+            }
+
+            string displayName = string.IsNullOrWhiteSpace(result.DisplayName)
+                ? customCompanion.DisplayName
+                : result.DisplayName.Trim();
+            if (!CustomCompanionStore.TryUpdate(
+                    customCompanion.CompanionId,
+                    displayName,
+                    Path.GetFileName(result.SavedPath),
+                    out CustomLoadoutCompanion? updated,
+                    out string? error)
+                || updated is null)
+            {
+                LoadoutCompanionRegistry.UpdateCustomCompanion(customCompanion);
+                GD.PushError($"Loadout: failed to update custom companion '{customCompanion.CompanionId}'. {error}");
+                return;
+            }
+            if (!LoadoutCompanionRegistry.UpdateCustomCompanion(updated))
+            {
+                GD.PushError($"Loadout: the companion registry rejected updated custom companion '{customCompanion.CompanionId}'.");
+                return;
+            }
+
+            Companion = updated.CompanionId;
+            Changed();
+            RefreshCompanionDropdown();
+            RefreshCustomCompanionActionVisibility();
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"Loadout: failed to open custom companion '{customCompanion.CompanionId}' for editing. {exception}");
+        }
     }
 
     private async Task DeleteSelectedCustomCompanionAsync()
@@ -355,7 +426,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         LoadoutCompanion? companion = LoadoutCompanionRegistry.GetCompanion(Companion);
         if (companion is null || !companion.IsCustom)
         {
-            RefreshCustomCompanionDeleteVisibility();
+            RefreshCustomCompanionActionVisibility();
             return;
         }
 
@@ -396,15 +467,18 @@ public sealed class LoadoutModConfig : SimpleModConfig
         Companion = LoadoutCompanionRegistry.NoneId;
         Changed();
         RefreshCompanionDropdown();
-        RefreshCustomCompanionDeleteVisibility();
+        RefreshCustomCompanionActionVisibility();
         if (!string.IsNullOrWhiteSpace(error))
             GD.PushWarning($"Loadout: custom companion was removed with a file cleanup warning. {error}");
     }
 
-    private void RefreshCustomCompanionDeleteVisibility()
+    private void RefreshCustomCompanionActionVisibility()
     {
+        bool isCustom = LoadoutCompanionRegistry.GetCompanion(Companion)?.IsCustom == true;
+        if (_editCustomCompanionButton is { } editButton && GodotObject.IsInstanceValid(editButton))
+            editButton.Visible = isCustom;
         if (_deleteCustomCompanionButton is { } button && GodotObject.IsInstanceValid(button))
-            button.Visible = LoadoutCompanionRegistry.GetCompanion(Companion)?.IsCustom == true;
+            button.Visible = isCustom;
     }
 
     private static string? GetDefaultImageOpenDirectory()

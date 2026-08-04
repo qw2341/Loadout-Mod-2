@@ -1,4 +1,9 @@
 {
+  "LOADOUT-EDIT_CUSTOM_COMPANION.title": "Modifier le compagnon personnalisé",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "Mode de brosse",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "Brosse",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_FILL.title": "Remplissage",
+  "LOADOUT-IMAGE_EDITOR_REDO.title": "Rétablir",
   "LOADOUT-CREATE_CUSTOM_COMPANION.title": "Créer un compagnon personnalisé",
   "LOADOUT-DELETE_CUSTOM_COMPANION.title": "Supprimer le compagnon personnalisé",
   "LOADOUT-CUSTOM_COMPANION_DEFAULT_NAME.title": "Compagnon personnalisé",
@@ -23,7 +28,7 @@
   "LOADOUT-IMAGE_EDITOR_UNDO.title": "Annuler",
   "LOADOUT-IMAGE_EDITOR_FIT.title": "Ajuster l’image",
   "LOADOUT-IMAGE_EDITOR_RESET.title": "Réinitialiser l’image",
-  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "Faites glisser pour déplacer. Utilisez la molette pour zoomer.",
+  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "Faites glisser pour déplacer. Brossez au-delà du cadre pour des découpes plus douces. Utilisez la molette pour zoomer.",
   "LOADOUT-IMAGE_EDITOR_CANCEL.title": "Annuler",
   "LOADOUT-IMAGE_EDITOR_SAVE.title": "Enregistrer l’image",
   "LOADOUT.mod_title": "Équipement",

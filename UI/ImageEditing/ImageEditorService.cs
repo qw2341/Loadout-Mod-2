@@ -31,9 +31,7 @@ public static class ImageEditorService
             if (string.IsNullOrWhiteSpace(sourcePath))
                 return ImageEditResult.Cancelled();
 
-            Image source = ImageMediaLoader.LoadFromFile(ProjectSettings.GlobalizePath(sourcePath));
-            if (source is null || source.IsEmpty())
-                return ImageEditResult.Failed("The selected file could not be loaded as an image.");
+            ImageMediaDocument source = ImageMediaLoader.LoadDocumentFromFile(ProjectSettings.GlobalizePath(sourcePath));
 
             string? initialName = request.InitialDisplayName;
             if (request.AllowDisplayNameEditing && string.IsNullOrWhiteSpace(initialName))
@@ -55,6 +53,12 @@ public static class ImageEditorService
     public static async Task<ImageEditResult> EditAsync(Image source, ImageEditRequest request)
     {
         ArgumentNullException.ThrowIfNull(source);
+        return await EditAsync(ImageMediaDocument.FromImage(source), request);
+    }
+
+    public static async Task<ImageEditResult> EditAsync(ImageMediaDocument source, ImageEditRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(source);
         if (_busy)
             return ImageEditResult.Failed("Another image editor is already open.");
 
@@ -74,7 +78,7 @@ public static class ImageEditorService
         }
     }
 
-    private static async Task<ImageEditResult> EditCoreAsync(Image source, ImageEditRequest request)
+    private static async Task<ImageEditResult> EditCoreAsync(ImageMediaDocument source, ImageEditRequest request)
     {
         string? validationError = ValidateRequest(request);
         if (validationError is not null)
@@ -106,17 +110,18 @@ public static class ImageEditorService
 
         if (!string.IsNullOrWhiteSpace(session.ErrorMessage))
             return ImageEditResult.Failed(session.ErrorMessage);
-        if (!session.Accepted || session.Image is null)
+        if (!session.Accepted || session.Document is null)
             return ImageEditResult.Cancelled();
 
         try
         {
-            string savedPath = SavePngAtomically(session.Image, request.DestinationDirectory, request.OutputFileName);
+            string savedPath = SaveDocumentAtomically(session.Document, request.DestinationDirectory, request.OutputFileName);
             return new ImageEditResult(
                 ImageEditStatus.Saved,
                 savedPath,
-                session.Image,
-                session.DisplayName);
+                session.Document.FirstImage,
+                session.DisplayName,
+                OutputDocument: session.Document);
         }
         catch (Exception exception)
         {
@@ -207,7 +212,10 @@ public static class ImageEditorService
         return null;
     }
 
-    private static string SavePngAtomically(Image image, string requestedDirectory, string requestedFileName)
+    private static string SaveDocumentAtomically(
+        ImageMediaDocument document,
+        string requestedDirectory,
+        string requestedFileName)
     {
         string directory = ResolveWritableDirectory(requestedDirectory);
         Directory.CreateDirectory(directory);
@@ -218,7 +226,9 @@ public static class ImageEditorService
             throw new InvalidOperationException("The output filename is invalid.");
         if (!string.Equals(fileName, requestedName, StringComparison.Ordinal))
             throw new InvalidOperationException("The output filename cannot contain a directory path.");
-        fileName = Path.ChangeExtension(fileName, ".png");
+        fileName = Path.ChangeExtension(
+            fileName,
+            document.IsAnimated ? ImageAnimationPackage.Extension : ".png");
 
         string directoryRoot = Path.GetFullPath(directory)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
@@ -227,12 +237,21 @@ public static class ImageEditorService
         if (!outputPath.StartsWith(directoryRoot, PathComparison))
             throw new InvalidOperationException("The output path escapes the requested directory.");
 
-        string temporaryPath = Path.Combine(directoryRoot, $".{Guid.NewGuid():N}.tmp.png");
+        string temporaryPath = Path.Combine(
+            directoryRoot,
+            $".{Guid.NewGuid():N}.tmp{(document.IsAnimated ? ImageAnimationPackage.Extension : ".png")}");
         try
         {
-            Error error = image.SavePng(temporaryPath);
-            if (error != Error.Ok)
-                throw new IOException($"Godot could not save the PNG ({error}).");
+            if (document.IsAnimated)
+            {
+                ImageAnimationPackage.Save(temporaryPath, document);
+            }
+            else
+            {
+                Error error = document.FirstImage.SavePng(temporaryPath);
+                if (error != Error.Ok)
+                    throw new IOException($"Godot could not save the PNG ({error}).");
+            }
             File.Move(temporaryPath, outputPath, overwrite: true);
             return outputPath;
         }

@@ -18,7 +18,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     private readonly TaskCompletionSource<EditorSessionResult> _completion = new();
 
     private ImageEditRequest _request = null!;
-    private Image _source = null!;
+    private ImageMediaDocument _source = null!;
     private PanelContainer _editorPanel = null!;
     private NImageEditorCanvas _canvas = null!;
     private LineEdit? _nameEdit;
@@ -33,6 +33,11 @@ public partial class NImageEditorModal : Control, IScreenContext
     public Task<EditorSessionResult> Completion => _completion.Task;
 
     public void Initialize(Image source, ImageEditRequest request)
+    {
+        Initialize(ImageMediaDocument.FromImage(source), request);
+    }
+
+    public void Initialize(ImageMediaDocument source, ImageEditRequest request)
     {
         _source = source;
         _request = request;
@@ -201,6 +206,29 @@ public partial class NImageEditorModal : Control, IScreenContext
         tools.AddChild(CreateToolButton("erase", EditorText("IMAGE_EDITOR_ERASE", "Eraser"), ImageEditorTool.Erase));
         tools.AddChild(CreateToolButton("restore", EditorText("IMAGE_EDITOR_RESTORE", "Restore"), ImageEditorTool.Restore));
 
+        string brushModePrefix = EditorText("IMAGE_EDITOR_BRUSH_MODE", "Brush mode");
+        string brushModeBrush = EditorText("IMAGE_EDITOR_BRUSH_MODE_BRUSH", "Brush");
+        string brushModeFill = EditorText("IMAGE_EDITOR_BRUSH_MODE_FILL", "Fill");
+        MegaLabel brushModeLabel = CreateSliderLabel($"{brushModePrefix}: {brushModeBrush}");
+        tools.AddChild(brushModeLabel);
+        NLoadoutActionButton brushModeButton = CreateButton(
+            "brush_mode",
+            brushModeBrush,
+            () =>
+            {
+                _canvas.BrushMode = ImageEditorBrushMode.Brush;
+                brushModeLabel.SetTextAutoSize($"{brushModePrefix}: {brushModeBrush}");
+            });
+        NLoadoutActionButton fillModeButton = CreateButton(
+            "fill_mode",
+            brushModeFill,
+            () =>
+            {
+                _canvas.BrushMode = ImageEditorBrushMode.Fill;
+                brushModeLabel.SetTextAutoSize($"{brushModePrefix}: {brushModeFill}");
+            });
+        tools.AddChild(CreateCompactButtonRow(brushModeButton, fillModeButton));
+
         tools.AddChild(CreateSliderLabel(EditorText("IMAGE_EDITOR_ZOOM", "Zoom")));
         _zoomSlider = CreateSlider(0.1, 12.0, 0.05, 1.0);
         _zoomSlider.ValueChanged += value => _canvas.SetRelativeZoom((float)value);
@@ -216,16 +244,22 @@ public partial class NImageEditorModal : Control, IScreenContext
         toleranceSlider.ValueChanged += value => _canvas.BackgroundTolerance = (float)value;
         tools.AddChild(toleranceSlider);
 
-        tools.AddChild(CreateButton("auto_remove", EditorText("IMAGE_EDITOR_AUTO_REMOVE", "Remove background"), _canvas.RemoveBackground));
+        tools.AddChild(CreateButton("auto_remove", EditorText("IMAGE_EDITOR_AUTO_REMOVE", "Apply background removal"), _canvas.RemoveBackground));
         NLoadoutActionButton undoButton = CreateButton("undo", EditorText("IMAGE_EDITOR_UNDO", "Undo"), _canvas.Undo);
-        _canvas.UndoAvailabilityChanged += undoButton.SetEnabled;
-        tools.AddChild(undoButton);
+        NLoadoutActionButton redoButton = CreateButton("redo", EditorText("IMAGE_EDITOR_REDO", "Redo"), _canvas.Redo);
+        _canvas.HistoryAvailabilityChanged += (canUndo, canRedo) =>
+        {
+            undoButton.SetEnabled(canUndo);
+            redoButton.SetEnabled(canRedo);
+        };
+        tools.AddChild(CreateCompactButtonRow(undoButton, redoButton));
         Callable.From(undoButton.Disable).CallDeferred();
+        Callable.From(redoButton.Disable).CallDeferred();
         tools.AddChild(CreateButton("fit", EditorText("IMAGE_EDITOR_FIT", "Fit image"), _canvas.FitToFrame));
         tools.AddChild(CreateButton("reset", EditorText("IMAGE_EDITOR_RESET", "Reset image"), _canvas.ResetAll));
 
         MegaLabel instructions = CreateLabel(
-            EditorText("IMAGE_EDITOR_INSTRUCTIONS", "Drag to move. Use the mouse wheel to zoom."),
+            EditorText("IMAGE_EDITOR_INSTRUCTIONS", "Drag to move. Brush beyond the frame edge for softer cuts. Use the mouse wheel to zoom."),
             18,
             new Color("C9C2B3"),
             HorizontalAlignment.Center);
@@ -280,6 +314,21 @@ public partial class NImageEditorModal : Control, IScreenContext
         button.Init(id, label);
         button.Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => onReleased()));
         return button;
+    }
+
+    private static HBoxContainer CreateCompactButtonRow(params NLoadoutActionButton[] buttons)
+    {
+        HBoxContainer row = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 46f)
+        };
+        row.AddThemeConstantOverride("separation", 8);
+        foreach (NLoadoutActionButton button in buttons)
+        {
+            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            row.AddChild(button);
+        }
+        return row;
     }
 
     private static MegaLabel CreateSliderLabel(string text)
@@ -350,7 +399,7 @@ public partial class NImageEditorModal : Control, IScreenContext
 
         try
         {
-            Complete(new EditorSessionResult(true, _canvas.RenderOutput(), name));
+            Complete(new EditorSessionResult(true, _canvas.RenderOutputDocument(), name));
         }
         catch (Exception exception)
         {
@@ -392,7 +441,7 @@ public partial class NImageEditorModal : Control, IScreenContext
 
     public readonly record struct EditorSessionResult(
         bool Accepted,
-        Image? Image,
+        ImageMediaDocument? Document,
         string? DisplayName,
         string? ErrorMessage = null);
 

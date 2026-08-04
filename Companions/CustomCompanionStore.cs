@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
+using Loadout.UI.ImageEditing;
 
 public static class CustomCompanionStore
 {
@@ -133,6 +134,62 @@ public static class CustomCompanionStore
         return true;
     }
 
+    public static bool TryUpdate(
+        string companionId,
+        string displayName,
+        string imageFileName,
+        out CustomLoadoutCompanion? companion,
+        out string? error)
+    {
+        EnsureLoaded();
+        companion = null;
+        error = ValidateRecord(companionId, displayName, imageFileName, requireImage: true);
+        if (error is not null)
+            return false;
+        if (!_records.TryGetValue(companionId, out CustomCompanionRecord? existing))
+        {
+            error = "The selected custom companion no longer exists.";
+            return false;
+        }
+
+        CustomCompanionRecord updated = new(
+            companionId.Trim(),
+            displayName.Trim(),
+            Path.GetFileName(imageFileName));
+        Dictionary<string, CustomCompanionRecord> next = new(_records, StringComparer.OrdinalIgnoreCase)
+        {
+            [updated.Id] = updated
+        };
+        try
+        {
+            CustomLoadoutCompanion updatedCompanion = CreateCompanion(updated);
+            SaveManifest(next.Values);
+            _records = next;
+            companion = updatedCompanion;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+            GD.PushError($"Loadout: failed to update custom companion '{companionId}'. {exception}");
+            return false;
+        }
+
+        if (!string.Equals(existing.File, updated.File, PathComparison))
+        {
+            try
+            {
+                string oldPath = GetGlobalImagePath(existing.File);
+                if (File.Exists(oldPath))
+                    File.Delete(oldPath);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"Loadout: updated custom companion '{companionId}', but its previous image could not be deleted. {exception.Message}");
+            }
+        }
+        return true;
+    }
+
     public static string GetImageResourcePath(string imageFileName)
     {
         return $"{DirectoryPath}/{Path.GetFileName(imageFileName)}";
@@ -201,8 +258,10 @@ public static class CustomCompanionStore
             return "The companion name is too long.";
         if (string.IsNullOrWhiteSpace(file) || !string.Equals(file, Path.GetFileName(file), StringComparison.Ordinal))
             return "The companion image filename is invalid.";
-        if (!file.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-            return "The companion image must be a PNG.";
+        bool isPng = file.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+        bool isAnimation = file.EndsWith(ImageAnimationPackage.Extension, StringComparison.OrdinalIgnoreCase);
+        if (!isPng && !isAnimation)
+            return "The companion image must be a PNG or Loadout animation package.";
         string fileStem = Path.GetFileNameWithoutExtension(file);
         if (!Guid.TryParseExact(fileStem, "N", out _)
             || !string.Equals(id.Trim(), $"custom-{fileStem}", StringComparison.OrdinalIgnoreCase))
@@ -217,11 +276,14 @@ public static class CustomCompanionStore
 
             try
             {
-                Image image = Image.LoadFromFile(imagePath);
-                if (image is null || image.IsEmpty())
+                ImageMediaDocument document = ImageMediaLoader.LoadDocumentFromFile(imagePath);
+                if (document.Frames.Count == 0)
                     return "The companion image file is corrupt or unsupported.";
-                if (image.GetWidth() != 192 || image.GetHeight() != 224)
-                    return "The companion image dimensions must be 192 by 224 pixels.";
+                foreach (ImageMediaFrame frame in document.Frames)
+                {
+                    if (frame.Image.GetWidth() != 192 || frame.Image.GetHeight() != 224)
+                        return "Every companion animation frame must be 192 by 224 pixels.";
+                }
             }
             catch (Exception exception)
             {

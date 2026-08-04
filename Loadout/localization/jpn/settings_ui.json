@@ -1,4 +1,9 @@
 {
+  "LOADOUT-EDIT_CUSTOM_COMPANION.title": "カスタムコンパニオンを編集",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "ブラシモード",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "ブラシ",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_FILL.title": "塗りつぶし",
+  "LOADOUT-IMAGE_EDITOR_REDO.title": "やり直す",
   "LOADOUT-CREATE_CUSTOM_COMPANION.title": "カスタムコンパニオンを作成",
   "LOADOUT-DELETE_CUSTOM_COMPANION.title": "カスタムコンパニオンを削除",
   "LOADOUT-CUSTOM_COMPANION_DEFAULT_NAME.title": "カスタムコンパニオン",
@@ -23,7 +28,7 @@
   "LOADOUT-IMAGE_EDITOR_UNDO.title": "元に戻す",
   "LOADOUT-IMAGE_EDITOR_FIT.title": "画像を合わせる",
   "LOADOUT-IMAGE_EDITOR_RESET.title": "画像をリセット",
-  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "ドラッグで移動します。マウスホイールでズームします。",
+  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "ドラッグで移動します。枠外からブラシを当てると滑らかに削れます。マウスホイールでズームします。",
   "LOADOUT-IMAGE_EDITOR_CANCEL.title": "キャンセル",
   "LOADOUT-IMAGE_EDITOR_SAVE.title": "画像を保存",
   "LOADOUT.mod_title": "ロードアウト",

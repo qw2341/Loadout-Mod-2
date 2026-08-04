@@ -28,7 +28,9 @@ public partial class NLoadoutPanelButton : Button
 	private TextureRect _tabImage = null!;
 	private TextureRect _arrowImage = null!;
 	private TextureRect _companionImage = null!;
+	private Timer _companionAnimationTimer = null!;
 	private LoadoutCompanion? _companion;
+	private CompanionTextureSequence? _companionTextureSequence;
 	private NSpeechBubbleVfx? _speechBubble;
 	private Tween? _companionMotionTween;
 	private Tween? _companionHoldTween;
@@ -38,6 +40,7 @@ public partial class NLoadoutPanelButton : Button
 	private bool _hasOpenLoadoutScreen;
 	private bool _pressPeekActive;
 	private bool _signalsConnected;
+	private int _companionAnimationFrame;
 
 	public override void _Ready()
 	{
@@ -71,6 +74,8 @@ public partial class NLoadoutPanelButton : Button
 		MouseEntered -= OnMouseEntered;
 		MouseExited -= OnMouseExited;
 		Resized -= OnResized;
+		_companionAnimationTimer.Timeout -= AdvanceCompanionAnimation;
+		_companionAnimationTimer.Stop();
 		_nLoadoutPanel.VisibilityStateChanged -= RefreshState;
 		LoadoutPanelAccessService.AccessChanged -= RefreshState;
 		NLoadoutPanelRoot.OpenScreenStateChanged -= OnOpenScreenStateChanged;
@@ -120,6 +125,14 @@ public partial class NLoadoutPanelButton : Button
 		AddThemeStyleboxOverride("disabled", EmptyStyle);
 
 		_companionImage = GetNodeOrNull<TextureRect>("CompanionImage") ?? CreateTextureRect("CompanionImage", false);
+		_companionAnimationTimer = GetNodeOrNull<Timer>("CompanionAnimationTimer") ?? new Timer
+		{
+			Name = "CompanionAnimationTimer",
+			OneShot = true
+		};
+		if (_companionAnimationTimer.GetParent() is null)
+			AddChild(_companionAnimationTimer);
+		_companionAnimationTimer.Timeout += AdvanceCompanionAnimation;
 		_tabImage = GetNodeOrNull<TextureRect>("TabImage") ?? CreateTextureRect("TabImage", true);
 		_arrowImage = GetNodeOrNull<TextureRect>("ArrowImage") ?? CreateTextureRect("ArrowImage", false);
 		MoveChild(_companionImage, 0);
@@ -218,18 +231,42 @@ public partial class NLoadoutPanelButton : Button
 	private void RefreshCompanion()
 	{
 		ClearCompanionPresentation();
+		_companionAnimationTimer.Stop();
+		_companionAnimationFrame = 0;
 		_companion = LoadoutCompanionRegistry.GetActiveCompanion();
-		Texture2D? texture = _companion is null
+		_companionTextureSequence = _companion is null
 			? null
-			: LoadoutCompanionRegistry.GetTexture(_companion);
+			: LoadoutCompanionRegistry.GetTextureSequence(_companion);
+		Texture2D? texture = _companionTextureSequence?.Frames[0];
 
 		_companionImage.Texture = texture;
+		RestartCompanionAnimation();
 		RefreshPanelHoverInput();
 		if (texture is null)
 			return;
 
 		if ((_mouseInside || _panelHovered) && !Disabled && Visible && !HasOpenLoadoutScreen())
 			ShowCompanion();
+	}
+
+	private void AdvanceCompanionAnimation()
+	{
+		if (_companionTextureSequence is not { Frames.Count: > 1 } sequence)
+			return;
+		_companionAnimationFrame = (_companionAnimationFrame + 1) % sequence.Frames.Count;
+		_companionImage.Texture = sequence.Frames[_companionAnimationFrame];
+		RestartCompanionAnimation();
+	}
+
+	private void RestartCompanionAnimation()
+	{
+		if (_companionTextureSequence is not { Frames.Count: > 1 } sequence)
+			return;
+		_companionAnimationTimer.WaitTime = System.Math.Clamp(
+			sequence.Durations[_companionAnimationFrame],
+			0.02,
+			10.0);
+		_companionAnimationTimer.Start();
 	}
 
 	private void RefreshPanelHoverInput()

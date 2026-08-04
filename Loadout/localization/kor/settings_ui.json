@@ -1,4 +1,9 @@
 {
+  "LOADOUT-EDIT_CUSTOM_COMPANION.title": "사용자 동료 편집",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "브러시 모드",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "브러시",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_FILL.title": "채우기",
+  "LOADOUT-IMAGE_EDITOR_REDO.title": "다시 실행",
   "LOADOUT-CREATE_CUSTOM_COMPANION.title": "사용자 동료 만들기",
   "LOADOUT-DELETE_CUSTOM_COMPANION.title": "사용자 동료 삭제",
   "LOADOUT-CUSTOM_COMPANION_DEFAULT_NAME.title": "사용자 동료",
@@ -23,7 +28,7 @@
   "LOADOUT-IMAGE_EDITOR_UNDO.title": "실행 취소",
   "LOADOUT-IMAGE_EDITOR_FIT.title": "이미지 맞춤",
   "LOADOUT-IMAGE_EDITOR_RESET.title": "이미지 초기화",
-  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "드래그하여 이동합니다. 마우스 휠로 확대하거나 축소합니다.",
+  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "드래그하여 이동합니다. 부드럽게 지우려면 프레임 밖에서도 브러시를 사용하세요. 마우스 휠로 확대하거나 축소합니다.",
   "LOADOUT-IMAGE_EDITOR_CANCEL.title": "취소",
   "LOADOUT-IMAGE_EDITOR_SAVE.title": "이미지 저장",
   "LOADOUT.mod_title": "로드아웃",

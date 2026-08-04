@@ -1,4 +1,9 @@
 {
+  "LOADOUT-EDIT_CUSTOM_COMPANION.title": "Editar compañero personalizado",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "Modo de pincel",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "Pincel",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_FILL.title": "Relleno",
+  "LOADOUT-IMAGE_EDITOR_REDO.title": "Rehacer",
   "LOADOUT-CREATE_CUSTOM_COMPANION.title": "Crear compañero personalizado",
   "LOADOUT-DELETE_CUSTOM_COMPANION.title": "Eliminar compañero personalizado",
   "LOADOUT-CUSTOM_COMPANION_DEFAULT_NAME.title": "Compañero personalizado",
@@ -23,7 +28,7 @@
   "LOADOUT-IMAGE_EDITOR_UNDO.title": "Deshacer",
   "LOADOUT-IMAGE_EDITOR_FIT.title": "Ajustar imagen",
   "LOADOUT-IMAGE_EDITOR_RESET.title": "Restablecer imagen",
-  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "Arrastra para mover. Usa la rueda del ratón para ampliar.",
+  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "Arrastra para mover. Pinta desde fuera del marco para hacer recortes suaves. Usa la rueda para ampliar.",
   "LOADOUT-IMAGE_EDITOR_CANCEL.title": "Cancelar",
   "LOADOUT-IMAGE_EDITOR_SAVE.title": "Guardar imagen",
   "LOADOUT.mod_title": "Equipamiento",

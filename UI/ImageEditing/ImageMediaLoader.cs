@@ -12,29 +12,40 @@ public static class ImageMediaLoader
     private const long MaxInputBytes = 128L * 1024L * 1024L;
 
     public const string FileDialogPatterns =
-        "*.png,*.jpg,*.jpeg,*.jpe,*.jfif,*.gif,*.webp,*.bmp,*.dib,*.tga,*.svg";
+        "*.png,*.apng,*.jpg,*.jpeg,*.jpe,*.jfif,*.gif,*.webp,*.bmp,*.dib,*.tga,*.svg";
 
     public const string FileDialogMimeTypes =
-        "image/png,image/jpeg,image/gif,image/webp,image/bmp,image/x-tga,image/svg+xml";
+        "image/png,image/apng,image/jpeg,image/gif,image/webp,image/bmp,image/x-tga,image/svg+xml";
 
     public static Image LoadFromFile(string path)
+    {
+        return LoadDocumentFromFile(path).FirstImage;
+    }
+
+    public static ImageMediaDocument LoadDocumentFromFile(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         FileInfo file = new(path);
         if (!file.Exists)
             throw new FileNotFoundException("The selected image file does not exist.", path);
+        string extension = file.Extension.ToLowerInvariant();
+        if (extension == ImageAnimationPackage.Extension)
+            return ImageAnimationPackage.Load(file.FullName);
         if (file.Length <= 0 || file.Length > MaxInputBytes)
             throw new InvalidDataException("The selected image file is empty or too large.");
 
         byte[] data = File.ReadAllBytes(file.FullName);
-        string extension = file.Extension.ToLowerInvariant();
         if (extension == ".gif" || HasPrefix(data, "GIF87a") || HasPrefix(data, "GIF89a"))
-            return GifFirstFrameDecoder.Decode(data);
+            return GifAnimationDecoder.Decode(data);
+        if (extension is ".png" or ".apng" && ApngAnimationDecoder.IsAnimated(data))
+            return ApngAnimationDecoder.Decode(data);
+        if (extension == ".webp" && AnimatedWebpDecoder.IsAnimated(data))
+            return AnimatedWebpDecoder.Decode(data);
 
         Image image = new();
         Error error = extension switch
         {
-            ".png" => image.LoadPngFromBuffer(data),
+            ".png" or ".apng" => image.LoadPngFromBuffer(data),
             ".jpg" or ".jpeg" or ".jpe" or ".jfif" => image.LoadJpgFromBuffer(data),
             ".webp" => image.LoadWebpFromBuffer(data),
             ".bmp" or ".dib" => image.LoadBmpFromBuffer(data),
@@ -47,13 +58,13 @@ public static class ImageMediaLoader
         {
             Image fallback = Image.LoadFromFile(file.FullName);
             if (fallback is not null && !fallback.IsEmpty())
-                return fallback;
+                return ImageMediaDocument.FromImage(fallback);
             throw new InvalidDataException($"The selected image format could not be decoded ({error}).");
         }
 
         if (image.IsEmpty())
             throw new InvalidDataException("The selected image contains no pixel data.");
-        return image;
+        return ImageMediaDocument.FromImage(image);
     }
 
     private static Error LoadBySignature(Image image, byte[] data)
@@ -91,11 +102,12 @@ public static class ImageMediaLoader
         return true;
     }
 
-    private static class GifFirstFrameDecoder
+    private static class GifAnimationDecoder
     {
         private const int MaxGifPixels = 64 * 1024 * 1024;
+        private const long MaxGifAnimationPixels = 32L * 1024L * 1024L;
 
-        public static Image Decode(byte[] data)
+        public static ImageMediaDocument Decode(byte[] data)
         {
             GifReader reader = new(data);
             string signature = reader.ReadAscii(6);
@@ -112,7 +124,12 @@ public static class ImageMediaLoader
             Color32[]? globalColors = (logicalPacked & 0x80) != 0
                 ? ReadColorTable(reader, 1 << ((logicalPacked & 0x07) + 1))
                 : null;
+            List<ImageMediaFrame> frames = [];
+            byte[]? canvas = null;
+            PreviousFrame? previousFrame = null;
             int? transparentIndex = null;
+            int disposalMethod = 0;
+            int delayHundredths = 10;
 
             while (!reader.EndOfData)
             {
@@ -130,7 +147,8 @@ public static class ImageMediaLoader
                         if (blockSize != 4)
                             throw new InvalidDataException("The GIF graphic-control block is malformed.");
                         byte packed = reader.ReadByte();
-                        reader.Skip(2);
+                        disposalMethod = packed >> 2 & 0x07;
+                        delayHundredths = reader.ReadUInt16();
                         int candidateTransparency = reader.ReadByte();
                         transparentIndex = (packed & 0x01) != 0 ? candidateTransparency : null;
                         if (reader.ReadByte() != 0)
@@ -167,47 +185,87 @@ public static class ImageMediaLoader
                 if ((imagePacked & 0x40) != 0)
                     indices = Deinterlace(indices, frameWidth, frameHeight);
 
-                return CreateImage(
+                if (frames.Count >= ImageMediaDocument.MaxFrames
+                    || (long)(frames.Count + 1) * canvasWidth * canvasHeight > MaxGifAnimationPixels)
+                {
+                    throw new InvalidDataException("The GIF contains too many pixels or animation frames.");
+                }
+
+                canvas ??= CreateCanvas(
                     canvasWidth,
                     canvasHeight,
+                    backgroundIndex,
+                    transparentIndex,
+                    globalColors);
+                ApplyPreviousDisposal(canvas, canvasWidth, backgroundIndex, globalColors, previousFrame);
+                byte[]? restoreCanvas = disposalMethod == 3 ? (byte[])canvas.Clone() : null;
+                DrawFrame(
+                    canvas,
+                    canvasWidth,
                     frameLeft,
                     frameTop,
                     frameWidth,
                     frameHeight,
-                    backgroundIndex,
                     transparentIndex,
-                    globalColors,
                     colors,
                     indices);
+
+                Image image = Image.CreateFromData(
+                    canvasWidth,
+                    canvasHeight,
+                    false,
+                    Image.Format.Rgba8,
+                    (byte[])canvas.Clone());
+                double duration = delayHundredths <= 1 ? 0.1 : delayHundredths / 100.0;
+                frames.Add(new ImageMediaFrame(image, duration));
+                previousFrame = new PreviousFrame(
+                    disposalMethod,
+                    new Rect2I(frameLeft, frameTop, frameWidth, frameHeight),
+                    transparentIndex,
+                    restoreCanvas);
+                transparentIndex = null;
+                disposalMethod = 0;
+                delayHundredths = 10;
             }
 
-            throw new InvalidDataException("The GIF does not contain an image frame.");
+            if (frames.Count == 0)
+                throw new InvalidDataException("The GIF does not contain an image frame.");
+            return new ImageMediaDocument(frames);
         }
 
-        private static Image CreateImage(
+        private static byte[] CreateCanvas(
             int canvasWidth,
             int canvasHeight,
+            int backgroundIndex,
+            int? transparentIndex,
+            Color32[]? globalColors)
+        {
+            byte[] pixels = new byte[checked(canvasWidth * canvasHeight * 4)];
+            if (transparentIndex is not null
+                || globalColors is null
+                || backgroundIndex < 0
+                || backgroundIndex >= globalColors.Length)
+            {
+                return pixels;
+            }
+
+            Color32 background = globalColors[backgroundIndex];
+            for (int i = 0; i < canvasWidth * canvasHeight; i++)
+                WritePixel(pixels, i, background, 255);
+            return pixels;
+        }
+
+        private static void DrawFrame(
+            byte[] canvas,
+            int canvasWidth,
             int frameLeft,
             int frameTop,
             int frameWidth,
             int frameHeight,
-            int backgroundIndex,
             int? transparentIndex,
-            Color32[]? globalColors,
             Color32[] frameColors,
             byte[] indices)
         {
-            byte[] pixels = new byte[checked(canvasWidth * canvasHeight * 4)];
-            if (transparentIndex is null
-                && globalColors is not null
-                && backgroundIndex >= 0
-                && backgroundIndex < globalColors.Length)
-            {
-                Color32 background = globalColors[backgroundIndex];
-                for (int i = 0; i < canvasWidth * canvasHeight; i++)
-                    WritePixel(pixels, i, background, 255);
-            }
-
             for (int y = 0; y < frameHeight; y++)
             {
                 for (int x = 0; x < frameWidth; x++)
@@ -219,11 +277,45 @@ public static class ImageMediaLoader
                         throw new InvalidDataException("The GIF frame references a missing color.");
 
                     int canvasIndex = (frameTop + y) * canvasWidth + frameLeft + x;
-                    WritePixel(pixels, canvasIndex, frameColors[colorIndex], 255);
+                    WritePixel(canvas, canvasIndex, frameColors[colorIndex], 255);
                 }
             }
+        }
 
-            return Image.CreateFromData(canvasWidth, canvasHeight, false, Image.Format.Rgba8, pixels);
+        private static void ApplyPreviousDisposal(
+            byte[] canvas,
+            int canvasWidth,
+            int backgroundIndex,
+            Color32[]? globalColors,
+            PreviousFrame? previous)
+        {
+            if (previous is null)
+                return;
+            if (previous.DisposalMethod == 3 && previous.RestoreCanvas is not null)
+            {
+                Buffer.BlockCopy(previous.RestoreCanvas, 0, canvas, 0, canvas.Length);
+                return;
+            }
+            if (previous.DisposalMethod != 2)
+                return;
+
+            Color32 background = default;
+            byte alpha = 0;
+            if (previous.TransparentIndex != backgroundIndex
+                && globalColors is not null
+                && backgroundIndex >= 0
+                && backgroundIndex < globalColors.Length)
+            {
+                background = globalColors[backgroundIndex];
+                alpha = 255;
+            }
+
+            Rect2I rect = previous.Rect;
+            for (int y = rect.Position.Y; y < rect.End.Y; y++)
+            {
+                for (int x = rect.Position.X; x < rect.End.X; x++)
+                    WritePixel(canvas, y * canvasWidth + x, background, alpha);
+            }
         }
 
         private static void WritePixel(byte[] pixels, int pixelIndex, Color32 color, byte alpha)
@@ -355,6 +447,12 @@ public static class ImageMediaLoader
         }
 
         private readonly record struct Color32(byte Red, byte Green, byte Blue);
+
+        private sealed record PreviousFrame(
+            int DisposalMethod,
+            Rect2I Rect,
+            int? TransparentIndex,
+            byte[]? RestoreCanvas);
 
         private sealed class GifReader(byte[] data)
         {

@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Godot;
+using Loadout.UI.ImageEditing;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
@@ -17,7 +18,7 @@ public static class LoadoutCompanionRegistry
     public const string NoneId = "none";
 
     private static readonly Dictionary<string, LoadoutCompanion> CompanionsById = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, Texture2D> TexturesById = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, CompanionTextureSequence> TextureSequencesById = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> MissingTextures = new(StringComparer.OrdinalIgnoreCase);
 
     private static IReadOnlyList<LoadoutCompanion> _companions = [];
@@ -27,6 +28,7 @@ public static class LoadoutCompanionRegistry
     public static event Action<string>? ActiveCompanionChanged;
     public static event Action? CompanionsChanged;
     public static event Action<CustomLoadoutCompanion>? CustomCompanionAdded;
+    public static event Action<CustomLoadoutCompanion>? CustomCompanionUpdated;
     public static event Action<string>? CustomCompanionRemoved;
     public static event Action<LoadoutCompanionPresentationRequest>? PresentationRequested;
 
@@ -103,10 +105,30 @@ public static class LoadoutCompanionRegistry
         return true;
     }
 
+    public static bool UpdateCustomCompanion(CustomLoadoutCompanion companion)
+    {
+        ArgumentNullException.ThrowIfNull(companion);
+        if (!Initialize() || !companion.IsCustom)
+            return false;
+
+        string id = NormalizeId(companion.CompanionId);
+        if (!CompanionsById.TryGetValue(id, out LoadoutCompanion? existing) || !existing.IsCustom)
+            return false;
+
+        CompanionsById[id] = companion;
+        InvalidateTextureCache(id);
+        RebuildCompanionList();
+        CustomCompanionUpdated?.Invoke(companion);
+        CompanionsChanged?.Invoke();
+        if (string.Equals(_activeCompanionId, id, StringComparison.OrdinalIgnoreCase))
+            ActiveCompanionChanged?.Invoke(id);
+        return true;
+    }
+
     public static void InvalidateTextureCache(string companionId)
     {
         string id = NormalizeId(companionId);
-        TexturesById.Remove(id);
+        TextureSequencesById.Remove(id);
         MissingTextures.Remove(id);
     }
 
@@ -135,8 +157,13 @@ public static class LoadoutCompanionRegistry
 
     public static Texture2D? GetTexture(LoadoutCompanion companion)
     {
+        return GetTextureSequence(companion)?.Frames[0];
+    }
+
+    public static CompanionTextureSequence? GetTextureSequence(LoadoutCompanion companion)
+    {
         string id = NormalizeId(companion.CompanionId);
-        if (TexturesById.TryGetValue(id, out Texture2D? cached))
+        if (TextureSequencesById.TryGetValue(id, out CompanionTextureSequence? cached))
             return cached;
 
         if (MissingTextures.Contains(id))
@@ -144,8 +171,8 @@ public static class LoadoutCompanionRegistry
             return null;
         }
 
-        Texture2D? texture = LoadTexture(companion.SpritePath);
-        if (texture is null)
+        CompanionTextureSequence? sequence = LoadTextureSequence(companion.SpritePath);
+        if (sequence is null)
         {
             MissingTextures.Add(id);
             return null;
@@ -153,15 +180,14 @@ public static class LoadoutCompanionRegistry
 
         if (companion.SpriteRegion is { } region)
         {
-            texture = new AtlasTexture
-            {
-                Atlas = texture,
-                Region = region
-            };
+            List<Texture2D> regions = new(sequence.Frames.Count);
+            foreach (Texture2D texture in sequence.Frames)
+                regions.Add(new AtlasTexture { Atlas = texture, Region = region });
+            sequence = new CompanionTextureSequence(regions, sequence.Durations);
         }
 
-        TexturesById[id] = texture;
-        return texture;
+        TextureSequencesById[id] = sequence;
+        return sequence;
     }
 
     public static bool IsLocalOwner(LoadoutCompanion companion)
@@ -253,10 +279,13 @@ public static class LoadoutCompanionRegistry
             .ToArray();
     }
 
-    private static Texture2D? LoadTexture(string path)
+    private static CompanionTextureSequence? LoadTextureSequence(string path)
     {
         if (path.StartsWith("res://", StringComparison.OrdinalIgnoreCase) && ResourceLoader.Exists(path))
-            return ResourceLoader.Load<Texture2D>(path, null, ResourceLoader.CacheMode.Reuse);
+        {
+            Texture2D texture = ResourceLoader.Load<Texture2D>(path, null, ResourceLoader.CacheMode.Reuse);
+            return new CompanionTextureSequence([texture], [0.1]);
+        }
 
         try
         {
@@ -264,11 +293,16 @@ public static class LoadoutCompanionRegistry
             if (!File.Exists(globalPath))
                 return null;
 
-            Image image = Image.LoadFromFile(globalPath);
-            if (image is null || image.IsEmpty())
-                return null;
-            image.GenerateMipmaps();
-            return ImageTexture.CreateFromImage(image);
+            ImageMediaDocument document = ImageMediaLoader.LoadDocumentFromFile(globalPath);
+            List<Texture2D> textures = new(document.Frames.Count);
+            List<double> durations = new(document.Frames.Count);
+            foreach (ImageMediaFrame mediaFrame in document.Frames)
+            {
+                mediaFrame.Image.GenerateMipmaps();
+                textures.Add(ImageTexture.CreateFromImage(mediaFrame.Image));
+                durations.Add(Math.Clamp(mediaFrame.DurationSeconds, 0.02, 10.0));
+            }
+            return new CompanionTextureSequence(textures, durations);
         }
         catch (Exception exception)
         {
@@ -277,3 +311,7 @@ public static class LoadoutCompanionRegistry
         }
     }
 }
+
+public sealed record CompanionTextureSequence(
+    IReadOnlyList<Texture2D> Frames,
+    IReadOnlyList<double> Durations);

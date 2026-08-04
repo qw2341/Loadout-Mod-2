@@ -1,4 +1,9 @@
 {
+  "LOADOUT-EDIT_CUSTOM_COMPANION.title": "编辑自定义同伴",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "画笔模式",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "画笔",
+  "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_FILL.title": "填充",
+  "LOADOUT-IMAGE_EDITOR_REDO.title": "重做",
   "LOADOUT-CREATE_CUSTOM_COMPANION.title": "创建自定义同伴",
   "LOADOUT-DELETE_CUSTOM_COMPANION.title": "删除自定义同伴",
   "LOADOUT-CUSTOM_COMPANION_DEFAULT_NAME.title": "自定义同伴",
@@ -23,7 +28,7 @@
   "LOADOUT-IMAGE_EDITOR_UNDO.title": "撤销",
   "LOADOUT-IMAGE_EDITOR_FIT.title": "适应画框",
   "LOADOUT-IMAGE_EDITOR_RESET.title": "重置图片",
-  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "拖动以移动。使用鼠标滚轮缩放。",
+  "LOADOUT-IMAGE_EDITOR_INSTRUCTIONS.title": "拖动以移动。可从边框外使用画笔来柔和擦除，鼠标滚轮用于缩放。",
   "LOADOUT-IMAGE_EDITOR_CANCEL.title": "取消",
   "LOADOUT-IMAGE_EDITOR_SAVE.title": "保存图片",
   "LOADOUT.mod_title": "Loadout",
