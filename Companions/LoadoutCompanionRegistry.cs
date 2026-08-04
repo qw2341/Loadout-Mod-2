@@ -20,6 +20,7 @@ public static class LoadoutCompanionRegistry
 
     private static IReadOnlyList<LoadoutCompanion> _companions = [];
     private static string _activeCompanionId = NoneId;
+    private static LoadoutCompanion? _hookedCompanion;
     private static bool _initialized;
     private static bool _customCompanionsLoaded;
 
@@ -28,6 +29,7 @@ public static class LoadoutCompanionRegistry
     public static event Action<CustomLoadoutCompanion>? CustomCompanionAdded;
     public static event Action<CustomLoadoutCompanion>? CustomCompanionUpdated;
     public static event Action<string>? CustomCompanionRemoved;
+    public static event Action<LoadoutCompanionPresentationRequest>? PresentationRequested;
 
     public static string ActiveCompanionId => _activeCompanionId;
     public static IReadOnlyList<LoadoutCompanion> Companions
@@ -58,6 +60,7 @@ public static class LoadoutCompanionRegistry
             _activeCompanionId = resolvedId;
             ActiveCompanionChanged?.Invoke(_activeCompanionId);
         }
+        RegisterActiveCompanionHooks();
 
         return true;
     }
@@ -112,13 +115,19 @@ public static class LoadoutCompanionRegistry
         if (!CompanionsById.TryGetValue(id, out LoadoutCompanion? existing) || !existing.IsCustom)
             return false;
 
+        bool isActive = string.Equals(_activeCompanionId, id, StringComparison.OrdinalIgnoreCase);
+        if (isActive)
+            UnregisterActiveCompanionHooks();
         CompanionsById[id] = companion;
         InvalidateTextureCache(id);
         RebuildCompanionList();
         CustomCompanionUpdated?.Invoke(companion);
         CompanionsChanged?.Invoke();
-        if (string.Equals(_activeCompanionId, id, StringComparison.OrdinalIgnoreCase))
+        if (isActive)
+        {
             ActiveCompanionChanged?.Invoke(id);
+            RegisterActiveCompanionHooks();
+        }
         return true;
     }
 
@@ -150,10 +159,12 @@ public static class LoadoutCompanionRegistry
             return;
 
         string previousId = _activeCompanionId;
+        UnregisterActiveCompanionHooks();
         _activeCompanionId = resolvedId;
         if (CompanionsById.GetValueOrDefault(previousId)?.IsCustom == true)
             InvalidateTextureCache(previousId);
         ActiveCompanionChanged?.Invoke(_activeCompanionId);
+        RegisterActiveCompanionHooks();
     }
 
     public static LoadoutCompanion? GetActiveCompanion()
@@ -236,6 +247,20 @@ public static class LoadoutCompanionRegistry
         return true;
     }
 
+    internal static void RequestPresentation(LoadoutCompanion companion, string? text, double seconds)
+    {
+        ArgumentNullException.ThrowIfNull(companion);
+        Initialize();
+        if (!double.IsFinite(seconds)
+            || !ReferenceEquals(CompanionsById.GetValueOrDefault(_activeCompanionId), companion))
+            return;
+
+        PresentationRequested?.Invoke(new LoadoutCompanionPresentationRequest(
+            companion,
+            text,
+            Math.Max(seconds, 0.1)));
+    }
+
     private static string ResolveId(string companionId)
     {
         return companionId == NoneId || CompanionsById.ContainsKey(companionId)
@@ -277,6 +302,48 @@ public static class LoadoutCompanionRegistry
 
         CompanionsById[id] = companion;
         return true;
+    }
+
+    private static void RegisterActiveCompanionHooks()
+    {
+        LoadoutCompanion? companion = CompanionsById.GetValueOrDefault(_activeCompanionId);
+        if (companion is null || ReferenceEquals(companion, _hookedCompanion))
+            return;
+
+        try
+        {
+            companion.RegisterHooks();
+            _hookedCompanion = companion;
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                companion.UnregisterHooks();
+            }
+            catch (Exception cleanupException)
+            {
+                GD.PushError($"Loadout: companion '{companion.CompanionId}' hook cleanup failed. {cleanupException}");
+            }
+            GD.PushError($"Loadout: companion '{companion.CompanionId}' hook registration failed. {exception}");
+        }
+    }
+
+    private static void UnregisterActiveCompanionHooks()
+    {
+        LoadoutCompanion? companion = _hookedCompanion;
+        _hookedCompanion = null;
+        if (companion is null)
+            return;
+
+        try
+        {
+            companion.UnregisterHooks();
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"Loadout: companion '{companion.CompanionId}' hook unregistration failed. {exception}");
+        }
     }
 
     private static void RebuildCompanionList()

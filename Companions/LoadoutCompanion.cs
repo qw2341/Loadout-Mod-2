@@ -19,4 +19,30 @@ public abstract class LoadoutCompanion
     public virtual bool UsesLocalizedConfigText => true;
     public virtual bool IsGameplayAffecting => false;
     public virtual Color? SelectionColor => IsGameplayAffecting ? new Color("EFC851") : null;
+
+    public virtual void RegisterHooks()
+    {
+    }
+
+    public virtual void UnregisterHooks()
+    {
+    }
+
+    public void Peek(double seconds = 1.5)
+    {
+        LoadoutCompanionRegistry.RequestPresentation(this, null, seconds);
+    }
+
+    public void Say(string text, double seconds = 2.0)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        LoadoutCompanionRegistry.RequestPresentation(this, text, seconds);
+    }
 }
+
+public readonly record struct LoadoutCompanionPresentationRequest(
+    LoadoutCompanion Companion,
+    string? Text,
+    double Seconds);

@@ -1,11 +1,14 @@
 #nullable enable
 
+using System;
 using Godot;
 using Loadout.Companions;
 using Loadout.UI.Managers;
 using Loadout.Services.Loadouts;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 
 namespace Loadout.UI;
 
@@ -29,10 +32,13 @@ public partial class NLoadoutPanelButton : Button
 	private Timer? _companionAnimationTimer;
 	private LoadoutCompanion? _companion;
 	private CompanionTextureSequence? _companionTextureSequence;
+	private NSpeechBubbleVfx? _speechBubble;
 	private Tween? _companionMotionTween;
+	private Tween? _companionHoldTween;
 	private float _rainbowPhase;
 	private bool _mouseInside;
 	private bool _panelHovered;
+	private bool _timedPeekActive;
 	private bool _hasOpenLoadoutScreen;
 	private bool _signalsConnected;
 	private int _companionAnimationFrame;
@@ -48,6 +54,7 @@ public partial class NLoadoutPanelButton : Button
 		NLoadoutPanelRoot.OpenScreenStateChanged += OnOpenScreenStateChanged;
 
 		LoadoutCompanionRegistry.ActiveCompanionChanged += OnActiveCompanionChanged;
+		LoadoutCompanionRegistry.PresentationRequested += OnCompanionPresentationRequested;
 		Pressed += OnPressed;
 		MouseEntered += OnMouseEntered;
 		MouseExited += OnMouseExited;
@@ -74,6 +81,7 @@ public partial class NLoadoutPanelButton : Button
 		NLoadoutPanelRoot.OpenScreenStateChanged -= OnOpenScreenStateChanged;
 
 		LoadoutCompanionRegistry.ActiveCompanionChanged -= OnActiveCompanionChanged;
+		LoadoutCompanionRegistry.PresentationRequested -= OnCompanionPresentationRequested;
 		_signalsConnected = false;
 	}
 
@@ -98,7 +106,7 @@ public partial class NLoadoutPanelButton : Button
 		_panelHovered = panelHovered;
 		if (_panelHovered)
 			ShowCompanion();
-		else if (!_mouseInside)
+		else if (!_mouseInside && !_timedPeekActive)
 			HideCompanion();
 	}
 
@@ -180,7 +188,7 @@ public partial class NLoadoutPanelButton : Button
 	private void OnMouseExited()
 	{
 		_mouseInside = false;
-		if (!_panelHovered)
+		if (!_panelHovered && !_timedPeekActive)
 			HideCompanion();
 	}
 
@@ -207,6 +215,20 @@ public partial class NLoadoutPanelButton : Button
 	private void OnActiveCompanionChanged(string _)
 	{
 		RefreshCompanion();
+	}
+
+	private void OnCompanionPresentationRequested(LoadoutCompanionPresentationRequest request)
+	{
+		if (_companion is null
+		    || Disabled
+		    || !Visible
+		    || HasOpenLoadoutScreen()
+		    || !string.Equals(_companion.CompanionId, request.Companion.CompanionId, StringComparison.OrdinalIgnoreCase))
+			return;
+
+		BeginTimedCompanionPeek(request.Seconds);
+		if (!string.IsNullOrWhiteSpace(request.Text))
+			ShowCompanionSpeech(request.Text, request.Seconds);
 	}
 
 	private void RefreshCompanion()
@@ -299,6 +321,9 @@ public partial class NLoadoutPanelButton : Button
 		if (!hasOpenScreen)
 			return;
 
+		_timedPeekActive = false;
+		KillTween(ref _companionHoldTween);
+		ClearCompanionSpeech();
 		HideCompanion();
 	}
 
@@ -343,6 +368,50 @@ public partial class NLoadoutPanelButton : Button
 			CompanionEnterSeconds * 0.6);
 	}
 
+	private void BeginTimedCompanionPeek(double seconds)
+	{
+		KillTween(ref _companionHoldTween);
+		_timedPeekActive = true;
+		ShowCompanion();
+		_companionHoldTween = CreateTween();
+		_companionHoldTween.TweenInterval(seconds);
+		_companionHoldTween.TweenCallback(Callable.From(() =>
+		{
+			_timedPeekActive = false;
+			_companionHoldTween = null;
+			if (!_mouseInside && !_panelHovered)
+				HideCompanion();
+		}));
+	}
+
+	private void ShowCompanionSpeech(string text, double seconds)
+	{
+		ClearCompanionSpeech();
+		NLoadoutPanelRoot? root = NLoadoutPanelRoot.Instance;
+		if (root is null)
+			return;
+
+		Vector2 speechPosition = _companionImage.GlobalPosition
+		                         + new Vector2(_companionImage.Size.X, _companionImage.Size.Y * 0.2f);
+		_speechBubble = NSpeechBubbleVfx.Create(
+			text,
+			DialogueSide.Left,
+			speechPosition,
+			seconds,
+			VfxColor.White);
+		if (_speechBubble is not null)
+			root.AddChild(_speechBubble);
+	}
+
+	private void ClearCompanionSpeech()
+	{
+		if (_speechBubble is not null
+		    && IsInstanceValid(_speechBubble)
+		    && !_speechBubble.IsQueuedForDeletion())
+			_speechBubble.QueueFree();
+		_speechBubble = null;
+	}
+
 	private void HideCompanion()
 	{
 		_companionAnimationTimer?.Stop();
@@ -375,7 +444,10 @@ public partial class NLoadoutPanelButton : Button
 		_companionAnimationTimer?.Stop();
 		_mouseInside = false;
 		_panelHovered = false;
+		_timedPeekActive = false;
 		KillTween(ref _companionMotionTween);
+		KillTween(ref _companionHoldTween);
+		ClearCompanionSpeech();
 
 		if (_companionImage is null || !IsInstanceValid(_companionImage))
 			return;
