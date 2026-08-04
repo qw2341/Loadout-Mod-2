@@ -32,8 +32,10 @@ public partial class NLoadoutPanelRoot : Control
 	private Control _hoverTipLayer;
 	private NLoadoutNativeFeedback _nativeFeedbackLayer;
 	private NCreatureManipulationPanel _creatureManipulationPanel;
+	private bool _lastHasOpenScreen;
 
 	public static NLoadoutPanelRoot Instance => IsValid(_instance) ? _instance : null;
+	public static event System.Action<bool> OpenScreenStateChanged;
 
 	public bool HasOpenScreen => TryPeekScreen(out _);
 	public bool HasActiveNativeCardFeedback =>
@@ -459,6 +461,7 @@ public partial class NLoadoutPanelRoot : Control
 		RemoveFromHistory(screen);
 		_screenHistory.Push(screen);
 		SetScreenActive(screen, true);
+		UpdateModalInputState();
 	}
 
 	private bool TryPeekScreen(out Control screen)
@@ -534,6 +537,13 @@ public partial class NLoadoutPanelRoot : Control
 
 		if (IsInstanceValid(_screenContainer))
 			_screenContainer.MouseFilter = MouseFilterEnum.Ignore;
+
+		bool hasOpenScreen = HasOpenScreen;
+		if (_lastHasOpenScreen == hasOpenScreen)
+			return;
+
+		_lastHasOpenScreen = hasOpenScreen;
+		OpenScreenStateChanged?.Invoke(hasOpenScreen);
 	}
 
 	private bool RemoveFromHistory(Control screenToRemove)

@@ -35,16 +35,19 @@ public partial class NLoadoutPanelButton : Button
 	private float _rainbowPhase;
 	private bool _mouseInside;
 	private bool _panelHovered;
+	private bool _hasOpenLoadoutScreen;
 	private bool _pressPeekActive;
 	private bool _signalsConnected;
 
 	public override void _Ready()
 	{
 		_nLoadoutPanel = GetParent<NLoadoutPanel>();
+		_hasOpenLoadoutScreen = NLoadoutPanelRoot.Instance?.HasOpenScreen == true;
 
 		BuildVisuals();
 		_nLoadoutPanel.VisibilityStateChanged += RefreshState;
 		LoadoutPanelAccessService.AccessChanged += RefreshState;
+		NLoadoutPanelRoot.OpenScreenStateChanged += OnOpenScreenStateChanged;
 
 		LoadoutCompanionRegistry.ActiveCompanionChanged += OnActiveCompanionChanged;
 		LoadoutCompanionRegistry.PresentationRequested += OnCompanionPresentationRequested;
@@ -70,6 +73,7 @@ public partial class NLoadoutPanelButton : Button
 		Resized -= OnResized;
 		_nLoadoutPanel.VisibilityStateChanged -= RefreshState;
 		LoadoutPanelAccessService.AccessChanged -= RefreshState;
+		NLoadoutPanelRoot.OpenScreenStateChanged -= OnOpenScreenStateChanged;
 
 		LoadoutCompanionRegistry.ActiveCompanionChanged -= OnActiveCompanionChanged;
 		LoadoutCompanionRegistry.PresentationRequested -= OnCompanionPresentationRequested;
@@ -89,6 +93,7 @@ public partial class NLoadoutPanelButton : Button
 
 		bool panelHovered = !_nLoadoutPanel.Hidden
 		                    && _nLoadoutPanel.Shown
+		                    && !HasOpenLoadoutScreen()
 		                    && _nLoadoutPanel.GetGlobalRect().HasPoint(mouseMotion.GlobalPosition);
 		if (panelHovered == _panelHovered)
 			return;
@@ -223,7 +228,7 @@ public partial class NLoadoutPanelButton : Button
 		if (texture is null)
 			return;
 
-		if ((_mouseInside || _panelHovered) && !Disabled && Visible)
+		if ((_mouseInside || _panelHovered) && !Disabled && Visible && !HasOpenLoadoutScreen())
 			ShowCompanion();
 	}
 
@@ -232,6 +237,7 @@ public partial class NLoadoutPanelButton : Button
 		bool trackPanelHover = _companion is not null
 		                       && !Disabled
 		                       && Visible
+		                       && !HasOpenLoadoutScreen()
 		                       && _nLoadoutPanel is { Hidden: false, Shown: true };
 		if (!trackPanelHover)
 			_panelHovered = false;
@@ -239,9 +245,23 @@ public partial class NLoadoutPanelButton : Button
 		SetProcessInput(trackPanelHover);
 	}
 
+	private void OnOpenScreenStateChanged(bool hasOpenScreen)
+	{
+		_hasOpenLoadoutScreen = hasOpenScreen;
+		RefreshPanelHoverInput();
+		if (!hasOpenScreen)
+			return;
+
+		_pressPeekActive = false;
+		KillTween(ref _companionHoldTween);
+		ClearCompanionSpeech();
+		HideCompanion();
+	}
+
 	private void OnCompanionPresentationRequested(LoadoutCompanionPresentationRequest request)
 	{
 		if (_companion is null
+		    || HasOpenLoadoutScreen()
 		    || !string.Equals(_companion.CompanionId, request.Companion.CompanionId, System.StringComparison.OrdinalIgnoreCase))
 		{
 			return;
@@ -273,7 +293,11 @@ public partial class NLoadoutPanelButton : Button
 
 	private void ShowCompanion()
 	{
-		if (_companion is null || _companionImage.Texture is null || Disabled || !Visible)
+		if (_companion is null
+		    || _companionImage.Texture is null
+		    || Disabled
+		    || !Visible
+		    || HasOpenLoadoutScreen())
 			return;
 
 		KillTween(ref _companionMotionTween);
@@ -366,6 +390,11 @@ public partial class NLoadoutPanelButton : Button
 			tween.Kill();
 
 		tween = null;
+	}
+
+	private bool HasOpenLoadoutScreen()
+	{
+		return _hasOpenLoadoutScreen;
 	}
 
 	private void OnResized()
