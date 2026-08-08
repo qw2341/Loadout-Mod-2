@@ -25,11 +25,12 @@ public partial class NLoadoutPanelButton : Button
 	private static readonly Vector2 CompanionSize = new(48f, 56f);
 	private static readonly Vector2 CompanionHiddenPosition = new(-44f, 32f);
 	private static readonly Vector2 CompanionVisiblePosition = new(15f, -15f);
-	private static readonly Vector2 CompanionSpeechOffset = new(48f, 11f);
+	
 
 	private NLoadoutPanel _nLoadoutPanel = null!;
 	private TextureRect _tabImage = null!;
 	private TextureRect _arrowImage = null!;
+	private Control _companionPresentationAnchor = null!;
 	private TextureRect _companionImage = null!;
 	private Control _companionSpeechAnchor = null!;
 	private Timer? _companionAnimationTimer;
@@ -127,11 +128,15 @@ public partial class NLoadoutPanelButton : Button
 		AddThemeStyleboxOverride("focus", EmptyStyle);
 		AddThemeStyleboxOverride("disabled", EmptyStyle);
 
-		_companionImage = GetNodeOrNull<TextureRect>("CompanionImage") ?? CreateTextureRect("CompanionImage", false);
-		_companionSpeechAnchor = GetNodeOrNull<Control>("CompanionSpeechAnchor") ?? CreateCompanionSpeechAnchor();
+		_companionPresentationAnchor = GetNodeOrNull<Control>("CompanionPresentationAnchor")
+		                              ?? CreateCompanionPresentationAnchor();
+		_companionImage = _companionPresentationAnchor.GetNodeOrNull<TextureRect>("CompanionImage")
+		                  ?? CreateTextureRect("CompanionImage", false, _companionPresentationAnchor);
+		_companionSpeechAnchor = _companionPresentationAnchor.GetNodeOrNull<Control>("CompanionSpeechAnchor")
+		                         ?? CreateCompanionSpeechAnchor();
 		_tabImage = GetNodeOrNull<TextureRect>("TabImage") ?? CreateTextureRect("TabImage", true);
 		_arrowImage = GetNodeOrNull<TextureRect>("ArrowImage") ?? CreateTextureRect("ArrowImage", false);
-		MoveChild(_companionImage, 0);
+		MoveChild(_companionPresentationAnchor, 0);
 
 		_tabImage.Texture = LoadPanelTexture(TabTextureFileName);
 		_tabImage.StretchMode = TextureRect.StretchModeEnum.Scale;
@@ -145,15 +150,16 @@ public partial class NLoadoutPanelButton : Button
 		_companionImage.Size = CompanionSize;
 		_companionImage.PivotOffset = CompanionSize * 0.5f;
 		_companionImage.Rotation = Mathf.Pi * 0.25f;
-		_companionImage.Position = CompanionHiddenPosition;
+		_companionImage.Position = Vector2.Zero;
 		_companionImage.Modulate = Colors.Transparent;
 		_companionImage.Visible = false;
-		_companionSpeechAnchor.Position = GetCompanionSpeechAnchorPosition(CompanionHiddenPosition);
+		_companionPresentationAnchor.Position = CompanionHiddenPosition;
+		_companionSpeechAnchor.Position = new Vector2(CompanionSize.X * 2f, -CompanionSize.Y);
 		RefreshCompanion();
 		OnResized();
 	}
 
-	private TextureRect CreateTextureRect(string nodeName, bool fullRect)
+	private TextureRect CreateTextureRect(string nodeName, bool fullRect, Control? parent = null)
 	{
 		TextureRect image = new()
 		{
@@ -166,8 +172,19 @@ public partial class NLoadoutPanelButton : Button
 		if (fullRect)
 			image.SetAnchorsPreset(LayoutPreset.FullRect);
 
-		AddChild(image);
+		(parent ?? this).AddChild(image);
 		return image;
+	}
+
+	private Control CreateCompanionPresentationAnchor()
+	{
+		Control anchor = new()
+		{
+			Name = "CompanionPresentationAnchor",
+			MouseFilter = MouseFilterEnum.Ignore
+		};
+		AddChild(anchor);
+		return anchor;
 	}
 
 	private Control CreateCompanionSpeechAnchor()
@@ -178,7 +195,7 @@ public partial class NLoadoutPanelButton : Button
 			MouseFilter = MouseFilterEnum.Ignore,
 			ZIndex = _companionImage.ZIndex + 1
 		};
-		AddChild(anchor);
+		_companionPresentationAnchor.AddChild(anchor);
 		return anchor;
 	}
 
@@ -375,7 +392,7 @@ public partial class NLoadoutPanelButton : Button
 		RestartCompanionAnimation();
 		_companionMotionTween = CreateTween();
 		_companionMotionTween.TweenProperty(
-			_companionImage,
+			_companionPresentationAnchor,
 			"position",
 			GetCompanionVisiblePosition(),
 			CompanionEnterSeconds)
@@ -386,13 +403,6 @@ public partial class NLoadoutPanelButton : Button
 			"modulate",
 			Colors.White,
 			CompanionEnterSeconds * 0.6);
-		_companionMotionTween.Parallel().TweenProperty(
-			_companionSpeechAnchor,
-			"position",
-			GetCompanionSpeechAnchorPosition(GetCompanionVisiblePosition()),
-			CompanionEnterSeconds)
-			.SetTrans(Tween.TransitionType.Back)
-			.SetEase(Tween.EaseType.Out);
 	}
 
 	private void BeginTimedCompanionPeek(double seconds)
@@ -442,7 +452,7 @@ public partial class NLoadoutPanelButton : Button
 		KillTween(ref _companionMotionTween);
 		_companionMotionTween = CreateTween();
 		_companionMotionTween.TweenProperty(
-			_companionImage,
+			_companionPresentationAnchor,
 			"position",
 			CompanionHiddenPosition,
 			CompanionExitSeconds)
@@ -453,13 +463,6 @@ public partial class NLoadoutPanelButton : Button
 			"modulate",
 			Colors.Transparent,
 			CompanionExitSeconds);
-		_companionMotionTween.Parallel().TweenProperty(
-			_companionSpeechAnchor,
-			"position",
-			GetCompanionSpeechAnchorPosition(CompanionHiddenPosition),
-			CompanionExitSeconds)
-			.SetTrans(Tween.TransitionType.Quad)
-			.SetEase(Tween.EaseType.In);
 		_companionMotionTween.TweenCallback(Callable.From(() =>
 		{
 			_companionImage.Visible = false;
@@ -480,16 +483,12 @@ public partial class NLoadoutPanelButton : Button
 		if (_companionImage is null || !IsInstanceValid(_companionImage))
 			return;
 
-		_companionImage.Position = CompanionHiddenPosition;
+		_companionPresentationAnchor.Position = CompanionHiddenPosition;
+		_companionImage.Position = Vector2.Zero;
 		_companionImage.Modulate = Colors.Transparent;
 		_companionImage.Visible = false;
 		if (_companionSpeechAnchor is not null && IsInstanceValid(_companionSpeechAnchor))
-			_companionSpeechAnchor.Position = GetCompanionSpeechAnchorPosition(CompanionHiddenPosition);
-	}
-
-	private static Vector2 GetCompanionSpeechAnchorPosition(Vector2 companionPosition)
-	{
-		return companionPosition + CompanionSpeechOffset;
+			_companionSpeechAnchor.Position = new Vector2(_companionImage.Size.X * 2f, -_companionImage.Size.Y);
 	}
 
 	private Vector2 GetCompanionVisiblePosition()
