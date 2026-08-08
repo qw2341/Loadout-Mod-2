@@ -109,7 +109,8 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     public void ConfigurePileTarget(
         LoadoutCardPileTarget defaultTarget,
         IReadOnlyList<LoadoutCardPileTarget> options,
-        Action<LoadoutCardPileTarget>? onChanged = null)
+        Action<LoadoutCardPileTarget>? onChanged = null,
+        SelectSidebarSection section = SelectSidebarSection.Main)
     {
         LoadoutCardPileTarget previousTarget = SelectedPileTarget;
         _defaultPileTarget = defaultTarget;
@@ -128,7 +129,10 @@ public partial class NCardSelectScreen : NGenericSelectScreen
                 CustomMinimumSize = new Vector2(256f, 52f)
             };
             _pileTargetDropdown.SelectedItemChanged += OnPileTargetDropdownChanged;
-            AddCustomSidebarControl(_pileTargetDropdown);
+            if (section == SelectSidebarSection.Bottom)
+                AddCustomSidebarBottomControl(_pileTargetDropdown);
+            else
+                AddCustomSidebarControl(_pileTargetDropdown);
         }
 
         bool inCombat = LoadoutCardPileTargets.IsCombatInProgress();

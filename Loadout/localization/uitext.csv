@@ -275,10 +275,13 @@ CREATURE_MANIP_CURRENT_HP,Current HP,当前生命,PV actuels,現在HP,현재 체
 CREATURE_MANIP_MAX_HP,Max HP,最大生命,PV max,最大HP,최대 체력,PV máximos
 CREATURE_MANIP_BLOCK,Block,格挡,Blocage,ブロック,방어도,Bloqueo
 XGGG_HANDDRILL_OBTAIN, ..,七点钟还能用电钻的吗？,..,..,..,..
-CARD_PILE_TARGET,Card Pile Target,卡牌堆目标,Cible de pile de cartes,カード山の対象,카드 더미 대상,Objetivo de pila de cartas
+CARD_PILE_TARGET,Pile Target,卡堆,Cible de pile,カード山,카드 더미 대상,Objetivo de pila
 CARD_PILE_HAND_AND_DECK,Hand + Deck,手牌 + 牌组,Main + Deck,手札 + デッキ,손패 + 덱,Mano + Mazo
 CARD_PILE_DECK,Deck,牌组,Deck,デッキ,덱,Mazo
 CARD_PILE_HAND,Hand,手牌,Main,手札,손패,Mano
 CARD_PILE_DRAW,Draw Pile,抽牌堆,Pioche,山札,뽑기 더미,Pila de robo
 CARD_PILE_DISCARD,Discard Pile,弃牌堆,Défausse,捨て札,버린 카드 더미,Pila de descarte
-CARD_PILE_EXHAUST,Exhaust Pile,消耗牌堆,Épuisement,廃棄,소멸 더미,Pila de agotamiento
+CARD_PILE_EXHAUST,Exhaust Pile,消耗堆,Épuisement,廃棄,소멸 더미,Pila de agotamiento
+FILTER_GROUP_GAME_MODE,Game Mode,游戏模式,Mode de jeu,ゲームモード,게임 모드,Modo de juego
+CARD_MODE_MULTIPLAYER,Multiplayer,多人游戏,Multijoueur,マルチプレイ,멀티플레이,Multijugador
+CARD_MODE_SINGLEPLAYER,Singleplayer,单人游戏,Solo,シングルプレイ,싱글플레이,Un jugador

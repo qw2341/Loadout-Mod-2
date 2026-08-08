@@ -30,6 +30,9 @@ public class CardPrinter
 	private const string ViewUpgradesToggleId = "view_upgrades";
 	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
 	private const string TargetDropdownName = "CardPrinterTargetDropdown";
+	private const string PlayModeFilterGroupId = "play_mode";
+	private const string MultiplayerFilterId = "play_mode_multiplayer";
+	private const string SingleplayerFilterId = "play_mode_singleplayer";
 	private static string _currentCardFilterId;
 	
     public static void Initialize()
@@ -63,6 +66,7 @@ public class CardPrinter
 		    builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 		    builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 		    AddCardPoolFilters(builder);
+		    AddPlayModeFilters(builder);
 		    builder.FilterGroup("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")));
 		    AddCardTypeFilters(builder, effectiveCards);
 		    builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity")));
@@ -89,13 +93,15 @@ public class CardPrinter
 			    screen,
 			    TargetDropdownName,
 			    LastActionService.CardPrinterKey,
-			    LoadoutTargetMode.AllPlayersAndPlayers);
+			    LoadoutTargetMode.AllPlayersAndPlayers,
+			    section: SelectSidebarSection.Bottom);
 
 		    if (screen is NCardSelectScreen cardScreen)
 		    {
 			    cardScreen.ConfigurePileTarget(
 				    LoadoutCardPileTarget.HandAndDeck,
-				    LoadoutCardPileTargets.PrinterOptions);
+				    LoadoutCardPileTargets.PrinterOptions,
+				    section: SelectSidebarSection.Bottom);
 		    }
 
 		    if (applyDefaultClassFilter)
@@ -302,6 +308,38 @@ public class CardPrinter
 			    CommonHelpers.GetPoolLabel(localPool),
 			    card => CommonHelpers.SamePool(CardModificationRuntime.GetPermanentCardForDisplay(card).Pool, localPool),
 			    "class");
+	    }
+    }
+
+    private static void AddPlayModeFilters(SelectScreenBuilder<CardModel> builder)
+    {
+	    builder.FilterGroup(
+		    PlayModeFilterGroupId,
+		    LocMan.Loc("FILTER_GROUP_GAME_MODE", "Game Mode"));
+	    builder.Filter(
+		    MultiplayerFilterId,
+		    LocMan.Loc("CARD_MODE_MULTIPLAYER", "Multiplayer"),
+		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).MultiplayerConstraint
+		            != CardMultiplayerConstraint.SingleplayerOnly,
+		    PlayModeFilterGroupId);
+	    builder.Filter(
+		    SingleplayerFilterId,
+		    LocMan.Loc("CARD_MODE_SINGLEPLAYER", "Singleplayer"),
+		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).MultiplayerConstraint
+		            != CardMultiplayerConstraint.MultiplayerOnly,
+		    PlayModeFilterGroupId,
+		    enabledByDefault: IsSingleplayerMode());
+    }
+
+    private static bool IsSingleplayerMode()
+    {
+	    try
+	    {
+		    return RunManager.Instance.IsSingleplayerOrFakeMultiplayer;
+	    }
+	    catch
+	    {
+		    return true;
 	    }
     }
 

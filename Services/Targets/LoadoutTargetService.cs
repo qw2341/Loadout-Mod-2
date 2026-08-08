@@ -137,10 +137,14 @@ public static class LoadoutTargetService
         string key,
         LoadoutTargetMode mode,
         Action? onChanged = null,
-        Action? beforeChanged = null)
+        Action? beforeChanged = null,
+        SelectSidebarSection section = SelectSidebarSection.Main)
     {
+        string containerPath = section == SelectSidebarSection.Bottom
+            ? "Sidebar/MarginContainer/TopVBox/BottomControls/BottomCustomControls"
+            : "Sidebar/MarginContainer/TopVBox/CustomControls";
         NLoadoutDropdown? dropdown = screen.GetNodeOrNull<NLoadoutDropdown>(
-            $"Sidebar/MarginContainer/TopVBox/CustomControls/{name}");
+            $"{containerPath}/{name}");
 
         if (!ShouldShowDropdown(mode))
         {
@@ -168,7 +172,10 @@ public static class LoadoutTargetService
                 SetSelected(key, selection, mode);
                 onChanged?.Invoke();
             };
-            screen.AddCustomSidebarControl(dropdown);
+            if (section == SelectSidebarSection.Bottom)
+                screen.AddCustomSidebarBottomControl(dropdown);
+            else
+                screen.AddCustomSidebarControl(dropdown);
         }
 
         IReadOnlyList<LoadoutDropdownOption> options = GetDropdownOptions(mode);
