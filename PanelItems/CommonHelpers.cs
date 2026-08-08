@@ -146,7 +146,7 @@ public class CommonHelpers
 		string textureFileName,
 		string title,
 		string description,
-		Action<NGenericSelectScreen, Action>? afterConfigure = null,
+		Action<NGenericSelectScreen, Action, Action>? afterConfigure = null,
 		Action<NGenericSelectScreen, IGenericSelectItem>? afterActivationRefresh = null,
 		string selectScreenScenePath = GenericSelectScreenScenePath,
 		bool reconcileModelsOnEveryOpen = true,
@@ -176,7 +176,10 @@ public class CommonHelpers
 			else
 				target.Configure(models, adapter, builder);
 
-			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
+			afterConfigure?.Invoke(
+				target,
+				() => RefreshCurrentModels(target, resetScroll: true),
+				() => RefreshCurrentModels(target, animateRelayout: true, updateExistingViews: false));
 
 			if (!preserveViews)
 				target.RequestDeferredVisibleRefresh();
@@ -505,7 +508,10 @@ public class CommonHelpers
 				return;
 			}
 
-			afterConfigure?.Invoke(target, () => RefreshCurrentModels(target, resetScroll: true));
+			afterConfigure?.Invoke(
+				target,
+				() => RefreshCurrentModels(target, resetScroll: true),
+				() => RefreshCurrentModels(target, animateRelayout: true, updateExistingViews: false));
 			if (reconcileModelsOnEveryOpen)
 			{
 				RefreshCurrentModels(target, resetScroll: true);

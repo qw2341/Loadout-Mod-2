@@ -100,7 +100,7 @@ public class CardModifier
             "CardModifier.png",
             LocMan.Loc("CARDMODIFIER_TITLE", "Card Modifier"),
             LocMan.Loc("CARDMODIFIER_DESC", "Right-click this relic to modify any card you want; right-click cards to modify them."),
-            (screen, refresh) =>
+            (screen, refresh, refreshPreservingScroll) =>
             {
                 modifierScreen = screen;
                 LoadoutTargetService.UpsertTargetDropdown(
@@ -124,7 +124,7 @@ public class CardModifier
                         () => LoadoutCardPileTargets.ResolveObservedPiles(
                             LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly),
                             cardScreen.SelectedPileTarget),
-                        refresh);
+                        refreshPreservingScroll);
                 }
             },
             (_, _) => { },

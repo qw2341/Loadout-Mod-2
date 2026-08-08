@@ -386,7 +386,7 @@ public partial class NLoadoutPanel : Panel
 			"TrashBin.png",
 			LocMan.Loc("THEBIN_TITLE", "The Bin"),
 			LocMan.Loc("THEBIN_DESC", "Right-click this relic to obliterate any relic you want."),
-			(screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
+			(screen, refresh, _) => LoadoutTargetService.UpsertTargetDropdown(
 				screen,
 				RemoveRelicTargetDropdownName,
 				RemoveRelicTargetKey,
@@ -472,7 +472,7 @@ public partial class NLoadoutPanel : Panel
 			"CardShredder.png",
 			LocMan.Loc("CARDSHREDDER_TITLE", "Card Shredder"),
 			LocMan.Loc("CARDSHREDDER_DESC", "Right-click this relic to obliterate any card you want; use during combat will also remove it from combat."),
-			(screen, refresh) =>
+			(screen, refresh, refreshPreservingScroll) =>
 			{
 				shredderScreen = screen as NCardSelectScreen;
 				LoadoutTargetService.UpsertTargetDropdown(
@@ -495,7 +495,7 @@ public partial class NLoadoutPanel : Panel
 						() => LoadoutCardPileTargets.ResolveObservedPiles(
 							LoadoutTargetService.GetSelected(RemoveCardTargetKey, LoadoutTargetMode.PlayersOnly),
 							shredderScreen.SelectedPileTarget),
-						refresh);
+						refreshPreservingScroll);
 				}
 			},
 			(_, _) => { },

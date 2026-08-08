@@ -71,7 +71,7 @@ public static class RelicModifier
             "RelicModifier.png",
             LocMan.Loc("RELICMODIFIER_TITLE", "Relic Modifier"),
             LocMan.Loc("RELICMODIFIER_DESC", "Right-click this relic to modify owned relics; right-click a relic to inspect and edit it."),
-            (screen, refresh) =>
+            (screen, refresh, _) =>
             {
                 modifierScreen = screen;
                 LoadoutTargetService.UpsertTargetDropdown(screen, TargetDropdownName, TargetKey, LoadoutTargetMode.PlayersOnly, refresh);
