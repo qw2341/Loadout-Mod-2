@@ -40,6 +40,7 @@ public class CardPrinter
 	    IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
 	    NGenericSelectScreen cardPrinterScreen = null;
 	    long observedPermanentDisplayRevision = CardModificationRuntime.PermanentDisplayRevision;
+	    bool playModeDefaultApplied = false;
 	    SelectItemAdapter<CardModel> cardPrinterAdapter = new()
 	    {
 		    GetId = card => card.Id.ToString(),
@@ -190,6 +191,10 @@ public class CardPrinter
 		{
 			void OnScreenOpened()
 			{
+				cardPrinterScreen.SetExclusiveFilterSelection(
+					PlayModeFilterGroupId,
+					IsSingleplayerMode() ? SingleplayerFilterId : null,
+					resetScroll: false);
 				CardModificationRuntime.PermanentCardDisplayChanged -= RefreshCardPrinterCard;
 				CardModificationRuntime.PermanentCardDisplayChanged += RefreshCardPrinterCard;
 
