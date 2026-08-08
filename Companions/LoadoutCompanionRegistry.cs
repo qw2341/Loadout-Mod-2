@@ -8,6 +8,8 @@ using System.IO;
 using System.Linq;
 using Godot;
 using Loadout.UI.ImageEditing;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Modding;
 
 public static class LoadoutCompanionRegistry
 {
@@ -17,12 +19,16 @@ public static class LoadoutCompanionRegistry
     private static readonly Dictionary<string, CompanionTextureSequence> TextureSequencesById = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, Texture2D> PreviewTexturesById = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> MissingTextures = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly AbstractModel[] NoNativeHookListeners = [];
 
     private static IReadOnlyList<LoadoutCompanion> _companions = [];
+    private static AbstractModel[] _runStateHookListeners = NoNativeHookListeners;
+    private static AbstractModel[] _combatStateHookListeners = NoNativeHookListeners;
     private static string _activeCompanionId = NoneId;
     private static LoadoutCompanion? _hookedCompanion;
     private static bool _initialized;
     private static bool _customCompanionsLoaded;
+    private static bool _nativeHookSubscriptionsRegistered;
 
     public static event Action<string>? ActiveCompanionChanged;
     public static event Action? CompanionsChanged;
@@ -48,7 +54,7 @@ public static class LoadoutCompanionRegistry
             return true;
 
         CompanionsById.Clear();
-        TryRegisterCompanion(new XGGGCompanion(), nameof(XGGGCompanion));
+        TryRegisterCompanion(GetCompanionModel<XGGGCompanion>(), nameof(XGGGCompanion));
         RebuildCompanionList();
         _initialized = true;
 
@@ -312,14 +318,16 @@ public static class LoadoutCompanionRegistry
 
         try
         {
-            companion.RegisterHooks();
+            companion.RegisterSelectedHooks();
+            SetNativeHookListeners(companion);
             _hookedCompanion = companion;
         }
         catch (Exception exception)
         {
+            SetNativeHookListeners(null);
             try
             {
-                companion.UnregisterHooks();
+                companion.UnregisterSelectedHooks();
             }
             catch (Exception cleanupException)
             {
@@ -333,17 +341,44 @@ public static class LoadoutCompanionRegistry
     {
         LoadoutCompanion? companion = _hookedCompanion;
         _hookedCompanion = null;
+        SetNativeHookListeners(null);
         if (companion is null)
             return;
 
         try
         {
-            companion.UnregisterHooks();
+            companion.UnregisterSelectedHooks();
         }
         catch (Exception exception)
         {
             GD.PushError($"Loadout: companion '{companion.CompanionId}' hook unregistration failed. {exception}");
         }
+    }
+
+    private static T GetCompanionModel<T>() where T : LoadoutCompanion, new()
+    {
+        return ModelDb.Contains(typeof(T))
+            ? ModelDb.GetById<T>(ModelDb.GetId<T>())
+            : new T();
+    }
+
+    private static void SetNativeHookListeners(LoadoutCompanion? companion)
+    {
+        bool usesRunHooks = companion?.UsesRunStateHooks == true;
+        bool usesCombatHooks = companion?.ShouldReceiveCombatHooks == true;
+        if ((usesRunHooks || usesCombatHooks) && !_nativeHookSubscriptionsRegistered)
+        {
+            ModHelper.SubscribeForRunStateHooks(
+                "Loadout.Companions.Run",
+                _ => _runStateHookListeners);
+            ModHelper.SubscribeForCombatStateHooks(
+                "Loadout.Companions.Combat",
+                _ => _combatStateHookListeners);
+            _nativeHookSubscriptionsRegistered = true;
+        }
+
+        _runStateHookListeners = usesRunHooks ? [companion!] : NoNativeHookListeners;
+        _combatStateHookListeners = usesCombatHooks ? [companion!] : NoNativeHookListeners;
     }
 
     private static void RebuildCompanionList()
