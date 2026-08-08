@@ -66,7 +66,6 @@ public class CardPrinter
 		    builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 		    builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 		    AddCardPoolFilters(builder);
-		    AddPlayModeFilters(builder);
 		    builder.FilterGroup("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("FILTER_GROUP_TYPE", "Type")));
 		    AddCardTypeFilters(builder, effectiveCards);
 		    builder.FilterGroup("rarity", LocMan.GameLoc("main_menu_ui", "CARD_LIBRARY_RARITY", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity")));
@@ -75,6 +74,7 @@ public class CardPrinter
 		    AddCardKeywordFilterGroup(builder, effectiveCards);
 		    AddCardTagFilterGroup(builder, effectiveCards);
 		    CommonHelpers.AddModFilters(builder, allCards);
+		    AddPlayModeFilters(builder);
 		    builder.Toggle(
 			    ViewUpgradesToggleId,
 			    LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")),
@@ -320,7 +320,7 @@ public class CardPrinter
 		    MultiplayerFilterId,
 		    LocMan.Loc("CARD_MODE_MULTIPLAYER", "Multiplayer"),
 		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).MultiplayerConstraint
-		            != CardMultiplayerConstraint.SingleplayerOnly,
+		            == CardMultiplayerConstraint.MultiplayerOnly,
 		    PlayModeFilterGroupId);
 	    builder.Filter(
 		    SingleplayerFilterId,
