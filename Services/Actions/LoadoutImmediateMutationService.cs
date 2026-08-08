@@ -33,6 +33,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
@@ -82,8 +83,8 @@ public static class LoadoutImmediateMutationService
     internal const int MaxSynchronizedCardCopies = 50;
     internal const int MaxSynchronizedCardUpgradeCount = 1000;
     private const int MaxRelicModificationStateJsonLength = 256 * 1024;
-    private const string SynchronizedAddCardsCommandPrefix = "__loadout_add_cards_v1";
-    private const string SynchronizedDeckCardCopiesCommandPrefix = "__loadout_clone_deck_card_v1";
+    private const string SynchronizedAddCardsCommandPrefix = "__loadout_add_cards_v2";
+    private const string SynchronizedDeckCardCopiesCommandPrefix = "__loadout_clone_deck_card_v2";
 
     private static readonly object SequenceGate = new();
     private static readonly SortedDictionary<int, LoadoutImmediateMutationPayload> PendingHostApplies = new();
@@ -155,7 +156,8 @@ public static class LoadoutImmediateMutationService
         ModelId modelId,
         int amount,
         LoadoutTargetSelection target,
-        int cardUpgradeCount = 0)
+        int cardUpgradeCount = 0,
+        LoadoutCardPileTarget pileTarget = LoadoutCardPileTarget.Unspecified)
     {
         if (amount <= 0
             || amount > MaxSynchronizedCardCopies
@@ -172,7 +174,8 @@ public static class LoadoutImmediateMutationService
             ModelId = modelId,
             Amount = amount,
             Target = target,
-            CardUpgradeCount = Math.Max(0, cardUpgradeCount)
+            CardUpgradeCount = Math.Max(0, cardUpgradeCount),
+            CardPileTarget = pileTarget.NormalizeForCreation()
         });
     }
 
@@ -180,7 +183,9 @@ public static class LoadoutImmediateMutationService
         LoadoutOwnedItem<CardModel> item,
         int amount)
     {
-        if (amount <= 0 || amount > MaxSynchronizedCardCopies)
+        if (amount <= 0
+            || amount > MaxSynchronizedCardCopies
+            || item.CardPileType is not null and not PileType.Deck && !item.CombatCardIndex.HasValue)
             return false;
 
         return Request(new LoadoutImmediateMutationPayload
@@ -190,7 +195,9 @@ public static class LoadoutImmediateMutationService
             Amount = amount,
             Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
             OwnedItemIndex = item.Index,
-            ExpectedModelId = item.Model.Id
+            ExpectedModelId = item.Model.Id,
+            CardPileTarget = LoadoutCardPileTargets.FromPileType(item.CardPileType ?? PileType.Deck),
+            CombatCardIndex = item.CombatCardIndex ?? 0
         });
     }
 
@@ -218,6 +225,9 @@ public static class LoadoutImmediateMutationService
 
     public static bool RequestRemoveCard(LoadoutOwnedItem<CardModel> item)
     {
+        if (item.CardPileType is not null and not PileType.Deck && !item.CombatCardIndex.HasValue)
+            return false;
+
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.RemoveCard,
@@ -225,12 +235,17 @@ public static class LoadoutImmediateMutationService
             Amount = 1,
             Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
             OwnedItemIndex = item.Index,
-            ExpectedModelId = item.Model.Id
+            ExpectedModelId = item.Model.Id,
+            CardPileTarget = LoadoutCardPileTargets.FromPileType(item.CardPileType ?? PileType.Deck),
+            CombatCardIndex = item.CombatCardIndex ?? 0
         });
     }
 
     public static bool RequestUpgradeCard(LoadoutOwnedItem<CardModel> item, int amount)
     {
+        if (item.CardPileType is not null and not PileType.Deck && !item.CombatCardIndex.HasValue)
+            return false;
+
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.UpgradeCard,
@@ -238,18 +253,23 @@ public static class LoadoutImmediateMutationService
             Amount = amount,
             Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
             OwnedItemIndex = item.Index,
-            ExpectedModelId = item.Model.Id
+            ExpectedModelId = item.Model.Id,
+            CardPileTarget = LoadoutCardPileTargets.FromPileType(item.CardPileType ?? PileType.Deck),
+            CombatCardIndex = item.CombatCardIndex ?? 0
         });
     }
 
-    public static bool RequestUpgradeAllDeckCards(LoadoutTargetSelection target)
+    public static bool RequestUpgradeAllDeckCards(
+        LoadoutTargetSelection target,
+        LoadoutCardPileTarget pileTarget = LoadoutCardPileTarget.Unspecified)
     {
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.UpgradeAllDeckCards,
             ModelId = ModelId.none,
             Amount = 1,
-            Target = target
+            Target = target,
+            CardPileTarget = pileTarget.NormalizeForOwnedCard()
         });
     }
 
@@ -266,14 +286,17 @@ public static class LoadoutImmediateMutationService
         });
     }
 
-    public static bool RequestRemoveAllCards(LoadoutTargetSelection target)
+    public static bool RequestRemoveAllCards(
+        LoadoutTargetSelection target,
+        LoadoutCardPileTarget pileTarget = LoadoutCardPileTarget.Unspecified)
     {
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.RemoveAllCards,
             ModelId = ModelId.none,
             Amount = 1,
-            Target = target
+            Target = target,
+            CardPileTarget = pileTarget.NormalizeForOwnedCard()
         });
     }
 
@@ -795,17 +818,23 @@ public static class LoadoutImmediateMutationService
         if (targetNetIds.Length == 0)
             return false;
 
-        bool includeCombatHand = CombatManager.Instance.IsInProgress;
+        LoadoutCardPileTarget pileTarget = payload.CardPileTarget.NormalizeForCreation();
+        if (!LoadoutCardPileTargets.IsSupportedCreationTarget(pileTarget)
+            || pileTarget.IsCombatPile() && !CombatManager.Instance.IsInProgress)
+            return false;
+
+        bool isCombatAction = CombatManager.Instance.IsInProgress
+                              && (pileTarget == LoadoutCardPileTarget.HandAndDeck || pileTarget.IsCombatPile());
         string command = BuildSynchronizedAddCardsCommand(
             payload.ModelId,
             payload.Amount,
             payload.CardUpgradeCount,
-            includeCombatHand,
+            pileTarget,
             targetNetIds);
         try
         {
             RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
-                new ConsoleCmdGameAction(actionOwner, command, includeCombatHand));
+                new ConsoleCmdGameAction(actionOwner, command, isCombatAction));
             return true;
         }
         catch (Exception exception)
@@ -824,14 +853,15 @@ public static class LoadoutImmediateMutationService
         Player? actionOwner = GetLocalRunPlayer();
         if (requester is null
             || actionOwner is null
-            || TryGetOwnedDeckCard(payload, requester) is not { } sourceItem)
+            || TryGetOwnedCard(payload, requester) is not { } sourceItem)
         {
             return false;
         }
 
         string command = BuildSynchronizedDeckCardCopiesCommand(
             sourceItem.OwnerNetId,
-            sourceItem.Index,
+            LoadoutCardPileTargets.FromPileType(sourceItem.CardPileType ?? PileType.Deck),
+            sourceItem.CombatCardIndex ?? checked((uint)sourceItem.Index),
             sourceItem.Model.Id,
             payload.Amount);
         try
@@ -872,7 +902,8 @@ public static class LoadoutImmediateMutationService
                 || !TryDecodeModelIdToken(args[0], out ModelId modelId)
                 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int amount)
                 || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int upgradeCount)
-                || !TryParseCombatHandFlag(args[3], out bool includeCombatHand)
+                || !int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rawPileTarget)
+                || !Enum.IsDefined(typeof(LoadoutCardPileTarget), rawPileTarget)
                 || !TryParseTargetNetIds(args[4], out ulong[] targetNetIds))
             {
                 GD.PushWarning("LoadoutImmediateMutation: ignored malformed synchronized card action.");
@@ -883,7 +914,7 @@ public static class LoadoutImmediateMutationService
                 modelId,
                 amount,
                 upgradeCount,
-                includeCombatHand,
+                ((LoadoutCardPileTarget)rawPileTarget).NormalizeForCreation(),
                 targetNetIds);
             return true;
         }
@@ -900,13 +931,14 @@ public static class LoadoutImmediateMutationService
 
         string[] deckCopyArgs = command[deckCopiesPrefix.Length..]
             .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (deckCopyArgs.Length != 4
+        if (deckCopyArgs.Length != 5
             || !ulong.TryParse(deckCopyArgs[0], NumberStyles.None, CultureInfo.InvariantCulture, out ulong ownerNetId)
             || ownerNetId == 0
-            || !int.TryParse(deckCopyArgs[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int sourceIndex)
-            || sourceIndex < 0
-            || !TryDecodeModelIdToken(deckCopyArgs[2], out ModelId expectedModelId)
-            || !int.TryParse(deckCopyArgs[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int copyAmount))
+            || !int.TryParse(deckCopyArgs[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rawSourcePileTarget)
+            || !Enum.IsDefined(typeof(LoadoutCardPileTarget), rawSourcePileTarget)
+            || !uint.TryParse(deckCopyArgs[2], NumberStyles.None, CultureInfo.InvariantCulture, out uint sourceNativeIndex)
+            || !TryDecodeModelIdToken(deckCopyArgs[3], out ModelId expectedModelId)
+            || !int.TryParse(deckCopyArgs[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int copyAmount))
         {
             GD.PushWarning("LoadoutImmediateMutation: ignored malformed synchronized deck-card-copy action.");
             return true;
@@ -914,7 +946,8 @@ public static class LoadoutImmediateMutationService
 
         result = ExecuteSynchronizedDeckCardCopiesAsync(
             ownerNetId,
-            sourceIndex,
+            ((LoadoutCardPileTarget)rawSourcePileTarget).NormalizeForOwnedCard(),
+            sourceNativeIndex,
             expectedModelId,
             copyAmount);
         return true;
@@ -947,7 +980,7 @@ public static class LoadoutImmediateMutationService
         ModelId modelId,
         int amount,
         int upgradeCount,
-        bool includeCombatHand,
+        LoadoutCardPileTarget pileTarget,
         IReadOnlyList<ulong> targetNetIds)
     {
         if (amount <= 0
@@ -980,28 +1013,38 @@ public static class LoadoutImmediateMutationService
             targetPlayers.Add(targetPlayer);
         }
 
+        pileTarget = pileTarget.NormalizeForCreation();
+        if (!LoadoutCardPileTargets.IsSupportedCreationTarget(pileTarget)
+            || pileTarget.IsCombatPile() && !CombatManager.Instance.IsInProgress)
+            return;
+
         foreach (Player targetPlayer in targetPlayers)
         {
-            await AddDeckCardCopiesAsync(
-                targetPlayer,
-                canonicalCard,
-                amount,
-                upgradeCount);
-
-            if (includeCombatHand && CombatManager.Instance.IsInProgress)
+            if (pileTarget is LoadoutCardPileTarget.HandAndDeck or LoadoutCardPileTarget.Deck)
             {
-                await AddCombatHandCardCopiesAsync(
+                await AddDeckCardCopiesAsync(
                     targetPlayer,
                     canonicalCard,
                     amount,
                     upgradeCount);
+            }
+
+            if ((pileTarget == LoadoutCardPileTarget.HandAndDeck && CombatManager.Instance.IsInProgress)
+                || pileTarget.IsCombatPile())
+            {
+                LoadoutCardPileTarget combatTarget = pileTarget == LoadoutCardPileTarget.HandAndDeck
+                    ? LoadoutCardPileTarget.Hand
+                    : pileTarget;
+                if (combatTarget.TryGetPileType(out PileType combatPileType))
+                    await AddCombatCardCopiesAsync(targetPlayer, canonicalCard, amount, upgradeCount, combatPileType);
             }
         }
     }
 
     private static async Task ExecuteSynchronizedDeckCardCopiesAsync(
         ulong ownerNetId,
-        int sourceIndex,
+        LoadoutCardPileTarget sourcePileTarget,
+        uint sourceNativeIndex,
         ModelId expectedModelId,
         int amount)
     {
@@ -1009,16 +1052,16 @@ public static class LoadoutImmediateMutationService
             return;
 
         Player? owner = GetRunPlayer(ownerNetId);
-        if (owner is null
-            || sourceIndex < 0
-            || sourceIndex >= owner.Deck.Cards.Count)
-        {
+        if (owner is null || !sourcePileTarget.TryGetPileType(out PileType expectedPileType))
             return;
-        }
 
-        CardModel sourceCard = owner.Deck.Cards[sourceIndex];
-        if (!IdMatches(sourceCard, expectedModelId)
-            || sourceCard.Pile?.Type != PileType.Deck)
+        CardModel? sourceCard = expectedPileType == PileType.Deck
+            ? sourceNativeIndex < owner.Deck.Cards.Count ? owner.Deck.Cards[checked((int)sourceNativeIndex)] : null
+            : NetCombatCardDb.Instance.TryGetCard(sourceNativeIndex, out CardModel? combatCard) ? combatCard : null;
+        if (sourceCard is null
+            || !IdMatches(sourceCard, expectedModelId)
+            || sourceCard.Owner?.NetId != ownerNetId
+            || sourceCard.Pile?.Type != expectedPileType)
         {
             return;
         }
@@ -1030,7 +1073,7 @@ public static class LoadoutImmediateMutationService
         ModelId modelId,
         int amount,
         int upgradeCount,
-        bool includeCombatHand,
+        LoadoutCardPileTarget pileTarget,
         IReadOnlyList<ulong> targetNetIds)
     {
         string targets = string.Join(",", targetNetIds
@@ -1044,20 +1087,22 @@ public static class LoadoutImmediateMutationService
             EncodeModelIdToken(LoadoutModelIdSafety.ToWireString(modelId)),
             amount.ToString(CultureInfo.InvariantCulture),
             upgradeCount.ToString(CultureInfo.InvariantCulture),
-            includeCombatHand ? "1" : "0",
+            ((int)pileTarget.NormalizeForCreation()).ToString(CultureInfo.InvariantCulture),
             targets);
     }
 
     private static string BuildSynchronizedDeckCardCopiesCommand(
         ulong ownerNetId,
-        int sourceIndex,
+        LoadoutCardPileTarget sourcePileTarget,
+        uint sourceNativeIndex,
         ModelId expectedModelId,
         int amount)
     {
         return string.Join(" ",
             SynchronizedDeckCardCopiesCommandPrefix,
             ownerNetId.ToString(CultureInfo.InvariantCulture),
-            sourceIndex.ToString(CultureInfo.InvariantCulture),
+            ((int)sourcePileTarget.NormalizeForOwnedCard()).ToString(CultureInfo.InvariantCulture),
+            sourceNativeIndex.ToString(CultureInfo.InvariantCulture),
             EncodeModelIdToken(LoadoutModelIdSafety.ToWireString(expectedModelId)),
             amount.ToString(CultureInfo.InvariantCulture));
     }
@@ -1093,12 +1138,6 @@ public static class LoadoutImmediateMutationService
         {
             return false;
         }
-    }
-
-    private static bool TryParseCombatHandFlag(string raw, out bool includeCombatHand)
-    {
-        includeCombatHand = raw == "1";
-        return includeCombatHand || raw == "0";
     }
 
     private static bool TryParseTargetNetIds(string raw, out ulong[] targetNetIds)
@@ -1244,28 +1283,37 @@ public static class LoadoutImmediateMutationService
         if (payload.Amount <= 0 || ResolveCanonicalCard(payload.ModelId) is not { } canonicalCard)
             return;
 
+        LoadoutCardPileTarget pileTarget = payload.CardPileTarget.NormalizeForCreation();
+        if (!LoadoutCardPileTargets.IsSupportedCreationTarget(pileTarget)
+            || pileTarget.IsCombatPile() && !CombatManager.Instance.IsInProgress)
+            return;
+
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            await AddDeckCardCopiesAsync(
-                targetPlayer,
-                canonicalCard,
-                payload.Amount,
-                payload.CardUpgradeCount);
-
-            if (CombatManager.Instance.IsInProgress)
+            if (pileTarget is LoadoutCardPileTarget.HandAndDeck or LoadoutCardPileTarget.Deck)
             {
-                await AddCombatHandCardCopiesAsync(
+                await AddDeckCardCopiesAsync(
                     targetPlayer,
                     canonicalCard,
                     payload.Amount,
                     payload.CardUpgradeCount);
+            }
+
+            if ((pileTarget == LoadoutCardPileTarget.HandAndDeck && CombatManager.Instance.IsInProgress)
+                || pileTarget.IsCombatPile())
+            {
+                LoadoutCardPileTarget combatTarget = pileTarget == LoadoutCardPileTarget.HandAndDeck
+                    ? LoadoutCardPileTarget.Hand
+                    : pileTarget;
+                if (combatTarget.TryGetPileType(out PileType combatPileType))
+                    await AddCombatCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount, payload.CardUpgradeCount, combatPileType);
             }
         }
     }
 
     private static async Task ApplyAddDeckCardCopiesAsync(LoadoutImmediateMutationPayload payload, Player requester)
     {
-        if (payload.Amount <= 0 || TryGetOwnedDeckCard(payload, requester) is not { } sourceItem)
+        if (payload.Amount <= 0 || TryGetOwnedCard(payload, requester) is not { } sourceItem)
             return;
 
         await AddExactDeckCardCopiesAsync(
@@ -1367,18 +1415,18 @@ public static class LoadoutImmediateMutationService
             .ToList();
     }
 
-    private static async Task<bool> AddCombatHandCardCopiesAsync(
+    private static async Task<bool> AddCombatCardCopiesAsync(
         Player targetPlayer,
         CardModel canonicalCard,
         int amount,
-        int upgradeCount)
+        int upgradeCount,
+        PileType pileType)
     {
         ICombatState? combatState = targetPlayer.Creature.CombatState;
         if (combatState is null)
             return false;
 
-        bool changed = false;
-        List<CardPileAddResult> addedCards = [];
+        List<CardModel> cards = new(amount);
         for (int i = 0; i < amount; i++)
         {
             try
@@ -1387,26 +1435,40 @@ public static class LoadoutImmediateMutationService
                 if (upgradeCount > 0)
                     UpgradeCardWithCommand(card, upgradeCount);
 
-                CardPileAddResult result;
-                using (LoadoutCardAddRules.IgnoreHandLimit())
-                    result = await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Hand, targetPlayer);
-
-                if (result.success)
-                {
-                    addedCards.Add(result);
-                    changed = true;
-                }
+                cards.Add(card);
             }
             catch (Exception exception)
             {
-                GD.PushWarning($"LoadoutImmediateMutation: stopped adding combat hand card '{canonicalCard.Id}' to player {targetPlayer.NetId} after {i}/{amount}. {exception.Message}");
+                GD.PushWarning($"LoadoutImmediateMutation: stopped creating combat {pileType} card '{canonicalCard.Id}' for player {targetPlayer.NetId} after {i}/{amount}. {exception.Message}");
                 break;
             }
         }
 
+        if (cards.Count == 0)
+            return false;
+
+        IReadOnlyList<CardPileAddResult> addedCards;
+        try
+        {
+            if (pileType == PileType.Hand)
+            {
+                using (LoadoutCardAddRules.IgnoreHandLimit())
+                    addedCards = await CardPileCmd.AddGeneratedCardsToCombat(cards, pileType, targetPlayer);
+            }
+            else
+            {
+                addedCards = await CardPileCmd.AddGeneratedCardsToCombat(cards, pileType, targetPlayer);
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutImmediateMutation: failed adding {cards.Count} combat {pileType} cards '{canonicalCard.Id}' to player {targetPlayer.NetId}. {exception.Message}");
+            return false;
+        }
+
         if (IsLocalPlayer(targetPlayer))
             PreviewAddedCards(addedCards);
-        return changed;
+        return addedCards.Any(result => result.success);
     }
 
     private static void PreviewAddedCards(IReadOnlyList<CardPileAddResult> addedCards)
@@ -1483,14 +1545,20 @@ public static class LoadoutImmediateMutationService
 
     private static async Task ApplyRemoveCardAsync(LoadoutImmediateMutationPayload payload, Player requester)
     {
-        if (TryGetOwnedDeckCard(payload, requester) is not { } item)
+        if (TryGetOwnedCard(payload, requester) is not { } item)
             return;
 
         try
         {
-            // The CardPileCmd postfix publishes the precise structural delta.
-            bool showNativePreview = NLoadoutPanelRoot.Instance?.TryPreviewCardRemoval([item.Model]) != true;
-            await CardPileCmd.RemoveFromDeck(item.Model, showPreview: showNativePreview);
+            if (item.CardPileType is null or PileType.Deck)
+            {
+                bool showNativePreview = NLoadoutPanelRoot.Instance?.TryPreviewCardRemoval([item.Model]) != true;
+                await CardPileCmd.RemoveFromDeck(item.Model, showPreview: showNativePreview);
+            }
+            else
+            {
+                await CardPileCmd.RemoveFromCombat(item.Model, true);
+            }
         }
         catch (Exception exception)
         {
@@ -1500,10 +1568,11 @@ public static class LoadoutImmediateMutationService
 
     private static void ApplyUpgradeCard(LoadoutImmediateMutationPayload payload, Player requester)
     {
-        if (TryGetOwnedDeckCard(payload, requester) is not { } item)
+        if (TryGetOwnedCard(payload, requester) is not { } item)
             return;
 
-        UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount));
+        if (UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount)))
+            CardModificationRuntime.NotifyCombatCardUpdated(item);
     }
 
     private static void ApplyUpgradeAllDeckCards(LoadoutImmediateMutationPayload payload, Player requester)
@@ -1511,9 +1580,12 @@ public static class LoadoutImmediateMutationService
         int upgrades = Math.Max(1, payload.Amount);
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
+            if (!payload.CardPileTarget.NormalizeForOwnedCard().TryGetPileType(out PileType pileType))
+                continue;
+
             for (int pass = 0; pass < upgrades; pass++)
             {
-                List<CardModel> upgradableCards = targetPlayer.Deck.Cards
+                List<CardModel> upgradableCards = pileType.GetPile(targetPlayer).Cards
                     .Where(card => card.IsUpgradable)
                     .ToList();
                 if (upgradableCards.Count == 0)
@@ -1523,6 +1595,21 @@ public static class LoadoutImmediateMutationService
                 // entire batch with one owner index map and one coalesced UI update
                 // instead of N separate command/event chains.
                 CardCmd.Upgrade(upgradableCards, CardPreviewStyle.None);
+                if (pileType != PileType.Deck)
+                {
+                    foreach (CardModel card in upgradableCards)
+                    {
+                        if (NetCombatCardDb.Instance.TryGetCardId(card, out uint combatCardIndex))
+                        {
+                            int index = card.Pile?.Cards.ToList().IndexOf(card) ?? -1;
+                            if (index >= 0)
+                            {
+                                CardModificationRuntime.NotifyCombatCardUpdated(
+                                    new LoadoutOwnedItem<CardModel>(targetPlayer, index, card, pileType, combatCardIndex));
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1575,15 +1662,25 @@ public static class LoadoutImmediateMutationService
     {
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
-            List<CardModel> cards = targetPlayer.Deck.Cards.ToList();
+            if (!payload.CardPileTarget.NormalizeForOwnedCard().TryGetPileType(out PileType pileType))
+                continue;
+
+            List<CardModel> cards = pileType.GetPile(targetPlayer).Cards.ToList();
             if (cards.Count == 0)
                 continue;
 
             try
             {
-                bool showNativePreview = NLoadoutPanelRoot.Instance?.TryPreviewCardRemoval(cards) != true;
-                using (BeginRemoveAllCards())
-                    await CardPileCmd.RemoveFromDeck(cards, showPreview: showNativePreview);
+                if (pileType == PileType.Deck)
+                {
+                    bool showNativePreview = NLoadoutPanelRoot.Instance?.TryPreviewCardRemoval(cards) != true;
+                    using (BeginRemoveAllCards())
+                        await CardPileCmd.RemoveFromDeck(cards, showPreview: showNativePreview);
+                }
+                else
+                {
+                    await CardPileCmd.RemoveFromCombat(cards, true);
+                }
             }
             catch (Exception exception)
             {
@@ -1637,6 +1734,8 @@ public static class LoadoutImmediateMutationService
             payload.ModelId,
             payload.Target,
             payload.OwnedItemIndex,
+            payload.CardPileTarget.NormalizeForOwnedCard(),
+            payload.CombatCardIndex,
             payload.ExpectedModelId,
             state,
             requester);
@@ -1745,16 +1844,43 @@ public static class LoadoutImmediateMutationService
         NLoadoutPanelRoot.Instance?.CloseAllScreens();
     }
 
-    private static LoadoutOwnedItem<CardModel>? TryGetOwnedDeckCard(LoadoutImmediateMutationPayload payload, Player requester)
+    private static LoadoutOwnedItem<CardModel>? TryGetOwnedCard(LoadoutImmediateMutationPayload payload, Player requester)
     {
         Player? targetPlayer = ResolveExactTargetPlayer(payload.Target, requester);
-        if (targetPlayer is null || payload.OwnedItemIndex < 0 || payload.OwnedItemIndex >= targetPlayer.Deck.Cards.Count)
+        if (targetPlayer is null)
             return null;
 
-        CardModel card = targetPlayer.Deck.Cards[payload.OwnedItemIndex];
-        return IdMatches(card, payload.ExpectedModelId) && card.Pile?.Type == PileType.Deck
-            ? new LoadoutOwnedItem<CardModel>(targetPlayer, payload.OwnedItemIndex, card)
+        LoadoutCardPileTarget target = payload.CardPileTarget.NormalizeForOwnedCard();
+        if (!target.TryGetPileType(out PileType expectedPileType))
+            return null;
+
+        if (expectedPileType == PileType.Deck)
+        {
+            if (payload.OwnedItemIndex < 0 || payload.OwnedItemIndex >= targetPlayer.Deck.Cards.Count)
+                return null;
+
+            CardModel deckCard = targetPlayer.Deck.Cards[payload.OwnedItemIndex];
+            return IdMatches(deckCard, payload.ExpectedModelId)
+                   && deckCard.Pile?.Type == PileType.Deck
+                ? new LoadoutOwnedItem<CardModel>(targetPlayer, payload.OwnedItemIndex, deckCard, PileType.Deck, null)
+                : null;
+        }
+
+        CardModel? combatCard = NetCombatCardDb.Instance.TryGetCard(payload.CombatCardIndex, out CardModel? resolvedCard)
+            ? resolvedCard
             : null;
+        if (combatCard is null
+            || combatCard.Owner?.NetId != targetPlayer.NetId
+            || combatCard.Pile?.Type != expectedPileType
+            || !IdMatches(combatCard, payload.ExpectedModelId))
+        {
+            return null;
+        }
+
+        int pileIndex = combatCard.Pile.Cards.ToList().IndexOf(combatCard);
+        return pileIndex < 0
+            ? null
+            : new LoadoutOwnedItem<CardModel>(targetPlayer, pileIndex, combatCard, expectedPileType, payload.CombatCardIndex);
     }
 
     private static LoadoutOwnedItem<RelicModel>? TryGetOwnedRelic(LoadoutImmediateMutationPayload payload, Player requester)
@@ -1954,6 +2080,8 @@ public struct LoadoutImmediateMutationPayload
     public int CardUpgradeCount;
     public RelicModificationOperation RelicModificationOperation;
     public string RelicModificationStateJson;
+    public LoadoutCardPileTarget CardPileTarget;
+    public uint CombatCardIndex;
 
     public void Serialize(PacketWriter writer)
     {
@@ -1978,6 +2106,8 @@ public struct LoadoutImmediateMutationPayload
         writer.WriteInt(CardUpgradeCount);
         writer.WriteInt((int)RelicModificationOperation, 8);
         writer.WriteString(RelicModificationStateJson ?? string.Empty);
+        writer.WriteInt((int)CardPileTarget, 4);
+        writer.WriteUInt(CombatCardIndex);
     }
 
     public void Deserialize(PacketReader reader)
@@ -2000,6 +2130,8 @@ public struct LoadoutImmediateMutationPayload
         CardUpgradeCount = reader.ReadInt();
         RelicModificationOperation = (RelicModificationOperation)reader.ReadInt(8);
         RelicModificationStateJson = reader.ReadString();
+        CardPileTarget = (LoadoutCardPileTarget)reader.ReadInt(4);
+        CombatCardIndex = reader.ReadUInt();
         NormalizeDefaults();
     }
 
@@ -2012,6 +2144,15 @@ public struct LoadoutImmediateMutationPayload
         TildePayloadJson ??= string.Empty;
         RelicModificationStateJson ??= string.Empty;
         CardUpgradeCount = Math.Max(0, CardUpgradeCount);
+        CardPileTarget = Kind == LoadoutImmediateMutationKind.AddCard
+            ? CardPileTarget.NormalizeForCreation()
+            : Kind is LoadoutImmediateMutationKind.RemoveCard
+                or LoadoutImmediateMutationKind.UpgradeCard
+                or LoadoutImmediateMutationKind.UpgradeAllDeckCards
+                or LoadoutImmediateMutationKind.AddDeckCardCopies
+                or LoadoutImmediateMutationKind.RemoveAllCards
+                ? CardPileTarget.NormalizeForOwnedCard()
+                : CardPileTarget;
     }
 
     public override readonly string ToString()

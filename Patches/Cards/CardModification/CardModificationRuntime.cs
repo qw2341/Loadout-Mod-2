@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
@@ -57,6 +58,16 @@ public static class CardModificationRuntime
     private static bool _customTextOverridesMayExist;
 
     public static event Action<ModelId>? PermanentCardDisplayChanged;
+    public static event Action<LoadoutOwnedItem<CardModel>, LoadoutCardVisualRefreshKind>? OwnedCardChanged;
+
+    public static void NotifyCombatCardUpdated(LoadoutOwnedItem<CardModel> item)
+    {
+        if (item.CardPileType is null or PileType.Deck)
+            return;
+
+        RefreshLiveCardVisuals(item.Model, LoadoutCardVisualRefreshKind.Lightweight);
+        OwnedCardChanged?.Invoke(item, LoadoutCardVisualRefreshKind.Lightweight);
+    }
 
     public static bool IsPermanentApplicationSuppressed => _suppressPermanentApplyDepth > 0;
 
@@ -1037,14 +1048,18 @@ public static class CardModificationRuntime
         ModelId modelId,
         LoadoutTargetSelection target,
         int deckIndex,
+        LoadoutCardPileTarget pileTarget,
+        uint combatCardIndex,
         ModelId expectedModelId,
         CardModificationSpec? state,
         Player actionPlayer,
         bool authoritativeRemote = false)
     {
-        LoadoutOwnedItem<CardModel>? resolved = TryResolveOwnedDeckCard(
+        LoadoutOwnedItem<CardModel>? resolved = TryResolveOwnedCard(
             target,
             deckIndex,
+            pileTarget,
+            combatCardIndex,
             expectedModelId,
             actionPlayer);
         if (resolved is not { } item)
@@ -1073,14 +1088,18 @@ public static class CardModificationRuntime
         ModelId modelId,
         LoadoutTargetSelection target,
         int deckIndex,
+        LoadoutCardPileTarget pileTarget,
+        uint combatCardIndex,
         ModelId expectedModelId,
         CardModificationDelta? delta,
         Player actionPlayer,
         bool authoritativeRemote = false)
     {
-        LoadoutOwnedItem<CardModel>? resolved = TryResolveOwnedDeckCard(
+        LoadoutOwnedItem<CardModel>? resolved = TryResolveOwnedCard(
             target,
             deckIndex,
+            pileTarget,
+            combatCardIndex,
             expectedModelId,
             actionPlayer);
         if (resolved is not { } item)
@@ -1107,10 +1126,12 @@ public static class CardModificationRuntime
     public static void ApplyRemoteTemporaryState(
         ulong ownerNetId,
         int deckIndex,
+        LoadoutCardPileTarget pileTarget,
+        uint combatCardIndex,
         string cardId,
         CardModificationSpec? state)
     {
-        if (!TryResolveLiveDeckCard(ownerNetId, deckIndex, cardId, out LoadoutOwnedItem<CardModel>? item)
+        if (!TryResolveLiveCard(ownerNetId, deckIndex, pileTarget, combatCardIndex, cardId, out LoadoutOwnedItem<CardModel>? item)
             || item is null)
             return;
 
@@ -1120,10 +1141,12 @@ public static class CardModificationRuntime
     public static void ApplyRemoteTemporaryDelta(
         ulong ownerNetId,
         int deckIndex,
+        LoadoutCardPileTarget pileTarget,
+        uint combatCardIndex,
         string cardId,
         CardModificationDelta? delta)
     {
-        if (!TryResolveLiveDeckCard(ownerNetId, deckIndex, cardId, out LoadoutOwnedItem<CardModel>? item)
+        if (!TryResolveLiveCard(ownerNetId, deckIndex, pileTarget, combatCardIndex, cardId, out LoadoutOwnedItem<CardModel>? item)
             || item is null)
             return;
 
@@ -1156,6 +1179,7 @@ public static class CardModificationRuntime
 
         List<LoadoutChangedCard> changedCards = [];
         HashSet<ulong> changedPlayers = [];
+        HashSet<CardModel> refreshedCombatCards = [];
         foreach (Player owner in runState!.Players)
         {
             IReadOnlyList<CardModel> deck = owner.Deck.Cards;
@@ -1174,7 +1198,28 @@ public static class CardModificationRuntime
                 RefreshLiveCardVisuals(card, kind);
                 changedPlayers.Add(owner.NetId);
                 changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, kind));
+
+                foreach (CardModel combatCard in owner.PlayerCombatState?.AllCards
+                             .Where(candidate => ReferenceEquals(candidate.DeckVersion, card)) ?? [])
+                {
+                    CardModificationSpec combatPrevious = ReferenceEquals(combatCard, selectedCard) && selectedPrevious is not null
+                        ? selectedPrevious.Clone()
+                        : Merge(previousPermanent, GetTemporarySpec(combatCard));
+                    RebuildCard(combatCard, combatPrevious, forceAllOwnedFields: ReferenceEquals(combatCard, selectedCard));
+                    NotifyCombatCardChanged(combatCard, combatPrevious);
+                    refreshedCombatCards.Add(combatCard);
+                }
             }
+        }
+
+        if (selectedCard is not null
+            && selectedCard.Pile?.Type is not null and not PileType.Deck
+            && !refreshedCombatCards.Contains(selectedCard)
+            && ModelIdMatches(selectedCard, cardId))
+        {
+            CardModificationSpec previous = selectedPrevious?.Clone() ?? Merge(previousPermanent, GetTemporarySpec(selectedCard));
+            RebuildCard(selectedCard, previous, forceAllOwnedFields: true);
+            NotifyCombatCardChanged(selectedCard, previous);
         }
 
         if (changedCards.Count > 0)
@@ -1217,6 +1262,16 @@ public static class CardModificationRuntime
                 RefreshLiveCardVisuals(card, kind);
                 changedPlayers.Add(owner.NetId);
                 changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, kind));
+
+                foreach (CardModel combatCard in owner.PlayerCombatState?.AllCards
+                             .Where(candidate => ReferenceEquals(candidate.DeckVersion, card)) ?? [])
+                {
+                    CardModificationSpec combatPrevious = Merge(
+                        previous?.GetValueOrDefault(combatCard.Id),
+                        GetTemporarySpec(combatCard));
+                    RebuildCard(combatCard, combatPrevious, forceAllOwnedFields);
+                    NotifyCombatCardChanged(combatCard, combatPrevious);
+                }
             }
         }
 
@@ -1264,12 +1319,30 @@ public static class CardModificationRuntime
         out LoadoutOwnedItem<CardModel>? replacement)
     {
         replacement = null;
+        if (item.CardPileType is not null and not PileType.Deck)
+        {
+            if (item.Model.Pile?.Type != item.CardPileType
+                || item.Model.Owner?.NetId != item.OwnerNetId)
+            {
+                return false;
+            }
+
+            CardModificationSpec previous = GetEffectiveSpec(item.Model);
+            CardModificationFields.Clear(item.Model);
+            RebuildCard(item.Model, previous, forceAllOwnedFields: true);
+            replacement = item;
+            NotifyCardUpdated(item, previous, GetEffectiveSpec(item.Model));
+            LoadoutKeywordRuntimePatches.Reconcile();
+            return true;
+        }
+
         if (!TryReplaceOwnedCardWithFresh(item, out CardModel? freshCard) || freshCard is null)
             return false;
 
         replacement = new LoadoutOwnedItem<CardModel>(item.Owner, item.Index, freshCard);
         RefreshLiveCardVisuals(freshCard, LoadoutCardVisualRefreshKind.Reload);
         LoadoutRunContentChangeService.NotifyCardUpdated(replacement, LoadoutCardVisualRefreshKind.Reload);
+        OwnedCardChanged?.Invoke(replacement, LoadoutCardVisualRefreshKind.Reload);
         LoadoutKeywordRuntimePatches.Reconcile();
         return true;
     }
@@ -1682,7 +1755,29 @@ public static class CardModificationRuntime
     {
         LoadoutCardVisualRefreshKind kind = GetVisualRefreshKind(previous, next);
         RefreshLiveCardVisuals(item.Model, kind);
-        LoadoutRunContentChangeService.NotifyCardUpdated(item, kind);
+        if (item.CardPileType is null or PileType.Deck)
+            LoadoutRunContentChangeService.NotifyCardUpdated(item, kind);
+        OwnedCardChanged?.Invoke(item, kind);
+    }
+
+    private static void NotifyCombatCardChanged(CardModel card, CardModificationSpec previous)
+    {
+        LoadoutCardVisualRefreshKind kind = GetVisualRefreshKind(previous, GetEffectiveSpec(card));
+        RefreshLiveCardVisuals(card, kind);
+        if (card.Owner is null
+            || card.Pile is null
+            || !NetCombatCardDb.Instance.TryGetCardId(card, out uint combatCardIndex))
+        {
+            return;
+        }
+
+        int index = card.Pile.Cards.ToList().IndexOf(card);
+        if (index < 0)
+            return;
+
+        OwnedCardChanged?.Invoke(
+            new LoadoutOwnedItem<CardModel>(card.Owner, index, card, card.Pile.Type, combatCardIndex),
+            kind);
     }
 
     private static void RefreshLiveCardVisuals(
@@ -1710,27 +1805,51 @@ public static class CardModificationRuntime
         }
     }
 
-    private static LoadoutOwnedItem<CardModel>? TryResolveOwnedDeckCard(
+    private static LoadoutOwnedItem<CardModel>? TryResolveOwnedCard(
         LoadoutTargetSelection target,
         int deckIndex,
+        LoadoutCardPileTarget pileTarget,
+        uint combatCardIndex,
         ModelId expectedModelId,
         Player actionPlayer)
     {
         Player? owner = target.Scope == LoadoutTargetScope.Player && target.PlayerNetId.HasValue
             ? actionPlayer.RunState.GetPlayer(target.PlayerNetId.Value)
             : actionPlayer;
-        if (owner is null || deckIndex < 0 || deckIndex >= owner.Deck.Cards.Count)
+        if (owner is null || !pileTarget.NormalizeForOwnedCard().TryGetPileType(out PileType expectedPileType))
             return null;
 
-        CardModel card = owner.Deck.Cards[deckIndex];
-        return ModelIdMatches(card, expectedModelId) && card.Pile?.Type == PileType.Deck
-            ? new LoadoutOwnedItem<CardModel>(owner, deckIndex, card)
-            : null;
+        if (expectedPileType == PileType.Deck)
+        {
+            if (deckIndex < 0 || deckIndex >= owner.Deck.Cards.Count)
+                return null;
+
+            CardModel deckCard = owner.Deck.Cards[deckIndex];
+            return ModelIdMatches(deckCard, expectedModelId) && deckCard.Pile?.Type == PileType.Deck
+                ? new LoadoutOwnedItem<CardModel>(owner, deckIndex, deckCard, PileType.Deck, null)
+                : null;
+        }
+
+        if (!NetCombatCardDb.Instance.TryGetCard(combatCardIndex, out CardModel? combatCard)
+            || combatCard is null
+            || combatCard.Owner?.NetId != owner.NetId
+            || combatCard.Pile?.Type != expectedPileType
+            || !ModelIdMatches(combatCard, expectedModelId))
+        {
+            return null;
+        }
+
+        int pileIndex = combatCard.Pile.Cards.ToList().IndexOf(combatCard);
+        return pileIndex < 0
+            ? null
+            : new LoadoutOwnedItem<CardModel>(owner, pileIndex, combatCard, expectedPileType, combatCardIndex);
     }
 
-    private static bool TryResolveLiveDeckCard(
+    private static bool TryResolveLiveCard(
         ulong ownerNetId,
         int deckIndex,
+        LoadoutCardPileTarget pileTarget,
+        uint combatCardIndex,
         string cardId,
         out LoadoutOwnedItem<CardModel>? item)
     {
@@ -1739,14 +1858,38 @@ public static class CardModificationRuntime
             return false;
 
         Player? owner = runState!.GetPlayer(ownerNetId);
-        if (owner is null || deckIndex < 0 || deckIndex >= owner.Deck.Cards.Count)
+        if (owner is null || !pileTarget.NormalizeForOwnedCard().TryGetPileType(out PileType expectedPileType))
             return false;
 
-        CardModel card = owner.Deck.Cards[deckIndex];
-        if (!MatchesModelId(card, cardId) || card.Pile?.Type != PileType.Deck)
+        CardModel? card;
+        int resolvedIndex;
+        if (expectedPileType == PileType.Deck)
+        {
+            if (deckIndex < 0 || deckIndex >= owner.Deck.Cards.Count)
+                return false;
+            card = owner.Deck.Cards[deckIndex];
+            resolvedIndex = deckIndex;
+        }
+        else
+        {
+            if (!NetCombatCardDb.Instance.TryGetCard(combatCardIndex, out card)
+                || card is null
+                || card.Owner?.NetId != ownerNetId)
+            {
+                return false;
+            }
+            resolvedIndex = card.Pile?.Cards.ToList().IndexOf(card) ?? -1;
+        }
+
+        if (!MatchesModelId(card, cardId) || card.Pile?.Type != expectedPileType || resolvedIndex < 0)
             return false;
 
-        item = new LoadoutOwnedItem<CardModel>(owner, deckIndex, card);
+        item = new LoadoutOwnedItem<CardModel>(
+            owner,
+            resolvedIndex,
+            card,
+            expectedPileType,
+            expectedPileType == PileType.Deck ? null : combatCardIndex);
         return true;
     }
 

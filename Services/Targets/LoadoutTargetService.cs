@@ -10,6 +10,7 @@ using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Platform;
@@ -77,10 +78,22 @@ public sealed class LoadoutOwnedItem<TModel>
     where TModel : AbstractModel
 {
     public LoadoutOwnedItem(Player owner, int index, TModel model)
+        : this(owner, index, model, null, null)
+    {
+    }
+
+    public LoadoutOwnedItem(
+        Player owner,
+        int index,
+        TModel model,
+        PileType? cardPileType,
+        uint? combatCardIndex)
     {
         Owner = owner;
         Index = index;
         Model = model;
+        CardPileType = cardPileType;
+        CombatCardIndex = combatCardIndex;
     }
 
     public Player Owner { get; }
@@ -88,6 +101,8 @@ public sealed class LoadoutOwnedItem<TModel>
     public int Index { get; }
     public TModel Model { get; }
     public ModelId ModelId => Model.Id;
+    public PileType? CardPileType { get; }
+    public uint? CombatCardIndex { get; }
 }
 
 public static class LoadoutTargetService

@@ -440,17 +440,19 @@ public partial class NLoadoutPanel : Panel
 		//05 - CARD PRINTER
 		CardPrinter.Initialize();
 		//06 - CARD SHREDDER
-		CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForRemoval,
+		NCardSelectScreen? shredderScreen = null;
+		CommonHelpers.CreateAndAddDynamicLoadoutItem(
+			() => GetSelectedTargetCardsForRemoval(shredderScreen),
 			new SelectItemAdapter<LoadoutOwnedItem<CardModel>>
 			{
 				GetId = item => CommonHelpers.OwnedItemId(item),
 				GetName = item => CardPrinter.FormatCardTitle(item.Model),
-				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.GetDescriptionForPile(PileType.None)}",
-				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
-				ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model),
+				GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.GetDescriptionForPile(item.CardPileType ?? PileType.Deck)}",
+				CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state, item.CardPileType ?? PileType.Deck),
+				ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model, item.CardPileType ?? PileType.Deck),
 				UpdateView = (item, view, state) =>
 				{
-					CardPrinter.ForceRefreshCardVisuals(view, item.Model);
+					CardPrinter.ForceRefreshCardVisuals(view, item.Model, item.CardPileType ?? PileType.Deck);
 					CardPrinter.UpdateCardGridItem(view, state);
 				},
 				BindActivationWithCleanup = (_, view, activate) => CardPrinter.BindCardActivationWithCleanup(view, activate)
@@ -470,17 +472,37 @@ public partial class NLoadoutPanel : Panel
 			"CardShredder.png",
 			LocMan.Loc("CARDSHREDDER_TITLE", "Card Shredder"),
 			LocMan.Loc("CARDSHREDDER_DESC", "Right-click this relic to obliterate any card you want; use during combat will also remove it from combat."),
-			(screen, refresh) => LoadoutTargetService.UpsertTargetDropdown(
-				screen,
-				RemoveCardTargetDropdownName,
-				RemoveCardTargetKey,
-				LoadoutTargetMode.PlayersOnly,
-				refresh),
+			(screen, refresh) =>
+			{
+				shredderScreen = screen as NCardSelectScreen;
+				LoadoutTargetService.UpsertTargetDropdown(
+					screen,
+					RemoveCardTargetDropdownName,
+					RemoveCardTargetKey,
+					LoadoutTargetMode.PlayersOnly,
+					() =>
+					{
+						shredderScreen?.RefreshObservedPiles();
+						refresh();
+					});
+				if (shredderScreen is not null)
+				{
+					shredderScreen.ConfigurePileTarget(
+						LoadoutCardPileTarget.Deck,
+						LoadoutCardPileTargets.OwnedCardOptions,
+						_ => refresh());
+					shredderScreen.ConfigureObservedPiles(
+						() => LoadoutCardPileTargets.ResolveObservedPiles(
+							LoadoutTargetService.GetSelected(RemoveCardTargetKey, LoadoutTargetMode.PlayersOnly),
+							shredderScreen.SelectedPileTarget),
+						refresh);
+				}
+			},
 			(_, _) => { },
 			selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath,
 			reconcileModelsOnEveryOpen: false,
 			refreshModelsAfterActivation: false,
-			syncChangesWhileHidden: true);
+			syncChangesWhileHidden: false);
 		//07 - CARD MODIFIER
 		CardModifier.Initialize();
 				
@@ -595,10 +617,12 @@ public partial class NLoadoutPanel : Panel
 		return LoadoutTargetService.BuildOwnedItems(target, player => player.Relics.ToList());
 	}
 
-	private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetDeckCardsForRemoval()
+	private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetCardsForRemoval(NCardSelectScreen? screen)
 	{
 		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(RemoveCardTargetKey, LoadoutTargetMode.PlayersOnly);
-		return LoadoutTargetService.BuildOwnedItems(target, player => player.Deck.Cards.ToList());
+		return LoadoutCardPileTargets.BuildOwnedCards(
+			target,
+			screen?.SelectedPileTarget ?? LoadoutCardPileTarget.Deck);
 	}
 
 
@@ -671,10 +695,13 @@ public partial class NLoadoutPanel : Panel
 		return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 	}
 
-	private static void HandleRemoveAllCards(NGenericSelectScreen _)
+	private static void HandleRemoveAllCards(NGenericSelectScreen screen)
 	{
 		LoadoutTargetSelection target = LoadoutTargetService.GetSelected(RemoveCardTargetKey, LoadoutTargetMode.PlayersOnly);
-		if (!LoadoutImmediateMutationService.RequestRemoveAllCards(target))
+		LoadoutCardPileTarget pileTarget = screen is NCardSelectScreen cardScreen
+			? cardScreen.SelectedPileTarget
+			: LoadoutCardPileTarget.Deck;
+		if (!LoadoutImmediateMutationService.RequestRemoveAllCards(target, pileTarget))
 			GD.PushWarning("LoadoutPanel: failed to request removal of all cards.");
 	}
 

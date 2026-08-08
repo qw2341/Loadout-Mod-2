@@ -184,7 +184,8 @@ public static class LastActionService
             UpgradeCount = Math.Max(0, entry.UpgradeCount),
             Target = entry.Target,
             TargetScope = entry.TargetScope,
-            TargetPlayerNetId = entry.TargetPlayerNetId
+            TargetPlayerNetId = entry.TargetPlayerNetId,
+            CardPileTarget = entry.CardPileTarget
         };
     }
 
@@ -234,6 +235,9 @@ public sealed class LastActionEntry
 
     [JsonPropertyName("targetPlayerNetId")]
     public ulong? TargetPlayerNetId { get; set; }
+
+    [JsonPropertyName("cardPileTarget")]
+    public LoadoutCardPileTarget? CardPileTarget { get; set; }
 
     public void SetTargetSelection(LoadoutTargetSelection selection)
     {

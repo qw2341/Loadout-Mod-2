@@ -16,6 +16,7 @@ using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
@@ -75,6 +76,7 @@ public partial class NCardModificationScreen : Control
     private Control? _textEditorOverlay;
     private bool _signalsBound;
     private bool _runContentEventsBound;
+    private CardPile? _observedPile;
     private bool _hasPendingTemporaryCommit;
     private bool _suppressStateRefreshThisFrame;
     private bool _isClosing;
@@ -185,7 +187,9 @@ public partial class NCardModificationScreen : Control
             return;
 
         LoadoutRunContentChangeService.Changed += OnRunContentChanged;
+        CardModificationRuntime.OwnedCardChanged += OnOwnedCardChanged;
         _runContentEventsBound = true;
+        BindObservedPile();
     }
 
     private void UnbindRunContentEvents()
@@ -194,12 +198,15 @@ public partial class NCardModificationScreen : Control
             return;
 
         LoadoutRunContentChangeService.Changed -= OnRunContentChanged;
+        CardModificationRuntime.OwnedCardChanged -= OnOwnedCardChanged;
+        UnbindObservedPile();
         _runContentEventsBound = false;
     }
 
     private void OnRunContentChanged(LoadoutRunContentChangedEventArgs change)
     {
-        if (change.Kind != LoadoutRunContentKind.Cards
+        if (_item?.CardPileType is not null and not PileType.Deck
+            || change.Kind != LoadoutRunContentKind.Cards
             || _item is null
             || !change.AffectsPlayer(_item.OwnerNetId)
             || !IsInsideTree()
@@ -264,26 +271,33 @@ public partial class NCardModificationScreen : Control
         Callable.From(RefreshAfterDeckMutation).CallDeferred();
     }
 
+    private void OnOwnedCardChanged(LoadoutOwnedItem<CardModel> changedItem, LoadoutCardVisualRefreshKind refreshKind)
+    {
+        if (_item is null
+            || _item.CardPileType is null or PileType.Deck
+            || _isClosing
+            || !SameOwnedItem(_item, changedItem))
+            return;
+
+        Callable.From(() =>
+        {
+            if (!_isClosing)
+                RefreshTargetedCardUpdate(refreshKind);
+        }).CallDeferred();
+    }
+
     private void RefreshTargetedCardUpdate(LoadoutCardVisualRefreshKind refreshKind)
     {
         if (_isClosing || _item is null || !IsInsideTree())
             return;
 
-        IReadOnlyList<CardModel> deck = _item.Owner.Deck.Cards;
-        if (_item.Index < 0 || _item.Index >= deck.Count)
+        if (!TryResolveCurrentLocation(_item, out LoadoutOwnedItem<CardModel>? refreshed)
+            || refreshed is null)
         {
             RefreshAfterDeckMutation();
             return;
         }
 
-        CardModel card = deck[_item.Index];
-        if (!card.Id.Equals(_item.Model.Id) && !ReferenceEquals(card, _item.Model))
-        {
-            RefreshAfterDeckMutation();
-            return;
-        }
-
-        LoadoutOwnedItem<CardModel> refreshed = new(_item.Owner, _item.Index, card);
         _item = refreshed;
         if (_itemIndex >= 0 && _itemIndex < _items.Count)
             _items[_itemIndex] = refreshed;
@@ -307,9 +321,7 @@ public partial class NCardModificationScreen : Control
         if (owners.Count == 0)
             owners.Add(_item.Owner);
 
-        List<LoadoutOwnedItem<CardModel>> refreshedItems = owners
-            .SelectMany(player => player.Deck.Cards.Select((card, index) => new LoadoutOwnedItem<CardModel>(player, index, card)))
-            .ToList();
+        List<LoadoutOwnedItem<CardModel>> refreshedItems = BuildCurrentLocationItems(owners);
 
         if (refreshedItems.Count == 0)
         {
@@ -322,6 +334,11 @@ public partial class NCardModificationScreen : Control
         if (refreshedIndex < 0)
         {
             _hasPendingTemporaryCommit = false;
+            if (_item.CardPileType is not null and not PileType.Deck)
+            {
+                NLoadoutPanelRoot.CloseTopLoadoutScreen();
+                return;
+            }
             refreshedIndex = Mathf.Clamp(_itemIndex, 0, refreshedItems.Count - 1);
         }
 
@@ -342,9 +359,7 @@ public partial class NCardModificationScreen : Control
             .Append(_item.Owner)
             .Distinct()
             .ToList();
-        List<LoadoutOwnedItem<CardModel>> refreshed = owners
-            .SelectMany(owner => owner.Deck.Cards.Select((card, index) => new LoadoutOwnedItem<CardModel>(owner, index, card)))
-            .ToList();
+        List<LoadoutOwnedItem<CardModel>> refreshed = BuildCurrentLocationItems(owners);
         int selectedIndex = refreshed.FindIndex(candidate => ReferenceEquals(candidate.Model, _item.Model));
         if (selectedIndex < 0)
             return;
@@ -526,6 +541,7 @@ public partial class NCardModificationScreen : Control
         _previewDisplayModel = item.Model;
         _lastAppliedState = _workingState.Clone();
         _hasPendingTemporaryCommit = false;
+        BindObservedPile();
     }
 
     private void SwitchCard(int direction)
@@ -1379,7 +1395,7 @@ public partial class NCardModificationScreen : Control
         {
             return target == TextEditTarget.Name
                 ? _item.Model.Title
-                : _item.Model.GetDescriptionForPile(PileType.None);
+                : _item.Model.GetDescriptionForPile(_item.CardPileType ?? PileType.Deck);
         }
     }
 
@@ -1439,7 +1455,7 @@ public partial class NCardModificationScreen : Control
         Callable.From(() =>
         {
             if (!_isClosing && IsInsideTree() && GodotObject.IsInstanceValid(card))
-                card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+                card.UpdateVisuals(_item.CardPileType ?? PileType.Deck, CardPreviewMode.Normal);
         }).CallDeferred();
         RefreshHoverTips();
     }
@@ -1699,7 +1715,10 @@ public partial class NCardModificationScreen : Control
     private static bool SameOwnedItem(LoadoutOwnedItem<CardModel> left, LoadoutOwnedItem<CardModel> right)
     {
         return left.OwnerNetId == right.OwnerNetId
-               && left.Index == right.Index
+               && (left.CombatCardIndex.HasValue || right.CombatCardIndex.HasValue
+                   ? left.CombatCardIndex == right.CombatCardIndex
+                     && left.CardPileType == right.CardPileType
+                   : left.Index == right.Index)
                && left.Model.Id.Equals(right.Model.Id);
     }
 
@@ -1708,6 +1727,75 @@ public partial class NCardModificationScreen : Control
         return item.OwnerNetId == changed.OwnerNetId
                && item.Index == changed.Index
                && item.Model.Id.Equals(changed.ModelId);
+    }
+
+    private void BindObservedPile()
+    {
+        UnbindObservedPile();
+        if (!IsInsideTree() || _item?.CardPileType is not PileType pileType)
+            return;
+
+        _observedPile = pileType.GetPile(_item.Owner);
+        _observedPile.ContentsChanged += OnObservedPileContentsChanged;
+    }
+
+    private void UnbindObservedPile()
+    {
+        if (_observedPile is not null)
+            _observedPile.ContentsChanged -= OnObservedPileContentsChanged;
+        _observedPile = null;
+    }
+
+    private void OnObservedPileContentsChanged()
+    {
+        if (_isClosing)
+            return;
+        Callable.From(RefreshAfterDeckMutation).CallDeferred();
+    }
+
+    private List<LoadoutOwnedItem<CardModel>> BuildCurrentLocationItems(IEnumerable<Player> owners)
+    {
+        LoadoutCardPileTarget pileTarget = LoadoutCardPileTargets.FromPileType(_item?.CardPileType ?? PileType.Deck)
+            .NormalizeForOwnedCard();
+        return owners
+            .SelectMany(owner => LoadoutCardPileTargets.BuildOwnedCards(
+                LoadoutTargetSelection.ForPlayer(owner.NetId),
+                pileTarget))
+            .ToList();
+    }
+
+    private static bool TryResolveCurrentLocation(
+        LoadoutOwnedItem<CardModel> item,
+        out LoadoutOwnedItem<CardModel>? resolved)
+    {
+        resolved = null;
+        PileType pileType = item.CardPileType ?? PileType.Deck;
+        if (pileType == PileType.Deck)
+        {
+            if (item.Index < 0 || item.Index >= item.Owner.Deck.Cards.Count)
+                return false;
+            CardModel card = item.Owner.Deck.Cards[item.Index];
+            if (!ReferenceEquals(card, item.Model) && !card.Id.Equals(item.Model.Id))
+                return false;
+            resolved = new LoadoutOwnedItem<CardModel>(item.Owner, item.Index, card, PileType.Deck, null);
+            return true;
+        }
+
+        if (!item.CombatCardIndex.HasValue
+            || !NetCombatCardDb.Instance.TryGetCard(item.CombatCardIndex.Value, out CardModel? combatCard)
+            || combatCard is null
+            || combatCard.Owner?.NetId != item.OwnerNetId
+            || combatCard.Pile?.Type != pileType
+            || !combatCard.Id.Equals(item.Model.Id))
+        {
+            return false;
+        }
+
+        int index = combatCard.Pile.Cards.ToList().IndexOf(combatCard);
+        if (index < 0)
+            return false;
+        resolved = new LoadoutOwnedItem<CardModel>(item.Owner, index, combatCard, pileType, item.CombatCardIndex);
+        return true;
     }
 
     private static NLoadoutActionButton CreateActionButton(string id, string label, Texture2D? icon = null)

@@ -42,7 +42,7 @@ public class CardPrinter
 		    GetId = card => card.Id.ToString(),
 		    GetName = card => FormatCardTitle(card),
 		    GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.GetDescriptionForPile(PileType.None)}",
-		    CreateView = CreateCardGridItem,
+		    CreateView = (card, state) => CreateCardGridItem(card, state),
 		    ViewReady = (card, view) => RefreshCardVisuals(view, card),
 		    UpdateView = (card, view, state) =>
 		    {
@@ -90,6 +90,13 @@ public class CardPrinter
 			    TargetDropdownName,
 			    LastActionService.CardPrinterKey,
 			    LoadoutTargetMode.AllPlayersAndPlayers);
+
+		    if (screen is NCardSelectScreen cardScreen)
+		    {
+			    cardScreen.ConfigurePileTarget(
+				    LoadoutCardPileTarget.HandAndDeck,
+				    LoadoutCardPileTargets.PrinterOptions);
+		    }
 
 		    if (applyDefaultClassFilter)
 			    ApplyCurrentCardClassFilter(screen);
@@ -199,7 +206,10 @@ public class CardPrinter
 	    int multiplier = screen.GetCurrentActivationMultiplier();
 	    int upgradeCount = screen.IsToggleEnabled(ViewUpgradesToggleId) && canonicalCard.IsUpgradable ? 1 : 0;
 	    LoadoutTargetSelection target = LoadoutTargetService.GetSelected(LastActionService.CardPrinterKey, LoadoutTargetMode.AllPlayersAndPlayers);
-	    if (!LoadoutImmediateMutationService.RequestAddCard(canonicalCard.Id, multiplier, target, upgradeCount))
+	    LoadoutCardPileTarget pileTarget = screen is NCardSelectScreen cardScreen
+		    ? cardScreen.SelectedPileTarget
+		    : LoadoutCardPileTarget.HandAndDeck;
+	    if (!LoadoutImmediateMutationService.RequestAddCard(canonicalCard.Id, multiplier, target, upgradeCount, pileTarget))
 		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 	    LastActionEntry entry = new()
@@ -207,7 +217,8 @@ public class CardPrinter
 		    Kind = LastActionService.AddCardKind,
 		    ContentId = canonicalCard.Id.ToString(),
 		    Amount = multiplier,
-		    UpgradeCount = upgradeCount
+		    UpgradeCount = upgradeCount,
+		    CardPileTarget = pileTarget
 	    };
 	    entry.SetTargetSelection(target);
 	    return Task.FromResult<IReadOnlyList<LastActionEntry>>(new[] { entry });
@@ -232,7 +243,8 @@ public class CardPrinter
 			        card.Id,
 			        entry.Amount,
 			        entry.GetTargetSelection(fallbackTarget),
-			        entry.UpgradeCount))
+			        entry.UpgradeCount,
+			        (entry.CardPileTarget ?? LoadoutCardPileTarget.HandAndDeck).NormalizeForCreation()))
 		    {
 			    GD.PushWarning($"LoadoutPanel: could not replay card action for '{entry.ContentId}'.");
 		    }
@@ -241,7 +253,7 @@ public class CardPrinter
 	    return Task.CompletedTask;
     }
 
-    public static Control CreateCardGridItem(CardModel model, SelectItemState state)
+    public static Control CreateCardGridItem(CardModel model, SelectItemState state, PileType pileType = PileType.None)
     {
 	    CardModel displayModel = CardModificationRuntime.GetPermanentCardForDisplay(model);
 	    var card = NCard.Create(displayModel);
@@ -263,6 +275,7 @@ public class CardPrinter
 	    holder.MouseFilter = Control.MouseFilterEnum.Pass;
 	    holder.Scale = holder.SmallScale;
 	    holder.CustomMinimumSize = NCard.defaultSize * holder.SmallScale;
+	    holder.ReassignToCard(displayModel, pileType, null, ModelVisibility.Visible);
 	    ApplyCardUpgradePreview(holder, state);
 	    return holder;
     }
@@ -461,12 +474,12 @@ public class CardPrinter
 	    return card.Title;
     }
 
-    public static void RefreshCardVisuals(Control view, CardModel sourceModel = null)
+    public static void RefreshCardVisuals(Control view, CardModel sourceModel = null, PileType pileType = PileType.None)
     {
 	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
 		    return;
 
-	    RefreshHolderModel(holder, sourceModel, forceReassign: false);
+	    RefreshHolderModel(holder, sourceModel, forceReassign: false, pileType);
 
 	    if (holder.CardModel is not null
 	        && holder.CardModel.IsUpgradable
@@ -476,7 +489,7 @@ public class CardPrinter
 	    }
     }
 
-    public static void ForceRefreshCardVisuals(Control view, CardModel sourceModel = null)
+    public static void ForceRefreshCardVisuals(Control view, CardModel sourceModel = null, PileType pileType = PileType.None)
     {
 	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
 		    return;
@@ -486,11 +499,11 @@ public class CardPrinter
 		    return;
 
 	    bool shouldPreviewUpgrade = model.IsUpgradable && holder.GetMeta(PreviewUpgradeMetaKey, false).AsBool();
-	    RefreshHolderModel(holder, model, forceReassign: true);
+	    RefreshHolderModel(holder, model, forceReassign: true, pileType);
 	    holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
     }
 
-    public static void ReloadCardVisuals(Control view, CardModel sourceModel = null)
+    public static void ReloadCardVisuals(Control view, CardModel sourceModel = null, PileType pileType = PileType.None)
     {
 	    if (!TryFindLiveCardHolder(view, out NGridCardHolder holder) || holder.CardNode is null || !GodotObject.IsInstanceValid(holder.CardNode))
 		    return;
@@ -501,7 +514,7 @@ public class CardPrinter
 
 	    bool shouldPreviewUpgrade = model.IsUpgradable && holder.GetMeta(PreviewUpgradeMetaKey, false).AsBool();
 	    holder.CardNode.Model = null;
-	    holder.ReassignToCard(model, PileType.None, null, ModelVisibility.Visible);
+	    holder.ReassignToCard(model, pileType, null, ModelVisibility.Visible);
 	    holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
     }
 
@@ -513,7 +526,7 @@ public class CardPrinter
 	    ApplyCardUpgradePreview(holder, state);
     }
 
-    private static void RefreshHolderModel(NGridCardHolder holder, CardModel sourceModel, bool forceReassign)
+    private static void RefreshHolderModel(NGridCardHolder holder, CardModel sourceModel, bool forceReassign, PileType pileType = PileType.None)
     {
 	    CardModel model = ResolveDisplayModel(sourceModel ?? holder.CardModel);
 	    if (model is null)
@@ -521,12 +534,12 @@ public class CardPrinter
 
 	    if (forceReassign || !ReferenceEquals(holder.CardModel, model))
 	    {
-		    holder.ReassignToCard(model, PileType.None, null, ModelVisibility.Visible);
+		    holder.ReassignToCard(model, pileType, null, ModelVisibility.Visible);
 		    return;
 	    }
 
 	    holder.SetIsPreviewingUpgrade(false);
-	    holder.CardNode?.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+	    holder.CardNode?.UpdateVisuals(pileType, CardPreviewMode.Normal);
     }
 
     private static CardModel ResolveDisplayModel(CardModel model)

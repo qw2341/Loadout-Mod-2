@@ -6,6 +6,7 @@ using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
@@ -29,12 +30,12 @@ public class CardModifier
         {
             GetId = item => CommonHelpers.OwnedSlotItemId(item),
             GetName = item => CardPrinter.FormatCardTitle(item.Model),
-            GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.GetDescriptionForPile(PileType.None)}",
-            CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state),
-            ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model),
+            GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.GetDescriptionForPile(item.CardPileType ?? PileType.Deck)}",
+            CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state, item.CardPileType ?? PileType.Deck),
+            ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model, item.CardPileType ?? PileType.Deck),
             UpdateView = (item, view, state) =>
             {
-                CardPrinter.ForceRefreshCardVisuals(view, item.Model);
+                CardPrinter.ForceRefreshCardVisuals(view, item.Model, item.CardPileType ?? PileType.Deck);
                 CardPrinter.UpdateCardGridItem(view, state);
             },
             BindActivationWithCleanup = (item, view, activate) => CardPrinter.BindCardActivationWithCleanup(
@@ -42,6 +43,33 @@ public class CardModifier
                 activate,
                 () => OpenCardModificationScreen(modifierScreen, item, view))
         };
+
+        void RefreshModifiedOwnedCard(LoadoutOwnedItem<CardModel> changed, LoadoutCardVisualRefreshKind refreshKind)
+        {
+            if (changed.CardPileType is null or PileType.Deck
+                || modifierScreen is not NCardSelectScreen cardScreen
+                || !GodotObject.IsInstanceValid(cardScreen)
+                || !cardScreen.IsInsideTree()
+                || !cardScreen.IsVisibleInTree())
+            {
+                return;
+            }
+
+            string itemId = CommonHelpers.OwnedSlotItemId(changed);
+            Callable.From(() => cardScreen.RefreshItemById(
+                itemId,
+                (_, view) =>
+                {
+                    if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
+                        CardPrinter.ReloadCardVisuals(view, changed.Model, changed.CardPileType ?? PileType.Deck);
+                    else
+                        CardPrinter.RefreshCardVisuals(view, changed.Model, changed.CardPileType ?? PileType.Deck);
+                },
+                refreshMetadata: true,
+                refreshLayout: true)).CallDeferred();
+        }
+
+        CardModificationRuntime.OwnedCardChanged += RefreshModifiedOwnedCard;
 
         void BuildCardModifierScreen(SelectScreenBuilder<LoadoutOwnedItem<CardModel>> builder)
         {
@@ -61,7 +89,8 @@ public class CardModifier
             }
         }
 
-        CommonHelpers.CreateAndAddDynamicLoadoutItem(GetSelectedTargetDeckCardsForModifier,
+        CommonHelpers.CreateAndAddDynamicLoadoutItem(
+            () => GetSelectedTargetCardsForModifier(modifierScreen as NCardSelectScreen),
             cardModifierAdapter,
             BuildCardModifierScreen,
             HandleUpgradeCardActivatedAsync,
@@ -76,7 +105,24 @@ public class CardModifier
                     CardModifierTargetDropdownName,
                     CardModifierTargetKey,
                     LoadoutTargetMode.PlayersOnly,
-                    refresh);
+                    () =>
+                    {
+                        if (screen is NCardSelectScreen targetCardScreen)
+                            targetCardScreen.RefreshObservedPiles();
+                        refresh();
+                    });
+                if (screen is NCardSelectScreen cardScreen)
+                {
+                    cardScreen.ConfigurePileTarget(
+                        LoadoutCardPileTarget.Deck,
+                        LoadoutCardPileTargets.OwnedCardOptions,
+                        _ => refresh());
+                    cardScreen.ConfigureObservedPiles(
+                        () => LoadoutCardPileTargets.ResolveObservedPiles(
+                            LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly),
+                            cardScreen.SelectedPileTarget),
+                        refresh);
+                }
             },
             (_, _) => { },
             selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath,
@@ -104,7 +150,10 @@ public class CardModifier
     public static void HandleUpgradeAllDeckCards(NGenericSelectScreen screen)
     {
         LoadoutTargetSelection target = LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
-        if (!LoadoutImmediateMutationService.RequestUpgradeAllDeckCards(target))
+        LoadoutCardPileTarget pileTarget = screen is NCardSelectScreen cardScreen
+            ? cardScreen.SelectedPileTarget
+            : LoadoutCardPileTarget.Deck;
+        if (!LoadoutImmediateMutationService.RequestUpgradeAllDeckCards(target, pileTarget))
             return;
 
         screen.ForEachVisibleItemView((item, view) =>
@@ -134,7 +183,7 @@ public class CardModifier
         SelectScrollOffsetState parentScroll = selectScreen.CaptureScrollOffset();
         modificationScreen.Init(
             item,
-            GetSelectedTargetDeckCardsForModifier(),
+            GetSelectedTargetCardsForModifier(selectScreen as NCardSelectScreen),
             () =>
             {
                 if (GodotObject.IsInstanceValid(selectScreen))
@@ -197,9 +246,10 @@ public class CardModifier
         }
     }
 
-    private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetDeckCardsForModifier()
+    private static IReadOnlyList<LoadoutOwnedItem<CardModel>> GetSelectedTargetCardsForModifier(NCardSelectScreen screen)
     {
         LoadoutTargetSelection target = LoadoutTargetService.GetSelected(CardModifier.CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
-        return LoadoutTargetService.BuildOwnedItems(target, player => player.Deck.Cards.ToList());
+        LoadoutCardPileTarget pileTarget = screen?.SelectedPileTarget ?? LoadoutCardPileTarget.Deck;
+        return LoadoutCardPileTargets.BuildOwnedCards(target, pileTarget);
     }
 }

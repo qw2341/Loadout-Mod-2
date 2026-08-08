@@ -19,6 +19,7 @@ using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Entities.Relics;
@@ -341,9 +342,9 @@ public class CommonHelpers
 								(_, view) =>
 								{
 									if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
-										CardPrinter.ReloadCardVisuals(view, ownedCard.Model);
+										CardPrinter.ReloadCardVisuals(view, ownedCard.Model, ownedCard.CardPileType ?? PileType.Deck);
 									else
-										CardPrinter.RefreshCardVisuals(view, ownedCard.Model);
+										CardPrinter.RefreshCardVisuals(view, ownedCard.Model, ownedCard.CardPileType ?? PileType.Deck);
 								},
 								refreshMetadata: false,
 								refreshLayout: false);
@@ -354,9 +355,9 @@ public class CommonHelpers
 							continue;
 
 						if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
-							CardPrinter.ReloadCardVisuals(view, ownedCard.Model);
+							CardPrinter.ReloadCardVisuals(view, ownedCard.Model, ownedCard.CardPileType ?? PileType.Deck);
 						else
-							CardPrinter.RefreshCardVisuals(view, ownedCard.Model);
+							CardPrinter.RefreshCardVisuals(view, ownedCard.Model, ownedCard.CardPileType ?? PileType.Deck);
 					}
 
 					if (layoutDirty && refreshLayoutAfterUpdate)
@@ -592,7 +593,8 @@ public class CommonHelpers
 
 	private static bool MatchesChangedCard(LoadoutOwnedItem<CardModel> item, LoadoutChangedCard changed)
 	{
-		return item.OwnerNetId == changed.OwnerNetId
+		return (item.CardPileType is null or PileType.Deck)
+		       && item.OwnerNetId == changed.OwnerNetId
 		       && item.Index == changed.Index
 		       && item.Model.Id.Equals(changed.ModelId);
 	}
@@ -1353,13 +1355,23 @@ public class CommonHelpers
     public static string OwnedItemId<TModel>(LoadoutOwnedItem<TModel> item)
         where TModel : AbstractModel
     {
-        return $"{item.OwnerNetId}:{item.Model.Id}:{RuntimeHelpers.GetHashCode(item.Model)}";
+        if (!item.CardPileType.HasValue)
+            return $"{item.OwnerNetId}:{item.Model.Id}:{RuntimeHelpers.GetHashCode(item.Model)}";
+
+        string location = item.CardPileType?.ToString() ?? "owned";
+        string nativeId = item.CombatCardIndex?.ToString() ?? RuntimeHelpers.GetHashCode(item.Model).ToString();
+        return $"{item.OwnerNetId}:{location}:{item.Model.Id}:{nativeId}";
     }
 
     public static string OwnedSlotItemId<TModel>(LoadoutOwnedItem<TModel> item)
         where TModel : AbstractModel
     {
-        return $"{item.OwnerNetId}:{item.Index}:{item.Model.Id}";
+        if (!item.CardPileType.HasValue)
+            return $"{item.OwnerNetId}:{item.Index}:{item.Model.Id}";
+
+        string location = item.CardPileType?.ToString() ?? "owned";
+        string nativeId = item.CombatCardIndex?.ToString() ?? item.Index.ToString();
+        return $"{item.OwnerNetId}:{location}:{nativeId}:{item.Model.Id}";
     }
 
     private static async Task HandleDynamicItemActivatedAsync(

@@ -6,6 +6,12 @@ using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Loadout.Services.Targets;
+using Loadout.UI.Managers;
+using Loadout.UI.Screens.Controls;
+using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Rooms;
 
 /// <summary>
 /// Card-specialized select screen.
@@ -49,6 +55,17 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     private float _retainedLayoutViewportWidth = float.NaN;
     private int _backgroundWarmCursor;
     private double _visibleWarmAccumulator;
+    private NSelectFilterDropdown? _pileTargetDropdown;
+    private LoadoutCardPileTarget _defaultPileTarget = LoadoutCardPileTarget.Deck;
+    private IReadOnlyList<LoadoutCardPileTarget> _pileTargetOptions = LoadoutCardPileTargets.OwnedCardOptions;
+    private Action<LoadoutCardPileTarget>? _pileTargetChangedCallback;
+    private Func<IEnumerable<CardPile>>? _observedPileProvider;
+    private Action? _observedPileRefresh;
+    private readonly HashSet<CardPile> _observedPiles = [];
+    private bool _observedPileRefreshQueued;
+
+    public LoadoutCardPileTarget SelectedPileTarget { get; private set; } = LoadoutCardPileTarget.Deck;
+    public event Action<LoadoutCardPileTarget>? PileTargetChanged;
 
     public bool UsesDynamicOwnedCardPolicy => _usesDynamicOwnedCardPolicy;
     public bool UsesRetainedCatalog => ConfiguredItemCount <= GetRetainLimit();
@@ -60,6 +77,76 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     public void UseDynamicOwnedCardPolicy()
     {
         _usesDynamicOwnedCardPolicy = true;
+    }
+
+    public override void _Ready()
+    {
+        base._Ready();
+        VisibilityChanged -= OnCardScreenVisibilityChanged;
+        VisibilityChanged += OnCardScreenVisibilityChanged;
+        CombatManager.Instance.CombatEnded -= OnCombatEnded;
+        CombatManager.Instance.CombatEnded += OnCombatEnded;
+    }
+
+    public override void _ExitTree()
+    {
+        VisibilityChanged -= OnCardScreenVisibilityChanged;
+        CombatManager.Instance.CombatEnded -= OnCombatEnded;
+        DisconnectObservedPiles();
+        base._ExitTree();
+    }
+
+    public void ConfigurePileTarget(
+        LoadoutCardPileTarget defaultTarget,
+        IReadOnlyList<LoadoutCardPileTarget> options,
+        Action<LoadoutCardPileTarget>? onChanged = null)
+    {
+        LoadoutCardPileTarget previousTarget = SelectedPileTarget;
+        _defaultPileTarget = defaultTarget;
+        _pileTargetOptions = options;
+        _pileTargetChangedCallback = onChanged;
+        SelectedPileTarget = defaultTarget;
+
+        if (_pileTargetDropdown is null
+            || !GodotObject.IsInstanceValid(_pileTargetDropdown)
+            || _pileTargetDropdown.GetParent() is null)
+        {
+            _pileTargetDropdown = new NSelectFilterDropdown
+            {
+                Name = "CardPileTargetDropdown",
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                CustomMinimumSize = new Vector2(256f, 52f)
+            };
+            _pileTargetDropdown.SelectedItemChanged += OnPileTargetDropdownChanged;
+            AddCustomSidebarControl(_pileTargetDropdown);
+        }
+
+        bool inCombat = LoadoutCardPileTargets.IsCombatInProgress();
+        _pileTargetDropdown.Visible = inCombat;
+        _pileTargetDropdown.SetItems(
+            LocMan.Loc("CARD_PILE_TARGET", "Card Pile Target"),
+            options.Select(target => target.ToDropdownOption()).ToArray(),
+            defaultTarget.ToOptionId());
+
+        if (inCombat)
+            ReconnectObservedPiles();
+        else
+            DisconnectObservedPiles();
+
+        if (previousTarget != defaultTarget)
+            onChanged?.Invoke(defaultTarget);
+    }
+
+    public void ConfigureObservedPiles(Func<IEnumerable<CardPile>> provider, Action refresh)
+    {
+        _observedPileProvider = provider;
+        _observedPileRefresh = refresh;
+        ReconnectObservedPiles();
+    }
+
+    public void RefreshObservedPiles()
+    {
+        ReconnectObservedPiles();
     }
 
     protected override void OnItemsConfigured()
@@ -262,5 +349,95 @@ public partial class NCardSelectScreen : NGenericSelectScreen
         return _usesDynamicOwnedCardPolicy
             ? DynamicCatalogRetainLimit
             : StaticCatalogRetainLimit;
+    }
+
+    private void OnPileTargetDropdownChanged(string selectedId)
+    {
+        if (!LoadoutCardPileTargets.TryParseOptionId(selectedId, out LoadoutCardPileTarget selected)
+            || !_pileTargetOptions.Contains(selected))
+        {
+            return;
+        }
+
+        SelectedPileTarget = selected;
+        ReconnectObservedPiles();
+        _pileTargetChangedCallback?.Invoke(selected);
+        PileTargetChanged?.Invoke(selected);
+    }
+
+    private void OnCardScreenVisibilityChanged()
+    {
+        if (!IsVisibleInTree())
+        {
+            DisconnectObservedPiles();
+            return;
+        }
+
+        ReconnectObservedPiles();
+    }
+
+    private void OnCombatEnded(CombatRoom _)
+    {
+        SelectedPileTarget = _defaultPileTarget;
+        if (_pileTargetDropdown is not null && GodotObject.IsInstanceValid(_pileTargetDropdown))
+            _pileTargetDropdown.Visible = false;
+
+        DisconnectObservedPiles();
+        if (IsVisibleInTree())
+        {
+            _pileTargetChangedCallback?.Invoke(SelectedPileTarget);
+            PileTargetChanged?.Invoke(SelectedPileTarget);
+        }
+    }
+
+    private void ReconnectObservedPiles()
+    {
+        DisconnectObservedPiles();
+        if (!IsInsideTree()
+            || !IsVisibleInTree()
+            || !LoadoutCardPileTargets.IsCombatInProgress()
+            || _observedPileProvider is null)
+        {
+            return;
+        }
+
+        foreach (CardPile pile in _observedPileProvider())
+        {
+            if (!_observedPiles.Add(pile))
+                continue;
+
+            pile.ContentsChanged += OnObservedPileContentsChanged;
+        }
+    }
+
+    private void DisconnectObservedPiles()
+    {
+        foreach (CardPile pile in _observedPiles)
+            pile.ContentsChanged -= OnObservedPileContentsChanged;
+
+        _observedPiles.Clear();
+        _observedPileRefreshQueued = false;
+    }
+
+    private void OnObservedPileContentsChanged()
+    {
+        if (_observedPileRefreshQueued)
+            return;
+
+        _observedPileRefreshQueued = true;
+        Callable.From(FlushObservedPileRefresh).CallDeferred();
+    }
+
+    private void FlushObservedPileRefresh()
+    {
+        if (!_observedPileRefreshQueued)
+            return;
+
+        _observedPileRefreshQueued = false;
+        if (!IsInsideTree() || !IsVisibleInTree())
+            return;
+
+        _observedPileRefresh?.Invoke();
+        ReconnectObservedPiles();
     }
 }

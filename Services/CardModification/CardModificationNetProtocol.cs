@@ -24,6 +24,7 @@ using Loadout.Patches.Cards.CardModification;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Cards;
 
 public static class CardModificationNetProtocol
 {
@@ -155,6 +156,8 @@ public static class CardModificationNetProtocol
     {
         if (!LoadoutPanelAccessService.CanLocalPlayerUsePanel())
             return false;
+        if (item.CardPileType is not null and not PileType.Deck && !item.CombatCardIndex.HasValue)
+            return false;
 
         try
         {
@@ -170,6 +173,8 @@ public static class CardModificationNetProtocol
                     item.Model.Id,
                     LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
                     item.Index,
+                    LoadoutCardPileTargets.FromPileType(item.CardPileType ?? PileType.Deck),
+                    item.CombatCardIndex ?? 0,
                     item.Model.Id,
                     state,
                     localPlayer,
@@ -183,6 +188,8 @@ public static class CardModificationNetProtocol
                 RequesterNetId = localPlayer.NetId,
                 OwnerNetId = item.OwnerNetId,
                 DeckIndex = item.Index,
+                PileTarget = LoadoutCardPileTargets.FromPileType(item.CardPileType ?? PileType.Deck),
+                CombatCardIndex = item.CombatCardIndex ?? 0,
                 CardId = item.Model.Id.ToString(),
                 StateJson = SerializeOperationDelta(operation, item, state)
             };
@@ -405,6 +412,8 @@ public static class CardModificationNetProtocol
             cardId,
             LoadoutTargetSelection.ForPlayer(payload.OwnerNetId),
             payload.DeckIndex,
+            payload.PileTarget.NormalizeForOwnedCard(),
+            payload.CombatCardIndex,
             cardId,
             delta,
             actionPlayer,
@@ -420,7 +429,8 @@ public static class CardModificationNetProtocol
                     or CardModificationOperation.ResetPermanentToBasic)
                && payload.RequesterNetId != 0
                && payload.OwnerNetId != 0
-               && payload.DeckIndex >= 0
+               && LoadoutCardPileTargets.IsSupportedOwnedTarget(payload.PileTarget.NormalizeForOwnedCard())
+               && (payload.PileTarget.NormalizeForOwnedCard().IsCombatPile() || payload.DeckIndex >= 0)
                && !string.IsNullOrWhiteSpace(payload.CardId)
                && (payload.StateJson?.Length ?? 0) <= MaxStateJsonLength;
     }
@@ -557,6 +567,8 @@ public static class CardModificationNetProtocol
             {
                 ownerNetId = item.OwnerNetId,
                 deckIndex = item.Index,
+                pileTarget = LoadoutCardPileTargets.FromPileType(item.CardPileType ?? PileType.Deck),
+                combatCardIndex = item.CombatCardIndex ?? 0,
                 cardId = item.Model.Id.ToString(),
                 stateJson = CardModificationFields.TryGet(item.Model, out CardModificationCardData data)
                     ? data.Serialized
@@ -681,6 +693,8 @@ public static class CardModificationNetProtocol
         CardModificationRuntime.ApplyRemoteTemporaryDelta(
             message.ownerNetId,
             message.deckIndex,
+            message.pileTarget.NormalizeForOwnedCard(),
+            message.combatCardIndex,
             message.cardId,
             delta);
     }
@@ -744,6 +758,8 @@ public struct LoadoutCardModificationOperationPayload
     public ulong RequesterNetId;
     public ulong OwnerNetId;
     public int DeckIndex;
+    public LoadoutCardPileTarget PileTarget;
+    public uint CombatCardIndex;
     public string CardId;
     public string StateJson;
 
@@ -754,6 +770,8 @@ public struct LoadoutCardModificationOperationPayload
         writer.WriteULong(RequesterNetId);
         writer.WriteULong(OwnerNetId);
         writer.WriteInt(DeckIndex);
+        writer.WriteInt((int)PileTarget, 4);
+        writer.WriteUInt(CombatCardIndex);
         writer.WriteString(CardId ?? string.Empty);
         writer.WriteString(StateJson ?? string.Empty);
     }
@@ -765,6 +783,8 @@ public struct LoadoutCardModificationOperationPayload
         RequesterNetId = reader.ReadULong();
         OwnerNetId = reader.ReadULong();
         DeckIndex = reader.ReadInt();
+        PileTarget = (LoadoutCardPileTarget)reader.ReadInt(4);
+        CombatCardIndex = reader.ReadUInt();
         CardId = reader.ReadString();
         StateJson = reader.ReadString();
     }
@@ -872,6 +892,8 @@ public struct LoadoutCardModificationTemporarySyncMessage : INetMessage, IPacket
 {
     public ulong ownerNetId;
     public int deckIndex;
+    public LoadoutCardPileTarget pileTarget;
+    public uint combatCardIndex;
     public string cardId;
     public string stateJson;
 
@@ -884,6 +906,8 @@ public struct LoadoutCardModificationTemporarySyncMessage : INetMessage, IPacket
     {
         writer.WriteULong(ownerNetId);
         writer.WriteInt(deckIndex);
+        writer.WriteInt((int)pileTarget, 4);
+        writer.WriteUInt(combatCardIndex);
         writer.WriteString(cardId ?? string.Empty);
         writer.WriteString(stateJson ?? string.Empty);
     }
@@ -892,6 +916,8 @@ public struct LoadoutCardModificationTemporarySyncMessage : INetMessage, IPacket
     {
         ownerNetId = reader.ReadULong();
         deckIndex = reader.ReadInt();
+        pileTarget = (LoadoutCardPileTarget)reader.ReadInt(4);
+        combatCardIndex = reader.ReadUInt();
         cardId = reader.ReadString();
         stateJson = reader.ReadString();
     }
