@@ -228,6 +228,7 @@ public static class RelicModificationStateService
     private static bool _registered;
     private static bool _savePending;
     private static int _stateRevision;
+    private static long _permanentDisplayRevision;
     private static int _knownFeatureFlags;
     private static readonly ConditionalWeakTable<RelicModel, EffectiveStateCache> EffectiveStates = new();
     private static readonly ConditionalWeakTable<LocString, LocStringOwner> LocStringOwners = new();
@@ -235,6 +236,8 @@ public static class RelicModificationStateService
 
     public static event Action? StateChanged;
     public static event Action<ModelId>? PermanentRelicDisplayChanged;
+
+    public static long PermanentDisplayRevision => Interlocked.Read(ref _permanentDisplayRevision);
 
     // These flags keep optional Harmony patches on a near-zero-cost path until
     // the corresponding relic-modifier feature is actually present. Flags are
@@ -925,6 +928,12 @@ public static class RelicModificationStateService
 
     private static void RaisePermanentRelicDisplayChanged(ModelId relicId)
     {
+        DispatchPermanentRelicDisplayChanged(relicId);
+    }
+
+    private static void DispatchPermanentRelicDisplayChanged(ModelId relicId)
+    {
+        Interlocked.Increment(ref _permanentDisplayRevision);
         Action<ModelId>? handlers = PermanentRelicDisplayChanged;
         if (handlers is null)
             return;
@@ -953,7 +962,7 @@ public static class RelicModificationStateService
         foreach (RelicModel relic in ModelDb.AllRelics)
         {
             if (keys.Contains(relic.Id.ToString()))
-                RaisePermanentRelicDisplayChanged(relic.Id);
+                DispatchPermanentRelicDisplayChanged(relic.Id);
         }
     }
 

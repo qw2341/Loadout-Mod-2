@@ -140,7 +140,6 @@ public static class BottledMonster
             else
                 target.Configure(options, adapter, builder => BuildMorphScreen(builder, options, catalog, grouping));
 
-            target.RequestDeferredVisibleRefresh();
         }
 
         Configure(screen);

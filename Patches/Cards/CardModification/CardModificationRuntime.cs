@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Godot;
 using HarmonyLib;
 using Loadout.Keywords;
@@ -56,9 +57,12 @@ public static class CardModificationRuntime
 
     private static bool _registered;
     private static bool _customTextOverridesMayExist;
+    private static long _permanentDisplayRevision;
 
     public static event Action<ModelId>? PermanentCardDisplayChanged;
     public static event Action<LoadoutOwnedItem<CardModel>, LoadoutCardVisualRefreshKind>? OwnedCardChanged;
+
+    public static long PermanentDisplayRevision => Interlocked.Read(ref _permanentDisplayRevision);
 
     public static void NotifyCombatCardUpdated(LoadoutOwnedItem<CardModel> item)
     {
@@ -2144,6 +2148,7 @@ public static class CardModificationRuntime
             if (!delta.UpgradeModification.IsEmpty) CardUpgradeModificationRuntimePatches.Enable();
         }
         AttachmentDisplayCards.Remove(cardId);
+        Interlocked.Increment(ref _permanentDisplayRevision);
         PermanentCardDisplayChanged?.Invoke(cardId);
         LoadoutKeywordRuntimePatches.Reconcile();
     }
@@ -2164,7 +2169,10 @@ public static class CardModificationRuntime
         // temporary deltas on top of the newly reconciled canonical model.
         RetrofitChangedPermanentCards(reconciledIds, forceAllOwnedFields: true);
         foreach (ModelId id in reconciledIds)
+        {
+            Interlocked.Increment(ref _permanentDisplayRevision);
             PermanentCardDisplayChanged?.Invoke(id);
+        }
         LoadoutKeywordRuntimePatches.Reconcile();
     }
 

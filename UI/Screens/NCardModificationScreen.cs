@@ -118,7 +118,6 @@ public partial class NCardModificationScreen : Control
         MouseFilter = MouseFilterEnum.Stop;
         ZIndex = 120;
         BindSceneNodes();
-        BindRunContentEvents();
         RebuildScreen();
     }
 
@@ -161,11 +160,13 @@ public partial class NCardModificationScreen : Control
             RefreshNativeButtonState();
             if (Visible && IsInsideTree() && _item is not null && !_isClosing)
             {
+                BindRunContentEvents();
                 _hasBeenVisible = true;
                 Callable.From(() => RefreshPreview(forceReload: false)).CallDeferred();
             }
             else if (!Visible)
             {
+                UnbindRunContentEvents();
                 CloseTextEditor();
                 ClearHoverTips();
                 if (_hasBeenVisible && _parentScrollRestore is not null)

@@ -35,8 +35,8 @@ public class CardPrinter
     public static void Initialize()
     {
 	    IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
-	    NGenericSelectScreen activeScreen = null;
-	    HashSet<string> pendingCardRefreshIds = new(StringComparer.Ordinal);
+	    NGenericSelectScreen cardPrinterScreen = null;
+	    long observedPermanentDisplayRevision = CardModificationRuntime.PermanentDisplayRevision;
 	    SelectItemAdapter<CardModel> cardPrinterAdapter = new()
 	    {
 		    GetId = card => card.Id.ToString(),
@@ -104,15 +104,8 @@ public class CardPrinter
 
 	    void ConfigureCardPrinterSidebar(NGenericSelectScreen screen, bool applyDefaultClassFilter = true)
 	    {
-		    activeScreen = screen;
+		    cardPrinterScreen = screen;
 		    BindCardPrinterSidebar(screen, applyDefaultClassFilter);
-
-		    if (pendingCardRefreshIds.Count > 0)
-		    {
-			    string[] cardIds = pendingCardRefreshIds.ToArray();
-			    pendingCardRefreshIds.Clear();
-			    RefreshVisibleCardPrinterCards(screen, cardIds);
-		    }
 	    }
 
 	    void RefreshCardPrinterCard(ModelId cardId)
@@ -121,37 +114,25 @@ public class CardPrinter
 		    if (string.IsNullOrWhiteSpace(cardKey))
 			    return;
 
-		    if (activeScreen is null || !GodotObject.IsInstanceValid(activeScreen))
-		    {
-			    pendingCardRefreshIds.Add(cardKey);
+		    if (cardPrinterScreen is null || !cardPrinterScreen.IsScreenActive)
 			    return;
-		    }
 
-		    if (!activeScreen.IsInsideTree() || !activeScreen.IsVisibleInTree())
-		    {
-			    pendingCardRefreshIds.Add(cardKey);
-			    return;
-		    }
-
-		    RefreshVisibleCardPrinterCards(activeScreen, new[] { cardKey });
+		    long targetRevision = CardModificationRuntime.PermanentDisplayRevision;
+		    RefreshVisibleCardPrinterCards(cardPrinterScreen, new[] { cardKey }, targetRevision);
 	    }
 
-	    void RefreshVisibleCardPrinterCards(NGenericSelectScreen screen, IReadOnlyCollection<string> cardIds)
+	    void RefreshVisibleCardPrinterCards(
+		    NGenericSelectScreen screen,
+		    IReadOnlyCollection<string> cardIds,
+		    long targetRevision)
 	    {
 		    if (cardIds.Count == 0)
 			    return;
 
 		    Callable.From(() =>
 		    {
-			    if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
+			    if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsScreenActive)
 				    return;
-
-			    if (!screen.IsVisibleInTree())
-			    {
-				    foreach (string cardId in cardIds)
-					    pendingCardRefreshIds.Add(cardId);
-				    return;
-			    }
 
 			    if (screen is NCardSelectScreen cardScreen)
 			    {
@@ -171,6 +152,7 @@ public class CardPrinter
 
 				    if (layoutDirty)
 					    cardScreen.RefreshLayout(resetScroll: false, updateExistingViews: false);
+				    observedPermanentDisplayRevision = Math.Max(observedPermanentDisplayRevision, targetRevision);
 				    return;
 			    }
 
@@ -179,12 +161,11 @@ public class CardPrinter
 				    if (item.UntypedModel is CardModel card && MatchesCardRefreshId(card, cardIds))
 					    ForceRefreshCardVisuals(view, card);
 			    });
+			    observedPermanentDisplayRevision = Math.Max(observedPermanentDisplayRevision, targetRevision);
 		    }).CallDeferred();
 	    }
 
-	    CardModificationRuntime.PermanentCardDisplayChanged += RefreshCardPrinterCard;
-
-		CommonHelpers.CreateAndAddLoadoutItem(
+		NLoadoutPanelItem printerItem = CommonHelpers.CreateAndAddLoadoutItem(
 			allCards,
 			cardPrinterAdapter,
 			BuildCardPrinterScreen,
@@ -196,6 +177,35 @@ public class CardPrinter
 			LastActionService.CardPrinterKey,
 			ReplayCardPrinterLastActionAsync,
 			selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath);
+
+		cardPrinterScreen = printerItem.BoundScreen;
+		observedPermanentDisplayRevision = CardModificationRuntime.PermanentDisplayRevision;
+		if (cardPrinterScreen is not null)
+		{
+			void OnScreenOpened()
+			{
+				CardModificationRuntime.PermanentCardDisplayChanged -= RefreshCardPrinterCard;
+				CardModificationRuntime.PermanentCardDisplayChanged += RefreshCardPrinterCard;
+
+				long currentRevision = CardModificationRuntime.PermanentDisplayRevision;
+				if (observedPermanentDisplayRevision == currentRevision)
+					return;
+
+				SelectScreenUiState state = cardPrinterScreen.CaptureUiState();
+				cardPrinterScreen.ConfigurePreservingViews(allCards, cardPrinterAdapter, BuildCardPrinterScreen);
+				BindCardPrinterSidebar(cardPrinterScreen, applyDefaultClassFilter: false);
+				cardPrinterScreen.RestoreUiState(state);
+				observedPermanentDisplayRevision = currentRevision;
+			}
+
+			void OnScreenClosed()
+			{
+				CardModificationRuntime.PermanentCardDisplayChanged -= RefreshCardPrinterCard;
+			}
+
+			cardPrinterScreen.ScreenOpened += OnScreenOpened;
+			cardPrinterScreen.ScreenClosed += OnScreenClosed;
+		}
     }
 
     private static Task<IReadOnlyList<LastActionEntry>> HandleAddCardActivatedAsync(NGenericSelectScreen screen, IGenericSelectItem selectItem)

@@ -102,7 +102,6 @@ public partial class NRelicModificationScreen : Control
         MouseFilter = MouseFilterEnum.Stop;
         ZIndex = 120;
         BindSceneNodes();
-        BindRunContentEvents();
         RebuildScreen();
     }
 
@@ -119,10 +118,12 @@ public partial class NRelicModificationScreen : Control
             RefreshNativeButtonState();
             if (Visible && IsInsideTree() && _item is not null && !_isClosing)
             {
+                BindRunContentEvents();
                 QueuePreviewRefresh();
             }
             else if (!Visible)
             {
+                UnbindRunContentEvents();
                 CloseTextEditor();
                 ClearHoverTips();
             }

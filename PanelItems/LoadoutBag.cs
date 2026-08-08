@@ -68,7 +68,6 @@ public class LoadoutBag
 					LoadoutBagTargetDropdownName,
 					LastActionService.LoadoutBagKey,
 					LoadoutTargetMode.AllPlayersAndPlayers);
-				NLoadoutPanel.Instance?.RefreshPendingPermanentRelics(screen);
 			},
 			"LoadoutBag.png",
 			LocMan.Loc("LOADOUTBAG_TITLE", "Loadout Bag"),
@@ -78,11 +77,48 @@ public class LoadoutBag
 			ReplayLoadoutBagLastActionAsync,
 			selectScreenScenePath: CommonHelpers.RelicSelectScreenScenePath);
 		LoadoutBagRelicScreen = loadoutBagItem.BoundScreen;
-		LoadoutBagRelicScreen.VisibilityChanged += () =>
+		if (LoadoutBagRelicScreen is { } screen)
 		{
-			if (LoadoutBagRelicScreen?.IsVisibleInTree() == true)
-				NLoadoutPanel.Instance?.RefreshPendingPermanentRelics(LoadoutBagRelicScreen);
-		};
+			long observedRevision = RelicModificationStateService.PermanentDisplayRevision;
+
+			void RefreshPermanentRelic(ModelId relicId)
+			{
+				long targetRevision = RelicModificationStateService.PermanentDisplayRevision;
+				Callable.From(() =>
+				{
+					if (!screen.IsScreenActive)
+						return;
+
+					if (screen is NRelicSelectScreen relicScreen)
+					{
+						relicScreen.RefreshItemsById([relicId.ToString()]);
+						relicScreen.RefreshLayout(resetScroll: false, updateExistingViews: false);
+						observedRevision = Math.Max(observedRevision, targetRevision);
+						return;
+					}
+
+					screen.RefreshNow(resetScroll: false);
+					observedRevision = Math.Max(observedRevision, targetRevision);
+				}).CallDeferred();
+			}
+
+			screen.ScreenOpened += () =>
+			{
+				RelicModificationStateService.PermanentRelicDisplayChanged -= RefreshPermanentRelic;
+				RelicModificationStateService.PermanentRelicDisplayChanged += RefreshPermanentRelic;
+
+				long currentRevision = RelicModificationStateService.PermanentDisplayRevision;
+				if (observedRevision == currentRevision)
+					return;
+
+				screen.RefreshNow(resetScroll: false);
+				observedRevision = currentRevision;
+			};
+			screen.ScreenClosed += () =>
+			{
+				RelicModificationStateService.PermanentRelicDisplayChanged -= RefreshPermanentRelic;
+			};
+		}
     }
 
     private const string HextechRelicGroupKey = "relic:hextech";

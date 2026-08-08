@@ -85,7 +85,6 @@ public class CommonHelpers
                 target.Configure(models, adapter, builder);
 
             beforeOpen?.Invoke(target);
-            target.RequestDeferredVisibleRefresh();
         }
 
         ConfigureScreen(screen);
@@ -149,9 +148,8 @@ public class CommonHelpers
 		Action<NGenericSelectScreen, Action, Action>? afterConfigure = null,
 		Action<NGenericSelectScreen, IGenericSelectItem>? afterActivationRefresh = null,
 		string selectScreenScenePath = GenericSelectScreenScenePath,
-		bool reconcileModelsOnEveryOpen = true,
 		bool refreshModelsAfterActivation = true,
-		bool syncChangesWhileHidden = false)
+		Func<object?>? getSourceIdentity = null)
 	{
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>(selectScreenScenePath);
@@ -160,9 +158,12 @@ public class CommonHelpers
 			cardSelectScreen.UseDynamicOwnedCardPolicy();
 
 		bool activationInFlight = false;
-		bool hiddenSyncScheduled = false;
-		List<LoadoutRunContentChangedEventArgs> pendingRunContentChanges = [];
 		object? configuredRunState = null;
+		object? configuredSourceIdentity = null;
+		LoadoutRunContentKind? revisionKind = GetRunContentKindForModel<TModel>();
+		long configuredContentRevision = revisionKind is { } kind
+			? LoadoutRunContentChangeService.GetRevision(kind)
+			: 0;
 
 		void ConfigureCurrentModels(NGenericSelectScreen target, bool preserveViews = false)
 		{
@@ -181,10 +182,10 @@ public class CommonHelpers
 				() => RefreshCurrentModels(target, resetScroll: true),
 				() => RefreshCurrentModels(target, animateRelayout: true, updateExistingViews: false));
 
-			if (!preserveViews)
-				target.RequestDeferredVisibleRefresh();
-
 			configuredRunState = currentRunState;
+			configuredSourceIdentity = getSourceIdentity?.Invoke();
+			if (revisionKind is { } configuredKind)
+				configuredContentRevision = LoadoutRunContentChangeService.GetRevision(configuredKind);
 		}
 
 		void RefreshCurrentModels(
@@ -201,11 +202,17 @@ public class CommonHelpers
 			    && target.TryApplySingleItemRemoval(models, adapter, shouldAnimateRelayout))
 			{
 				configuredRunState = currentRunState;
+				configuredSourceIdentity = getSourceIdentity?.Invoke();
+				if (revisionKind is { } removalRevisionKind)
+					configuredContentRevision = LoadoutRunContentChangeService.GetRevision(removalRevisionKind);
 				return;
 			}
 
 			target.RefreshItemsPreservingViews(models, adapter, shouldAnimateRelayout, resetScroll, updateExistingViews);
 			configuredRunState = currentRunState;
+			configuredSourceIdentity = getSourceIdentity?.Invoke();
+			if (revisionKind is { } configuredKind)
+				configuredContentRevision = LoadoutRunContentChangeService.GetRevision(configuredKind);
 		}
 
 		bool TryAppendCurrentModels(NGenericSelectScreen target)
@@ -216,6 +223,9 @@ public class CommonHelpers
 				return false;
 
 			configuredRunState = currentRunState;
+			configuredSourceIdentity = getSourceIdentity?.Invoke();
+			if (revisionKind is { } configuredKind)
+				configuredContentRevision = LoadoutRunContentChangeService.GetRevision(configuredKind);
 			return true;
 		}
 
@@ -404,122 +414,58 @@ public class CommonHelpers
 				return false;
 
 			configuredRunState = currentRunState;
+			configuredSourceIdentity = getSourceIdentity?.Invoke();
+			if (revisionKind is { } configuredKind)
+				configuredContentRevision = LoadoutRunContentChangeService.GetRevision(configuredKind);
 			return true;
-		}
-
-		void ApplyPendingRunContentChanges(NGenericSelectScreen target, bool animateRelayout)
-		{
-			if (pendingRunContentChanges.Count == 0)
-				return;
-
-			List<LoadoutRunContentChangedEventArgs> pending = pendingRunContentChanges.ToList();
-			pendingRunContentChanges.Clear();
-
-			if (pending.All(change => change.Mode == LoadoutRunContentChangeMode.Add))
-			{
-				if (!TryHandleTargetedRunContentChange(target, pending[^1]))
-					RefreshCurrentModels(target, animateRelayout, updateExistingViews: false);
-				return;
-			}
-
-			// Structural changes are coalesced into one preserving snapshot. Applying
-			// several add/remove events independently would enumerate the same relic
-			// collection and relayout it multiple times before the player sees it.
-			if (pending.Any(change => change.Mode != LoadoutRunContentChangeMode.Update))
-			{
-				bool updateExistingViews = false;
-				foreach (LoadoutRunContentChangedEventArgs change in pending)
-				{
-					if (change.Mode != LoadoutRunContentChangeMode.Update)
-						continue;
-
-					// Apply exact view reloads before the structural snapshot reuses the
-					// existing holders. If an earlier removal shifted identities, refresh
-					// the materialized holders during the snapshot as a safe fallback.
-					if (!TryHandleTargetedRunContentChange(target, change, refreshLayoutAfterUpdate: false))
-						updateExistingViews = true;
-				}
-
-				RefreshCurrentModels(target, animateRelayout, updateExistingViews: updateExistingViews);
-				return;
-			}
-
-			foreach (LoadoutRunContentChangedEventArgs change in pending)
-			{
-				if (TryHandleTargetedRunContentChange(target, change))
-					continue;
-
-				RefreshCurrentModels(target, animateRelayout, updateExistingViews: false);
-				return;
-			}
-		}
-
-		async Task SyncPendingChangesWhileHiddenAsync()
-		{
-			if (hiddenSyncScheduled)
-				return;
-
-			hiddenSyncScheduled = true;
-			try
-			{
-				if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree())
-					return;
-
-				SceneTree tree = screen.GetTree();
-				await screen.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-
-				if (!GodotObject.IsInstanceValid(screen)
-				    || !screen.IsInsideTree()
-				    || screen.IsVisibleInTree()
-				    || pendingRunContentChanges.Count == 0)
-				{
-					return;
-				}
-
-				ApplyPendingRunContentChanges(screen, animateRelayout: false);
-				if (screen is NRelicSelectScreen or NCardSelectScreen)
-					await screen.PrewarmForFirstOpenAsync();
-			}
-			catch (Exception exception)
-			{
-				GD.PushWarning($"Loadout hidden select-screen synchronization failed for '{title}': {exception}");
-			}
-			finally
-			{
-				hiddenSyncScheduled = false;
-				if (syncChangesWhileHidden
-				    && GodotObject.IsInstanceValid(screen)
-				    && screen.IsInsideTree()
-				    && !screen.IsVisibleInTree()
-				    && pendingRunContentChanges.Count > 0)
-				{
-					_ = SyncPendingChangesWhileHiddenAsync();
-				}
-			}
 		}
 
 		void RefreshDynamicScreenForOpen(NGenericSelectScreen target)
 		{
-			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
-			if (!target.IsConfiguredForCurrentLocale || !ReferenceEquals(configuredRunState, currentRunState))
-			{
-				ConfigureCurrentModels(target);
-				pendingRunContentChanges.Clear();
-				return;
-			}
-
 			afterConfigure?.Invoke(
 				target,
 				() => RefreshCurrentModels(target, resetScroll: true),
 				() => RefreshCurrentModels(target, animateRelayout: true, updateExistingViews: false));
-			if (reconcileModelsOnEveryOpen)
+		}
+
+		void OnRunContentChanged(LoadoutRunContentChangedEventArgs change)
+		{
+			if (!MatchesRunContentChange<TModel>(change))
+				return;
+
+			if (revisionKind is { } kind)
+				configuredContentRevision = LoadoutRunContentChangeService.GetRevision(kind);
+
+			if (!TryHandleTargetedRunContentChange(screen, change))
+				RefreshCurrentModels(screen, animateRelayout: true);
+		}
+
+		void OnScreenOpened()
+		{
+			LoadoutRunContentChangeService.Changed -= OnRunContentChanged;
+			LoadoutRunContentChangeService.Changed += OnRunContentChanged;
+
+			object? currentRunState = CommonHelpers.GetCurrentDynamicRunStateIdentity();
+			object? currentSourceIdentity = getSourceIdentity?.Invoke();
+			long currentRevision = revisionKind is { } kind
+				? LoadoutRunContentChangeService.GetRevision(kind)
+				: configuredContentRevision;
+			if (ReferenceEquals(configuredRunState, currentRunState)
+			    && Equals(configuredSourceIdentity, currentSourceIdentity)
+			    && configuredContentRevision == currentRevision)
 			{
-				RefreshCurrentModels(target, resetScroll: true);
-				pendingRunContentChanges.Clear();
 				return;
 			}
 
-			ApplyPendingRunContentChanges(target, animateRelayout: false);
+			RefreshCurrentModels(
+				screen,
+				resetScroll: !ReferenceEquals(configuredRunState, currentRunState),
+				updateExistingViews: true);
+		}
+
+		void OnScreenClosed()
+		{
+			LoadoutRunContentChangeService.Changed -= OnRunContentChanged;
 		}
 
 		ConfigureCurrentModels(screen);
@@ -527,34 +473,10 @@ public class CommonHelpers
 		{
 			SelectScreenUiState state = screen.CaptureUiState();
 			ConfigureCurrentModels(screen, preserveViews: false);
-			pendingRunContentChanges.Clear();
 			screen.RestoreUiState(state);
 		};
-		screen.VisibilityChanged += () =>
-		{
-			if (!screen.Visible)
-				return;
-
-			ApplyPendingRunContentChanges(screen, animateRelayout: true);
-		};
-		LoadoutRunContentChangeService.Changed += change =>
-		{
-			if (!MatchesRunContentChange<TModel>(change))
-				return;
-
-			if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsVisibleInTree())
-			{
-				pendingRunContentChanges.Add(change);
-				if (syncChangesWhileHidden)
-					_ = SyncPendingChangesWhileHiddenAsync();
-				return;
-			}
-
-			if (TryHandleTargetedRunContentChange(screen, change))
-				return;
-
-			RefreshCurrentModels(screen, animateRelayout: true);
-		};
+		screen.ScreenOpened += OnScreenOpened;
+		screen.ScreenClosed += OnScreenClosed;
 		screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
 		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
 		screen.ItemActivated += (selectItem, state) =>
@@ -575,6 +497,16 @@ public class CommonHelpers
 		item.BeforeOpen = RefreshDynamicScreenForOpen;
 
 		NLoadoutPanel.ItemsContainer.AddChild(item);
+	}
+
+	private static LoadoutRunContentKind? GetRunContentKindForModel<TModel>()
+	{
+		Type modelType = typeof(TModel);
+		if (modelType == typeof(CardModel) || IsOwnedItemModel(modelType, typeof(CardModel)))
+			return LoadoutRunContentKind.Cards;
+		if (modelType == typeof(RelicModel) || IsOwnedItemModel(modelType, typeof(RelicModel)))
+			return LoadoutRunContentKind.Relics;
+		return null;
 	}
 
 	private static bool MatchesRunContentChange<TModel>(LoadoutRunContentChangedEventArgs change)

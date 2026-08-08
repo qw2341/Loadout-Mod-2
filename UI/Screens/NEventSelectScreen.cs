@@ -46,8 +46,7 @@ public partial class NEventSelectScreen : NGenericSelectScreen
     {
         base._Process(delta);
 
-        if (!IsVisibleInTree()
-            || CurrentMaterializationMode != SelectMaterializationMode.Lazy
+        if (CurrentMaterializationMode != SelectMaterializationMode.Lazy
             || ConfiguredItemCount == 0)
         {
             return;

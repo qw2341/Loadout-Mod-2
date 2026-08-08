@@ -48,9 +48,7 @@ public class CardModifier
         {
             if (changed.CardPileType is null or PileType.Deck
                 || modifierScreen is not NCardSelectScreen cardScreen
-                || !GodotObject.IsInstanceValid(cardScreen)
-                || !cardScreen.IsInsideTree()
-                || !cardScreen.IsVisibleInTree())
+                || !cardScreen.IsScreenActive)
             {
                 return;
             }
@@ -58,6 +56,9 @@ public class CardModifier
             string itemId = CommonHelpers.OwnedSlotItemId(changed);
             Callable.From(() =>
             {
+                if (!cardScreen.IsScreenActive)
+                    return;
+
                 cardScreen.RefreshItemById(
                     itemId,
                     (_, view) =>
@@ -71,8 +72,6 @@ public class CardModifier
                     refreshLayout: true);
             }).CallDeferred();
         }
-
-        CardModificationRuntime.OwnedCardChanged += RefreshModifiedOwnedCard;
 
         void BuildCardModifierScreen(SelectScreenBuilder<LoadoutOwnedItem<CardModel>> builder)
         {
@@ -129,9 +128,23 @@ public class CardModifier
             },
             (_, _) => { },
             selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath,
-            reconcileModelsOnEveryOpen: false,
-            refreshModelsAfterActivation: false,
-            syncChangesWhileHidden: false);
+			refreshModelsAfterActivation: false,
+			getSourceIdentity: () => (
+				LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly),
+				(modifierScreen as NCardSelectScreen)?.SelectedPileTarget ?? LoadoutCardPileTarget.Deck));
+
+		if (modifierScreen is not null)
+		{
+			modifierScreen.ScreenOpened += () =>
+			{
+				CardModificationRuntime.OwnedCardChanged -= RefreshModifiedOwnedCard;
+				CardModificationRuntime.OwnedCardChanged += RefreshModifiedOwnedCard;
+			};
+			modifierScreen.ScreenClosed += () =>
+			{
+				CardModificationRuntime.OwnedCardChanged -= RefreshModifiedOwnedCard;
+			};
+		}
 
     }
 

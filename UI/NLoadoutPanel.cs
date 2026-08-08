@@ -53,7 +53,6 @@ using Loadout.Services.Compatibility;
 using Loadout.Services.LastActions;
 using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
-using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using Loadout.UI.Managers;
 
@@ -96,8 +95,6 @@ public partial class NLoadoutPanel : Panel
 	private bool _isReady;
 	private Control? _layoutParent;
 	
-	private readonly HashSet<string> _pendingPermanentRelicRefreshIds = new(StringComparer.Ordinal);
-	
 	public event Action? VisibilityStateChanged;
 
 	public override void _EnterTree()
@@ -118,7 +115,6 @@ public partial class NLoadoutPanel : Panel
 		
 		BindRunHooks();
 		LoadoutPanelAccessService.AccessChanged += OnLoadoutPanelAccessChanged;
-		RelicModificationStateService.PermanentRelicDisplayChanged += OnPermanentRelicDisplayChanged;
 
 		_layoutParent = GetParent<Control>();
 		if (_layoutParent is not null)
@@ -133,7 +129,6 @@ public partial class NLoadoutPanel : Panel
 	{
 		UnbindRunHooks();
 		LoadoutPanelAccessService.AccessChanged -= OnLoadoutPanelAccessChanged;
-		RelicModificationStateService.PermanentRelicDisplayChanged -= OnPermanentRelicDisplayChanged;
 
 		if (_layoutParent is not null && IsInstanceValid(_layoutParent))
 			_layoutParent.Resized -= OnPanelLayoutChanged;
@@ -393,9 +388,8 @@ public partial class NLoadoutPanel : Panel
 				LoadoutTargetMode.PlayersOnly,
 				refresh),
 			selectScreenScenePath: CommonHelpers.RelicSelectScreenScenePath,
-			reconcileModelsOnEveryOpen: false,
 			refreshModelsAfterActivation: false,
-			syncChangesWhileHidden: true);
+			getSourceIdentity: () => LoadoutTargetService.GetSelected(RemoveRelicTargetKey, LoadoutTargetMode.PlayersOnly));
 		//03 - RELIC MODIFIER
 		RelicModifier.Initialize();
 		//04 - LOADOUT CAULDRON
@@ -500,9 +494,10 @@ public partial class NLoadoutPanel : Panel
 			},
 			(_, _) => { },
 			selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath,
-			reconcileModelsOnEveryOpen: false,
 			refreshModelsAfterActivation: false,
-			syncChangesWhileHidden: false);
+			getSourceIdentity: () => (
+				LoadoutTargetService.GetSelected(RemoveCardTargetKey, LoadoutTargetMode.PlayersOnly),
+				shredderScreen?.SelectedPileTarget ?? LoadoutCardPileTarget.Deck));
 		//07 - CARD MODIFIER
 		CardModifier.Initialize();
 				
@@ -722,48 +717,6 @@ public partial class NLoadoutPanel : Panel
 		holder.MouseFilter = MouseFilterEnum.Pass;
 		holder.CustomMinimumSize = new Vector2(60f, 60f);
 		return holder;
-	}
-
-	private void OnPermanentRelicDisplayChanged(ModelId relicId)
-	{
-		string key = relicId.ToString();
-		if (string.IsNullOrWhiteSpace(key))
-			return;
-
-		_pendingPermanentRelicRefreshIds.Add(key);
-		NGenericSelectScreen? screen = LoadoutBag.LoadoutBagRelicScreen;
-		if (screen is null || !IsInstanceValid(screen) || !screen.IsInsideTree())
-			return;
-
-		Callable.From(() =>
-		{
-			if (IsInstanceValid(screen) && screen.IsInsideTree() && screen.IsVisibleInTree())
-				RefreshPendingPermanentRelics(screen);
-		}).CallDeferred();
-	}
-
-	public void RefreshPendingPermanentRelics(NGenericSelectScreen screen)
-	{
-		if (_pendingPermanentRelicRefreshIds.Count == 0
-		    || !IsInstanceValid(screen)
-		    || !screen.IsInsideTree()
-		    || !screen.IsVisibleInTree())
-		{
-			return;
-		}
-
-		string[] changedIds = _pendingPermanentRelicRefreshIds.ToArray();
-		_pendingPermanentRelicRefreshIds.Clear();
-
-		if (screen is NRelicSelectScreen relicScreen)
-		{
-			relicScreen.RefreshItemsById(changedIds);
-			relicScreen.RefreshLayout(resetScroll: false, updateExistingViews: false);
-			return;
-		}
-
-		// Compatibility fallback for a custom scene that still uses the generic screen.
-		screen.RefreshNow(resetScroll: false);
 	}
 
 	internal static Control CreateOwnedRelicGridItem(RelicModel model)

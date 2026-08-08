@@ -78,9 +78,8 @@ public static class RelicModifier
                 screen.RefreshCurrentItemStates();
             },
             selectScreenScenePath: CommonHelpers.RelicSelectScreenScenePath,
-            reconcileModelsOnEveryOpen: false,
-            refreshModelsAfterActivation: false,
-            syncChangesWhileHidden: true);
+			refreshModelsAfterActivation: false,
+			getSourceIdentity: () => LoadoutTargetService.GetSelected(TargetKey, LoadoutTargetMode.PlayersOnly));
     }
 
     internal static IReadOnlyList<LoadoutOwnedItem<RelicModel>> GetSelectedTargetRelics()

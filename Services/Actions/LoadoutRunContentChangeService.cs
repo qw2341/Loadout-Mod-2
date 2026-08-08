@@ -5,6 +5,7 @@ namespace Loadout.Services.Actions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Godot;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Models;
@@ -81,8 +82,17 @@ public static class LoadoutRunContentChangeService
     private static readonly object QueueGate = new();
     private static readonly List<LoadoutRunContentChangedEventArgs> QueuedChanges = [];
     private static bool _queueFlushScheduled;
+    private static long _cardRevision;
+    private static long _relicRevision;
 
     public static event Action<LoadoutRunContentChangedEventArgs>? Changed;
+
+    public static long GetRevision(LoadoutRunContentKind kind)
+    {
+        return kind == LoadoutRunContentKind.Cards
+            ? Interlocked.Read(ref _cardRevision)
+            : Interlocked.Read(ref _relicRevision);
+    }
 
     public static void Notify(
         LoadoutRunContentKind kind,
@@ -100,6 +110,11 @@ public static class LoadoutRunContentChangeService
         IEnumerable<LoadoutChangedRelic>? changedRelics = null)
     {
         LoadoutRunContentChangedEventArgs args = new(kind, playerNetIds, mode, changedCards, changedRelics);
+        if (kind == LoadoutRunContentKind.Cards)
+            Interlocked.Increment(ref _cardRevision);
+        else
+            Interlocked.Increment(ref _relicRevision);
+
         Action<LoadoutRunContentChangedEventArgs>? handlers = Changed;
         if (handlers is null)
             return;

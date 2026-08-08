@@ -198,8 +198,11 @@ public static class TildeKeyStateService
 
     [ThreadStatic]
     private static ulong _applyingGoldPlayerNetId;
+    private static long _stateRevision;
 
     public static event Action? StateChanged;
+
+    public static long StateRevision => Interlocked.Read(ref _stateRevision);
 
     public static IReadOnlyList<TildeKeyStatDefinition> StatDefinitions => Definitions;
 
@@ -2339,6 +2342,7 @@ public static class TildeKeyStateService
 
     private static void RaiseStateChanged()
     {
+        Interlocked.Increment(ref _stateRevision);
         StateChanged?.Invoke();
     }
 

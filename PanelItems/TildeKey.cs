@@ -57,6 +57,7 @@ public static partial class TildeKey
 
         PackedScene scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
         NGenericSelectScreen screen = scene.Instantiate<NGenericSelectScreen>();
+        long observedStateRevision = TildeKeyStateService.StateRevision;
 
         SelectItemAdapter<TildeKeyStatDefinition> adapter = new()
         {
@@ -84,6 +85,7 @@ public static partial class TildeKey
         }
 
         ConfigureScreen();
+        observedStateRevision = TildeKeyStateService.StateRevision;
         screen.GuiInput += CommitActiveStatRowOnOutsideClick;
         screen.LocaleChanged += () =>
         {
@@ -93,24 +95,39 @@ public static partial class TildeKey
         };
         screen.Cancelled += NLoadoutPanelRoot.CloseTopLoadoutScreen;
         screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
-        TildeKeyStateService.StateChanged += () =>
+        void RefreshActiveState()
         {
-            if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsVisibleInTree())
+            Callable.From(() =>
+            {
+                if (screen.IsScreenActive)
+                {
+                    screen.RefreshCurrentItemStates();
+                    observedStateRevision = TildeKeyStateService.StateRevision;
+                }
+            }).CallDeferred();
+        }
+
+        screen.ScreenOpened += () =>
+        {
+            TildeKeyStateService.StateChanged -= RefreshActiveState;
+            TildeKeyStateService.StateChanged += RefreshActiveState;
+
+            long currentRevision = TildeKeyStateService.StateRevision;
+            if (observedStateRevision == currentRevision)
                 return;
 
-            screen.CallDeferred(nameof(NGenericSelectScreen.RefreshCurrentItemStates));
+            screen.RefreshCurrentItemStates();
+            observedStateRevision = currentRevision;
+        };
+        screen.ScreenClosed += () =>
+        {
+            TildeKeyStateService.StateChanged -= RefreshActiveState;
         };
 
         item.BoundScreen = screen;
         item.BeforeOpen = target =>
         {
             TildeKeyStateService.EnsureLoaded();
-        };
-        item.AfterOpen = target =>
-        {
-            AddSidebarControls(target);
-            target.RefreshNow(resetScroll: false);
-            target.RefreshCurrentItemStates();
         };
         item.QuickAction = () =>
         {

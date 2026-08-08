@@ -11,6 +11,7 @@ using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rooms;
 
 /// <summary>
@@ -64,6 +65,7 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     private readonly HashSet<CardPile> _observedPiles = [];
     private bool _observedPileRefreshQueued;
     private bool _pileLifecycleBound;
+    private List<ObservedPileSnapshot>? _observedPileSnapshot;
 
     public LoadoutCardPileTarget SelectedPileTarget { get; private set; } = LoadoutCardPileTarget.Deck;
     public event Action<LoadoutCardPileTarget>? PileTargetChanged;
@@ -85,8 +87,8 @@ public partial class NCardSelectScreen : NGenericSelectScreen
         base._Ready();
         if (!_pileLifecycleBound)
         {
-            VisibilityChanged += OnCardScreenVisibilityChanged;
-            CombatManager.Instance.CombatEnded += OnCombatEnded;
+            ScreenOpened += OnCardScreenOpened;
+            ScreenClosed += OnCardScreenClosed;
             _pileLifecycleBound = true;
         }
     }
@@ -95,10 +97,11 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     {
         if (_pileLifecycleBound)
         {
-            VisibilityChanged -= OnCardScreenVisibilityChanged;
-            CombatManager.Instance.CombatEnded -= OnCombatEnded;
+            ScreenOpened -= OnCardScreenOpened;
+            ScreenClosed -= OnCardScreenClosed;
             _pileLifecycleBound = false;
         }
+        CombatManager.Instance.CombatEnded -= OnCombatEnded;
         DisconnectObservedPiles();
         base._ExitTree();
     }
@@ -135,7 +138,7 @@ public partial class NCardSelectScreen : NGenericSelectScreen
             options.Select(target => target.ToDropdownOption()).ToArray(),
             defaultTarget.ToOptionId());
 
-        if (inCombat)
+        if (inCombat && IsScreenActive)
             ReconnectObservedPiles();
         else
             DisconnectObservedPiles();
@@ -148,12 +151,14 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     {
         _observedPileProvider = provider;
         _observedPileRefresh = refresh;
-        ReconnectObservedPiles();
+        if (IsScreenActive)
+            ReconnectObservedPiles();
     }
 
     public void RefreshObservedPiles()
     {
-        ReconnectObservedPiles();
+        if (IsScreenActive)
+            ReconnectObservedPiles();
     }
 
     protected override void OnItemsConfigured()
@@ -187,8 +192,7 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     {
         base._Process(delta);
 
-        if (!IsVisibleInTree()
-            || CurrentMaterializationMode != SelectMaterializationMode.Lazy
+        if (CurrentMaterializationMode != SelectMaterializationMode.Lazy
             || ConfiguredItemCount == 0)
         {
             return;
@@ -372,15 +376,34 @@ public partial class NCardSelectScreen : NGenericSelectScreen
         PileTargetChanged?.Invoke(selected);
     }
 
-    private void OnCardScreenVisibilityChanged()
+    private void OnCardScreenOpened()
     {
-        if (!IsVisibleInTree())
+        CombatManager.Instance.CombatEnded -= OnCombatEnded;
+        CombatManager.Instance.CombatEnded += OnCombatEnded;
+
+        bool inCombat = LoadoutCardPileTargets.IsCombatInProgress();
+        if (_pileTargetDropdown is not null && GodotObject.IsInstanceValid(_pileTargetDropdown))
+            _pileTargetDropdown.Visible = inCombat;
+
+        if (!inCombat && SelectedPileTarget != _defaultPileTarget)
         {
-            DisconnectObservedPiles();
-            return;
+            SelectedPileTarget = _defaultPileTarget;
+            _pileTargetChangedCallback?.Invoke(SelectedPileTarget);
+            PileTargetChanged?.Invoke(SelectedPileTarget);
         }
 
+        bool observedPileChanged = HasObservedPileSnapshotChanged();
         ReconnectObservedPiles();
+        if (observedPileChanged)
+            _observedPileRefresh?.Invoke();
+    }
+
+    private void OnCardScreenClosed()
+    {
+        CombatManager.Instance.CombatEnded -= OnCombatEnded;
+        if (!_observedPileRefreshQueued)
+            CaptureObservedPileSnapshot();
+        DisconnectObservedPiles();
     }
 
     private void OnCombatEnded(CombatRoom _)
@@ -390,18 +413,15 @@ public partial class NCardSelectScreen : NGenericSelectScreen
             _pileTargetDropdown.Visible = false;
 
         DisconnectObservedPiles();
-        if (IsVisibleInTree())
-        {
-            _pileTargetChangedCallback?.Invoke(SelectedPileTarget);
-            PileTargetChanged?.Invoke(SelectedPileTarget);
-        }
+        _pileTargetChangedCallback?.Invoke(SelectedPileTarget);
+        PileTargetChanged?.Invoke(SelectedPileTarget);
     }
 
     private void ReconnectObservedPiles()
     {
         DisconnectObservedPiles();
         if (!IsInsideTree()
-            || !IsVisibleInTree()
+            || !IsScreenActive
             || !LoadoutCardPileTargets.IsCombatInProgress()
             || _observedPileProvider is null)
         {
@@ -441,10 +461,62 @@ public partial class NCardSelectScreen : NGenericSelectScreen
             return;
 
         _observedPileRefreshQueued = false;
-        if (!IsInsideTree() || !IsVisibleInTree())
+        if (!IsInsideTree() || !IsScreenActive)
             return;
 
         _observedPileRefresh?.Invoke();
+        CaptureObservedPileSnapshot();
         ReconnectObservedPiles();
     }
+
+    private bool HasObservedPileSnapshotChanged()
+    {
+        List<ObservedPileSnapshot> current = BuildObservedPileSnapshot();
+        bool changed = _observedPileSnapshot is not null && !SnapshotsMatch(_observedPileSnapshot, current);
+        _observedPileSnapshot = current;
+        return changed;
+    }
+
+    private void CaptureObservedPileSnapshot()
+    {
+        _observedPileSnapshot = BuildObservedPileSnapshot();
+    }
+
+    private List<ObservedPileSnapshot> BuildObservedPileSnapshot()
+    {
+        if (_observedPileProvider is null || !LoadoutCardPileTargets.IsCombatInProgress())
+            return [];
+
+        return _observedPileProvider()
+            .Distinct()
+            .Select(pile => new ObservedPileSnapshot(pile, pile.Cards.ToArray()))
+            .ToList();
+    }
+
+    private static bool SnapshotsMatch(
+        IReadOnlyList<ObservedPileSnapshot> left,
+        IReadOnlyList<ObservedPileSnapshot> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        for (int pileIndex = 0; pileIndex < left.Count; pileIndex++)
+        {
+            if (!ReferenceEquals(left[pileIndex].Pile, right[pileIndex].Pile)
+                || left[pileIndex].Cards.Count != right[pileIndex].Cards.Count)
+            {
+                return false;
+            }
+
+            for (int cardIndex = 0; cardIndex < left[pileIndex].Cards.Count; cardIndex++)
+            {
+                if (!ReferenceEquals(left[pileIndex].Cards[cardIndex], right[pileIndex].Cards[cardIndex]))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    private sealed record ObservedPileSnapshot(CardPile Pile, IReadOnlyList<CardModel> Cards);
 }

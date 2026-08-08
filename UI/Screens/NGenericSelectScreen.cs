@@ -101,6 +101,7 @@ public partial class NGenericSelectScreen : Control
 
     public event Action<IReadOnlyList<IGenericSelectItem>>? Confirmed;
     public event Action? Cancelled;
+    public event Action? ScreenOpened;
     public event Action? ScreenClosed;
     public event Action<IGenericSelectItem, SelectItemState>? ItemActivated;
     public event Action<IGenericSelectItem, SelectItemState>? ItemSelectionChanged;
@@ -138,6 +139,7 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<string, NLoadoutToggle> _toggleButtonsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _selectedAmounts = new(StringComparer.Ordinal);
     private readonly Dictionary<Control, Tween> _relayoutTweens = new();
+    private readonly Dictionary<Control, Tween> _removalTweens = new();
     private readonly Dictionary<Control, Vector2> _relayoutTargets = new();
     private readonly HashSet<Control> _relayoutPositionLockedViews = new();
     private readonly Dictionary<Control, IGenericSelectItem> _activationItemsByView = new();
@@ -187,8 +189,6 @@ public partial class NGenericSelectScreen : Control
     private ulong _layoutGeneration;
     private ulong _scheduledEagerRefreshGeneration;
     private ulong _scheduledVisibleRefreshGeneration = ulong.MaxValue;
-    private bool _refreshPendingWhileHidden;
-    private bool _pendingResetScroll;
     private SelectScrollOffsetState? _pendingScrollRestore;
     private ulong _lastEagerMismatchWarningGeneration;
     private Control? _multiplierBadge;
@@ -205,6 +205,7 @@ public partial class NGenericSelectScreen : Control
     private bool _hiddenPrewarmCompleted;
     private bool _hiddenPrewarmEnabled = true;
     private ulong _activeEagerMaterializationGeneration = ulong.MaxValue;
+    private bool _isScreenActive;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -225,6 +226,7 @@ public partial class NGenericSelectScreen : Control
     protected ulong CurrentLayoutGeneration => _layoutGeneration;
     public bool IsConfiguredForCurrentLocale => string.Equals(_configuredLocaleLanguage, GetCurrentLocaleLanguage(), StringComparison.Ordinal);
     public bool IsFirstOpenPrewarmed => _hiddenPrewarmCompleted;
+    public bool IsScreenActive => _isScreenActive;
 
     public override void _Ready()
     {
@@ -233,7 +235,6 @@ public partial class NGenericSelectScreen : Control
         EnsureGameScrollbar();
         EnsureActionButtons();
         BindSceneSignals();
-        SubscribeToLocaleChanges();
         RebuildSortButtons();
         RebuildActionButtons();
         RebuildCustomControls();
@@ -241,26 +242,20 @@ public partial class NGenericSelectScreen : Control
         RebuildFilterButtons();
         ApplyLayoutSettings();
 
-        bool active = IsVisibleInTree();
-        SetProcess(active);
-        SetProcessInput(active);
-
-        if (!_isConfigured)
-            return;
-
-        if (active)
-            RefreshNow(resetScroll: true);
-        else
-            RequestRefreshWhenVisible(resetScroll: true);
+        SetProcess(false);
+        SetProcessInput(false);
     }
 
     public override void _ExitTree()
     {
+        if (_isScreenActive)
+            SetScreenLifecycleActive(false);
         CloseOpenDropdowns();
         _searchDelayCts?.Cancel();
         _searchDelayCts?.Dispose();
         _searchDelayCts = null;
         CancelPendingMaterialization();
+        CancelRemovalAnimations();
         SetProcess(false);
         SetProcessInput(false);
         UnsubscribeFromLocaleChanges();
@@ -273,27 +268,33 @@ public partial class NGenericSelectScreen : Control
         ClearLayoutTracking();
     }
 
-    public override void _Notification(int what)
+    internal void SetScreenLifecycleActive(bool active)
     {
-        if (what != NotificationVisibilityChanged)
+        if (_isScreenActive == active)
             return;
 
-        bool active = IsVisibleInTree();
+        _isScreenActive = active;
         SetProcess(active);
         SetProcessInput(active);
 
         if (!active)
         {
+            UnsubscribeFromLocaleChanges();
             CloseOpenDropdowns();
             ReleaseFocusInsideScreen();
             SetActionButtonsActive(false);
-            SuspendHiddenScreenWork();
+            SuspendDormantScreenWork();
             ScreenClosed?.Invoke();
             return;
         }
 
+        SubscribeToLocaleChanges();
+        if (!IsConfiguredForCurrentLocale)
+            OnLocaleChanged();
+
         SetActionButtonsActive(true);
         UpdateConfirmButtonState();
+        ScreenOpened?.Invoke();
         ScheduleDeferredVisibleRefresh();
     }
 
@@ -306,7 +307,7 @@ public partial class NGenericSelectScreen : Control
 
     public override void _Input(InputEvent @event)
     {
-        if (!IsVisibleInTree() || _scrollMask is null)
+        if (_scrollMask is null)
             return;
 
         float drag = ScrollHelper.GetDragForScrollEvent(@event);
@@ -674,11 +675,6 @@ public partial class NGenericSelectScreen : Control
             AnimateRelayoutFrom(relayoutStartPositions);
     }
 
-    public void RequestDeferredVisibleRefresh()
-    {
-        ScheduleDeferredVisibleRefresh();
-    }
-
     /// <summary>
     /// Materializes the first-use view set while the screen is still hidden.
     /// Eager screens are warmed completely; lazy screens warm only the retained
@@ -813,8 +809,6 @@ public partial class NGenericSelectScreen : Control
                 return;
 
             UpdateViewportCulling(force: true);
-            _refreshPendingWhileHidden = false;
-            _pendingResetScroll = false;
             _hiddenPrewarmCompleted = true;
         }
         catch (OperationCanceledException)
@@ -1003,7 +997,6 @@ public partial class NGenericSelectScreen : Control
 
     public void RestoreScrollOffset(SelectScrollOffsetState state)
     {
-        _pendingResetScroll = false;
         _pendingScrollRestore = state;
         if (_itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
             return;
@@ -1085,6 +1078,7 @@ public partial class NGenericSelectScreen : Control
     public void ResetConfiguration(bool clearItemViews = true)
     {
         CancelRelayoutAnimations(applyFinalPositions: clearItemViews);
+        CancelRemovalAnimations();
         CancelPendingMaterialization();
         if (clearItemViews)
             ClearItemViews();
@@ -1114,8 +1108,6 @@ public partial class NGenericSelectScreen : Control
         _customVisibilityPredicate = null;
         _query = string.Empty;
         _isConfigured = false;
-        _refreshPendingWhileHidden = false;
-        _pendingResetScroll = false;
         _pendingScrollRestore = null;
         _hiddenPrewarmCompleted = false;
         _hiddenPrewarmEnabled = true;
@@ -1306,15 +1298,9 @@ public partial class NGenericSelectScreen : Control
             return;
 
         if (_itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
-        {
-            RequestRefreshWhenVisible(resetScroll);
             return;
-        }
 
-        _refreshPendingWhileHidden = false;
-        bool effectiveResetScroll = resetScroll || _pendingResetScroll;
-        _pendingResetScroll = false;
-        RebuildCurrentLayout(effectiveResetScroll, updateExistingViews);
+        RebuildCurrentLayout(resetScroll, updateExistingViews);
     }
 
     protected virtual void OnItemsConfigured()
@@ -1329,44 +1315,23 @@ public partial class NGenericSelectScreen : Control
     {
     }
 
-    private void RequestRefreshWhenVisible(bool resetScroll)
+    private void SuspendDormantScreenWork()
     {
-        _refreshPendingWhileHidden = true;
-        _pendingResetScroll |= resetScroll;
-    }
-
-    private void SuspendHiddenScreenWork()
-    {
-        bool hadPendingSearchRefresh = _searchDelayCts is not null;
         CancelPendingSearchRefresh();
         CancelPendingMaterialization();
         CancelRelayoutAnimations(applyFinalPositions: false);
+        CancelRemovalAnimations();
+        _scheduledVisibleRefreshGeneration = ulong.MaxValue;
+        _scheduledEagerRefreshGeneration = ulong.MaxValue;
 
         if (_multiplierBadge is not null)
             _multiplierBadge.Visible = false;
-
-        if (!_isConfigured)
-            return;
-
-        // Do not synchronously tear down every card/creature/event node here.
-        // NLoadoutPanelRoot disables this screen's ProcessMode and hides it, so
-        // retained descendants neither render nor update while closed. Keeping
-        // the bounded lazy-materialization window removes the close hitch and
-        // lets the same NodePool-backed views be reused on the next open.
-        if (hadPendingSearchRefresh)
-            RequestRefreshWhenVisible(resetScroll: false);
     }
 
     private void ResumeRetainedLayout()
     {
         if (!_isConfigured || _itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
-        {
-            RequestRefreshWhenVisible(resetScroll: false);
             return;
-        }
-
-        _refreshPendingWhileHidden = false;
-        _pendingResetScroll = false;
 
         ApplyLayoutSettings();
         UpdateScrollBounds();
@@ -1410,10 +1375,7 @@ public partial class NGenericSelectScreen : Control
     private void RebuildCurrentLayout(bool resetScroll, bool updateExistingViews)
     {
         if (!_isConfigured || _itemGrid is null || !IsVisibleInTree())
-        {
-            RequestRefreshWhenVisible(resetScroll);
             return;
-        }
 
         CancelPendingMaterialization();
         CancelPendingSearchRefresh();
@@ -1460,10 +1422,7 @@ public partial class NGenericSelectScreen : Control
     private void RebuildCurrentLayoutAfterSingleRemoval(bool updateExistingViews)
     {
         if (!_isConfigured || _itemGrid is null || !IsVisibleInTree())
-        {
-            RequestRefreshWhenVisible(resetScroll: false);
             return;
-        }
 
         _visibleItems.Clear();
         _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
@@ -3253,7 +3212,7 @@ public partial class NGenericSelectScreen : Control
 
     private void ScheduleDeferredVisibleRefresh()
     {
-        if (!_isConfigured || !IsInsideTree())
+        if (!_isConfigured || !_isScreenActive || !IsInsideTree())
             return;
 
         ulong generation = _layoutGeneration;
@@ -3273,9 +3232,8 @@ public partial class NGenericSelectScreen : Control
         if (generation != _layoutGeneration || !IsInsideTree() || !IsVisibleInTree())
             return;
 
-        bool resetScroll = _pendingResetScroll;
-        if (_refreshPendingWhileHidden || resetScroll || _itemLayoutOrder.Count == 0)
-            RefreshNow(resetScroll);
+        if (_itemLayoutOrder.Count == 0)
+            RefreshNow(resetScroll: true);
         else
             ResumeRetainedLayout();
     }
@@ -3886,13 +3844,31 @@ public partial class NGenericSelectScreen : Control
         view.ZIndex = Math.Max(view.ZIndex, 100);
         Vector2 startScale = view.Scale;
         Tween tween = view.CreateTween();
+        _removalTweens[view] = tween;
         tween.TweenProperty(view, "scale", new Vector2(startScale.X * 1.12f, startScale.Y * 0.02f), 0.18f)
             .SetEase(Tween.EaseType.In)
             .SetTrans(Tween.TransitionType.Cubic);
         tween.Parallel().TweenProperty(view, "modulate", Colors.Black, 0.14f)
             .SetEase(Tween.EaseType.In)
             .SetTrans(Tween.TransitionType.Cubic);
-        tween.TweenCallback(Callable.From(() => QueueFreeItemViewSafely(view)));
+        tween.TweenCallback(Callable.From(() =>
+        {
+            _removalTweens.Remove(view);
+            QueueFreeItemViewSafely(view);
+        }));
+    }
+
+    private void CancelRemovalAnimations()
+    {
+        foreach ((Control view, Tween tween) in _removalTweens.ToArray())
+        {
+            if (GodotObject.IsInstanceValid(tween))
+                tween.Kill();
+            if (GodotObject.IsInstanceValid(view))
+                QueueFreeItemViewSafely(view);
+        }
+
+        _removalTweens.Clear();
     }
 
     private void NormalizeItemForGrid(Control control)

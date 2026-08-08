@@ -64,6 +64,7 @@ public partial class NLoadoutPanelRoot : Control
 		BindNativeFeedbackLayer();
 		RefreshScreens();
 		GetCreatureManipulationPanel();
+		SetProcess(false);
 
 		if (!InitialScreen.IsEmpty)
 			OpenScreen(InitialScreen);
@@ -88,8 +89,7 @@ public partial class NLoadoutPanelRoot : Control
 
 	public override void _Process(double delta)
 	{
-		if (HasOpenScreen)
-			AdoptGameHoverTips();
+		AdoptGameHoverTips();
 	}
 
 	public override void _ExitTree()
@@ -511,9 +511,13 @@ public partial class NLoadoutPanelRoot : Control
 			screen.ProcessMode = originalMode;
 			screen.MouseFilter = originalMouseFilter;
 			screen.Visible = true;
+			if (screen is NGenericSelectScreen selectScreen)
+				selectScreen.SetScreenLifecycleActive(true);
 			return;
 		}
 
+		if (screen is NGenericSelectScreen dormantSelectScreen)
+			dormantSelectScreen.SetScreenLifecycleActive(false);
 		ReleaseFocusOwnedBy(screen);
 		screen.Visible = false;
 		screen.MouseFilter = MouseFilterEnum.Ignore;
@@ -539,6 +543,7 @@ public partial class NLoadoutPanelRoot : Control
 			_screenContainer.MouseFilter = MouseFilterEnum.Ignore;
 
 		bool hasOpenScreen = HasOpenScreen;
+		SetProcess(hasOpenScreen);
 		if (_lastHasOpenScreen == hasOpenScreen)
 			return;
 
