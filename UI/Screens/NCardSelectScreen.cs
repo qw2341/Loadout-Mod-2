@@ -63,6 +63,7 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     private Action? _observedPileRefresh;
     private readonly HashSet<CardPile> _observedPiles = [];
     private bool _observedPileRefreshQueued;
+    private bool _pileLifecycleBound;
 
     public LoadoutCardPileTarget SelectedPileTarget { get; private set; } = LoadoutCardPileTarget.Deck;
     public event Action<LoadoutCardPileTarget>? PileTargetChanged;
@@ -82,16 +83,22 @@ public partial class NCardSelectScreen : NGenericSelectScreen
     public override void _Ready()
     {
         base._Ready();
-        VisibilityChanged -= OnCardScreenVisibilityChanged;
-        VisibilityChanged += OnCardScreenVisibilityChanged;
-        CombatManager.Instance.CombatEnded -= OnCombatEnded;
-        CombatManager.Instance.CombatEnded += OnCombatEnded;
+        if (!_pileLifecycleBound)
+        {
+            VisibilityChanged += OnCardScreenVisibilityChanged;
+            CombatManager.Instance.CombatEnded += OnCombatEnded;
+            _pileLifecycleBound = true;
+        }
     }
 
     public override void _ExitTree()
     {
-        VisibilityChanged -= OnCardScreenVisibilityChanged;
-        CombatManager.Instance.CombatEnded -= OnCombatEnded;
+        if (_pileLifecycleBound)
+        {
+            VisibilityChanged -= OnCardScreenVisibilityChanged;
+            CombatManager.Instance.CombatEnded -= OnCombatEnded;
+            _pileLifecycleBound = false;
+        }
         DisconnectObservedPiles();
         base._ExitTree();
     }

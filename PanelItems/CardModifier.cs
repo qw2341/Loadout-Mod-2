@@ -56,17 +56,20 @@ public class CardModifier
             }
 
             string itemId = CommonHelpers.OwnedSlotItemId(changed);
-            Callable.From(() => cardScreen.RefreshItemById(
-                itemId,
-                (_, view) =>
-                {
-                    if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
-                        CardPrinter.ReloadCardVisuals(view, changed.Model, changed.CardPileType ?? PileType.Deck);
-                    else
-                        CardPrinter.RefreshCardVisuals(view, changed.Model, changed.CardPileType ?? PileType.Deck);
-                },
-                refreshMetadata: true,
-                refreshLayout: true)).CallDeferred();
+            Callable.From(() =>
+            {
+                cardScreen.RefreshItemById(
+                    itemId,
+                    (_, view) =>
+                    {
+                        if (refreshKind == LoadoutCardVisualRefreshKind.Reload)
+                            CardPrinter.ReloadCardVisuals(view, changed.Model, changed.CardPileType ?? PileType.Deck);
+                        else
+                            CardPrinter.RefreshCardVisuals(view, changed.Model, changed.CardPileType ?? PileType.Deck);
+                    },
+                    refreshMetadata: true,
+                    refreshLayout: true);
+            }).CallDeferred();
         }
 
         CardModificationRuntime.OwnedCardChanged += RefreshModifiedOwnedCard;

@@ -902,8 +902,7 @@ public static class LoadoutImmediateMutationService
                 || !TryDecodeModelIdToken(args[0], out ModelId modelId)
                 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int amount)
                 || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int upgradeCount)
-                || !int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rawPileTarget)
-                || !Enum.IsDefined(typeof(LoadoutCardPileTarget), rawPileTarget)
+                || !TryParseCreationPileTarget(args[3], out LoadoutCardPileTarget pileTarget)
                 || !TryParseTargetNetIds(args[4], out ulong[] targetNetIds))
             {
                 GD.PushWarning("LoadoutImmediateMutation: ignored malformed synchronized card action.");
@@ -914,7 +913,7 @@ public static class LoadoutImmediateMutationService
                 modelId,
                 amount,
                 upgradeCount,
-                ((LoadoutCardPileTarget)rawPileTarget).NormalizeForCreation(),
+                pileTarget,
                 targetNetIds);
             return true;
         }
@@ -934,8 +933,7 @@ public static class LoadoutImmediateMutationService
         if (deckCopyArgs.Length != 5
             || !ulong.TryParse(deckCopyArgs[0], NumberStyles.None, CultureInfo.InvariantCulture, out ulong ownerNetId)
             || ownerNetId == 0
-            || !int.TryParse(deckCopyArgs[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rawSourcePileTarget)
-            || !Enum.IsDefined(typeof(LoadoutCardPileTarget), rawSourcePileTarget)
+            || !TryParseOwnedPileTarget(deckCopyArgs[1], out LoadoutCardPileTarget sourcePileTarget)
             || !uint.TryParse(deckCopyArgs[2], NumberStyles.None, CultureInfo.InvariantCulture, out uint sourceNativeIndex)
             || !TryDecodeModelIdToken(deckCopyArgs[3], out ModelId expectedModelId)
             || !int.TryParse(deckCopyArgs[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int copyAmount))
@@ -946,7 +944,7 @@ public static class LoadoutImmediateMutationService
 
         result = ExecuteSynchronizedDeckCardCopiesAsync(
             ownerNetId,
-            ((LoadoutCardPileTarget)rawSourcePileTarget).NormalizeForOwnedCard(),
+            sourcePileTarget,
             sourceNativeIndex,
             expectedModelId,
             copyAmount);
@@ -1164,6 +1162,26 @@ public static class LoadoutImmediateMutationService
             .OrderBy(netId => netId)
             .ToArray();
         return targetNetIds.Length > 0;
+    }
+
+    private static bool TryParseCreationPileTarget(string raw, out LoadoutCardPileTarget target)
+    {
+        target = LoadoutCardPileTarget.Unspecified;
+        if (!byte.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out byte value))
+            return false;
+
+        target = (LoadoutCardPileTarget)value;
+        return LoadoutCardPileTargets.IsSupportedCreationTarget(target);
+    }
+
+    private static bool TryParseOwnedPileTarget(string raw, out LoadoutCardPileTarget target)
+    {
+        target = LoadoutCardPileTarget.Unspecified;
+        if (!byte.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out byte value))
+            return false;
+
+        target = (LoadoutCardPileTarget)value;
+        return LoadoutCardPileTargets.IsSupportedOwnedTarget(target);
     }
 
     private static async Task ApplyAsync(LoadoutImmediateMutationPayload payload)
@@ -1557,7 +1575,7 @@ public static class LoadoutImmediateMutationService
             }
             else
             {
-                await CardPileCmd.RemoveFromCombat(item.Model, true);
+                await CardPileCmd.RemoveFromCombat(item.Model, skipVisuals: false);
             }
         }
         catch (Exception exception)
@@ -1679,7 +1697,7 @@ public static class LoadoutImmediateMutationService
                 }
                 else
                 {
-                    await CardPileCmd.RemoveFromCombat(cards, true);
+                    await CardPileCmd.RemoveFromCombat(cards, skipVisuals: false);
                 }
             }
             catch (Exception exception)
