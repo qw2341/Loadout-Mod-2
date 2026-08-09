@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using BaseLib.Abstracts;
 using Godot;
@@ -29,12 +30,17 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 public static class CardModificationNetProtocol
 {
     private const int MaxStateJsonLength = 256 * 1024;
+    private const int MaxFullSnapshotJsonLength = 1024 * 1024;
+    private const int FullSnapshotSchemaVersion = 1;
 
     private static readonly HashSet<StartRunLobby> RegisteredLobbies = [];
     private static readonly Dictionary<StartRunLobby, Delegate> LobbyConnectedHandlers = new();
+    private static readonly HashSet<INetGameService> RegisteredMessageServices = [];
     private static readonly object OperationSequenceGate = new();
     private static readonly SortedDictionary<int, LoadoutCardModificationOperationPayload> PendingOperationApplies = new();
     private static INetGameService? _runNetService;
+    private static RunLobby? _runLobby;
+    private static Delegate? _playerRejoinedHandler;
     private static bool _registered;
     private static string? _pendingHostPermanentSnapshotJson;
     private static int _nextOperationSequence;
@@ -58,6 +64,8 @@ public static class CardModificationNetProtocol
         RegisteredLobbies.Clear();
         LobbyConnectedHandlers.Clear();
         UnregisterRunNetService(clearClientOverlay: true);
+        foreach (INetGameService netService in RegisteredMessageServices.ToList())
+            UnregisterMessageHandlers(netService);
         PermanentCardModificationStore.ClearHostOverlay();
         ClearPendingHostPermanentSnapshot();
         _registered = false;
@@ -68,8 +76,7 @@ public static class CardModificationNetProtocol
         if (!_registered || lobby is null || !RegisteredLobbies.Add(lobby))
             return;
 
-        lobby.NetService.RegisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
-        lobby.NetService.RegisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
+        RegisterMessageHandlers(lobby.NetService);
 
         Delegate connected = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
             lobby,
@@ -91,11 +98,11 @@ public static class CardModificationNetProtocol
         if (lobby is null || !RegisteredLobbies.Remove(lobby))
             return;
 
-        lobby.NetService.UnregisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
-        lobby.NetService.UnregisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
-
         if (LobbyConnectedHandlers.Remove(lobby, out Delegate? connected))
             Sts2Compatibility.UnsubscribeStartRunLobbyPlayerConnected(lobby, connected);
+
+        if (clearClientOverlay && !ReferenceEquals(_runNetService, lobby.NetService))
+            UnregisterMessageHandlers(lobby.NetService);
 
         if (clearClientOverlay && lobby.NetService.Type == NetGameType.Client)
         {
@@ -104,7 +111,7 @@ public static class CardModificationNetProtocol
         }
     }
 
-    public static void OnRunLaunched()
+    public static void PrepareRunLaunch()
     {
         try
         {
@@ -112,9 +119,7 @@ public static class CardModificationNetProtocol
             if (netService is null)
                 return;
 
-            // Reset before registering the run handler. Buffered snapshot messages can be
-            // delivered as part of registration; resetting afterward would erase the
-            // sequence baseline supplied by the host.
+            // RunManager.Launch releases buffered messages before its postfixes.
             lock (OperationSequenceGate)
             {
                 _nextOperationSequence = 0;
@@ -124,9 +129,24 @@ public static class CardModificationNetProtocol
             }
 
             RegisterRunNetService(netService);
+            BindRunLobby(RunManager.Instance.RunLobby);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to prepare multiplayer sync for run. {exception.Message}");
+        }
+    }
+
+    public static void OnRunLaunched()
+    {
+        try
+        {
+            INetGameService netService = RunManager.Instance.NetService;
+            RegisterRunNetService(netService);
+            BindRunLobby(RunManager.Instance.RunLobby);
 
             if (netService.Type == NetGameType.Host)
-                BroadcastPermanentSnapshot();
+                BroadcastFullSnapshot();
             else if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
                 PermanentCardModificationStore.ClearHostOverlay();
         }
@@ -556,6 +576,26 @@ public static class CardModificationNetProtocol
         }
     }
 
+    public static void BroadcastFullSnapshot()
+    {
+        try
+        {
+            if (!RunManager.Instance.IsInProgress || RunManager.Instance.NetService.Type != NetGameType.Host)
+                return;
+
+            INetGameService netService = RunManager.Instance.NetService;
+            LoadoutCardModificationFullSyncMessage message = CreateFullSnapshotMessage();
+            LoadoutNetworkBroadcast.SendToRunClients(
+                netService,
+                recipient => netService.SendMessage(message, recipient),
+                "card modification full snapshot");
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to broadcast full snapshot. {exception.Message}");
+        }
+    }
+
     public static void BroadcastTemporary(LoadoutOwnedItem<CardModel> item, CardModificationSpec? next)
     {
         try
@@ -593,8 +633,7 @@ public static class CardModificationNetProtocol
 
         UnregisterRunNetService(clearClientOverlay: false);
         _runNetService = netService;
-        _runNetService.RegisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
-        _runNetService.RegisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
+        RegisterMessageHandlers(_runNetService);
     }
 
     private static void UnregisterRunNetService(bool clearClientOverlay)
@@ -603,8 +642,8 @@ public static class CardModificationNetProtocol
             return;
 
         NetGameType type = _runNetService.Type;
-        _runNetService.UnregisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
-        _runNetService.UnregisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
+        UnbindRunLobby();
+        UnregisterMessageHandlers(_runNetService);
         _runNetService = null;
 
         if (clearClientOverlay && type == NetGameType.Client)
@@ -612,6 +651,50 @@ public static class CardModificationNetProtocol
             PermanentCardModificationStore.ClearHostOverlay();
             ClearPendingHostPermanentSnapshot();
         }
+    }
+
+    private static void RegisterMessageHandlers(INetGameService netService)
+    {
+        if (!RegisteredMessageServices.Add(netService))
+            return;
+
+        netService.RegisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
+        netService.RegisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
+        netService.RegisterMessageHandler<LoadoutCardModificationFullSyncMessage>(HandleFullSync);
+    }
+
+    private static void UnregisterMessageHandlers(INetGameService netService)
+    {
+        if (!RegisteredMessageServices.Remove(netService))
+            return;
+
+        netService.UnregisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
+        netService.UnregisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
+        netService.UnregisterMessageHandler<LoadoutCardModificationFullSyncMessage>(HandleFullSync);
+    }
+
+    private static void BindRunLobby(RunLobby? runLobby)
+    {
+        if (ReferenceEquals(_runLobby, runLobby))
+            return;
+
+        UnbindRunLobby();
+        _runLobby = runLobby;
+        if (_runLobby is not null)
+        {
+            _playerRejoinedHandler = Sts2Compatibility.SubscribeRunLobbyPlayerRejoined(
+                _runLobby,
+                SendFullSnapshotToRunPlayer);
+        }
+    }
+
+    private static void UnbindRunLobby()
+    {
+        if (_runLobby is not null && _playerRejoinedHandler is not null)
+            Sts2Compatibility.UnsubscribeRunLobbyPlayerRejoined(_runLobby, _playerRejoinedHandler);
+
+        _runLobby = null;
+        _playerRejoinedHandler = null;
     }
 
     private static LoadoutCardModificationPermanentSyncMessage CreatePermanentSnapshotMessage(string payload)
@@ -625,6 +708,67 @@ public static class CardModificationNetProtocol
             payload = payload,
             operationSequence = operationSequence
         };
+    }
+
+    private static LoadoutCardModificationFullSyncMessage CreateFullSnapshotMessage()
+    {
+        int operationSequence;
+        lock (OperationSequenceGate)
+            operationSequence = _nextOperationSequence;
+
+        LoadoutCardModificationFullSnapshot snapshot = new()
+        {
+            SchemaVersion = FullSnapshotSchemaVersion,
+            PermanentJson = PermanentCardModificationStore.ExportEffectiveSnapshotJson()
+        };
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        if (runState is not null)
+        {
+            foreach (Player owner in runState.Players.OrderBy(player => player.NetId))
+            {
+                IReadOnlyList<CardModel> deck = owner.Deck.Cards;
+                for (int index = 0; index < deck.Count; index++)
+                {
+                    CardModel card = deck[index];
+                    if (!CardModificationFields.TryGet(card, out CardModificationCardData data))
+                        continue;
+
+                    snapshot.TemporaryDeltas.Add(new LoadoutCardModificationDeckDelta
+                    {
+                        OwnerNetId = owner.NetId,
+                        DeckIndex = index,
+                        CardId = card.Id.ToString(),
+                        StateJson = data.Serialized
+                    });
+                }
+            }
+        }
+
+        return new LoadoutCardModificationFullSyncMessage
+        {
+            Payload = JsonSerializer.Serialize(snapshot),
+            OperationSequence = operationSequence
+        };
+    }
+
+    private static void SendFullSnapshotToRunPlayer(ulong playerId)
+    {
+        LoadoutMutationSerialExecutor.Enqueue(() =>
+        {
+            try
+            {
+                INetGameService? netService = _runNetService;
+                if (netService?.Type != NetGameType.Host || playerId == netService.NetId)
+                    return Task.CompletedTask;
+
+                netService.SendMessage(CreateFullSnapshotMessage(), playerId);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"CardModification: failed to send rejoin snapshot to {playerId}. {exception.Message}");
+            }
+            return Task.CompletedTask;
+        }, $"card modification rejoin snapshot for {playerId}");
     }
 
     private static void EstablishClientOperationSequenceBaseline(int sequence)
@@ -676,6 +820,80 @@ public static class CardModificationNetProtocol
         IReadOnlyList<ModelId> changed = PermanentCardModificationStore.ApplyHostSnapshot(message.payload);
         if (applyMode == HostPermanentSnapshotApplyMode.LiveDecks)
             CardModificationRuntime.RetrofitChangedPermanentCards(changed, previous);
+    }
+
+    private static void HandleFullSync(LoadoutCardModificationFullSyncMessage message, ulong senderId)
+    {
+        if (IsHostSession() || !IsExpectedHostSender(senderId))
+            return;
+        if (string.IsNullOrWhiteSpace(message.Payload)
+            || message.Payload.Length > MaxFullSnapshotJsonLength)
+        {
+            GD.PushWarning("CardModification: ignored malformed full multiplayer snapshot.");
+            return;
+        }
+
+        LoadoutCardModificationFullSnapshot? snapshot;
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<LoadoutCardModificationFullSnapshot>(message.Payload);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: ignored malformed full multiplayer snapshot. {exception.Message}");
+            return;
+        }
+
+        if (snapshot is null
+            || snapshot.SchemaVersion != FullSnapshotSchemaVersion
+            || snapshot.PermanentJson is null
+            || snapshot.TemporaryDeltas is null
+            || snapshot.PermanentJson.Length > MaxStateJsonLength)
+        {
+            GD.PushWarning("CardModification: ignored unsupported full multiplayer snapshot.");
+            return;
+        }
+
+        Dictionary<LoadoutDeckCardIdentity, CardModificationDelta> temporaryDeltas = new();
+        foreach (LoadoutCardModificationDeckDelta entry in snapshot.TemporaryDeltas)
+        {
+            if (entry.OwnerNetId == 0
+                || entry.DeckIndex < 0
+                || string.IsNullOrWhiteSpace(entry.CardId)
+                || !TryDeserializeDelta(entry.StateJson, out CardModificationDelta? delta)
+                || delta is null)
+            {
+                GD.PushWarning("CardModification: ignored malformed deck delta in full multiplayer snapshot.");
+                return;
+            }
+
+            LoadoutDeckCardIdentity identity = new(entry.OwnerNetId, entry.DeckIndex, entry.CardId);
+            if (!temporaryDeltas.TryAdd(identity, delta))
+            {
+                GD.PushWarning("CardModification: ignored full multiplayer snapshot with duplicate deck identities.");
+                return;
+            }
+        }
+
+        EstablishClientOperationSequenceBaseline(message.OperationSequence);
+        StorePendingHostPermanentSnapshot(snapshot.PermanentJson);
+
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        if (runState is null)
+        {
+            PermanentCardModificationStore.ApplyHostSnapshot(snapshot.PermanentJson);
+            return;
+        }
+
+        Dictionary<CardModel, CardModificationSpec> previousEffective = new(ReferenceEqualityComparer.Instance);
+        foreach (Player owner in runState.Players)
+        {
+            foreach (CardModel card in owner.Deck.Cards)
+                previousEffective[card] = CardModificationRuntime.GetEffectiveSpec(card);
+        }
+
+        PermanentCardModificationStore.ApplyHostSnapshot(snapshot.PermanentJson);
+        CardModificationRuntime.ReconcileAuthoritativeDeckDeltas(temporaryDeltas, previousEffective);
     }
 
     private static void HandleTemporarySync(LoadoutCardModificationTemporarySyncMessage message, ulong senderId)
@@ -886,6 +1104,61 @@ public struct LoadoutCardModificationPermanentSyncMessage : INetMessage, IPacket
         payload = reader.ReadString();
         operationSequence = reader.ReadInt();
     }
+}
+
+public struct LoadoutCardModificationFullSyncMessage : INetMessage, IPacketSerializable
+{
+    public string Payload;
+    public int OperationSequence;
+
+    public bool ShouldBroadcast => false;
+    public NetTransferMode Mode => NetTransferMode.Reliable;
+    public LogLevel LogLevel => LogLevel.VeryDebug;
+    public bool ShouldBuffer => true;
+
+    public void Serialize(PacketWriter writer)
+    {
+        writer.WriteString(Payload ?? string.Empty);
+        writer.WriteInt(OperationSequence);
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+        Payload = reader.ReadString();
+        OperationSequence = reader.ReadInt();
+    }
+}
+
+public readonly record struct LoadoutDeckCardIdentity(
+    ulong OwnerNetId,
+    int DeckIndex,
+    string CardId);
+
+public sealed class LoadoutCardModificationFullSnapshot
+{
+    [JsonPropertyName("schemaVersion")]
+    public int SchemaVersion { get; set; }
+
+    [JsonPropertyName("permanent")]
+    public string PermanentJson { get; set; } = string.Empty;
+
+    [JsonPropertyName("temporary")]
+    public List<LoadoutCardModificationDeckDelta> TemporaryDeltas { get; set; } = [];
+}
+
+public sealed class LoadoutCardModificationDeckDelta
+{
+    [JsonPropertyName("ownerNetId")]
+    public ulong OwnerNetId { get; set; }
+
+    [JsonPropertyName("deckIndex")]
+    public int DeckIndex { get; set; }
+
+    [JsonPropertyName("cardId")]
+    public string CardId { get; set; } = string.Empty;
+
+    [JsonPropertyName("state")]
+    public string StateJson { get; set; } = string.Empty;
 }
 
 public struct LoadoutCardModificationTemporarySyncMessage : INetMessage, IPacketSerializable

@@ -1329,6 +1329,57 @@ public static class CardModificationRuntime
         LoadoutKeywordRuntimePatches.Reconcile();
     }
 
+    public static void ReconcileAuthoritativeDeckDeltas(
+        IReadOnlyDictionary<LoadoutDeckCardIdentity, CardModificationDelta> temporaryDeltas,
+        IReadOnlyDictionary<CardModel, CardModificationSpec> previousEffective)
+    {
+        if (!TryGetRunState(out RunState? runState))
+            return;
+
+        List<LoadoutChangedCard> changedCards = [];
+        HashSet<ulong> changedPlayers = [];
+        foreach (Player owner in runState!.Players)
+        {
+            IReadOnlyList<CardModel> deck = owner.Deck.Cards;
+            for (int index = 0; index < deck.Count; index++)
+            {
+                CardModel card = deck[index];
+                LoadoutDeckCardIdentity identity = new(owner.NetId, index, card.Id.ToString());
+                temporaryDeltas.TryGetValue(identity, out CardModificationDelta? delta);
+
+                CardModificationSpec previous = previousEffective.GetValueOrDefault(
+                    card,
+                    GetEffectiveSpec(card));
+                CardModificationFields.SetDelta(card, delta);
+                RebuildCard(card, previous, forceAllOwnedFields: true);
+
+                CardModificationSpec next = GetEffectiveSpec(card);
+                LoadoutCardVisualRefreshKind kind = GetVisualRefreshKind(previous, next);
+                RefreshLiveCardVisuals(card, kind);
+                changedPlayers.Add(owner.NetId);
+                changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, kind));
+
+                foreach (CardModel combatCard in owner.PlayerCombatState?.AllCards
+                             .Where(candidate => ReferenceEquals(candidate.DeckVersion, card)) ?? [])
+                {
+                    CardModificationSpec combatPrevious = GetEffectiveSpec(combatCard);
+                    RebuildCard(combatCard, combatPrevious, forceAllOwnedFields: true);
+                    NotifyCombatCardChanged(combatCard, combatPrevious);
+                }
+            }
+        }
+
+        if (changedCards.Count > 0)
+        {
+            LoadoutRunContentChangeService.Notify(
+                LoadoutRunContentKind.Cards,
+                changedPlayers,
+                LoadoutRunContentChangeMode.Update,
+                changedCards);
+        }
+        LoadoutKeywordRuntimePatches.Reconcile();
+    }
+
     private static bool RemovedPermanentEnchantments(
         CardModificationSpec? previous,
         CardModificationSpec? current)

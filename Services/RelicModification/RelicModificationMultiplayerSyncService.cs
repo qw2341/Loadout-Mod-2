@@ -25,7 +25,10 @@ public static class RelicModificationMultiplayerSyncService
     private const int MaxSnapshotLength = 256 * 1024;
     private static readonly HashSet<StartRunLobby> Lobbies = [];
     private static readonly Dictionary<StartRunLobby, Delegate> ConnectedHandlers = new();
+    private static readonly HashSet<INetGameService> RegisteredMessageServices = [];
     private static INetGameService? _runNetService;
+    private static RunLobby? _runLobby;
+    private static Delegate? _playerRejoinedHandler;
     private static bool _registered;
     private static string? _pendingHostSnapshot;
 
@@ -37,6 +40,8 @@ public static class RelicModificationMultiplayerSyncService
     {
         foreach (StartRunLobby lobby in Lobbies.ToList()) UnregisterLobby(lobby, clearOverlay: false);
         UnregisterRunNetService(clearOverlay: true);
+        foreach (INetGameService netService in RegisteredMessageServices.ToList())
+            UnregisterMessageHandler(netService);
         Lobbies.Clear(); ConnectedHandlers.Clear(); _pendingHostSnapshot = null; _registered = false;
     }
 
@@ -49,7 +54,7 @@ public static class RelicModificationMultiplayerSyncService
     public static void RegisterLobby(StartRunLobby lobby)
     {
         if (!_registered || !Lobbies.Add(lobby)) return;
-        lobby.NetService.RegisterMessageHandler<LoadoutRelicModificationPermanentSyncMessage>(HandleSnapshot);
+        RegisterMessageHandler(lobby.NetService);
         Delegate connected = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
             lobby,
             playerId => SendSnapshot(lobby.NetService, playerId));
@@ -61,9 +66,23 @@ public static class RelicModificationMultiplayerSyncService
     public static void UnregisterLobby(StartRunLobby lobby, bool clearOverlay)
     {
         if (!Lobbies.Remove(lobby)) return;
-        lobby.NetService.UnregisterMessageHandler<LoadoutRelicModificationPermanentSyncMessage>(HandleSnapshot);
         if (ConnectedHandlers.Remove(lobby, out Delegate? handler)) Sts2Compatibility.UnsubscribeStartRunLobbyPlayerConnected(lobby, handler);
+        if (clearOverlay && !ReferenceEquals(_runNetService, lobby.NetService))
+            UnregisterMessageHandler(lobby.NetService);
         if (clearOverlay && lobby.NetService.Type == NetGameType.Client) RelicModificationStateService.ClearHostPermanentOverlay();
+    }
+
+    public static void PrepareRunLaunch()
+    {
+        try
+        {
+            RegisterRunNetService(RunManager.Instance.NetService);
+            BindRunLobby(RunManager.Instance.RunLobby);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"RelicModifier: failed to prepare multiplayer sync. {exception.Message}");
+        }
     }
 
     public static void OnRunLaunched()
@@ -71,6 +90,7 @@ public static class RelicModificationMultiplayerSyncService
         try
         {
             RegisterRunNetService(RunManager.Instance.NetService);
+            BindRunLobby(RunManager.Instance.RunLobby);
             if (RunManager.Instance.NetService.Type == NetGameType.Host) BroadcastSnapshot();
             else if (RunManager.Instance.NetService.Type is NetGameType.Singleplayer or NetGameType.Replay) RelicModificationStateService.ClearHostPermanentOverlay();
         }
@@ -110,22 +130,62 @@ public static class RelicModificationMultiplayerSyncService
         if (_runNetService == net) return;
         UnregisterRunNetService(clearOverlay: false);
         _runNetService = net;
-        net.RegisterMessageHandler<LoadoutRelicModificationPermanentSyncMessage>(HandleSnapshot);
+        RegisterMessageHandler(net);
     }
 
     private static void UnregisterRunNetService(bool clearOverlay)
     {
         if (_runNetService is null) return;
         NetGameType type = _runNetService.Type;
-        _runNetService.UnregisterMessageHandler<LoadoutRelicModificationPermanentSyncMessage>(HandleSnapshot);
+        UnbindRunLobby();
+        UnregisterMessageHandler(_runNetService);
         _runNetService = null;
         if (clearOverlay && type == NetGameType.Client) RelicModificationStateService.ClearHostPermanentOverlay();
+    }
+
+    private static void RegisterMessageHandler(INetGameService netService)
+    {
+        if (!RegisteredMessageServices.Add(netService)) return;
+        netService.RegisterMessageHandler<LoadoutRelicModificationPermanentSyncMessage>(HandleSnapshot);
+    }
+
+    private static void UnregisterMessageHandler(INetGameService netService)
+    {
+        if (!RegisteredMessageServices.Remove(netService)) return;
+        netService.UnregisterMessageHandler<LoadoutRelicModificationPermanentSyncMessage>(HandleSnapshot);
+    }
+
+    private static void BindRunLobby(RunLobby? runLobby)
+    {
+        if (ReferenceEquals(_runLobby, runLobby)) return;
+        UnbindRunLobby();
+        _runLobby = runLobby;
+        if (_runLobby is not null)
+        {
+            _playerRejoinedHandler = Sts2Compatibility.SubscribeRunLobbyPlayerRejoined(
+                _runLobby,
+                SendSnapshotToRunPlayer);
+        }
+    }
+
+    private static void UnbindRunLobby()
+    {
+        if (_runLobby is not null && _playerRejoinedHandler is not null)
+            Sts2Compatibility.UnsubscribeRunLobbyPlayerRejoined(_runLobby, _playerRejoinedHandler);
+        _runLobby = null;
+        _playerRejoinedHandler = null;
     }
 
     private static void SendSnapshot(INetGameService net, ulong playerId)
     {
         if (net.Type != NetGameType.Host || playerId == net.NetId) return;
         net.SendMessage(new LoadoutRelicModificationPermanentSyncMessage { Payload = RelicModificationStateService.ExportPermanentSnapshot() }, playerId);
+    }
+
+    public static void SendSnapshotToRunPlayer(ulong playerId)
+    {
+        if (_runNetService is not null)
+            SendSnapshot(_runNetService, playerId);
     }
 
     private static void HandleSnapshot(LoadoutRelicModificationPermanentSyncMessage message, ulong senderId)

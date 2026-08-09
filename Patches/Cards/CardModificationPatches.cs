@@ -504,6 +504,8 @@ public static class RunManagerLaunchCardModificationPatch
     [HarmonyPrefix]
     public static void Prefix()
     {
+        CardModificationNetProtocol.PrepareRunLaunch();
+        RelicModificationMultiplayerSyncService.PrepareRunLaunch();
         LoadoutKeywordRuntimePatches.Reconcile();
     }
 
