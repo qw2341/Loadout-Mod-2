@@ -12,87 +12,64 @@ using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.TildeKey;
 using Loadout.UI;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Logging;
-using MegaCrit.Sts2.Core.Models;
 
 namespace Loadout.Patches.Core;
 
-[HarmonyPatch(typeof(ModelDb), nameof(ModelDb.InitIds))]
+[HarmonyPatch(typeof(PreloadManager), nameof(PreloadManager.LoadMainMenuEssentials))]
 public static class UIAttach
 {
+    private static readonly object StartupLock = new();
+
     private static bool _servicesRegistered;
-    private static bool _startupScheduled;
-    private static bool _startupAttempted;
-    private static bool _preloadScheduled;
-    private static bool _preloadAttempted;
-    private static bool _preloaded;
+    private static Task _startupTask;
 
     [HarmonyPostfix]
-    private static void Postfix()
+    private static void Postfix(ref Task __result)
     {
-        if (_startupScheduled || _startupAttempted)
-            return;
-
-        _startupScheduled = true;
-
-        Log.Info("[Loadout] ModelDb IDs initialized. Scheduling UI attach and select-screen preload.");
-
-        Callable.From(AttachUiDeferred).CallDeferred();
+        __result = CompleteStartupLoadingAsync(__result);
     }
 
-    private static void AttachUiDeferred()
+    private static async Task CompleteStartupLoadingAsync(Task nativeLoadingTask)
     {
-        _startupScheduled = false;
-        if (_startupAttempted)
-            return;
+        await nativeLoadingTask;
+        await GetOrStartStartupTask();
+    }
 
-        _startupAttempted = true;
+    private static Task GetOrStartStartupTask()
+    {
+        lock (StartupLock)
+        {
+            return _startupTask ??= InitializeAndPrewarmAsync();
+        }
+    }
+
+    private static async Task InitializeAndPrewarmAsync()
+    {
+        NLoadoutPanelRoot root = null;
+        bool completed = false;
 
         try
         {
+            Log.Info("[Loadout] Main menu essentials loaded. Initializing UI and prewarming select screens.");
             RegisterServicesOnce();
 
             SceneTree tree = Engine.GetMainLoop() as SceneTree;
 
             if (tree == null)
             {
-                Log.Error("[Loadout] Failed to attach UI after ModelDb initialization: SceneTree was null.");
+                Log.Error("[Loadout] Failed to initialize startup UI: SceneTree was null.");
                 return;
             }
 
-            NLoadoutPanelRoot root = NLoadoutPanelRoot.GetOrAttach(tree);
+            root = NLoadoutPanelRoot.GetOrAttach(tree);
 
-            if (root == null || !GodotObject.IsInstanceValid(root))
-            {
-                Log.Error("[Loadout] Failed to attach UI after ModelDb initialization: root was null or invalid.");
-                return;
-            }
-
-            Log.Info("[Loadout] Attached UI root after ModelDb IDs initialized.");
-            ScheduleSelectScreenPreload(root);
-        }
-        catch (Exception e)
-        {
-            Log.Error($"[Loadout] Failed to attach UI after ModelDb initialization: {e}");
-        }
-    }
-
-    private static void ScheduleSelectScreenPreload(NLoadoutPanelRoot root)
-    {
-        if (_preloaded || _preloadScheduled || _preloadAttempted)
-            return;
-
-        _preloadAttempted = true;
-        _preloadScheduled = true;
-        _ = PreloadSelectScreensAsync(root);
-    }
-
-    private static async Task PreloadSelectScreensAsync(NLoadoutPanelRoot root)
-    {
-        try
-        {
             if (!IsValid(root))
-                throw new InvalidOperationException("LoadoutPanelRoot became invalid before select-screen preload started.");
+            {
+                Log.Error("[Loadout] Failed to initialize startup UI: root was null or invalid.");
+                return;
+            }
 
             NLoadoutPanel panel = root.GetNodeOrNull<NLoadoutPanel>("LoadoutPanel");
             if (!IsValid(panel))
@@ -124,23 +101,26 @@ public static class UIAttach
                 if (!IsValid(root) || !IsValid(entry.Screen))
                     continue;
 
-                entry.Screen.Name = entry.Name;
-                root.RegisterScreen(entry.Screen);
-                attachedScreens++;
+                try
+                {
+                    entry.Screen.Name = entry.Name;
+                    root.RegisterScreen(entry.Screen);
+                    attachedScreens++;
 
-                // AddChild only initializes the shell while the screen is hidden.
-                // Materialize its first-use viewport now, in small per-frame batches,
-                // so expensive event portraits and monster creature previews are ready
-                // before the player opens those tools.
-                if (!await WaitForNextFrame(root))
-                    return;
+                    if (!await WaitForNextFrame(root))
+                        return;
 
-                await entry.Screen.PrewarmForFirstOpenAsync();
-                if (!IsValid(root))
-                    return;
+                    await entry.Screen.PrewarmForFirstOpenAsync();
+                    if (!IsValid(root))
+                        return;
 
-                if (entry.Screen.IsFirstOpenPrewarmed)
-                    prewarmedScreens++;
+                    if (entry.Screen.IsFirstOpenPrewarmed)
+                        prewarmedScreens++;
+                }
+                catch (Exception e)
+                {
+                    Log.Error($"[Loadout] Failed to register or prewarm select screen '{entry.Name}': {e}");
+                }
 
                 if (!await WaitForNextFrame(root))
                     return;
@@ -149,28 +129,38 @@ public static class UIAttach
             if (!IsValid(root))
                 return;
 
-            root.CloseAllScreens();
-            _preloaded = true;
-
             Log.Info(
                 $"[Loadout] Registered {attachedScreens} and prewarmed {prewarmedScreens} generic select screens before first use.");
+            completed = true;
         }
         catch (Exception e)
         {
-            Log.Error($"[Loadout] Failed to preload generic select screens: {e}");
+            Log.Error($"[Loadout] Failed to initialize startup UI and prewarm select screens: {e}");
         }
         finally
         {
-            _preloadScheduled = false;
+            if (IsValid(root))
+            {
+                try
+                {
+                    root.CloseAllScreens();
+                }
+                catch (Exception e)
+                {
+                    completed = false;
+                    Log.Error($"[Loadout] Failed to close startup select screens: {e}");
+                }
+            }
         }
+
+        if (completed)
+            Log.Info("[Loadout] Startup UI initialization and select-screen prewarm complete.");
     }
 
     private static int GetSelectScreenPreloadPriority(NLoadoutPanel.SelectScreenPreloadEntry entry)
     {
         string name = entry.Name.ToString();
 
-        // These screens have the most expensive first-use view factories. Warm
-        // them first so normal startup/menu time absorbs their construction.
         if (name.Contains("EventfulCompass", StringComparison.Ordinal))
             return 0;
 
