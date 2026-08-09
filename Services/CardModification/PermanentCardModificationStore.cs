@@ -135,7 +135,7 @@ public static class PermanentCardModificationStore
         {
             EnsureLoaded();
             return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta =>
-                delta.Enchantment is not null || delta.Affliction is not null);
+                delta.Enchantments is not null || delta.Affliction is not null);
         }
     }
 

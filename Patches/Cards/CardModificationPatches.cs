@@ -241,7 +241,7 @@ public static class CardModelToSerializableCardModificationPatch
 }
 
 [HarmonyPatch(typeof(CardModel), nameof(CardModel.FromSerializable), typeof(SerializableCard))]
-[HarmonyAfter("BaseLib")]
+[HarmonyAfter("BaseLib", "MultiEnchantmentMod")]
 public static class CardModelFromSerializableCardModificationPatch
 {
     [HarmonyPrefix]
@@ -285,9 +285,9 @@ public static class CardModelFromSerializableCardModificationPatch
 
         // An owned attachment is reconstructed by the permanent/temporary spec.
         // Prevent the native saved copy from being stacked underneath it first.
-        if (permanent?.Enchantment is not null
-            || loaded?.Delta?.Enchantment is not null
-            || loaded?.LegacyAbsolute?.Enchantment is not null)
+        if (permanent?.Enchantments is not null
+            || loaded?.Delta?.Enchantments is not null
+            || loaded?.LegacyAbsolute?.Enchantments is not null)
         {
             save.Enchantment = null;
         }

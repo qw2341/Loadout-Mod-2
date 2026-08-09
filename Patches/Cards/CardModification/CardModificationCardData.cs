@@ -4,6 +4,7 @@ namespace Loadout.Patches.Cards.CardModification;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -187,7 +188,9 @@ internal static class CardModificationCodec
                || serialized.Contains("\"dynamicVars\":", StringComparison.Ordinal)
                || serialized.Contains("\"keywordOverrides\":", StringComparison.Ordinal)
                || serialized.Contains("\"upgradeModification\":", StringComparison.Ordinal)
-               || serialized.Contains("\"customDescription\":", StringComparison.Ordinal);
+               || serialized.Contains("\"customDescription\":", StringComparison.Ordinal)
+               || serialized.Contains("\"enchantment\":", StringComparison.Ordinal)
+               || serialized.Contains("\"affliction\":", StringComparison.Ordinal);
     }
 
     private sealed class CompactSpec
@@ -229,7 +232,8 @@ internal static class CardModificationCodec
         public SortedDictionary<string, bool>? KeywordOverrides { get; set; }
 
         [JsonPropertyName("q")]
-        public CompactAttachment? Enchantment { get; set; }
+        [JsonConverter(typeof(CompactAttachmentListJsonConverter))]
+        public List<CompactAttachment>? Enchantments { get; set; }
 
         [JsonPropertyName("f")]
         public CompactAttachment? Affliction { get; set; }
@@ -257,7 +261,13 @@ internal static class CardModificationCodec
                 KeywordOverrides = spec.KeywordOverrides.Count == 0
                     ? null
                     : new SortedDictionary<string, bool>(spec.KeywordOverrides, StringComparer.Ordinal),
-                Enchantment = CompactAttachment.FromSpec(spec.Enchantment),
+                Enchantments = spec.Enchantments is null
+                    ? null
+                    : spec.Enchantments
+                        .Select(CompactAttachment.FromSpec)
+                        .Where(attachment => attachment is not null)
+                        .Select(attachment => attachment!)
+                        .ToList(),
                 Affliction = CompactAttachment.FromSpec(spec.Affliction),
                 UpgradeModification = spec.UpgradeModification.IsEmpty
                     ? null
@@ -285,7 +295,9 @@ internal static class CardModificationCodec
                 KeywordOverrides = KeywordOverrides is null
                     ? new Dictionary<string, bool>(StringComparer.Ordinal)
                     : new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
-                Enchantment = Enchantment?.ToSpec(),
+                Enchantments = Enchantments?
+                    .Select(attachment => attachment.ToSpec())
+                    .ToList(),
                 Affliction = Affliction?.ToSpec(),
                 UpgradeModification = UpgradeModification?.Clone()
                     ?? new CardUpgradeModificationSpec()
@@ -325,6 +337,63 @@ internal static class CardModificationCodec
                 Amount = Amount ?? 1,
                 Clear = Clear ?? false
             };
+        }
+    }
+
+    private sealed class CompactAttachmentListJsonConverter
+        : JsonConverter<List<CompactAttachment>?>
+    {
+        public override List<CompactAttachment>? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+                return null;
+
+            if (reader.TokenType == JsonTokenType.StartArray)
+            {
+                List<CompactAttachment> result = [];
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                {
+                    CompactAttachment? attachment =
+                        JsonSerializer.Deserialize<CompactAttachment>(ref reader, options);
+                    if (attachment is not null)
+                        result.Add(attachment);
+                }
+                return result;
+            }
+
+            if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                CompactAttachment? legacy =
+                    JsonSerializer.Deserialize<CompactAttachment>(ref reader, options);
+                if (legacy?.Clear == true)
+                    return [];
+                return legacy is null
+                       || string.IsNullOrWhiteSpace(legacy.ModelId)
+                    ? null
+                    : [legacy];
+            }
+
+            throw new JsonException("Expected an enchantment object or array.");
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            List<CompactAttachment>? value,
+            JsonSerializerOptions options)
+        {
+            if (value is null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            writer.WriteStartArray();
+            foreach (CompactAttachment attachment in value)
+                JsonSerializer.Serialize(writer, attachment, options);
+            writer.WriteEndArray();
         }
     }
 }

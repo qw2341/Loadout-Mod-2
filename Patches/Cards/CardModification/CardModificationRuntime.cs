@@ -13,6 +13,7 @@ using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
@@ -336,7 +337,7 @@ public static class CardModificationRuntime
 
             LoadoutKeywordRuntimePatches.EnableFromOverrides(spec.KeywordOverrides);
             XCostKeywordMechanics.SynchronizeEnergyCost(card, spec.KeywordOverrides, spec.EnergyCost);
-            ApplyEnchantmentSpec(card, spec.Enchantment);
+            ApplyEnchantmentSpecs(card, spec.Enchantments);
             if (includeAffliction)
                 ApplyAfflictionSpec(card, spec.Affliction);
         }
@@ -375,7 +376,7 @@ public static class CardModificationRuntime
             if (TryParseEnum(delta.Type, out CardType type)) CardTypeField?.SetValue(card, type);
             if (TryParseEnum(delta.Rarity, out CardRarity rarity)) CardRarityField?.SetValue(card, rarity);
             XCostKeywordMechanics.SynchronizeEnergyCost(card, delta.KeywordOverrides, delta.EnergyOverride);
-            ApplyEnchantmentSpec(card, delta.Enchantment);
+            ApplyEnchantmentSpecs(card, delta.Enchantments);
             if (includeAffliction) ApplyAfflictionSpec(card, delta.Affliction);
         }
         catch (Exception exception)
@@ -587,7 +588,8 @@ public static class CardModificationRuntime
                 delta.UpgradeModification.KeywordOverrides[key] = value;
             }
         }
-        if (!AttachmentEquals(desired.Enchantment, structuralBaseline?.Enchantment)) delta.Enchantment = desired.Enchantment?.Clone();
+        if (!AttachmentListsEqual(desired.Enchantments, structuralBaseline?.Enchantments))
+            delta.Enchantments = CardAttachmentSpec.CloneList(desired.Enchantments);
         if (!AttachmentEquals(desired.Affliction, structuralBaseline?.Affliction)) delta.Affliction = desired.Affliction?.Clone();
         delta.Normalize();
         return delta;
@@ -680,7 +682,7 @@ public static class CardModificationRuntime
         delta.PortraitPath = desired.PortraitPath;
         delta.BetaPortraitPath = desired.BetaPortraitPath;
         delta.KeywordOverrides = new Dictionary<string, bool>(desired.KeywordOverrides, StringComparer.Ordinal);
-        delta.Enchantment = desired.Enchantment?.Clone();
+        delta.Enchantments = CardAttachmentSpec.CloneList(desired.Enchantments);
         delta.Affliction = desired.Affliction?.Clone();
         delta.UpgradeModification = desired.UpgradeModification.Clone();
         delta.Normalize();
@@ -694,6 +696,23 @@ public static class CardModificationRuntime
         return left.Clear == right.Clear
                && left.Amount == right.Amount
                && string.Equals(left.ModelId, right.ModelId, StringComparison.Ordinal);
+    }
+
+    private static bool AttachmentListsEqual(
+        IReadOnlyList<CardAttachmentSpec>? left,
+        IReadOnlyList<CardAttachmentSpec>? right)
+    {
+        if (left is null)
+            return right is null;
+        if (right is null || left.Count != right.Count)
+            return false;
+
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (!AttachmentEquals(left[i], right[i]))
+                return false;
+        }
+        return true;
     }
 
     private static CardModificationSpec MaterializeSpec(
@@ -714,7 +733,7 @@ public static class CardModificationRuntime
             PortraitPath = delta.PortraitPath,
             BetaPortraitPath = delta.BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
-            Enchantment = delta.Enchantment?.Clone(),
+            Enchantments = CardAttachmentSpec.CloneList(delta.Enchantments),
             Affliction = delta.Affliction?.Clone(),
             UpgradeModification = MaterializeUpgradeModification(
                 structuralBaseline?.UpgradeModification,
@@ -756,7 +775,7 @@ public static class CardModificationRuntime
             PortraitPath = delta.PortraitPath,
             BetaPortraitPath = delta.BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
-            Enchantment = delta.Enchantment?.Clone(),
+            Enchantments = CardAttachmentSpec.CloneList(delta.Enchantments),
             Affliction = delta.Affliction?.Clone(),
             UpgradeModification = delta.UpgradeModification.Clone()
         };
@@ -942,7 +961,7 @@ public static class CardModificationRuntime
             return card;
 
         if (!PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? delta)
-            || (delta.Enchantment is null && delta.Affliction is null))
+            || (delta.Enchantments is null && delta.Affliction is null))
         {
             return card;
         }
@@ -1724,21 +1743,32 @@ public static class CardModificationRuntime
             SetEnergyCost(destination, source.EnergyCost.Canonical);
         }
 
-        if (previous.Enchantment is not null || next.Enchantment is not null)
-            CopyEnchantment(source, destination);
+        if (previous.Enchantments is not null || next.Enchantments is not null)
+            CopyEnchantments(source, destination);
         if (previous.Affliction is not null || next.Affliction is not null)
             CopyAffliction(source, destination);
     }
 
-    private static void CopyEnchantment(CardModel source, CardModel destination)
+    private static void CopyEnchantments(CardModel source, CardModel destination)
     {
-        if (destination.Enchantment is not null)
-            CardCmd.ClearEnchantment(destination);
-        if (source.Enchantment is not null
-            && TryResolveModel(source.Enchantment.Id.ToString(), ModelDb.DebugEnchantments, out EnchantmentModel? canonical))
+        if (!MultiEnchantmentBridge.Available)
         {
-            ForceApplyEnchantment(destination, canonical!, Math.Max(1, source.Enchantment.Amount));
+            if (destination.Enchantment is not null)
+                CardCmd.ClearEnchantment(destination);
+            if (source.Enchantment is not null
+                && TryResolveModel(source.Enchantment.Id.ToString(), ModelDb.DebugEnchantments, out EnchantmentModel? canonical))
+            {
+                ForceApplyEnchantment(destination, canonical!, Math.Max(1, source.Enchantment.Amount));
+            }
+            return;
         }
+
+        IReadOnlyList<EnchantmentModel> desired = MultiEnchantmentBridge.GetAll(source);
+        ReconcileEnchantments(
+            destination,
+            desired,
+            enchantment => MultiEnchantmentBridge.Copy(destination, enchantment),
+            stackAmountIncreases: false);
     }
 
     private static void CopyAffliction(CardModel source, CardModel destination)
@@ -2026,21 +2056,58 @@ public static class CardModificationRuntime
         }
     }
 
-    private static void ApplyEnchantmentSpec(CardModel card, CardAttachmentSpec? spec)
+    private static void ApplyEnchantmentSpecs(
+        CardModel card,
+        IReadOnlyList<CardAttachmentSpec>? specs)
     {
-        if (spec is null)
+        if (specs is null)
             return;
-        if (spec.Clear)
+
+        if (!MultiEnchantmentBridge.Available)
         {
+            CardAttachmentSpec? spec = specs.FirstOrDefault();
+            if (spec is null)
+            {
+                if (card.Enchantment is not null)
+                    CardCmd.ClearEnchantment(card);
+                return;
+            }
+
+            if (!TryResolveModel(spec.ModelId, ModelDb.DebugEnchantments, out EnchantmentModel? canonical))
+                return;
             if (card.Enchantment is not null)
                 CardCmd.ClearEnchantment(card);
+            ForceApplyEnchantment(card, canonical!, Math.Max(1, spec.Amount));
             return;
         }
-        if (!TryResolveModel(spec.ModelId, ModelDb.DebugEnchantments, out EnchantmentModel? canonical))
-            return;
-        if (card.Enchantment is not null)
-            CardCmd.ClearEnchantment(card);
-        ForceApplyEnchantment(card, canonical!, Math.Max(1, spec.Amount));
+
+        IReadOnlyList<EnchantmentModel> current = MultiEnchantmentBridge.GetAll(card);
+        List<EnchantmentModel> desired = [];
+        foreach (CardAttachmentSpec spec in specs)
+        {
+            EnchantmentModel? source;
+            if (TryResolveModel(spec.ModelId, ModelDb.DebugEnchantments, out EnchantmentModel? canonical))
+            {
+                source = canonical;
+            }
+            else
+            {
+                source = current.FirstOrDefault(enchantment =>
+                    spec.ModelId is not null && MatchesModelId(enchantment, spec.ModelId));
+            }
+            if (source is null)
+                continue;
+
+            EnchantmentModel mutable = CloneEnchantmentForApplication(source);
+            mutable.Amount = Math.Max(1, spec.Amount);
+            desired.Add(mutable);
+        }
+
+        ReconcileEnchantments(
+            card,
+            desired,
+            enchantment => MultiEnchantmentBridge.Add(card, enchantment, enchantment.Amount),
+            stackAmountIncreases: true);
     }
 
     private static void ApplyAfflictionSpec(CardModel card, CardAttachmentSpec? spec)
@@ -2070,6 +2137,70 @@ public static class CardModificationRuntime
         card.FinalizeUpgradeInternal();
     }
 
+    private static void ReconcileEnchantments(
+        CardModel card,
+        IReadOnlyList<EnchantmentModel> desired,
+        Func<EnchantmentModel, bool> add,
+        bool stackAmountIncreases)
+    {
+        List<EnchantmentModel> current = MultiEnchantmentBridge.GetAll(card).ToList();
+        bool[] matched = new bool[desired.Count];
+
+        foreach (EnchantmentModel existing in current)
+        {
+            int desiredIndex = FindUnmatchedEnchantment(desired, matched, existing);
+            if (desiredIndex < 0)
+            {
+                MultiEnchantmentBridge.Remove(card, existing);
+                continue;
+            }
+
+            matched[desiredIndex] = true;
+            EnchantmentModel target = desired[desiredIndex];
+            int currentAmount = Math.Max(1, existing.Amount);
+            int desiredAmount = Math.Max(1, target.Amount);
+            if (currentAmount == desiredAmount)
+                continue;
+
+            if (stackAmountIncreases && currentAmount < desiredAmount)
+            {
+                EnchantmentModel additional = CloneEnchantmentForApplication(target);
+                additional.Amount = desiredAmount - currentAmount;
+                MultiEnchantmentBridge.Add(card, additional, additional.Amount);
+                continue;
+            }
+
+            if (MultiEnchantmentBridge.Remove(card, existing))
+                add(target);
+        }
+
+        for (int i = 0; i < desired.Count; i++)
+        {
+            if (!matched[i])
+                add(desired[i]);
+        }
+    }
+
+    private static int FindUnmatchedEnchantment(
+        IReadOnlyList<EnchantmentModel> desired,
+        IReadOnlyList<bool> matched,
+        EnchantmentModel existing)
+    {
+        for (int i = 0; i < desired.Count; i++)
+        {
+            if (!matched[i] && MatchesModelId(desired[i], existing.Id.ToString()))
+                return i;
+        }
+        return -1;
+    }
+
+    private static EnchantmentModel CloneEnchantmentForApplication(EnchantmentModel source)
+    {
+        return source.IsCanonical
+            ? source.ToMutable()
+            : (EnchantmentModel)source.ClonePreservingMutability();
+    }
+
     private static void ForceApplyAffliction(CardModel card, AfflictionModel canonical, int amount)
     {
         if (card.Affliction is null)
@@ -2087,7 +2218,7 @@ public static class CardModificationRuntime
 
     private static void ApplyPermanentResidual(CardModel card, CardModificationDelta permanent)
     {
-        ApplyEnchantmentSpec(card, permanent.Enchantment);
+        ApplyEnchantmentSpecs(card, permanent.Enchantments);
         ApplyAfflictionSpec(card, permanent.Affliction);
     }
 

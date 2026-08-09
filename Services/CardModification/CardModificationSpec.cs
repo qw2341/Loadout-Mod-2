@@ -5,6 +5,7 @@ namespace Loadout.Services.CardModification;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 public enum CardModificationOperation
@@ -52,6 +53,93 @@ public sealed class CardAttachmentSpec
             Amount = Amount,
             Clear = Clear
         };
+    }
+
+    public static List<CardAttachmentSpec>? CloneList(
+        IReadOnlyList<CardAttachmentSpec>? source)
+    {
+        return source?.Select(spec => spec.Clone()).ToList();
+    }
+
+    public static List<CardAttachmentSpec>? NormalizeList(
+        List<CardAttachmentSpec>? source)
+    {
+        if (source is null)
+            return null;
+
+        List<CardAttachmentSpec> result = [];
+        foreach (CardAttachmentSpec? spec in source)
+        {
+            if (spec is null)
+                continue;
+            if (spec.Clear)
+                return [];
+
+            spec.ModelId = string.IsNullOrWhiteSpace(spec.ModelId)
+                ? null
+                : spec.ModelId.Trim();
+            spec.Amount = Math.Max(1, spec.Amount);
+            if (!spec.IsEmpty)
+                result.Add(spec);
+        }
+
+        return result;
+    }
+}
+
+public sealed class CardAttachmentListJsonConverter
+    : JsonConverter<List<CardAttachmentSpec>?>
+{
+    public override List<CardAttachmentSpec>? Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+            return null;
+
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            List<CardAttachmentSpec> result = [];
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+            {
+                CardAttachmentSpec? spec =
+                    JsonSerializer.Deserialize<CardAttachmentSpec>(ref reader, options);
+                if (spec is not null)
+                    result.Add(spec);
+            }
+            return result;
+        }
+
+        if (reader.TokenType == JsonTokenType.StartObject)
+        {
+            CardAttachmentSpec? legacy =
+                JsonSerializer.Deserialize<CardAttachmentSpec>(ref reader, options);
+            if (legacy?.Clear == true)
+                return [];
+            return legacy is null || legacy.IsEmpty
+                ? null
+                : [legacy];
+        }
+
+        throw new JsonException("Expected an enchantment object or array.");
+    }
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        List<CardAttachmentSpec>? value,
+        JsonSerializerOptions options)
+    {
+        if (value is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        writer.WriteStartArray();
+        foreach (CardAttachmentSpec spec in value)
+            JsonSerializer.Serialize(writer, spec, options);
+        writer.WriteEndArray();
     }
 }
 
@@ -174,7 +262,8 @@ public sealed class CardModificationSpec
     public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
 
     [JsonPropertyName("enchantment")]
-    public CardAttachmentSpec? Enchantment { get; set; }
+    [JsonConverter(typeof(CardAttachmentListJsonConverter))]
+    public List<CardAttachmentSpec>? Enchantments { get; set; }
 
     [JsonPropertyName("affliction")]
     public CardAttachmentSpec? Affliction { get; set; }
@@ -196,7 +285,7 @@ public sealed class CardModificationSpec
         && string.IsNullOrWhiteSpace(PortraitPath)
         && string.IsNullOrWhiteSpace(BetaPortraitPath)
         && KeywordOverrides.Count == 0
-        && (Enchantment is null || Enchantment.IsEmpty)
+        && Enchantments is null
         && (Affliction is null || Affliction.IsEmpty)
         && UpgradeModification.IsEmpty;
 
@@ -210,7 +299,7 @@ public sealed class CardModificationSpec
         || !string.IsNullOrWhiteSpace(Type)
         || !string.IsNullOrWhiteSpace(Rarity)
         || KeywordOverrides.Count > 0
-        || Enchantment is not null
+        || Enchantments is not null
         || Affliction is not null
         || !UpgradeModification.IsEmpty;
 
@@ -241,7 +330,7 @@ public sealed class CardModificationSpec
             PortraitPath = PortraitPath,
             BetaPortraitPath = BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
-            Enchantment = Enchantment?.Clone(),
+            Enchantments = CardAttachmentSpec.CloneList(Enchantments),
             Affliction = Affliction?.Clone(),
             UpgradeModification = UpgradeModification.Clone()
         };
@@ -276,8 +365,8 @@ public sealed class CardModificationSpec
             BetaPortraitPath = other.BetaPortraitPath;
         foreach ((string key, bool value) in other.KeywordOverrides)
             KeywordOverrides[key] = value;
-        if (other.Enchantment is not null)
-            Enchantment = other.Enchantment.Clone();
+        if (other.Enchantments is not null)
+            Enchantments = CardAttachmentSpec.CloneList(other.Enchantments);
         if (other.Affliction is not null)
             Affliction = other.Affliction.Clone();
         UpgradeModification.MergeFrom(other.UpgradeModification);
@@ -294,9 +383,7 @@ public sealed class CardModificationSpec
         UpgradeModification ??= new CardUpgradeModificationSpec();
         UpgradeModification.Normalize();
 
-        CardAttachmentSpec? enchantment = Enchantment;
-        NormalizeAttachment(ref enchantment);
-        Enchantment = enchantment;
+        Enchantments = CardAttachmentSpec.NormalizeList(Enchantments);
         CardAttachmentSpec? affliction = Affliction;
         NormalizeAttachment(ref affliction);
         Affliction = affliction;
@@ -380,7 +467,8 @@ public sealed class CardModificationDelta
     public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
 
     [JsonPropertyName("q")]
-    public CardAttachmentSpec? Enchantment { get; set; }
+    [JsonConverter(typeof(CardAttachmentListJsonConverter))]
+    public List<CardAttachmentSpec>? Enchantments { get; set; }
 
     [JsonPropertyName("f")]
     public CardAttachmentSpec? Affliction { get; set; }
@@ -403,7 +491,7 @@ public sealed class CardModificationDelta
         && string.IsNullOrWhiteSpace(PortraitPath)
         && string.IsNullOrWhiteSpace(BetaPortraitPath)
         && KeywordOverrides.Count == 0
-        && (Enchantment is null || Enchantment.IsEmpty)
+        && Enchantments is null
         && (Affliction is null || Affliction.IsEmpty)
         && UpgradeModification.IsEmpty;
 
@@ -418,7 +506,7 @@ public sealed class CardModificationDelta
         || !string.IsNullOrWhiteSpace(Type)
         || !string.IsNullOrWhiteSpace(Rarity)
         || KeywordOverrides.Count > 0
-        || Enchantment is not null
+        || Enchantments is not null
         || Affliction is not null
         || !UpgradeModification.IsEmpty;
 
@@ -450,7 +538,7 @@ public sealed class CardModificationDelta
             PortraitPath = PortraitPath,
             BetaPortraitPath = BetaPortraitPath,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
-            Enchantment = Enchantment?.Clone(),
+            Enchantments = CardAttachmentSpec.CloneList(Enchantments),
             Affliction = Affliction?.Clone(),
             UpgradeModification = UpgradeModification.Clone()
         };
@@ -476,9 +564,7 @@ public sealed class CardModificationDelta
         CustomDescription = NormalizeText(CustomDescription);
         PortraitPath = NormalizeText(PortraitPath);
         BetaPortraitPath = NormalizeText(BetaPortraitPath);
-        CardAttachmentSpec? enchantment = Enchantment;
-        NormalizeAttachment(ref enchantment);
-        Enchantment = enchantment;
+        Enchantments = CardAttachmentSpec.NormalizeList(Enchantments);
         CardAttachmentSpec? affliction = Affliction;
         NormalizeAttachment(ref affliction);
         Affliction = affliction;

@@ -12,6 +12,7 @@ using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Keywords;
 using Loadout.Services.Targets;
+using Loadout.Services.Compatibility;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
@@ -58,6 +59,7 @@ public partial class NCardModificationScreen : Control
     private CardModificationSpec _lastAppliedState = new();
     private VBoxContainer? _leftControls;
     private VBoxContainer? _rightControls;
+    private VBoxContainer? _attachmentControls;
     private VBoxContainer? _actionControls;
     private HBoxContainer? _cardEditActions;
     private Control? _nativeHoverTipAnchor;
@@ -792,23 +794,78 @@ public partial class NCardModificationScreen : Control
         if (_item is null || _rightControls is null)
             return;
 
-        AddAttachmentEditor(
-            LocMan.Loc("CARD_MOD_ENCHANTMENT", "Enchantment"),
-            ModelDb.DebugEnchantments
-                .Where(model => !IsInternalAttachment(model))
-                .OrderBy(GetAttachmentTitle, StringComparer.OrdinalIgnoreCase)
-                .ToList(),
-            _workingState.Enchantment,
-            _item.Model.Enchantment,
-            true,
-            spec =>
+        _attachmentControls = new VBoxContainer
+        {
+            Name = "AttachmentControls",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        _attachmentControls.AddThemeConstantOverride("separation", 0);
+        _rightControls.AddChild(_attachmentControls);
+        PopulateAttachmentControls();
+    }
+
+    private void RebuildAttachmentControls()
+    {
+        if (_attachmentControls is null
+            || !GodotObject.IsInstanceValid(_attachmentControls)
+            || _attachmentControls.GetParent() is null)
+        {
+            return;
+        }
+
+        ClearChildren(_attachmentControls);
+        PopulateAttachmentControls();
+    }
+
+    private void PopulateAttachmentControls()
+    {
+        if (_item is null || _attachmentControls is null)
+            return;
+
+        List<EnchantmentModel> enchantments = ModelDb.DebugEnchantments
+            .Where(model => !IsInternalAttachment(model))
+            .OrderBy(GetAttachmentTitle, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (MultiEnchantmentBridge.Available)
+        {
+            AddMultiEnchantmentEditor(
+                _attachmentControls,
+                LocMan.Loc("CARD_MOD_ENCHANTMENT", "Enchantment"),
+                enchantments);
+        }
+        else
+        {
+            CardAttachmentSpec? enchantment = _workingState.Enchantments switch
             {
-                _workingState.Enchantment = spec;
-                _temporaryState.Enchantment = spec?.Clone();
-            },
-            enchantment => enchantment.Icon);
+                null => null,
+                { Count: 0 } => new CardAttachmentSpec { Clear = true },
+                _ => _workingState.Enchantments[0]
+            };
+
+            AddAttachmentEditor(
+                _attachmentControls,
+                LocMan.Loc("CARD_MOD_ENCHANTMENT", "Enchantment"),
+                enchantments,
+                enchantment,
+                _item.Model.Enchantment,
+                true,
+                spec =>
+                {
+                    List<CardAttachmentSpec>? value = spec switch
+                    {
+                        null => null,
+                        { Clear: true } => [],
+                        _ => [spec.Clone()]
+                    };
+                    SetEnchantmentDraft(value);
+                },
+                enchantment => enchantment.Icon);
+        }
 
         AddAttachmentEditor(
+            _attachmentControls,
             LocMan.Loc("CARD_MOD_AFFLICTION", "Affliction"),
             ModelDb.DebugAfflictions
                 .Where(model => !IsInternalAttachment(model))
@@ -867,6 +924,158 @@ public partial class NCardModificationScreen : Control
         _temporaryState.UpgradeModification = draft.Clone();
         ApplyWorkingState();
         CommitPendingTemporaryModification();
+    }
+
+    private void AddMultiEnchantmentEditor(
+        VBoxContainer container,
+        string label,
+        IReadOnlyList<EnchantmentModel> models)
+    {
+        container.AddChild(CreateLabel(label, 22, StsColors.gold));
+
+        List<CardAttachmentSpec> specs = GetEnchantmentDraftSnapshot();
+        IReadOnlyList<EnchantmentModel> current = _item is null
+            ? Array.Empty<EnchantmentModel>()
+            : MultiEnchantmentBridge.GetAll(_item.Model);
+
+        for (int index = 0; index < specs.Count; index++)
+        {
+            int capturedIndex = index;
+            CardAttachmentSpec spec = specs[index];
+            EnchantmentModel? model = models.FirstOrDefault(candidate =>
+                    spec.ModelId is not null && MatchesModelId(candidate, spec.ModelId))
+                ?? current.FirstOrDefault(candidate =>
+                    spec.ModelId is not null && MatchesModelId(candidate, spec.ModelId));
+            string title = model is null
+                ? spec.ModelId ?? LocMan.Loc("CARD_MOD_ENCHANTMENT", "Enchantment")
+                : GetAttachmentTitle(model);
+
+            VBoxContainer entry = new()
+            {
+                Name = $"Enchantment_{capturedIndex}",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+
+            HBoxContainer row = new()
+            {
+                CustomMinimumSize = new Vector2(0f, 44f),
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                MouseFilter = MouseFilterEnum.Pass
+            };
+            row.AddThemeConstantOverride("separation", 8);
+
+            MegaLabel currentLabel = CreateLabel(title, 20, StsColors.cream);
+            currentLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            row.AddChild(currentLabel);
+            if (model is not null)
+                AttachHoverTips(row, () => GetAttachmentHoverTips(model));
+
+            NLoadoutActionButton removeButton = CreateActionButton(
+                $"remove_enchantment_{capturedIndex}",
+                LocMan.Loc("REMOVE", "Remove"));
+            removeButton.CustomMinimumSize = new Vector2(120f, 42f);
+            ConnectActionButton(removeButton, () =>
+            {
+                List<CardAttachmentSpec> next = GetEnchantmentDraftSnapshot();
+                if (capturedIndex >= next.Count)
+                    return;
+
+                next.RemoveAt(capturedIndex);
+                SetEnchantmentDraft(next);
+                ApplyWorkingState();
+                RebuildAttachmentControls();
+            });
+            row.AddChild(removeButton);
+            entry.AddChild(row);
+
+            AddStepperRow(
+                entry,
+                LocMan.Loc("CARD_MOD_AMOUNT", "Amount"),
+                Math.Max(1, spec.Amount),
+                1,
+                999,
+                value =>
+                {
+                    List<CardAttachmentSpec> next = GetEnchantmentDraftSnapshot();
+                    if (capturedIndex >= next.Count)
+                        return;
+
+                    next[capturedIndex].Amount = value;
+                    SetEnchantmentDraft(next);
+                    ApplyWorkingState();
+                });
+            entry.AddChild(CreateSpacer(4f));
+            container.AddChild(entry);
+        }
+
+        IReadOnlyList<LoadoutDropdownOption> options = models
+            .Where(model => !specs.Any(spec =>
+                spec.ModelId is not null && MatchesModelId(model, spec.ModelId)))
+            .Select(model =>
+            {
+                EnchantmentModel localModel = model;
+                return new LoadoutDropdownOption(
+                    localModel.Id.ToString(),
+                    GetAttachmentTitle(localModel),
+                    () => GetAttachmentHoverTips(localModel),
+                    GetAttachmentIconSafely(localModel, enchantment => enchantment.Icon));
+            })
+            .ToList();
+
+        NLoadoutDropdown dropdown = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 52f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            DropdownWidth = 420f
+        };
+        dropdown.SetItems(
+            LocMan.Loc("ADD", "Add"),
+            options,
+            options.FirstOrDefault().Id ?? NoneOptionId);
+        dropdown.SelectedItemChanged += id =>
+        {
+            if (id == NoneOptionId)
+                return;
+
+            List<CardAttachmentSpec> next = GetEnchantmentDraftSnapshot();
+            next.Add(new CardAttachmentSpec { ModelId = id, Amount = 1 });
+            SetEnchantmentDraft(next);
+            ApplyWorkingState();
+            Callable.From(RebuildAttachmentControls).CallDeferred();
+        };
+        container.AddChild(dropdown);
+        if (options.Count == 0)
+        {
+            Callable.From(() =>
+            {
+                if (GodotObject.IsInstanceValid(dropdown))
+                    dropdown.SetEnabled(false);
+            }).CallDeferred();
+        }
+        container.AddChild(CreateSpacer(8f));
+    }
+
+    private List<CardAttachmentSpec> GetEnchantmentDraftSnapshot()
+    {
+        if (_workingState.Enchantments is not null)
+            return CardAttachmentSpec.CloneList(_workingState.Enchantments) ?? [];
+        if (_item is null)
+            return [];
+
+        return MultiEnchantmentBridge.GetAll(_item.Model)
+            .Select(enchantment => new CardAttachmentSpec
+            {
+                ModelId = enchantment.Id.ToString(),
+                Amount = Math.Max(1, enchantment.Amount)
+            })
+            .ToList();
+    }
+
+    private void SetEnchantmentDraft(List<CardAttachmentSpec>? specs)
+    {
+        _workingState.Enchantments = CardAttachmentSpec.CloneList(specs);
+        _temporaryState.Enchantments = CardAttachmentSpec.CloneList(specs);
     }
 
     private void AddKeywordControls()
@@ -938,6 +1147,7 @@ public partial class NCardModificationScreen : Control
     }
 
     private void AddAttachmentEditor<TModel>(
+        VBoxContainer container,
         string label,
         IReadOnlyList<TModel> models,
         CardAttachmentSpec? savedSpec,
@@ -947,10 +1157,7 @@ public partial class NCardModificationScreen : Control
         Func<TModel, Texture2D?>? iconProvider = null)
         where TModel : AbstractModel
     {
-        if (_rightControls is null)
-            return;
-
-        _rightControls.AddChild(CreateLabel(label, 22, StsColors.gold));
+        container.AddChild(CreateLabel(label, 22, StsColors.gold));
 
         string selectedId = savedSpec?.Clear == true
             ? NoneOptionId
@@ -986,22 +1193,22 @@ public partial class NCardModificationScreen : Control
             {
                 setSpec(new CardAttachmentSpec { Clear = true });
                 ApplyWorkingState();
-                RebuildControls();
+                RebuildAttachmentControls();
             });
             currentRow.AddChild(removeButton);
-            _rightControls.AddChild(currentRow);
+            container.AddChild(currentRow);
 
             if (showAmountEditor)
             {
                 int currentAmount = Math.Max(1, savedSpec?.Amount ?? GetAttachmentAmount(currentModel));
-                AddStepperRow(_rightControls, LocMan.Loc("CARD_MOD_AMOUNT", "Amount"), currentAmount, 1, 999, value =>
+                AddStepperRow(container, LocMan.Loc("CARD_MOD_AMOUNT", "Amount"), currentAmount, 1, 999, value =>
                 {
                     setSpec(new CardAttachmentSpec { ModelId = selectedId, Amount = value });
                     ApplyWorkingState();
                 });
             }
 
-            _rightControls.AddChild(CreateSpacer(8f));
+            container.AddChild(CreateSpacer(8f));
             return;
         }
 
@@ -1021,8 +1228,8 @@ public partial class NCardModificationScreen : Control
         {
             MegaLabel emptyLabel = CreateLabel(LocMan.Loc("CARD_MOD_NO_VALID_ATTACHMENTS", "No valid attachments available"), 18, StsColors.cream);
             emptyLabel.CustomMinimumSize = new Vector2(0f, 38f);
-            _rightControls.AddChild(emptyLabel);
-            _rightControls.AddChild(CreateSpacer(8f));
+            container.AddChild(emptyLabel);
+            container.AddChild(CreateSpacer(8f));
             return;
         }
 
@@ -1040,10 +1247,10 @@ public partial class NCardModificationScreen : Control
 
             setSpec(new CardAttachmentSpec { ModelId = id, Amount = 1 });
             ApplyWorkingState();
-            Callable.From(RebuildControls).CallDeferred();
+            Callable.From(RebuildAttachmentControls).CallDeferred();
         };
-        _rightControls.AddChild(dropdown);
-        _rightControls.AddChild(CreateSpacer(8f));
+        container.AddChild(dropdown);
+        container.AddChild(CreateSpacer(8f));
     }
 
     private static Texture2D? GetAttachmentIconSafely<TModel>(
