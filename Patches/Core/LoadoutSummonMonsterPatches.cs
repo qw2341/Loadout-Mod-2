@@ -5,6 +5,7 @@ namespace Loadout.Patches.Core;
 using System;
 using HarmonyLib;
 using Loadout.Services.Actions;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 
 [HarmonyPatch(typeof(ConditionalBranchState), nameof(ConditionalBranchState.GetNextState))]
@@ -12,7 +13,7 @@ public static class LoadoutSummonMonsterConditionalBranchPatch
 {
     [HarmonyFinalizer]
     public static Exception? Finalizer(
-        ConditionalBranchState __instance,
+        Creature __0,
         ref string __result,
         Exception? __exception)
     {
@@ -20,7 +21,7 @@ public static class LoadoutSummonMonsterConditionalBranchPatch
             return null;
 
         if (!LoadoutSummonMonsterService.TryGetDefaultIntentStateId(
-                __instance,
+                __0,
                 __exception,
                 out string stateId))
         {

@@ -101,27 +101,29 @@ public static class LoadoutSummonMonsterService
     }
 
     internal static bool TryGetDefaultIntentStateId(
-        ConditionalBranchState branch,
+        Creature owner,
         Exception exception,
         out string stateId)
     {
         stateId = string.Empty;
         MonsterModel? monster = IntentFallbackMonster.Value;
         if (monster is null
+            || !ReferenceEquals(owner.Monster, monster)
             || monster.MoveStateMachine is null
-            || !monster.MoveStateMachine.States.ContainsValue(branch)
             || exception is not InvalidOperationException
             || !exception.Message.StartsWith("No valid next state found", StringComparison.Ordinal))
         {
             return false;
         }
 
-        MoveState? fallback = monster.MoveStateMachine.States.Values
+        List<MoveState> fallbackMoves = monster.MoveStateMachine.States.Values
             .OfType<MoveState>()
-            .FirstOrDefault(move => move.Intents.Count > 0);
-        if (fallback is null)
+            .Where(move => move.Intents.Count > 0)
+            .ToList();
+        if (fallbackMoves.Count == 0)
             return false;
 
+        MoveState fallback = monster.RunRng!.MonsterAi.NextItem(fallbackMoves)!;
         stateId = fallback.Id;
         return true;
     }
