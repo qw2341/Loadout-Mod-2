@@ -30,8 +30,6 @@ public partial class NCardKeywordEditor : VBoxContainer
     private const float ContentWidth = 426f;
     private const float ToggleHeight = 44f;
     private const float RowSeparation = 2f;
-    private const float ScrollbarWidth = 48f;
-    private const float ScrollbarEndCapSize = 48f;
     private const float GroupHeaderHeight = 36f;
     private const float HeaderGridGap = 2f;
     private const float GroupSeparation = 10f;
@@ -157,7 +155,7 @@ public partial class NCardKeywordEditor : VBoxContainer
         bool needsScrolling = contentHeight > maximumVisibleHeight;
         float visibleHeight = Math.Min(contentHeight, maximumVisibleHeight);
         float contentWidth = needsScrolling
-            ? ContentWidth - ScrollbarWidth
+            ? ContentWidth - NLoadoutNativeScrollbar.Width
             : ContentWidth;
 
         VBoxContainer content = CreateContent(blocks, contentWidth);
@@ -182,20 +180,20 @@ public partial class NCardKeywordEditor : VBoxContainer
             MouseFilter = MouseFilterEnum.Ignore
         };
         mask.SetAnchorsPreset(LayoutPreset.FullRect);
-        mask.OffsetRight = -ScrollbarWidth;
+        mask.OffsetRight = -NLoadoutNativeScrollbar.Width;
         scroll.AddChild(mask);
 
         content.Name = "Content";
         content.SetAnchorsPreset(LayoutPreset.TopWide);
         mask.AddChild(content);
 
-        NScrollbar scrollbar = CreateGameScrollbar();
+        NScrollbar scrollbar = NLoadoutNativeScrollbar.Create();
         scrollbar.Name = "Scrollbar";
-        scrollbar.CustomMinimumSize = new Vector2(ScrollbarWidth, 0f);
+        scrollbar.CustomMinimumSize = new Vector2(NLoadoutNativeScrollbar.Width, 0f);
         scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
-        scrollbar.OffsetLeft = -ScrollbarWidth;
-        scrollbar.OffsetTop = ScrollbarEndCapSize;
-        scrollbar.OffsetBottom = -ScrollbarEndCapSize;
+        scrollbar.OffsetLeft = -NLoadoutNativeScrollbar.Width;
+        scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
+        scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
         scroll.AddChild(scrollbar);
         scroll.DisableScrollingIfContentFits();
         contentHost.AddChild(scroll);
@@ -473,76 +471,6 @@ public partial class NCardKeywordEditor : VBoxContainer
             : (rows * ToggleHeight) + ((rows - 1) * RowSeparation);
     }
 
-    private static NScrollbar CreateGameScrollbar()
-    {
-        NScrollbar scrollbar = new()
-        {
-            MinValue = 0,
-            MaxValue = 100,
-            Step = 1,
-            MouseFilter = MouseFilterEnum.Stop
-        };
-        TextureRect trackBody = new()
-        {
-            Name = "TrackBody",
-            Modulate = new Color(0.164706f, 0.290196f, 0.321569f, 1f),
-            Texture = LoadTexture(
-                "res://images/atlases/ui_atlas.sprites/scrollbar_track_center.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        trackBody.SetAnchorsPreset(LayoutPreset.FullRect);
-        scrollbar.AddChild(trackBody);
-
-        TextureRect trackTop = new()
-        {
-            Name = "TrackTop",
-            Modulate = trackBody.Modulate,
-            Texture = LoadTexture(
-                "res://images/atlases/ui_atlas.sprites/scrollbar_track_edge2.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        trackTop.SetAnchorsPreset(LayoutPreset.TopWide);
-        trackTop.OffsetTop = -ScrollbarEndCapSize;
-        scrollbar.AddChild(trackTop);
-
-        TextureRect trackBottom = new()
-        {
-            Name = "TrackBot",
-            Modulate = trackBody.Modulate,
-            Texture = trackTop.Texture,
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            FlipV = true,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        trackBottom.SetAnchorsPreset(LayoutPreset.BottomWide);
-        trackBottom.OffsetBottom = ScrollbarEndCapSize;
-        scrollbar.AddChild(trackBottom);
-
-        TextureRect handle = new()
-        {
-            Name = "Handle",
-            UniqueNameInOwner = true,
-            Texture = LoadTexture(
-                "res://images/atlases/ui_atlas.sprites/scrollbar_train_large.tres"),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            PivotOffset = new Vector2(36f, 36f),
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        handle.Position = new Vector2(-12f, -36f);
-        handle.Size = new Vector2(72f, 72f);
-        scrollbar.AddChild(handle);
-        AssignOwnerRecursive(scrollbar, scrollbar);
-        return scrollbar;
-    }
-
-    private static Texture2D? LoadTexture(string path)
-    {
-        return ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
-    }
-
     private static MegaLabel CreateSectionLabel(string text)
     {
         MegaLabel label = CreateLabel(text, 25, StsColors.gold);
@@ -626,12 +554,4 @@ public partial class NCardKeywordEditor : VBoxContainer
         }
     }
 
-    private static void AssignOwnerRecursive(Node root, Node owner)
-    {
-        foreach (Node child in root.GetChildren())
-        {
-            child.Owner = owner;
-            AssignOwnerRecursive(child, owner);
-        }
-    }
 }

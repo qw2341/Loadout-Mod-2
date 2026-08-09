@@ -1203,6 +1203,9 @@ public static class CardModificationRuntime
         List<LoadoutChangedCard> changedCards = [];
         HashSet<ulong> changedPlayers = [];
         HashSet<CardModel> refreshedCombatCards = [];
+        bool restoreAfterEnchantmentClear = RemovedPermanentEnchantments(
+            previousPermanent,
+            PermanentCardModificationStore.Get(cardId));
         foreach (Player owner in runState!.Players)
         {
             IReadOnlyList<CardModel> deck = owner.Deck.Cards;
@@ -1215,7 +1218,11 @@ public static class CardModificationRuntime
                 CardModificationSpec previous = ReferenceEquals(card, selectedCard) && selectedPrevious is not null
                     ? selectedPrevious.Clone()
                     : Merge(previousPermanent, GetTemporarySpec(card));
-                RebuildCard(card, previous, forceAllOwnedFields: ReferenceEquals(card, selectedCard));
+                RebuildCard(
+                    card,
+                    previous,
+                    forceAllOwnedFields: restoreAfterEnchantmentClear
+                        || ReferenceEquals(card, selectedCard));
                 CardModificationSpec next = GetEffectiveSpec(card);
                 LoadoutCardVisualRefreshKind kind = GetVisualRefreshKind(previous, next);
                 RefreshLiveCardVisuals(card, kind);
@@ -1228,7 +1235,11 @@ public static class CardModificationRuntime
                     CardModificationSpec combatPrevious = ReferenceEquals(combatCard, selectedCard) && selectedPrevious is not null
                         ? selectedPrevious.Clone()
                         : Merge(previousPermanent, GetTemporarySpec(combatCard));
-                    RebuildCard(combatCard, combatPrevious, forceAllOwnedFields: ReferenceEquals(combatCard, selectedCard));
+                    RebuildCard(
+                        combatCard,
+                        combatPrevious,
+                        forceAllOwnedFields: restoreAfterEnchantmentClear
+                            || ReferenceEquals(combatCard, selectedCard));
                     NotifyCombatCardChanged(combatCard, combatPrevious);
                     refreshedCombatCards.Add(combatCard);
                 }
@@ -1265,6 +1276,13 @@ public static class CardModificationRuntime
             return;
 
         HashSet<ModelId> changedIdsSet = new(changedIds);
+        HashSet<ModelId> restoreAfterEnchantmentClear = forceAllOwnedFields
+            ? []
+            : changedIds
+                .Where(cardId => RemovedPermanentEnchantments(
+                    previous?.GetValueOrDefault(cardId),
+                    PermanentCardModificationStore.Get(cardId)))
+                .ToHashSet();
         List<LoadoutChangedCard> changedCards = [];
         HashSet<ulong> changedPlayers = [];
         foreach (Player owner in runState!.Players)
@@ -1279,7 +1297,9 @@ public static class CardModificationRuntime
                 CardModificationSpec previousEffective = Merge(
                     previous?.GetValueOrDefault(card.Id),
                     GetTemporarySpec(card));
-                RebuildCard(card, previousEffective, forceAllOwnedFields);
+                bool restoreAllOwnedFields = forceAllOwnedFields
+                    || restoreAfterEnchantmentClear.Contains(card.Id);
+                RebuildCard(card, previousEffective, restoreAllOwnedFields);
                 CardModificationSpec next = GetEffectiveSpec(card);
                 LoadoutCardVisualRefreshKind kind = GetVisualRefreshKind(previousEffective, next);
                 RefreshLiveCardVisuals(card, kind);
@@ -1292,7 +1312,7 @@ public static class CardModificationRuntime
                     CardModificationSpec combatPrevious = Merge(
                         previous?.GetValueOrDefault(combatCard.Id),
                         GetTemporarySpec(combatCard));
-                    RebuildCard(combatCard, combatPrevious, forceAllOwnedFields);
+                    RebuildCard(combatCard, combatPrevious, restoreAllOwnedFields);
                     NotifyCombatCardChanged(combatCard, combatPrevious);
                 }
             }
@@ -1307,6 +1327,14 @@ public static class CardModificationRuntime
                 changedCards);
         }
         LoadoutKeywordRuntimePatches.Reconcile();
+    }
+
+    private static bool RemovedPermanentEnchantments(
+        CardModificationSpec? previous,
+        CardModificationSpec? current)
+    {
+        return previous?.Enchantments is { Count: > 0 }
+            && current?.Enchantments is not { Count: > 0 };
     }
 
     private static void ApplyTemporaryWithoutBroadcast(

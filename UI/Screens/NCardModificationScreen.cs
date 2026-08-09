@@ -49,6 +49,9 @@ public partial class NCardModificationScreen : Control
     private const float HoverTipWidth = 360f;
     private const float HoverTipMinHeight = 220f;
     private const float HoverTipMaxHeight = 460f;
+    private const float EnchantmentContentWidth = 426f;
+    private const float EnchantmentEntryHeight = 100f;
+    private const int VisibleEnchantmentEntries = 2;
 
     private LoadoutOwnedItem<CardModel>? _item;
     private List<LoadoutOwnedItem<CardModel>> _items = [];
@@ -938,6 +941,21 @@ public partial class NCardModificationScreen : Control
             ? Array.Empty<EnchantmentModel>()
             : MultiEnchantmentBridge.GetAll(_item.Model);
 
+        bool needsScrolling = specs.Count > VisibleEnchantmentEntries;
+        float contentWidth = needsScrolling
+            ? EnchantmentContentWidth - NLoadoutNativeScrollbar.Width
+            : EnchantmentContentWidth;
+        VBoxContainer entries = new()
+        {
+            Name = "EnchantmentEntries",
+            CustomMinimumSize = new Vector2(
+                contentWidth,
+                specs.Count * EnchantmentEntryHeight),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        entries.AddThemeConstantOverride("separation", 0);
+
         for (int index = 0; index < specs.Count; index++)
         {
             int capturedIndex = index;
@@ -956,6 +974,7 @@ public partial class NCardModificationScreen : Control
                 SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 MouseFilter = MouseFilterEnum.Ignore
             };
+            entry.AddThemeConstantOverride("separation", 4);
 
             HBoxContainer row = new()
             {
@@ -1006,7 +1025,58 @@ public partial class NCardModificationScreen : Control
                     ApplyWorkingState();
                 });
             entry.AddChild(CreateSpacer(4f));
-            container.AddChild(entry);
+            entries.AddChild(entry);
+        }
+
+        if (needsScrolling)
+        {
+            NScrollableContainer scroll = new()
+            {
+                Name = "EnchantmentScroll",
+                CustomMinimumSize = new Vector2(
+                    EnchantmentContentWidth,
+                    VisibleEnchantmentEntries * EnchantmentEntryHeight),
+                SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+                MouseFilter = MouseFilterEnum.Stop
+            };
+            Control mask = new()
+            {
+                Name = "Mask",
+                ClipContents = true,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            mask.SetAnchorsPreset(LayoutPreset.FullRect);
+            mask.OffsetRight = -NLoadoutNativeScrollbar.Width;
+            scroll.AddChild(mask);
+
+            entries.Name = "Content";
+            entries.SetAnchorsPreset(LayoutPreset.TopWide);
+            mask.AddChild(entries);
+
+            NScrollbar scrollbar = NLoadoutNativeScrollbar.Create();
+            scrollbar.Name = "Scrollbar";
+            scrollbar.CustomMinimumSize = new Vector2(
+                NLoadoutNativeScrollbar.Width,
+                0f);
+            scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
+            scrollbar.OffsetLeft = -NLoadoutNativeScrollbar.Width;
+            scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
+            scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
+            scroll.AddChild(scrollbar);
+            scroll.DisableScrollingIfContentFits();
+            container.AddChild(scroll);
+            Callable.From(() =>
+            {
+                if (GodotObject.IsInstanceValid(scroll)
+                    && GodotObject.IsInstanceValid(entries))
+                {
+                    scroll.SetContent(entries);
+                }
+            }).CallDeferred();
+        }
+        else
+        {
+            container.AddChild(entries);
         }
 
         IReadOnlyList<LoadoutDropdownOption> options = models
