@@ -641,23 +641,41 @@ public static class CreatureManipulationStateService
         float x = source.Position.X;
         float y = source.Position.Y;
         float sourceHalfWidth = MathF.Max(45f, source.Visuals.Bounds.Size.X * 0.5f);
-        IReadOnlyList<NCreature> nodes = NCombatRoom.Instance?.CreatureNodes.ToList() ?? [];
+        IReadOnlyList<NCreature> nodes = NCombatRoom.Instance?.CreatureNodes
+            .Where(node =>
+                GodotObject.IsInstanceValid(node)
+                && node.Entity.IsMonster
+                && node.Entity.Side == CombatSide.Enemy)
+            .ToList() ?? [];
         float sourceHalfHeight = MathF.Max(45f, source.Visuals.Bounds.Size.Y * 0.5f);
+        bool foundPosition = false;
 
         for (int attempt = 0; attempt < Math.Max(1, nodes.Count + 1); attempt++)
         {
             x += sourceHalfWidth * 2f + 70f;
+            if (x > 900f)
+                break;
+
             bool overlaps = nodes.Any(node =>
-                GodotObject.IsInstanceValid(node)
-                && MathF.Abs(node.Position.X - x)
+                MathF.Abs(node.Position.X - x)
                 < sourceHalfWidth + MathF.Max(45f, node.Visuals.Bounds.Size.X * 0.5f) + 20f
                 && MathF.Abs(node.Position.Y - y)
                 < sourceHalfHeight + MathF.Max(45f, node.Visuals.Bounds.Size.Y * 0.5f) + 20f);
             if (!overlaps)
+            {
+                foundPosition = true;
                 break;
+            }
         }
 
-        return new Vector2(x, y);
+        if (!foundPosition)
+        {
+            int index = nodes.Count;
+            x = 160f + index % 4 * 205f;
+            y = 200f + index / 4 % 3 * 74f;
+        }
+
+        return new Vector2(Mathf.Clamp(x, 120f, 900f), Mathf.Clamp(y, 120f, 380f));
     }
 
     private static async Task ApplyDuplicateAsync(
@@ -675,7 +693,7 @@ public static class CreatureManipulationStateService
             return;
         }
 
-        Creature duplicate = await CreatureCmd.Add(
+        Creature duplicate = await LoadoutSummonMonsterService.AddMonsterWithIntentFallbackAsync(
             canonical.ToMutable(),
             combatState,
             CombatSide.Enemy,

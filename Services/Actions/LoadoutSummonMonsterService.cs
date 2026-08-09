@@ -5,6 +5,7 @@ namespace Loadout.Services.Actions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using MegaCrit.Sts2.Core.Combat;
@@ -13,12 +14,15 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
 public static class LoadoutSummonMonsterService
 {
+    private static readonly AsyncLocal<MonsterModel?> IntentFallbackMonster = new();
+
     public static bool RequestSummonMonster(ModelId monsterId)
     {
         if (!CombatManager.Instance.IsInProgress || LoadoutModelIdSafety.IsNoneOrEmpty(monsterId))
@@ -63,7 +67,11 @@ public static class LoadoutSummonMonsterService
             MonsterModel monster = canonicalMonster.ToMutable();
             string? slotName = GetNextAvailableMonsterSlot(combatState);
             IReadOnlyList<NCreature> existingEnemyNodes = GetCurrentEnemyNodes();
-            Creature creature = await CreatureCmd.Add(monster, combatState, CombatSide.Enemy, slotName);
+            Creature creature = await AddMonsterWithIntentFallbackAsync(
+                monster,
+                combatState,
+                CombatSide.Enemy,
+                slotName);
 
             if (slotName is null)
                 PositionUnslottedSummonedMonster(creature, existingEnemyNodes);
@@ -72,6 +80,50 @@ public static class LoadoutSummonMonsterService
         {
             GD.PushError($"LoadoutSummonMonster: failed to summon monster '{monsterId}': {exception}");
         }
+    }
+
+    internal static async Task<Creature> AddMonsterWithIntentFallbackAsync(
+        MonsterModel monster,
+        CombatState combatState,
+        CombatSide side,
+        string? slotName)
+    {
+        MonsterModel? previous = IntentFallbackMonster.Value;
+        IntentFallbackMonster.Value = monster;
+        try
+        {
+            return await CreatureCmd.Add(monster, combatState, side, slotName);
+        }
+        finally
+        {
+            IntentFallbackMonster.Value = previous;
+        }
+    }
+
+    internal static bool TryGetDefaultIntentStateId(
+        ConditionalBranchState branch,
+        Exception exception,
+        out string stateId)
+    {
+        stateId = string.Empty;
+        MonsterModel? monster = IntentFallbackMonster.Value;
+        if (monster is null
+            || monster.MoveStateMachine is null
+            || !monster.MoveStateMachine.States.ContainsValue(branch)
+            || exception is not InvalidOperationException
+            || !exception.Message.StartsWith("No valid next state found", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        MoveState? fallback = monster.MoveStateMachine.States.Values
+            .OfType<MoveState>()
+            .FirstOrDefault(move => move.Intents.Count > 0);
+        if (fallback is null)
+            return false;
+
+        stateId = fallback.Id;
+        return true;
     }
 
     private static string? GetNextAvailableMonsterSlot(CombatState combatState)
