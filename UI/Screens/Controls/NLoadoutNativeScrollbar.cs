@@ -10,6 +10,10 @@ public static class NLoadoutNativeScrollbar
     public const float Width = 48f;
     public const float EndCapSize = 48f;
 
+    private static Texture2D? _trackBodyTexture;
+    private static Texture2D? _trackEdgeTexture;
+    private static Texture2D? _handleTexture;
+
     public static NScrollbar Create()
     {
         NScrollbar scrollbar = new()
@@ -23,7 +27,7 @@ public static class NLoadoutNativeScrollbar
         {
             Name = "TrackBody",
             Modulate = new Color(0.164706f, 0.290196f, 0.321569f, 1f),
-            Texture = LoadTexture(
+            Texture = _trackBodyTexture ??= LoadTexture(
                 "res://images/atlases/ui_atlas.sprites/scrollbar_track_center.tres"),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             MouseFilter = Control.MouseFilterEnum.Ignore
@@ -35,7 +39,7 @@ public static class NLoadoutNativeScrollbar
         {
             Name = "TrackTop",
             Modulate = trackBody.Modulate,
-            Texture = LoadTexture(
+            Texture = _trackEdgeTexture ??= LoadTexture(
                 "res://images/atlases/ui_atlas.sprites/scrollbar_track_edge2.tres"),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             MouseFilter = Control.MouseFilterEnum.Ignore
@@ -61,7 +65,7 @@ public static class NLoadoutNativeScrollbar
         {
             Name = "Handle",
             UniqueNameInOwner = true,
-            Texture = LoadTexture(
+            Texture = _handleTexture ??= LoadTexture(
                 "res://images/atlases/ui_atlas.sprites/scrollbar_train_large.tres"),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
