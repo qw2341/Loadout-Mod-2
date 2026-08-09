@@ -13,7 +13,10 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Monsters;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
@@ -126,6 +129,75 @@ public static class LoadoutSummonMonsterService
         MoveState fallback = monster.RunRng!.MonsterAi.NextItem(fallbackMoves)!;
         stateId = fallback.Id;
         return true;
+    }
+
+    internal static bool TryHandleDecimillipedeSegmentAdded(
+        DecimillipedeSegment segment,
+        out Task result)
+    {
+        if (!ReferenceEquals(IntentFallbackMonster.Value, segment)
+            || TryFindUnoccupiedDecimillipedeMaxHp(segment, out decimal maxHp))
+        {
+            result = Task.CompletedTask;
+            return false;
+        }
+
+        result = SetUpDecimillipedeSegmentAsync(segment, maxHp);
+        return true;
+    }
+
+    private static bool TryFindUnoccupiedDecimillipedeMaxHp(
+        DecimillipedeSegment segment,
+        out decimal maxHp)
+    {
+        Creature creature = segment.Creature;
+        ICombatState combatState = segment.CombatState;
+        maxHp = creature.MaxHp;
+        if (maxHp % 2m == 1m)
+            maxHp++;
+        decimal fallbackMaxHp = maxHp;
+
+        HashSet<decimal> occupiedMaxHp = combatState.GetTeammatesOf(creature)
+            .Where(teammate => teammate != creature)
+            .Select(teammate => (decimal)teammate.MaxHp)
+            .ToHashSet();
+        decimal maximum = Creature.ScaleHpForMultiplayer(
+            segment.MaxInitialHp,
+            combatState.Encounter,
+            combatState.Players.Count,
+            combatState.RunState.CurrentActIndex);
+        decimal minimum = Creature.ScaleHpForMultiplayer(
+            segment.MinInitialHp,
+            combatState.Encounter,
+            combatState.Players.Count,
+            combatState.RunState.CurrentActIndex);
+
+        for (int attempt = 0; attempt <= occupiedMaxHp.Count; attempt++)
+        {
+            if (!occupiedMaxHp.Contains(maxHp))
+                return true;
+
+            maxHp += 2m;
+            if (maxHp > maximum)
+                maxHp = minimum;
+        }
+
+        maxHp = fallbackMaxHp;
+        return false;
+    }
+
+    private static async Task SetUpDecimillipedeSegmentAsync(
+        DecimillipedeSegment segment,
+        decimal maxHp)
+    {
+        Creature creature = segment.Creature;
+        await CreatureCmd.SetMaxAndCurrentHp(creature, maxHp);
+        await PowerCmd.Apply<ReattachPower>(
+            new ThrowingPlayerChoiceContext(),
+            creature,
+            25m,
+            creature,
+            null);
     }
 
     private static string? GetNextAvailableMonsterSlot(CombatState combatState)

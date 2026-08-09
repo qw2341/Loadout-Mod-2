@@ -3,9 +3,11 @@
 namespace Loadout.Patches.Core;
 
 using System;
+using System.Threading.Tasks;
 using HarmonyLib;
 using Loadout.Services.Actions;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 
 [HarmonyPatch(typeof(ConditionalBranchState), nameof(ConditionalBranchState.GetNextState))]
@@ -30,5 +32,17 @@ public static class LoadoutSummonMonsterConditionalBranchPatch
 
         __result = stateId;
         return null;
+    }
+}
+
+[HarmonyPatch(typeof(DecimillipedeSegment), nameof(DecimillipedeSegment.AfterAddedToRoom))]
+public static class LoadoutSummonDecimillipedeSegmentPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(DecimillipedeSegment __instance, ref Task __result)
+    {
+        return !LoadoutSummonMonsterService.TryHandleDecimillipedeSegmentAdded(
+            __instance,
+            out __result);
     }
 }
