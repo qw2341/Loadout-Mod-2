@@ -41,6 +41,7 @@ public static class RelicModifier
             GetId = CommonHelpers.OwnedItemId,
             GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
             GetSearchTextFromName = (item, name) => $"{item.Model.Id} {name} {item.Model.DynamicDescription.GetFormattedText()}",
+            CapturePreloadResourcePaths = item => [item.Model.IconPath],
             CreateView = (item, _) => NLoadoutPanel.CreateOwnedRelicGridItem(item.Model),
             ViewReady = (item, view) => RefreshView(view, item.Model),
             UpdateView = (item, view, _) => RefreshView(view, item.Model),

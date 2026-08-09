@@ -33,6 +33,7 @@ public class LoadoutBag
 				GetId = relic => relic.Id.ToString(),
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription.GetFormattedText()}",
+				CapturePreloadResourcePaths = relic => [relic.IconPath],
 				CreateView = (relic, _) => CreateRelicGridItem(relic),
 				ViewReady = (relic, view) => RefreshRelicGridItem(view, relic),
 				UpdateView = (relic, view, _) => RefreshRelicGridItem(view, relic),

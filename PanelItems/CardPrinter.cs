@@ -46,6 +46,10 @@ public class CardPrinter
 		    GetId = card => card.Id.ToString(),
 		    GetName = card => FormatCardTitle(card),
 		    GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.GetDescriptionForPile(PileType.None)}",
+		    CapturePreloadResourcePaths = card => CardModificationRuntime
+			    .GetPermanentCardForDisplay(card)
+			    .AllPortraitPaths
+			    .ToArray(),
 		    CreateView = (card, state) => CreateCardGridItem(card, state),
 		    ViewReady = (card, view) => RefreshCardVisuals(view, card),
 		    UpdateView = (card, view, state) =>

@@ -61,6 +61,7 @@ public static class BottledMonster
                 GetId = monster => monster.Id.ToString(),
                 GetName = FormatMonsterTitle,
                 GetSearchText = monster => BuildMonsterSearchText(monster, catalog),
+                CapturePreloadResourcePaths = GetCreaturePreviewResourcePaths,
                 CreateView = (monster, _) => CreateMonsterGridItem(monster),
                 BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
             },
@@ -129,6 +130,7 @@ public static class BottledMonster
             GetId = option => option.Id,
             GetName = FormatMorphOptionTitle,
             GetSearchText = option => BuildMorphSearchText(option, catalog),
+            CapturePreloadResourcePaths = option => GetCreaturePreviewResourcePaths(option.Model),
             CreateView = (option, _) => CreateMorphGridItem(option),
             BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
         };
@@ -310,6 +312,17 @@ public static class BottledMonster
         LoadoutTargetSelection target = LoadoutTargetService.GetSelected(MorphTargetKey, LoadoutTargetMode.PlayersOnly);
         ModelId modelId = option.Model?.Id ?? ModelId.none;
         LoadoutImmediateMutationService.RequestMorphPlayer(modelId, target);
+    }
+
+    private static IReadOnlyList<string> GetCreaturePreviewResourcePaths(AbstractModel? model)
+    {
+        string? path = model switch
+        {
+            MonsterModel monster => monster.AssetPaths.FirstOrDefault(),
+            CharacterModel character => character.AssetPaths.FirstOrDefault(),
+            _ => null
+        };
+        return string.IsNullOrWhiteSpace(path) ? Array.Empty<string>() : [path];
     }
 
     private static Control CreateMorphGridItem(MorphOption option)

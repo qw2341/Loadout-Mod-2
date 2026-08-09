@@ -87,6 +87,7 @@ public class PowerGiver
 			GetId = PowerId,
 			GetName = GetPowerTitle,
 			GetSearchTextFromName = CreateSafePowerSearchText,
+			CapturePreloadResourcePaths = power => [power.IconPath],
 			CreateView = (power, _) => CreatePowerGridItem(
 				power,
 				PowerGiverStateService.GetCounter(PowerId(power)),
@@ -132,6 +133,7 @@ public class PowerGiver
 				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
 				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("SORT_TYPE", "Type")), (a, b) => GetPowerType(a).CompareTo(GetPowerType(b)));
 			});
+			target.SetHiddenPrewarmAllItems(true);
 			AddPowerGiverSidebarDropdowns(
 				target,
 				() => showPowerGiverFavoritesOnly,

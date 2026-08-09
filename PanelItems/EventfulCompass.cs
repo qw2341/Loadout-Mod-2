@@ -44,6 +44,7 @@ public class EventfulCompass
 				GetId = eventModel => eventModel.Id.ToString(),
 				GetName = FormatEventTitle,
 				GetSearchText = eventModel => BuildEventSearchText(eventModel, catalog),
+				CapturePreloadResourcePaths = GetEventTilePreloadResourcePaths,
 				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
 			}, builder =>
 			{
@@ -686,6 +687,17 @@ public class EventfulCompass
 		    EventPortraitLoadability[portraitPath] = false;
 		    return null;
 	    }
+    }
+
+    private static IReadOnlyList<string> GetEventTilePreloadResourcePaths(EventModel model)
+    {
+	    string id = model.Id.Entry.ToLowerInvariant();
+	    return model.LayoutType switch
+	    {
+		    EventLayoutType.Default => [ImageHelper.GetImagePath($"events/{id}.png")],
+		    EventLayoutType.Ancient => [SceneHelper.GetScenePath($"events/background_scenes/{id}")],
+		    _ => Array.Empty<string>()
+	    };
     }
 
     private static bool CanLoadEventPortrait(string portraitPath)

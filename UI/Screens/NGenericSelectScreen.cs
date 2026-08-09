@@ -8,8 +8,10 @@ using Godot;
 using Loadout.UI;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -204,6 +206,7 @@ public partial class NGenericSelectScreen : Control
     private Task? _hiddenPrewarmTask;
     private bool _hiddenPrewarmCompleted;
     private bool _hiddenPrewarmEnabled = true;
+    private bool _hiddenPrewarmAllItems;
     private ulong _activeEagerMaterializationGeneration = ulong.MaxValue;
     private bool _isScreenActive;
 
@@ -727,7 +730,7 @@ public partial class NGenericSelectScreen : Control
             ulong generation = _layoutGeneration;
             IReadOnlyList<IGenericSelectItem> warmItems = BuildHiddenPrewarmItemList();
             IGenericSelectItem[] preloadItems = warmItems
-                .Where(item => item.HasPreloadResources)
+                .Where(HasPreloadWork)
                 .ToArray();
 
             if (preloadItems.Length > 0)
@@ -735,7 +738,7 @@ public partial class NGenericSelectScreen : Control
                 hiddenPreloadCts = new CancellationTokenSource();
                 _preloadCts = hiddenPreloadCts;
 
-                Task<bool> preloadTask = RunThreadedPreloadAsync(
+                Task<bool> preloadTask = RunPreloadPipelineAsync(
                     Name,
                     preloadItems,
                     MaxHiddenPreloadConcurrency,
@@ -810,6 +813,7 @@ public partial class NGenericSelectScreen : Control
 
             UpdateViewportCulling(force: true);
             _hiddenPrewarmCompleted = true;
+            Log.Info($"[Loadout] Select screen '{Name}' main-thread prewarm complete: items={warmItems.Count}.");
         }
         catch (OperationCanceledException)
         {
@@ -918,7 +922,7 @@ public partial class NGenericSelectScreen : Control
 
     protected virtual IReadOnlyList<IGenericSelectItem> BuildHiddenPrewarmItemList()
     {
-        if (_materializationMode == SelectMaterializationMode.Eager)
+        if (_hiddenPrewarmAllItems || _materializationMode == SelectMaterializationMode.Eager)
             return _itemLayoutOrder.ToList();
 
         Rect2 materializeRect = BuildViewportMaterializeRect(
@@ -1149,6 +1153,11 @@ public partial class NGenericSelectScreen : Control
     public void SetHiddenPrewarmEnabled(bool enabled)
     {
         _hiddenPrewarmEnabled = enabled;
+    }
+
+    internal void SetHiddenPrewarmAllItems(bool enabled)
+    {
+        _hiddenPrewarmAllItems = enabled;
     }
 
     public void AddFilterGroup(SelectFilterGroupDefinition group)
@@ -3079,7 +3088,7 @@ public partial class NGenericSelectScreen : Control
             return;
 
         IGenericSelectItem[] preloadItems = _itemLayoutOrder
-            .Where(item => item.HasPreloadResources)
+            .Where(HasPreloadWork)
             .ToArray();
 
         if (preloadItems.Length == 0)
@@ -3101,7 +3110,7 @@ public partial class NGenericSelectScreen : Control
         IReadOnlyList<IGenericSelectItem> preloadItems,
         CancellationToken token)
     {
-        bool completed = await RunThreadedPreloadAsync(
+        bool completed = await RunPreloadPipelineAsync(
             screenName,
             preloadItems,
             MaxPreloadConcurrency,
@@ -3109,6 +3118,114 @@ public partial class NGenericSelectScreen : Control
 
         if (completed && !token.IsCancellationRequested)
             Interlocked.Exchange(ref _completedPreloadGeneration, unchecked((long)generation));
+    }
+
+    private static bool HasPreloadWork(IGenericSelectItem item)
+    {
+        return item.HasPreloadResources
+               || item is ISelectItemResourcePreloadDescriptor { HasPreloadResourcePaths: true };
+    }
+
+    private async Task<bool> RunPreloadPipelineAsync(
+        string screenName,
+        IReadOnlyList<IGenericSelectItem> preloadItems,
+        int requestedConcurrency,
+        CancellationToken token)
+    {
+        if (!await RunNativeResourcePreloadAsync(screenName, preloadItems, token))
+            return false;
+
+        IGenericSelectItem[] legacyPreloadItems = preloadItems
+            .Where(item => item.HasPreloadResources)
+            .ToArray();
+        return await RunThreadedPreloadAsync(
+            screenName,
+            legacyPreloadItems,
+            requestedConcurrency,
+            token);
+    }
+
+    private async Task<bool> RunNativeResourcePreloadAsync(
+        string screenName,
+        IReadOnlyList<IGenericSelectItem> preloadItems,
+        CancellationToken token)
+    {
+        HashSet<string> resourcePaths = new(StringComparer.Ordinal);
+
+        foreach (IGenericSelectItem item in preloadItems)
+        {
+            if (token.IsCancellationRequested)
+                return false;
+
+            if (item is not ISelectItemResourcePreloadDescriptor
+                {
+                    HasPreloadResourcePaths: true
+                } descriptor)
+            {
+                continue;
+            }
+
+            try
+            {
+                foreach (string path in descriptor.CapturePreloadResourcePaths())
+                {
+                    if (string.IsNullOrWhiteSpace(path) || PreloadManager.Cache.ContainsKey(path))
+                        continue;
+
+                    if (!ResourceLoader.Exists(path))
+                    {
+                        _preloadWarnings.Enqueue(
+                            $"Loadout select screen '{screenName}' could not find preload resource '{path}' for item '{item.Id}' ({item.Name}).");
+                        continue;
+                    }
+
+                    resourcePaths.Add(path);
+                }
+            }
+            catch (Exception exception)
+            {
+                _preloadWarnings.Enqueue(
+                    $"Loadout select screen '{screenName}' failed to capture preload resources for item '{item.Id}' ({item.Name}): {exception}");
+            }
+        }
+
+        if (resourcePaths.Count == 0)
+        {
+            Log.Info(
+                $"[Loadout] Select screen '{screenName}' threaded resource preload complete: assets=0, elapsed=0ms, success=True.");
+            return !token.IsCancellationRequested;
+        }
+
+        NAssetLoader loader = NAssetLoader.Instance;
+        if (!GodotObject.IsInstanceValid(loader) || !loader.IsInsideTree())
+        {
+            _preloadWarnings.Enqueue(
+                $"Loadout select screen '{screenName}' skipped native resource preload because NAssetLoader was not in the scene tree.");
+            return !token.IsCancellationRequested;
+        }
+
+        long startTimestamp = Stopwatch.GetTimestamp();
+        try
+        {
+            AssetLoadingSession session = PreloadManager.Cache.CreateSession(
+                $"Loadout select screen {screenName}",
+                resourcePaths);
+            bool completed = await loader.LoadInTheBackground(session).WaitAsync(token);
+            double elapsedMsec = (Stopwatch.GetTimestamp() - startTimestamp) * 1000d / Stopwatch.Frequency;
+            Log.Info(
+                $"[Loadout] Select screen '{screenName}' threaded resource preload complete: assets={resourcePaths.Count}, elapsed={elapsedMsec:N0}ms, success={completed}.");
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception exception)
+        {
+            _preloadWarnings.Enqueue(
+                $"Loadout select screen '{screenName}' native resource preload failed: {exception}");
+        }
+
+        return !token.IsCancellationRequested;
     }
 
     private async Task<bool> RunThreadedPreloadAsync(
@@ -4124,8 +4241,12 @@ public partial class NGenericSelectScreen : Control
 
     protected virtual void RecycleDistantItemViews()
     {
-        if (_materializationMode != SelectMaterializationMode.Lazy || _itemGrid is null)
+        if (_hiddenPrewarmAllItems
+            || _materializationMode != SelectMaterializationMode.Lazy
+            || _itemGrid is null)
+        {
             return;
+        }
 
         Rect2 retentionRect = BuildViewportMaterializeRect(_targetScrollY, GetRecycleRowsBehind(), GetRecycleRowsAhead());
         foreach (IGenericSelectItem item in _itemLayoutOrder.ToArray())
@@ -4813,6 +4934,7 @@ public sealed class SelectItemAdapter<TModel>
     public Func<TModel, string>? GetSearchText { get; init; }
     public Func<TModel, string, string>? GetSearchTextFromName { get; init; }
     public required Func<TModel, SelectItemState, Control> CreateView { get; init; }
+    internal Func<TModel, IReadOnlyList<string>>? CapturePreloadResourcePaths { get; init; }
     public Action<TModel, CancellationToken>? PreloadResources { get; init; }
     public Action<TModel, Control>? ViewReady { get; init; }
     public Action<TModel, Control, SelectItemState>? UpdateView { get; init; }
@@ -4841,7 +4963,13 @@ public interface IGenericSelectItem
     void SetView(Control? view);
 }
 
-public sealed class GenericSelectItem<TModel> : IGenericSelectItem
+internal interface ISelectItemResourcePreloadDescriptor
+{
+    bool HasPreloadResourcePaths { get; }
+    IReadOnlyList<string> CapturePreloadResourcePaths();
+}
+
+public sealed class GenericSelectItem<TModel> : IGenericSelectItem, ISelectItemResourcePreloadDescriptor
 {
     private readonly SelectItemAdapter<TModel> _adapter;
     private string? _searchText;
@@ -4864,6 +4992,13 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem
     public int OriginalIndex { get; }
     public Control? View { get; private set; }
     public bool HasPreloadResources => _adapter.PreloadResources is not null;
+    bool ISelectItemResourcePreloadDescriptor.HasPreloadResourcePaths =>
+        _adapter.CapturePreloadResourcePaths is not null;
+
+    IReadOnlyList<string> ISelectItemResourcePreloadDescriptor.CapturePreloadResourcePaths()
+    {
+        return _adapter.CapturePreloadResourcePaths?.Invoke(Model) ?? Array.Empty<string>();
+    }
 
     public Control CreateView(SelectItemState state)
     {

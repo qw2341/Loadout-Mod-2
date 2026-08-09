@@ -31,6 +31,7 @@ public class CardModifier
             GetId = item => CommonHelpers.OwnedSlotItemId(item),
             GetName = item => CardPrinter.FormatCardTitle(item.Model),
             GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.GetDescriptionForPile(item.CardPileType ?? PileType.Deck)}",
+            CapturePreloadResourcePaths = item => item.Model.AllPortraitPaths.ToArray(),
             CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state, item.CardPileType ?? PileType.Deck),
             ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model, item.CardPileType ?? PileType.Deck),
             UpdateView = (item, view, state) =>
