@@ -5,10 +5,10 @@ namespace Loadout.Services.CustomRuns.Compilation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Persistence;
 using Loadout.Services.CustomRuns.Registry;
-using MegaCrit.Sts2.Core.Models;
 
 public enum CustomRunValidationSeverity
 {
@@ -93,14 +93,14 @@ public static class CustomRunValidator
         if (selection.Pool.MaximumCopiesPerItem < 1)
             Error(result, section, objectId, $"{selection.Kind} pool copy limit must be at least 1.");
 
-        if (selection.Kind != SelectionModelKind.Character || selection.Mode != SelectionMode.Fixed)
+        if (selection.Mode != SelectionMode.Fixed)
             return;
 
-        HashSet<string> characters = ModelDb.AllCharacters
-            .SelectMany(character => new[] { character.Id.ToString(), character.Id.Entry })
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (string id in selection.FixedModelIds.Where(id => !characters.Contains(id)))
-            Error(result, section, objectId, $"Unknown character '{id}'.");
+        foreach (string id in selection.FixedModelIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!CustomRunCatalogService.TryResolve(selection.Kind, id, out _))
+                Error(result, section, objectId, $"Unknown {selection.Kind.ToString().ToLowerInvariant()} '{id}'.");
+        }
     }
 
     private static void ValidateRoles(CustomRunDefinition definition, CustomRunValidationResult result)

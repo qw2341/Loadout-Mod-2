@@ -37,29 +37,14 @@ public static class CustomRunPlayerCreationPatch
     {
         if (!CustomRunRuntimeSnapshotService.TryGetPendingPlayerSetup(__result.NetId, out ResolvedPlayerSetup setup))
             return;
-
-        if (setup.StartingMaxHp.HasValue)
-            __result.Creature.SetMaxHpInternal(setup.StartingMaxHp.Value);
-
-        if (setup.StartingCurrentHp.HasValue)
-            __result.Creature.SetCurrentHpInternal(Math.Min(setup.StartingCurrentHp.Value, __result.Creature.MaxHp));
-        else if (setup.StartingMaxHp.HasValue && __result.Creature.CurrentHp > __result.Creature.MaxHp)
-            __result.Creature.SetCurrentHpInternal(__result.Creature.MaxHp);
-
-        if (setup.PotionSlots.HasValue)
+        try
         {
-            int target = Math.Max(0, setup.PotionSlots.Value);
-            int delta = target - __result.MaxPotionCount;
-            if (delta > 0)
-                __result.AddToMaxPotionCount(delta);
-            else if (delta < 0)
-                __result.SubtractFromMaxPotionCount(-delta);
+            CustomRunSetupApplyService.ApplyToNewPlayer(__result, setup);
         }
-
-        if (setup.StartingGold.HasValue)
-            __result.Gold = setup.StartingGold.Value;
-        if (setup.BaseEnergyPerTurn.HasValue)
-            __result.MaxEnergy = setup.BaseEnergyPerTurn.Value;
+        catch (Exception exception)
+        {
+            MainFile.Logger.Error($"[Loadout] Custom Run setup failed for player {__result.NetId}: {exception}");
+        }
     }
 }
 

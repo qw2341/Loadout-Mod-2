@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Loadout.PanelItems;
 using Loadout.Services.Compatibility;
+using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Persistence;
 using MegaCrit.Sts2.Core.Helpers;
@@ -53,6 +54,17 @@ public static class CustomRunCompiler
         }
 
         string seed = CanonicalizeSeed(definition.Setup.RunSeed, lobby.Seed, issues, definition.Id);
+        IReadOnlyList<string> deckModelIds = ResolveFixedModelIds(definition.Setup.StartingDeck);
+        IReadOnlyList<string> relicModelIds = ResolveFixedModelIds(definition.Setup.StartingRelics);
+        IReadOnlyList<string> potionModelIds = ResolveFixedModelIds(definition.Setup.StartingPotions);
+        if (potionModelIds.Count > (definition.Setup.PotionSlots ?? 3))
+        {
+            AddError(
+                issues,
+                "Run Setup",
+                definition.Id,
+                $"Starting potions ({potionModelIds.Count}) exceed the configured potion slots ({definition.Setup.PotionSlots ?? 3}).");
+        }
         IReadOnlyList<string> missingMods = GetMissingRequiredMods(definition.RequiredModIds);
         if (missingMods.Count > 0)
         {
@@ -88,6 +100,9 @@ public static class CustomRunCompiler
             {
                 PlayerId = player.PlayerId,
                 CharacterModelId = character.Id.ToString(),
+                DeckModelIds = deckModelIds,
+                RelicModelIds = relicModelIds,
+                PotionModelIds = potionModelIds,
                 PotionSlots = definition.Setup.PotionSlots,
                 StartingGold = definition.Setup.StartingGold,
                 StartingCurrentHp = definition.Setup.StartingCurrentHp,
@@ -97,15 +112,14 @@ public static class CustomRunCompiler
             });
         }
 
+        IReadOnlyList<string> requiredModIds = BuildRequiredModIds(definition.RequiredModIds, resolvedPlayers);
+
         ResolvedCustomRunSnapshot unhashed = new()
         {
             SourceDefinitionId = definition.Id,
             RunSeed = seed,
             Players = resolvedPlayers,
-            RequiredModIds = definition.RequiredModIds
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(id => id, StringComparer.Ordinal)
-                .ToList()
+            RequiredModIds = requiredModIds
         };
         ResolvedCustomRunSnapshot snapshot = new()
         {
@@ -150,9 +164,9 @@ public static class CustomRunCompiler
     {
         if (definition.Setup.Character.Mode is SelectionMode.Random or SelectionMode.PlayerChoice)
             AddError(issues, "Run Setup", definition.Id, "Character mode must be Default or Fixed before Play.");
-        RejectUnsupportedSelection(definition.Setup.StartingDeck, "starting deck", definition, issues);
-        RejectUnsupportedSelection(definition.Setup.StartingRelics, "starting relics", definition, issues);
-        RejectUnsupportedSelection(definition.Setup.StartingPotions, "starting potions", definition, issues);
+        RejectUnsupportedSelectionMode(definition.Setup.StartingDeck, "starting deck", definition, issues);
+        RejectUnsupportedSelectionMode(definition.Setup.StartingRelics, "starting relics", definition, issues);
+        RejectUnsupportedSelectionMode(definition.Setup.StartingPotions, "starting potions", definition, issues);
 
         if (definition.Roles.Count > 0)
             AddError(issues, "Roles", definition.Id, "Roles are not supported by Play yet; remove them or leave this run as a draft.");
@@ -164,14 +178,57 @@ public static class CustomRunCompiler
             AddError(issues, "Variables", definition.Id, "Variables are not supported by Play yet.");
     }
 
-    private static void RejectUnsupportedSelection(
+    private static void RejectUnsupportedSelectionMode(
         SelectionSpec selection,
         string label,
         CustomRunDefinition definition,
         List<CustomRunValidationIssue> issues)
     {
-        if (selection.Mode != SelectionMode.Default || HasCustomPool(selection.Pool))
-            AddError(issues, "Run Setup", definition.Id, $"Non-default {label} are not supported by Play yet.");
+        if (selection.Mode is SelectionMode.Random or SelectionMode.PlayerChoice)
+            AddError(issues, "Run Setup", definition.Id, $"Random and player-choice {label} are not supported by Play yet.");
+        if (HasCustomPool(selection.Pool))
+            AddError(issues, "Run Setup", definition.Id, $"Filtered {label} pools are not supported by Play yet.");
+    }
+
+    private static IReadOnlyList<string> ResolveFixedModelIds(SelectionSpec selection)
+    {
+        if (selection.Mode != SelectionMode.Fixed)
+            return [];
+
+        return selection.FixedModelIds
+            .Select(id => CustomRunCatalogService.CanonicalizeModelId(selection.Kind, id))
+            .ToList();
+    }
+
+    private static IReadOnlyList<string> BuildRequiredModIds(
+        IEnumerable<string> authoredModIds,
+        IEnumerable<ResolvedPlayerSetup> players)
+    {
+        HashSet<string> required = authoredModIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (ResolvedPlayerSetup player in players)
+        {
+            AddModelMod(required, SelectionModelKind.Character, player.CharacterModelId);
+            foreach (string id in player.DeckModelIds)
+                AddModelMod(required, SelectionModelKind.Card, id);
+            foreach (string id in player.RelicModelIds)
+                AddModelMod(required, SelectionModelKind.Relic, id);
+            foreach (string id in player.PotionModelIds)
+                AddModelMod(required, SelectionModelKind.Potion, id);
+        }
+
+        required.RemoveWhere(id => string.Equals(id, "slaythespire2", StringComparison.OrdinalIgnoreCase));
+        return required.OrderBy(id => id, StringComparer.Ordinal).ToList();
+    }
+
+    private static void AddModelMod(
+        ISet<string> required,
+        SelectionModelKind kind,
+        string modelId)
+    {
+        if (CustomRunCatalogService.TryResolve(kind, modelId, out CustomRunCatalogEntry entry))
+            required.Add(entry.ModId);
     }
 
     private static bool HasCustomPool(SelectionPoolDefinition pool)

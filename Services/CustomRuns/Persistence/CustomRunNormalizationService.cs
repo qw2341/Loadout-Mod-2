@@ -223,7 +223,6 @@ public static class CustomRunNormalizationService
         return (values ?? [])
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value.Trim())
-            .Distinct(StringComparer.Ordinal)
             .ToList();
     }
 }

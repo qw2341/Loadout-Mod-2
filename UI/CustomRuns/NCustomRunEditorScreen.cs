@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
@@ -55,6 +56,7 @@ public partial class NCustomRunEditorScreen : Control
     private bool _staticUiBuilt;
     private bool _discardPromptOpen;
     private StringName _returnRoute = "CustomRunLibraryScreen";
+    private IDisposable? _catalogSelectorSession;
 
     public static void OpenFromLibrary(
         Control libraryScreen,
@@ -170,6 +172,8 @@ public partial class NCustomRunEditorScreen : Control
 
     public override void _ExitTree()
     {
+        _catalogSelectorSession?.Dispose();
+        _catalogSelectorSession = null;
         CustomRunStorageService.Changed -= OnStoredDefinitionsChanged;
         CustomRunLobbyService.RemoteDefinitionChanged -= OnRemoteDefinitionChanged;
     }
@@ -538,6 +542,10 @@ public partial class NCustomRunEditorScreen : Control
         characterRow.AddChild(character);
         _contentHost.AddChild(characterRow);
 
+        AddFixedSelectionRow("Starting Deck", setup.StartingDeck);
+        AddFixedSelectionRow("Starting Relics", setup.StartingRelics);
+        AddFixedSelectionRow("Starting Potions", setup.StartingPotions);
+
         HBoxContainer seedRow = CreateRow();
         seedRow.AddChild(CreateRowLabel("Run Seed"));
         LineEdit seed = CreateLineEdit(setup.RunSeed ?? string.Empty);
@@ -566,6 +574,106 @@ public partial class NCustomRunEditorScreen : Control
             value => setup.BaseEnergyPerTurn = value);
         AddNullableNumberRow("Cards Drawn / Turn", setup.CardsDrawnPerTurn, 5, 0, 99,
             value => setup.CardsDrawnPerTurn = value);
+    }
+
+    private void AddFixedSelectionRow(string label, SelectionSpec selection)
+    {
+        if (_contentHost is null)
+            return;
+
+        HBoxContainer row = CreateRow();
+        row.CustomMinimumSize = new Vector2(0f, 62f);
+        row.AddChild(CreateRowLabel(label));
+
+        MegaLabel summary = CreateLabel(
+            GetSelectionSummary(selection),
+            20,
+            StsColors.cream,
+            HorizontalAlignment.Right);
+        summary.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        summary.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        summary.TooltipText = GetSelectionTooltip(selection);
+        row.AddChild(summary);
+
+        AddActionButton(
+            row,
+            $"choose_{selection.Kind.ToString().ToLowerInvariant()}",
+            selection.Mode == SelectionMode.Fixed ? "EDIT" : "CHOOSE",
+            150f,
+            () => OpenFixedSelection(selection));
+        if (selection.Mode == SelectionMode.Fixed)
+        {
+            AddActionButton(
+                row,
+                $"default_{selection.Kind.ToString().ToLowerInvariant()}",
+                "DEFAULT",
+                160f,
+                () => ResetSelection(selection));
+        }
+
+        _contentHost.AddChild(row);
+    }
+
+    private void OpenFixedSelection(SelectionSpec selection)
+    {
+        _catalogSelectorSession?.Dispose();
+        _catalogSelectorSession = null;
+        if (!CustomRunCatalogSelector.TryOpen(
+                selection,
+                selectedIds =>
+                {
+                    selection.Mode = SelectionMode.Fixed;
+                    selection.FixedModelIds.Clear();
+                    selection.FixedModelIds.AddRange(selectedIds);
+                    MarkDirty();
+                    RebuildContent();
+                    _catalogSelectorSession = null;
+                },
+                out IDisposable? session,
+                out string error))
+        {
+            SetStatus(error, success: false);
+            return;
+        }
+
+        _catalogSelectorSession = session;
+    }
+
+    private void ResetSelection(SelectionSpec selection)
+    {
+        selection.Mode = SelectionMode.Default;
+        selection.FixedModelIds.Clear();
+        MarkDirty();
+        RebuildContent();
+    }
+
+    private static string GetSelectionSummary(SelectionSpec selection)
+    {
+        if (selection.Mode != SelectionMode.Fixed || selection.FixedModelIds.Count == 0)
+            return "Game default";
+
+        int distinct = selection.FixedModelIds.Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        return distinct == selection.FixedModelIds.Count
+            ? $"{selection.FixedModelIds.Count} selected"
+            : $"{selection.FixedModelIds.Count} selected ({distinct} unique)";
+    }
+
+    private static string GetSelectionTooltip(SelectionSpec selection)
+    {
+        if (selection.Mode != SelectionMode.Fixed || selection.FixedModelIds.Count == 0)
+            return "Uses the selected character's normal starting items.";
+
+        return string.Join(", ", selection.FixedModelIds
+            .GroupBy(
+                id => CustomRunCatalogService.CanonicalizeModelId(selection.Kind, id),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                string id = group.Key;
+                CustomRunCatalogService.TryResolve(selection.Kind, id, out CustomRunCatalogEntry entry);
+                string name = entry?.Model.Id.Entry ?? id;
+                return group.Count() > 1 ? $"{name} x{group.Count()}" : name;
+            }));
     }
 
     private void BuildFoundationPanel(string tabName)
@@ -932,6 +1040,8 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (!ReferenceEquals(_lobby, lobby))
             return;
+        _catalogSelectorSession?.Dispose();
+        _catalogSelectorSession = null;
         NLoadoutPanelRoot.Instance?.CloseScreen(Name);
         _lobby = null;
         _workingDefinition = null;

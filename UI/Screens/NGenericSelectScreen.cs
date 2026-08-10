@@ -209,6 +209,7 @@ public partial class NGenericSelectScreen : Control
     private bool _hiddenPrewarmAllItems;
     private ulong _activeEagerMaterializationGeneration = ulong.MaxValue;
     private bool _isScreenActive;
+    private ReusedSelectionSession? _reusedSelectionSession;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -251,6 +252,7 @@ public partial class NGenericSelectScreen : Control
 
     public override void _ExitTree()
     {
+        _reusedSelectionSession?.End(restoreState: false);
         if (_isScreenActive)
             SetScreenLifecycleActive(false);
         CloseOpenDropdowns();
@@ -357,6 +359,8 @@ public partial class NGenericSelectScreen : Control
             _confirmClickable.SetEnabled(active && usesSelection && IsConfirmAllowed());
             ResetActionButtonVisualState(_confirmClickable);
         }
+
+        ApplyReusedSelectionSidebarState();
     }
 
     private void ReleaseFocusInsideScreen()
@@ -1595,6 +1599,33 @@ public partial class NGenericSelectScreen : Control
         _relayoutTweens.Clear();
         _relayoutTargets.Clear();
         _relayoutPositionLockedViews.Clear();
+    }
+
+    public IDisposable BeginReusedSelection(
+        SelectScreenOptions options,
+        IReadOnlyDictionary<string, int>? selectedAmounts = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (_reusedSelectionSession is not null)
+            throw new InvalidOperationException($"Select screen '{Name}' already has an active reused selection session.");
+
+        ReusedSelectionSession session = new(this, _options, _selectedAmounts);
+        _reusedSelectionSession = session;
+        _options = options;
+        _selectedAmounts.Clear();
+        if (selectedAmounts is not null)
+        {
+            foreach ((string itemId, int amount) in selectedAmounts)
+            {
+                if (_items.Any(item => string.Equals(item.Id, itemId, StringComparison.Ordinal)))
+                    _selectedAmounts[itemId] = Math.Clamp(amount, 1, options.MaxCopiesPerItem);
+            }
+        }
+
+        ApplyReusedSelectionSidebarState();
+        RefreshVisibleItemStates();
+        UpdateConfirmButtonState();
+        return session;
     }
 
     public void ClearSelection()
@@ -3822,7 +3853,8 @@ public partial class NGenericSelectScreen : Control
     private void ActivateItem(IGenericSelectItem item)
     {
         SelectItemState before = BuildState(item, _visibleItems.IndexOf(item));
-        ItemActivated?.Invoke(item, before);
+        if (_reusedSelectionSession is null)
+            ItemActivated?.Invoke(item, before);
 
         if (_options.SelectionMode != SelectSelectionMode.None)
             ToggleSelection(item);
@@ -3831,6 +3863,87 @@ public partial class NGenericSelectScreen : Control
         item.UpdateView(after);
         ItemSelectionChanged?.Invoke(item, after);
         UpdateConfirmButtonState();
+    }
+
+    private void EndReusedSelection(
+        ReusedSelectionSession session,
+        SelectScreenOptions previousOptions,
+        IReadOnlyDictionary<string, int> previousSelection,
+        bool restoreState)
+    {
+        if (!ReferenceEquals(_reusedSelectionSession, session))
+            return;
+
+        _reusedSelectionSession = null;
+        if (!restoreState)
+            return;
+
+        _options = previousOptions;
+        _selectedAmounts.Clear();
+        foreach ((string itemId, int amount) in previousSelection)
+            _selectedAmounts[itemId] = amount;
+        session.RestoreSidebarVisibility();
+        RefreshVisibleItemStates();
+        UpdateConfirmButtonState();
+    }
+
+    private void ApplyReusedSelectionSidebarState()
+    {
+        bool visible = _reusedSelectionSession is null;
+        if (_actionButtonsContainer is not null)
+            _actionButtonsContainer.Visible = visible;
+        if (_bottomActionButtonsContainer is not null)
+            _bottomActionButtonsContainer.Visible = visible;
+        if (_customControlsContainer is not null)
+            _customControlsContainer.Visible = visible;
+        if (_bottomCustomControlsContainer is not null)
+            _bottomCustomControlsContainer.Visible = visible;
+    }
+
+    private sealed class ReusedSelectionSession : IDisposable
+    {
+        private NGenericSelectScreen? _owner;
+        private readonly SelectScreenOptions _previousOptions;
+        private readonly IReadOnlyDictionary<string, int> _previousSelection;
+        private readonly Dictionary<Control, bool> _sidebarVisibility = [];
+
+        public ReusedSelectionSession(
+            NGenericSelectScreen owner,
+            SelectScreenOptions previousOptions,
+            IReadOnlyDictionary<string, int> previousSelection)
+        {
+            _owner = owner;
+            _previousOptions = previousOptions;
+            _previousSelection = new Dictionary<string, int>(previousSelection, StringComparer.Ordinal);
+            CaptureVisibility(owner._actionButtonsContainer);
+            CaptureVisibility(owner._bottomActionButtonsContainer);
+            CaptureVisibility(owner._customControlsContainer);
+            CaptureVisibility(owner._bottomCustomControlsContainer);
+        }
+
+        public void Dispose() => End(restoreState: true);
+
+        public void End(bool restoreState)
+        {
+            NGenericSelectScreen? owner = _owner;
+            _owner = null;
+            owner?.EndReusedSelection(this, _previousOptions, _previousSelection, restoreState);
+        }
+
+        public void RestoreSidebarVisibility()
+        {
+            foreach ((Control control, bool visible) in _sidebarVisibility)
+            {
+                if (GodotObject.IsInstanceValid(control))
+                    control.Visible = visible;
+            }
+        }
+
+        private void CaptureVisibility(Control? control)
+        {
+            if (control is not null)
+                _sidebarVisibility[control] = control.Visible;
+        }
     }
 
     private void ToggleSelection(IGenericSelectItem item)
