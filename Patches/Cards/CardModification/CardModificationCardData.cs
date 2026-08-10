@@ -61,6 +61,18 @@ internal static class CardModificationFields
             : new CardModificationSpec();
     }
 
+    public static bool MatchesDelta(CardModel card, CardModificationDelta? delta)
+    {
+        if (delta is null || delta.IsEmpty)
+            return !TryGet(card, out _);
+
+        return TryGet(card, out CardModificationCardData current)
+               && string.Equals(
+                   current.Serialized,
+                   CardModificationCodec.SerializeDelta(delta),
+                   StringComparison.Ordinal);
+    }
+
     public static bool Set(CardModel card, CardModificationSpec? spec)
     {
         return SetDelta(card, CardModificationRuntime.CreateTemporaryDelta(card, spec));
