@@ -42,6 +42,7 @@ public static class CustomRunLobbyService
     private static CustomRunDefinition? _remoteDefinition;
 
     public static event Action? RemoteDefinitionChanged;
+    public static event Action<StartRunLobby>? LoadedDefinitionChanged;
 
     public static CustomRunDefinition? GetRemoteDefinition()
     {
@@ -55,6 +56,13 @@ public static class CustomRunLobbyService
         return HostDefinitions.TryGetValue(lobby, out CustomRunDefinition? definition)
             ? CustomRunNormalizationService.Clone(definition)
             : null;
+    }
+
+    public static CustomRunDefinition? GetLoadedDefinition(StartRunLobby lobby)
+    {
+        return lobby.NetService.Type == NetGameType.Client
+            ? GetRemoteDefinition()
+            : GetHostDefinition(lobby);
     }
 
     public static ResolvedCustomRunSnapshot? GetPendingSnapshot(StartRunLobby lobby)
@@ -116,6 +124,24 @@ public static class CustomRunLobbyService
         HostDefinitions[lobby] = normalized;
         if (lobby.NetService.Type == NetGameType.Host)
             BroadcastDefinition(lobby);
+        LoadedDefinitionChanged?.Invoke(lobby);
+        return true;
+    }
+
+    public static bool ClearLoadedDefinition(StartRunLobby lobby, out string error)
+    {
+        error = string.Empty;
+        if (lobby.NetService.Type == NetGameType.Client)
+        {
+            error = "Only the host can clear the lobby's loaded Custom Run.";
+            return false;
+        }
+
+        CancelPreparation(lobby, "The loaded Custom Run was cleared.");
+        HostDefinitions.Remove(lobby);
+        if (lobby.NetService.Type == NetGameType.Host)
+            BroadcastDefinition(lobby);
+        LoadedDefinitionChanged?.Invoke(lobby);
         return true;
     }
 
@@ -289,13 +315,17 @@ public static class CustomRunLobbyService
 
     private static void HandleDefinitionMessage(CustomRunDefinitionMessage message, ulong senderId)
     {
-        if (!IsExpectedHostSender(senderId))
+        StartRunLobby? lobby = RegisteredLobbies.FirstOrDefault(candidate =>
+            candidate.NetService.Type == NetGameType.Client
+            && LoadoutNetworkBroadcast.IsExpectedHostSender(senderId, candidate.NetService));
+        if (lobby is null)
             return;
 
         if (string.IsNullOrWhiteSpace(message.payload))
         {
             _remoteDefinition = null;
             RemoteDefinitionChanged?.Invoke();
+            LoadedDefinitionChanged?.Invoke(lobby);
             return;
         }
 
@@ -307,6 +337,7 @@ public static class CustomRunLobbyService
 
         _remoteDefinition = definition;
         RemoteDefinitionChanged?.Invoke();
+        LoadedDefinitionChanged?.Invoke(lobby);
     }
 
     private static void HandleSnapshotMessage(CustomRunSnapshotMessage message, ulong senderId)
@@ -386,14 +417,6 @@ public static class CustomRunLobbyService
             accepted = accepted,
             error = error.Length > 500 ? error[..500] : error
         }, hostId);
-    }
-
-    private static bool IsExpectedHostSender(ulong senderId)
-    {
-        return LoadoutNetworkBroadcast.IsExpectedHostSender(
-            senderId,
-            null,
-            RegisteredLobbies.Select(lobby => lobby.NetService));
     }
 
     private sealed class HostPreparationState(

@@ -39,7 +39,6 @@ public partial class NCustomRunEditorScreen : Control
     private HBoxContainer? _toolbar;
     private HBoxContainer? _tabs;
     private readonly Dictionary<string, Button> _tabButtons = new(StringComparer.Ordinal);
-    private Control? _contentMount;
     private VBoxContainer? _contentHost;
     private NScrollableContainer? _contentScroll;
     private MegaLabel? _runNameLabel;
@@ -171,8 +170,6 @@ public partial class NCustomRunEditorScreen : Control
 
     public override void _ExitTree()
     {
-        if (_contentMount is not null)
-            _contentMount.Resized -= OnContentMountResized;
         CustomRunStorageService.Changed -= OnStoredDefinitionsChanged;
         CustomRunLobbyService.RemoteDefinitionChanged -= OnRemoteDefinitionChanged;
     }
@@ -427,6 +424,7 @@ public partial class NCustomRunEditorScreen : Control
                 HorizontalAlignment.Center);
             empty.CustomMinimumSize = new Vector2(0f, 260f);
             _contentHost.AddChild(empty);
+            RefreshContentLayoutDeferred();
             return;
         }
 
@@ -453,14 +451,19 @@ public partial class NCustomRunEditorScreen : Control
 
         if (_readOnly)
             SetEditableRecursive(_contentHost, editable: false);
+        RefreshContentLayoutDeferred();
+    }
+
+    private void RefreshContentLayoutDeferred()
+    {
         Callable.From(() =>
         {
             if (GodotObject.IsInstanceValid(_contentScroll)
                 && GodotObject.IsInstanceValid(_contentHost))
             {
                 _contentScroll.SetContent(_contentHost);
+                ResizeContentToChildren();
                 _contentScroll.InstantlyScrollToTop();
-                RefreshContentScrollHeight();
             }
         }).CallDeferred();
     }
@@ -1194,12 +1197,11 @@ public partial class NCustomRunEditorScreen : Control
 
     private void EnsureNativeContentScroll()
     {
-        _contentMount = GetNodeOrNull<Control>("%ContentMount");
-        if (_contentMount is null)
+        Control? contentMount = GetNodeOrNull<Control>("%ContentMount");
+        if (contentMount is null)
             return;
-        _contentMount.Resized += OnContentMountResized;
 
-        _contentScroll = _contentMount.GetNodeOrNull<NScrollableContainer>("ContentScroll");
+        _contentScroll = contentMount.GetNodeOrNull<NScrollableContainer>("ContentScroll");
         if (_contentScroll is not null)
         {
             _contentHost = _contentScroll.GetNodeOrNull<VBoxContainer>("Mask/Content");
@@ -1211,7 +1213,7 @@ public partial class NCustomRunEditorScreen : Control
             Name = "ContentScroll",
             MouseFilter = MouseFilterEnum.Stop
         };
-        scroll.SetAnchorsPreset(LayoutPreset.TopWide);
+        scroll.SetAnchorsPreset(LayoutPreset.FullRect);
 
         Control mask = new()
         {
@@ -1242,7 +1244,7 @@ public partial class NCustomRunEditorScreen : Control
         scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
         scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
         scroll.AddChild(scrollbar);
-        _contentMount.AddChild(scroll);
+        contentMount.AddChild(scroll);
         scroll.DisableScrollingIfContentFits();
 
         _contentScroll = scroll;
@@ -1254,31 +1256,19 @@ public partial class NCustomRunEditorScreen : Control
         }).CallDeferred();
     }
 
-    private void RefreshContentScrollHeight()
+    private void ResizeContentToChildren()
     {
-        if (_contentMount is null
-            || _contentScroll is null
+        if (_contentScroll is null
             || _contentHost is null
-            || !GodotObject.IsInstanceValid(_contentMount)
             || !GodotObject.IsInstanceValid(_contentScroll)
             || !GodotObject.IsInstanceValid(_contentHost))
         {
             return;
         }
 
-        float availableHeight = _contentMount.Size.Y;
-        float contentHeight = _contentHost.GetCombinedMinimumSize().Y;
-        if (availableHeight <= 0f || contentHeight <= 0f)
-            return;
-
-        _contentScroll.OffsetTop = 0f;
-        _contentScroll.OffsetBottom = Mathf.Min(availableHeight, contentHeight);
+        Vector2 minimum = _contentHost.GetCombinedMinimumSize();
+        _contentHost.Size = new Vector2(_contentHost.Size.X, Mathf.Max(1f, minimum.Y));
         _contentScroll.SetContent(_contentHost);
-    }
-
-    private void OnContentMountResized()
-    {
-        Callable.From(RefreshContentScrollHeight).CallDeferred();
     }
 
     private void EnsureFallbackScene()

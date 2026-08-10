@@ -3,16 +3,16 @@
 namespace Loadout.UI.CustomRuns;
 
 using Godot;
+using Loadout.Services.CustomRuns.Networking;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
-using MegaCrit.Sts2.Core.Nodes;
-using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 
 public static class NCustomRunEditorEntry
 {
-    private const string NodeName = "LoadoutCustomRunEditorEntry";
+    internal const string NodeName = "LoadoutCustomRunEditorEntry";
+    internal const string OverlayNodeName = "LoadoutCustomRunStateOverlay";
 
     public static void AttachTo(Control screen, StartRunLobby? lobby)
     {
@@ -22,48 +22,70 @@ public static class NCustomRunEditorEntry
             return;
         }
 
-        NLoadoutSettingsActionButton? existing = screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName);
-        if (existing is not null)
+        NLoadoutSettingsActionButton? button =
+            screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName);
+        if (button is null)
         {
-            PositionButton(existing);
-            return;
+            button = new NLoadoutSettingsActionButton
+            {
+                Name = NodeName,
+                CustomMinimumSize = new Vector2(360f, 64f),
+                UseRainbowColor = true,
+                ZIndex = 24
+            };
+            button.Init("custom_run_editor", "CUSTOM RUNS");
+            screen.AddChild(button);
+            button.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => OnButtonPressed(screen, lobby)));
         }
-
-        NLoadoutSettingsActionButton button = new()
-        {
-            Name = NodeName,
-            CustomMinimumSize = new Vector2(360f, 64f),
-            UseRainbowColor = true,
-            ZIndex = 24
-        };
-        button.Init(
-            "custom_run_editor",
-            "CUSTOM RUNS");
-        screen.AddChild(button);
         PositionButton(button);
-        button.Connect(
-            NClickableControl.SignalName.Released,
-            Callable.From<NClickableControl>(_ => NCustomRunLibraryScreen.Open(screen, lobby)));
+
+        NCustomRunCharacterSelectOverlay? overlay =
+            screen.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(OverlayNodeName);
+        if (overlay is null)
+        {
+            overlay = new NCustomRunCharacterSelectOverlay { Name = OverlayNodeName };
+            overlay.Init(screen, lobby);
+            screen.AddChild(overlay);
+        }
+        else
+        {
+            overlay.RefreshLoadedRun();
+        }
 
         if (screen.GetNodeOrNull<Control>("ConfirmButton") is { } confirmButton)
         {
-            button.FocusNeighborRight = confirmButton.GetPath();
-            confirmButton.FocusNeighborLeft = button.GetPath();
+            button.FocusNeighborTop = confirmButton.GetPath();
+            confirmButton.FocusNeighborBottom = button.GetPath();
         }
     }
 
     public static void DetachFrom(Control? screen, StartRunLobby? lobby)
     {
-        if (screen is not null)
-        {
-            NLoadoutSettingsActionButton? button = screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName);
-            button?.QueueFree();
-        }
+        screen?.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName)?.QueueFree();
+        screen?.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(OverlayNodeName)?.QueueFree();
 
         if (lobby is null)
             return;
+
+        if (!lobby.IsAboutToBeginGame()
+            && lobby.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Client)
+            CustomRunLobbyService.ClearLoadedDefinition(lobby, out _);
         NCustomRunEditorScreen.CloseForLobby(lobby);
         NCustomRunLibraryScreen.CloseForLobby(lobby);
+    }
+
+    private static void OnButtonPressed(Control screen, StartRunLobby lobby)
+    {
+        if (CustomRunLobbyService.GetLoadedDefinition(lobby) is not null
+            && lobby.NetService.Type != MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Client)
+        {
+            CustomRunLobbyService.ClearLoadedDefinition(lobby, out _);
+            return;
+        }
+
+        NCustomRunLibraryScreen.Open(screen, lobby);
     }
 
     private static void PositionButton(Control button)
@@ -72,13 +94,11 @@ public static class NCustomRunEditorEntry
         button.AnchorTop = 1f;
         button.AnchorRight = 1f;
         button.AnchorBottom = 1f;
-        button.AnchorLeft = 0.5f;
-        button.AnchorRight = 0.5f;
-        button.OffsetLeft = -180f;
-        button.OffsetTop = -64f;
-        button.OffsetRight = 180f;
-        button.OffsetBottom = 0f;
-        button.GrowHorizontal = Control.GrowDirection.Both;
+        button.OffsetLeft = -400f;
+        button.OffsetTop = -226f;
+        button.OffsetRight = -40f;
+        button.OffsetBottom = -162f;
+        button.GrowHorizontal = Control.GrowDirection.Begin;
         button.GrowVertical = Control.GrowDirection.Begin;
         button.PivotOffset = button.Size * 0.5f;
     }

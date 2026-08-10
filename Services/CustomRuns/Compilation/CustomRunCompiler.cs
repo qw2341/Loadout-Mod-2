@@ -39,13 +39,17 @@ public static class CustomRunCompiler
         if (players.Count == 0)
             AddError(issues, "Lobby", definition.Id, "The lobby has no players.");
 
-        CharacterModel? fixedCharacter = null;
+        List<CharacterModel> fixedCharacters = [];
         if (definition.Setup.Character.Mode == SelectionMode.Fixed)
         {
-            string? id = definition.Setup.Character.FixedModelIds.FirstOrDefault();
-            fixedCharacter = ResolveCharacter(id);
-            if (fixedCharacter is null)
-                AddError(issues, "Run Setup", definition.Id, $"Unknown character '{id}'.");
+            foreach (string id in definition.Setup.Character.FixedModelIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                CharacterModel? character = ResolveCharacter(id);
+                if (character is null)
+                    AddError(issues, "Run Setup", definition.Id, $"Unknown character '{id}'.");
+                else
+                    fixedCharacters.Add(character);
+            }
         }
 
         string seed = CanonicalizeSeed(definition.Setup.RunSeed, lobby.Seed, issues, definition.Id);
@@ -75,8 +79,11 @@ public static class CustomRunCompiler
         List<ResolvedPlayerSetup> resolvedPlayers = [];
         foreach (StartRunLobbyPlayerInfo player in players)
         {
-            CharacterModel character = fixedCharacter
-                                       ?? ResolveDefaultCharacter(player, seed, selectableCharacters);
+            CharacterModel character = ResolvePlayerCharacter(
+                player,
+                seed,
+                selectableCharacters,
+                fixedCharacters);
             resolvedPlayers.Add(new ResolvedPlayerSetup
             {
                 PlayerId = player.PlayerId,
@@ -143,12 +150,6 @@ public static class CustomRunCompiler
     {
         if (definition.Setup.Character.Mode is SelectionMode.Random or SelectionMode.PlayerChoice)
             AddError(issues, "Run Setup", definition.Id, "Character mode must be Default or Fixed before Play.");
-        if (definition.Setup.Character.Mode == SelectionMode.Fixed
-            && definition.Setup.Character.FixedModelIds.Count != 1)
-        {
-            AddError(issues, "Run Setup", definition.Id, "Fixed character mode requires exactly one character.");
-        }
-
         RejectUnsupportedSelection(definition.Setup.StartingDeck, "starting deck", definition, issues);
         RejectUnsupportedSelection(definition.Setup.StartingRelics, "starting relics", definition, issues);
         RejectUnsupportedSelection(definition.Setup.StartingPotions, "starting potions", definition, issues);
@@ -218,6 +219,25 @@ public static class CustomRunCompiler
         byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes($"{seed}:{player.SlotId}:{player.PlayerId}"));
         int index = (int)(BitConverter.ToUInt32(digest, 0) % (uint)selectableCharacters.Count);
         return selectableCharacters[index];
+    }
+
+    private static CharacterModel ResolvePlayerCharacter(
+        StartRunLobbyPlayerInfo player,
+        string seed,
+        IReadOnlyList<CharacterModel> selectableCharacters,
+        IReadOnlyList<CharacterModel> fixedCharacters)
+    {
+        if (fixedCharacters.Count == 0)
+            return ResolveDefaultCharacter(player, seed, selectableCharacters);
+
+        if (player.Character is not null
+            && !IsRandomCharacter(player.Character)
+            && fixedCharacters.Any(character => character.Id == player.Character.Id))
+        {
+            return player.Character;
+        }
+
+        return fixedCharacters[0];
     }
 
     private static bool IsRandomCharacter(CharacterModel character)

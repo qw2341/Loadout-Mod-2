@@ -30,7 +30,6 @@ public partial class NCustomRunLibraryScreen : Control
 
     private StartRunLobby? _lobby;
     private Control? _sourceScreen;
-    private NButton? _sourceConfirmButton;
     private NScrollableContainer? _customScroll;
     private VBoxContainer? _customList;
     private NScrollableContainer? _permanentScroll;
@@ -94,7 +93,6 @@ public partial class NCustomRunLibraryScreen : Control
     public void Init(Control sourceScreen, StartRunLobby lobby)
     {
         _sourceScreen = sourceScreen;
-        _sourceConfirmButton = sourceScreen.GetNodeOrNull<NButton>("ConfirmButton");
         _lobby = lobby;
         _launching = false;
         if (IsNodeReady())
@@ -795,7 +793,7 @@ public partial class NCustomRunLibraryScreen : Control
         CustomRunDefinition launchDefinition = persistDefinition
             ? CustomRunStorageService.Upsert(definition)
             : CustomRunNormalizationService.Normalize(CustomRunNormalizationService.Clone(definition));
-        CustomRunDefinition effectiveDefinition = BuildEffectiveDefinition(launchDefinition);
+        CustomRunDefinition effectiveDefinition = CustomRunDefinitionResolver.WithEnabledPermanentRules(launchDefinition);
         CustomRunCompileResult compiled = CustomRunCompiler.Compile(effectiveDefinition, _lobby);
         if (!compiled.IsValid || compiled.Snapshot is null)
         {
@@ -812,47 +810,10 @@ public partial class NCustomRunLibraryScreen : Control
         }
 
         _launching = true;
-        RebuildLibrary();
-        SetStatus("Preparing the Custom Run…", success: true, persistent: true);
-        bool screensClosedForLaunch = false;
-        try
-        {
-            CustomRunPreparationResult result = await CustomRunLobbyService.PrepareHostRunAsync(_lobby, compiled.Snapshot);
-            if (!result.Succeeded)
-            {
-                _launching = false;
-                RebuildLibrary();
-                SetStatus(result.Error, success: false);
-                return;
-            }
-
-            if (_sourceConfirmButton is null || !GodotObject.IsInstanceValid(_sourceConfirmButton))
-            {
-                _launching = false;
-                CustomRunLobbyService.CancelPreparedRun(_lobby);
-                SetStatus("Could not find the source screen's Embark button.", success: false);
-                return;
-            }
-
-            NLoadoutPanelRoot.Instance?.CloseScreen("CustomRunEditorScreen");
-            NLoadoutPanelRoot.Instance?.CloseScreen(Name);
-            screensClosedForLaunch = true;
-            NButton embark = _sourceConfirmButton;
-            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-            if (!GodotObject.IsInstanceValid(embark))
-                throw new InvalidOperationException("The source screen's Embark button was removed before launch.");
-            embark.ForceClick();
-        }
-        catch (Exception exception)
-        {
-            _launching = false;
-            CustomRunLobbyService.CancelPreparedRun(_lobby);
-            MainFile.Logger.Error($"[Loadout] Custom Run launch failed: {exception}");
-            if (screensClosedForLaunch)
-                NLoadoutPanelRoot.Instance?.OpenScreen(this);
-            RebuildLibrary();
-            SetStatus($"Could not start the Custom Run: {exception.Message}", success: false);
-        }
+        NLoadoutPanelRoot.Instance?.CloseScreen("CustomRunEditorScreen");
+        NLoadoutPanelRoot.Instance?.CloseScreen(Name);
+        _launching = false;
+        await Task.CompletedTask;
     }
 
     private void SetStatus(string text, bool success, bool persistent = false)
@@ -892,21 +853,6 @@ public partial class NCustomRunLibraryScreen : Control
             _needsRebuild = true;
     }
 
-    private static CustomRunDefinition BuildEffectiveDefinition(CustomRunDefinition saved)
-    {
-        CustomRunDefinition effective = CustomRunNormalizationService.Clone(saved);
-        HashSet<string> scenarioRuleIds = effective.Rules
-            .Select(rule => rule.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        List<RuleDefinition> enabledPermanentRules = PermanentRuleStorageService.GetRules()
-            .Where(rule => rule.Enabled && !scenarioRuleIds.Contains(rule.Id))
-            .Select(CustomRunNormalizationService.CloneRule)
-            .ToList();
-        enabledPermanentRules.AddRange(effective.Rules);
-        effective.Rules = enabledPermanentRules;
-        return effective;
-    }
-
     private void DetachLobby(StartRunLobby lobby)
     {
         if (!ReferenceEquals(_lobby, lobby))
@@ -914,7 +860,6 @@ public partial class NCustomRunLibraryScreen : Control
         NLoadoutPanelRoot.Instance?.CloseScreen(Name);
         _lobby = null;
         _sourceScreen = null;
-        _sourceConfirmButton = null;
     }
 
     private static MegaLabel CreateSectionLabel(string text)
