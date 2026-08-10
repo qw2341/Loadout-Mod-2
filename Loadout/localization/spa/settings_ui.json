@@ -65,5 +65,7 @@
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title": "¿Eliminar partida personalizada?",
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title": "¿Eliminar '{Name}'? Esto borrará permanentemente la partida personalizada guardada.",
   "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "No",
-  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "Eliminar"
+  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "Eliminar",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "¿Eliminar regla permanente?",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "¿Eliminar '{Name}'? Esto borrará permanentemente la regla guardada."
 }

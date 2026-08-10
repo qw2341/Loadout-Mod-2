@@ -65,5 +65,7 @@
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title": "Delete Custom Run?",
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title": "Delete '{Name}'? This permanently removes the saved Custom Run.",
   "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "No",
-  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "Delete"
+  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "Delete",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "Delete Permanent Rule?",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "Delete '{Name}'? This permanently removes the saved rule."
 }

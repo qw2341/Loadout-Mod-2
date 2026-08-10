@@ -40,6 +40,9 @@ public sealed class RuleDefinition
     [JsonPropertyName("name")]
     public string Name { get; set; } = "New Rule";
 
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;
 

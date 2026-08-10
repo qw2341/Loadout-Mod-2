@@ -231,6 +231,11 @@ public partial class NCustomRunEditorScreen : Control
             NClickableControl.SignalName.Released,
             Callable.From<NClickableControl>(_ => CloseEditor()));
         mount.AddChild(backButton);
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(backButton))
+                backButton.Enable();
+        }).CallDeferred();
     }
 
     private void RefreshForLobby()

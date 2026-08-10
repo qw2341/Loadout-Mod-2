@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Nodes;
@@ -8,6 +9,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using Loadout.UI.CreatureManipulation;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 
 namespace Loadout.UI;
 
@@ -19,6 +21,7 @@ public partial class NLoadoutPanelRoot : Control
 	private const int DropdownLayerZIndex = 1000;
 	private const int HoverTipLayerZIndex = 1010;
 	private const int NativeFeedbackLayerZIndex = 1020;
+	private const int ModalLayerZIndex = 1030;
 
 	private static CanvasLayer _overlayLayer;
 	private static NLoadoutPanelRoot _instance;
@@ -31,6 +34,7 @@ public partial class NLoadoutPanelRoot : Control
 	private Control _dropdownLayer;
 	private Control _hoverTipLayer;
 	private NLoadoutNativeFeedback _nativeFeedbackLayer;
+	private Control _modalLayer;
 	private NCreatureManipulationPanel _creatureManipulationPanel;
 	private bool _lastHasOpenScreen;
 
@@ -62,6 +66,7 @@ public partial class NLoadoutPanelRoot : Control
 		BindDropdownLayer();
 		BindHoverTipLayer();
 		BindNativeFeedbackLayer();
+		BindModalLayer();
 		RefreshScreens();
 		GetCreatureManipulationPanel();
 		SetProcess(false);
@@ -175,6 +180,43 @@ public partial class NLoadoutPanelRoot : Control
 
 		_nativeFeedbackLayer.ZIndex = NativeFeedbackLayerZIndex;
 		_nativeFeedbackLayer.MoveToFront();
+	}
+
+	private void BindModalLayer()
+	{
+		_modalLayer = GetNodeOrNull<Control>("ModalLayer");
+		if (!IsInstanceValid(_modalLayer))
+		{
+			_modalLayer = new Control
+			{
+				Name = "ModalLayer",
+				MouseFilter = MouseFilterEnum.Ignore
+			};
+			_modalLayer.SetAnchorsPreset(LayoutPreset.FullRect);
+			AddChild(_modalLayer);
+		}
+
+		_modalLayer.ZIndex = ModalLayerZIndex;
+		_modalLayer.MoveToFront();
+	}
+
+	public IDisposable HostNativeModal(NModalContainer modal)
+	{
+		if (!IsInstanceValid(modal)
+		    || !IsInstanceValid(_modalLayer)
+		    || modal.GetParent() is not Node originalParent)
+		{
+			return EmptyDisposable.Instance;
+		}
+
+		NativeModalLease lease = new(modal, originalParent, modal.GetIndex());
+		originalParent.RemoveChild(modal);
+		_modalLayer.AddChild(modal);
+		ApplyFullRectLayout(modal);
+		modal.ZIndex = 0;
+		modal.ZAsRelative = true;
+		_modalLayer.MoveToFront();
+		return lease;
 	}
 
 	public void AdoptGameHoverTips()
@@ -680,6 +722,72 @@ public partial class NLoadoutPanelRoot : Control
 	private void OnThemeChanged(string _)
 	{
 		// LoadoutThemeManager.ApplyTheme(this);
+	}
+
+	private sealed class NativeModalLease : IDisposable
+	{
+		private readonly NModalContainer _modal;
+		private readonly Node _parent;
+		private readonly int _index;
+		private readonly int _zIndex;
+		private readonly bool _zAsRelative;
+		private readonly float _anchorLeft;
+		private readonly float _anchorTop;
+		private readonly float _anchorRight;
+		private readonly float _anchorBottom;
+		private readonly float _offsetLeft;
+		private readonly float _offsetTop;
+		private readonly float _offsetRight;
+		private readonly float _offsetBottom;
+		private bool _disposed;
+
+		public NativeModalLease(NModalContainer modal, Node parent, int index)
+		{
+			_modal = modal;
+			_parent = parent;
+			_index = index;
+			_zIndex = modal.ZIndex;
+			_zAsRelative = modal.ZAsRelative;
+			_anchorLeft = modal.AnchorLeft;
+			_anchorTop = modal.AnchorTop;
+			_anchorRight = modal.AnchorRight;
+			_anchorBottom = modal.AnchorBottom;
+			_offsetLeft = modal.OffsetLeft;
+			_offsetTop = modal.OffsetTop;
+			_offsetRight = modal.OffsetRight;
+			_offsetBottom = modal.OffsetBottom;
+		}
+
+		public void Dispose()
+		{
+			if (_disposed)
+				return;
+			_disposed = true;
+			if (!GodotObject.IsInstanceValid(_modal) || !GodotObject.IsInstanceValid(_parent))
+				return;
+
+			_modal.GetParent()?.RemoveChild(_modal);
+			_parent.AddChild(_modal);
+			_parent.MoveChild(_modal, Math.Clamp(_index, 0, _parent.GetChildCount() - 1));
+			_modal.AnchorLeft = _anchorLeft;
+			_modal.AnchorTop = _anchorTop;
+			_modal.AnchorRight = _anchorRight;
+			_modal.AnchorBottom = _anchorBottom;
+			_modal.OffsetLeft = _offsetLeft;
+			_modal.OffsetTop = _offsetTop;
+			_modal.OffsetRight = _offsetRight;
+			_modal.OffsetBottom = _offsetBottom;
+			_modal.ZIndex = _zIndex;
+			_modal.ZAsRelative = _zAsRelative;
+		}
+	}
+
+	private sealed class EmptyDisposable : IDisposable
+	{
+		public static readonly EmptyDisposable Instance = new();
+		public void Dispose()
+		{
+		}
 	}
 	
 	public static void CloseTopLoadoutScreen()

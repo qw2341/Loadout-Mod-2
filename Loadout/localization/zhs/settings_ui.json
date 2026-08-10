@@ -65,5 +65,7 @@
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title": "删除自定义游戏？",
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title": "删除“{Name}”？这将永久删除已保存的自定义游戏。",
   "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "否",
-  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "删除"
+  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "删除",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "删除永久规则？",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "删除“{Name}”？这将永久删除已保存的规则。"
 }

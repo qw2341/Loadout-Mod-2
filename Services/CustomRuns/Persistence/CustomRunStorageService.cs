@@ -47,8 +47,6 @@ public static class CustomRunStorageService
         {
             return _profile.Definitions
                 .Select(CustomRunNormalizationService.Clone)
-                .OrderBy(definition => definition.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(definition => definition.Id, StringComparer.Ordinal)
                 .ToList();
         }
     }
@@ -114,6 +112,38 @@ public static class CustomRunStorageService
         {
             changed = _profile.Definitions.RemoveAll(definition =>
                 string.Equals(definition.Id, id, StringComparison.Ordinal)) > 0;
+            if (changed)
+                SaveLocked();
+        }
+        if (changed)
+            Changed?.Invoke();
+        return changed;
+    }
+
+    public static bool Move(string sourceId, string? targetId, bool placeAfter)
+    {
+        EnsureLoaded();
+        bool changed = false;
+        lock (SyncRoot)
+        {
+            int sourceIndex = _profile.Definitions.FindIndex(definition =>
+                string.Equals(definition.Id, sourceId, StringComparison.Ordinal));
+            if (sourceIndex < 0)
+                return false;
+
+            CustomRunDefinition source = _profile.Definitions[sourceIndex];
+            _profile.Definitions.RemoveAt(sourceIndex);
+            int targetIndex = string.IsNullOrEmpty(targetId)
+                ? _profile.Definitions.Count
+                : _profile.Definitions.FindIndex(definition =>
+                    string.Equals(definition.Id, targetId, StringComparison.Ordinal));
+            if (targetIndex < 0)
+                targetIndex = _profile.Definitions.Count;
+            else if (placeAfter)
+                targetIndex++;
+            targetIndex = Math.Clamp(targetIndex, 0, _profile.Definitions.Count);
+            _profile.Definitions.Insert(targetIndex, source);
+            changed = targetIndex != sourceIndex;
             if (changed)
                 SaveLocked();
         }

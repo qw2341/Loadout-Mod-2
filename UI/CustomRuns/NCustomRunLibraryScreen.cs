@@ -10,6 +10,7 @@ using Godot;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
+using Loadout.Services.CustomRuns.PermanentRules;
 using Loadout.Services.CustomRuns.Persistence;
 using Loadout.Services.CustomRuns.Runtime;
 using Loadout.UI.Screens.Controls;
@@ -31,16 +32,26 @@ public partial class NCustomRunLibraryScreen : Control
     private StartRunLobby? _lobby;
     private Control? _sourceScreen;
     private NButton? _sourceConfirmButton;
-    private NScrollableContainer? _scroll;
-    private VBoxContainer? _list;
+    private NScrollableContainer? _customScroll;
+    private VBoxContainer? _customList;
+    private NScrollableContainer? _permanentScroll;
+    private VBoxContainer? _permanentList;
+    private Control? _customListMount;
+    private Control? _permanentListMount;
+    private NLoadoutSettingsCategoryButton? _customRunsHeader;
+    private NLoadoutSettingsCategoryButton? _permanentRulesHeader;
     private MegaLabel? _statusLabel;
     private NBackButton? _backButton;
     private Tween? _statusTween;
     private bool _launching;
     private bool _needsRebuild;
+    private bool _showingPermanentRules;
+    private bool _suppressPermanentRebuild;
     private string? _focusDefinitionId;
+    private string? _focusPermanentRuleId;
     private int _focusActionIndex;
     private readonly List<(string Id, NCustomRunLibraryRow Row)> _rows = [];
+    private readonly List<NCustomRunPermanentRuleRow> _permanentRows = [];
 
     public static void Open(Control sourceScreen, StartRunLobby lobby)
     {
@@ -96,18 +107,22 @@ public partial class NCustomRunLibraryScreen : Control
         MouseFilter = MouseFilterEnum.Stop;
         ZIndex = 120;
         CustomRunStorageService.Register();
+        PermanentRuleStorageService.Register();
         CustomRunStorageService.Changed += OnDefinitionsChanged;
+        PermanentRuleStorageService.Changed += OnPermanentRulesChanged;
         CustomRunLobbyService.RemoteDefinitionChanged += OnDefinitionsChanged;
         BuildStaticUi();
-        EnsureNativeScroll();
+        EnsureNativeScrolls();
         EnsureBackButton();
         RebuildLibrary();
+        SwitchSection(showPermanentRules: false, moveFocus: false);
     }
 
     public override void _ExitTree()
     {
         _statusTween?.Kill();
         CustomRunStorageService.Changed -= OnDefinitionsChanged;
+        PermanentRuleStorageService.Changed -= OnPermanentRulesChanged;
         CustomRunLobbyService.RemoteDefinitionChanged -= OnDefinitionsChanged;
     }
 
@@ -122,12 +137,24 @@ public partial class NCustomRunLibraryScreen : Control
 
     private void BuildStaticUi()
     {
-        Control? titleMount = GetNodeOrNull<Control>("OuterMargin/Root/TitleMount");
-        if (titleMount is not null && titleMount.GetChildCount() == 0)
+        Control? customHeaderMount = GetNodeOrNull<Control>("%CustomRunsHeaderMount");
+        if (customHeaderMount is not null && customHeaderMount.GetChildCount() == 0)
         {
-            MegaLabel title = CreateLabel("CUSTOM RUNS", 46, StsColors.gold, HorizontalAlignment.Center, bold: true);
-            title.SetAnchorsPreset(LayoutPreset.FullRect);
-            titleMount.AddChild(title);
+            _customRunsHeader = CreateSectionHeader("custom_runs", "CUSTOM RUNS");
+            _customRunsHeader.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => SwitchSection(showPermanentRules: false)));
+            customHeaderMount.AddChild(_customRunsHeader);
+        }
+
+        Control? permanentHeaderMount = GetNodeOrNull<Control>("%PermanentRulesHeaderMount");
+        if (permanentHeaderMount is not null && permanentHeaderMount.GetChildCount() == 0)
+        {
+            _permanentRulesHeader = CreateSectionHeader("permanent_rules", "PERMANENT RULES");
+            _permanentRulesHeader.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => SwitchSection(showPermanentRules: true)));
+            permanentHeaderMount.AddChild(_permanentRulesHeader);
         }
 
         Control? statusMount = GetNodeOrNull<Control>("OuterMargin/Root/StatusMount");
@@ -140,15 +167,23 @@ public partial class NCustomRunLibraryScreen : Control
         }
     }
 
-    private void EnsureNativeScroll()
+    private void EnsureNativeScrolls()
     {
-        Control? mount = GetNodeOrNull<Control>("%ListMount");
-        if (mount is null)
+        _customListMount = GetNodeOrNull<Control>("%ListMount");
+        _permanentListMount = GetNodeOrNull<Control>("%PermanentRulesListMount");
+        if (_customListMount is null || _permanentListMount is null)
             return;
+
+        (_customScroll, _customList) = CreateNativeScroll(_customListMount, "CustomRuns");
+        (_permanentScroll, _permanentList) = CreateNativeScroll(_permanentListMount, "PermanentRules");
+    }
+
+    private static (NScrollableContainer Scroll, VBoxContainer List) CreateNativeScroll(Control mount, string name)
+    {
 
         NScrollableContainer scroll = new()
         {
-            Name = "LibraryScroll",
+            Name = $"{name}Scroll",
             MouseFilter = MouseFilterEnum.Stop
         };
         scroll.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -184,8 +219,7 @@ public partial class NCustomRunLibraryScreen : Control
         mount.AddChild(scroll);
         scroll.DisableScrollingIfContentFits();
 
-        _scroll = scroll;
-        _list = list;
+        return (scroll, list);
     }
 
     private void EnsureBackButton()
@@ -204,17 +238,22 @@ public partial class NCustomRunLibraryScreen : Control
             NClickableControl.SignalName.Released,
             Callable.From<NClickableControl>(_ => NLoadoutPanelRoot.Instance?.CloseTopScreen()));
         mount.AddChild(_backButton);
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(_backButton))
+                _backButton.Enable();
+        }).CallDeferred();
     }
 
     private void RebuildLibrary()
     {
-        if (_list is null || _lobby is null)
+        if (_customList is null || _lobby is null)
             return;
 
         CaptureFocus();
-        foreach (Node child in _list.GetChildren())
+        foreach (Node child in _customList.GetChildren())
         {
-            _list.RemoveChild(child);
+            _customList.RemoveChild(child);
             child.QueueFree();
         }
         _rows.Clear();
@@ -222,21 +261,22 @@ public partial class NCustomRunLibraryScreen : Control
         if (_lobby.NetService.Type == NetGameType.Client
             && CustomRunLobbyService.GetRemoteDefinition() is { } remote)
         {
-            _list.AddChild(CreateSectionLabel("LOBBY CUSTOM RUN"));
+            _customList.AddChild(CreateSectionLabel("LOBBY CUSTOM RUN"));
             AddDefinitionRow(remote, isLobbyDefinition: true);
-            _list.AddChild(CreateSectionLabel("YOUR CUSTOM RUNS"));
+            _customList.AddChild(CreateSectionLabel("YOUR CUSTOM RUNS"));
         }
 
         foreach (CustomRunDefinition definition in CustomRunStorageService.GetDefinitions())
             AddDefinitionRow(definition, isLobbyDefinition: false);
 
         AddNewRow();
+        RebuildPermanentRules();
         Callable.From(FinalizeRebuild).CallDeferred();
     }
 
     private void AddDefinitionRow(CustomRunDefinition definition, bool isLobbyDefinition)
     {
-        if (_list is null || _lobby is null)
+        if (_customList is null || _lobby is null)
             return;
 
         CustomRunDefinition captured = CustomRunNormalizationService.Clone(definition);
@@ -254,14 +294,16 @@ public partial class NCustomRunLibraryScreen : Control
             DeleteAction: isLobbyDefinition ? null : () => TaskHelper.RunSafely(DeleteAsync(captured)),
             TrailingLabel: "EXPORT",
             TrailingAction: () => Export(captured),
-            PrimaryEnabled: canPlay));
-        _list.AddChild(row);
+            PrimaryEnabled: canPlay,
+            ReorderId: isLobbyDefinition ? null : captured.Id,
+            ReorderAction: isLobbyDefinition ? null : ReorderCustomRun));
+        _customList.AddChild(row);
         _rows.Add((isLobbyDefinition ? $"host:{captured.Id}" : captured.Id, row));
     }
 
     private void AddNewRow()
     {
-        if (_list is null)
+        if (_customList is null)
             return;
 
         NCustomRunLibraryRow row = new();
@@ -275,15 +317,145 @@ public partial class NCustomRunLibraryScreen : Control
             DeleteAction: null,
             TrailingLabel: "IMPORT",
             TrailingAction: Import,
-            IsCreateRow: true));
-        _list.AddChild(row);
+            IsCreateRow: true,
+            ReorderAction: ReorderCustomRun));
+        _customList.AddChild(row);
         _rows.Add(("new", row));
+    }
+
+    private void RebuildPermanentRules()
+    {
+        if (_permanentList is null)
+            return;
+
+        foreach (Node child in _permanentList.GetChildren())
+        {
+            _permanentList.RemoveChild(child);
+            child.QueueFree();
+        }
+        _permanentRows.Clear();
+
+        IReadOnlyList<RuleDefinition> rules = PermanentRuleStorageService.GetRules();
+        if (rules.Count == 0)
+        {
+            MegaLabel empty = CreateLabel(
+                "No permanent rules have been saved yet.",
+                24,
+                StsColors.cream,
+                HorizontalAlignment.Center,
+                bold: false);
+            empty.CustomMinimumSize = new Vector2(0f, 180f);
+            _permanentList.AddChild(empty);
+            return;
+        }
+
+        foreach (RuleDefinition rule in rules)
+        {
+            RuleDefinition captured = CustomRunNormalizationService.CloneRule(rule);
+            NCustomRunPermanentRuleRow row = new();
+            row.Init(
+                captured,
+                TogglePermanentRule,
+                selected => TaskHelper.RunSafely(DeletePermanentRuleAsync(selected)),
+                ReorderPermanentRule);
+            _permanentList.AddChild(row);
+            _permanentRows.Add(row);
+        }
+    }
+
+    private void SwitchSection(bool showPermanentRules, bool moveFocus = true)
+    {
+        _showingPermanentRules = showPermanentRules;
+        if (_customListMount is not null)
+            _customListMount.Visible = !showPermanentRules;
+        if (_permanentListMount is not null)
+            _permanentListMount.Visible = showPermanentRules;
+
+        if (showPermanentRules)
+        {
+            _customRunsHeader?.Deselect();
+            _permanentRulesHeader?.Select();
+        }
+        else
+        {
+            _permanentRulesHeader?.Deselect();
+            _customRunsHeader?.Select();
+        }
+
+        Control? activeMount = showPermanentRules ? _permanentListMount : _customListMount;
+        if (activeMount is not null)
+        {
+            activeMount.Modulate = new Color(1f, 1f, 1f, 0f);
+            Tween tween = CreateTween();
+            tween.TweenProperty(activeMount, "modulate:a", 1f, 0.18f)
+                .SetEase(Tween.EaseType.Out)
+                .SetTrans(Tween.TransitionType.Cubic);
+        }
+
+        Callable.From(FinalizeRebuild).CallDeferred();
+        if (!moveFocus)
+            return;
+        Callable.From(() =>
+        {
+            if (_showingPermanentRules)
+            {
+                Control? focus = _permanentRows.FirstOrDefault()?.Actions.FirstOrDefault();
+                (focus ?? _permanentRulesHeader)?.GrabFocus();
+            }
+            else
+            {
+                (_rows.FirstOrDefault().Row?.PrimaryFocusControl ?? _customRunsHeader)?.GrabFocus();
+            }
+        }).CallDeferred();
+    }
+
+    private static NLoadoutSettingsCategoryButton CreateSectionHeader(string id, string label)
+    {
+        NLoadoutSettingsCategoryButton button = new()
+        {
+            CustomMinimumSize = new Vector2(520f, 72f)
+        };
+        button.Init(id, label);
+        button.SetAnchorsPreset(LayoutPreset.Center);
+        button.OffsetLeft = -260f;
+        button.OffsetTop = -36f;
+        button.OffsetRight = 260f;
+        button.OffsetBottom = 36f;
+        return button;
+    }
+
+    private void ReorderCustomRun(string sourceId, string? targetId, bool placeAfter)
+    {
+        _focusDefinitionId = sourceId;
+        CustomRunStorageService.Move(sourceId, targetId, placeAfter);
+    }
+
+    private void TogglePermanentRule(string id, bool enabled)
+    {
+        _suppressPermanentRebuild = true;
+        try
+        {
+            PermanentRuleStorageService.SetEnabled(id, enabled);
+            SetStatus($"Permanent rule {(enabled ? "enabled" : "disabled")}.", success: true);
+        }
+        finally
+        {
+            _suppressPermanentRebuild = false;
+        }
+    }
+
+    private void ReorderPermanentRule(string sourceId, string? targetId, bool placeAfter)
+    {
+        _focusPermanentRuleId = sourceId;
+        PermanentRuleStorageService.Move(sourceId, targetId, placeAfter);
     }
 
     private void FinalizeRebuild()
     {
-        if (GodotObject.IsInstanceValid(_scroll) && GodotObject.IsInstanceValid(_list))
-            _scroll.SetContent(_list);
+        if (GodotObject.IsInstanceValid(_customScroll) && GodotObject.IsInstanceValid(_customList))
+            _customScroll.SetContent(_customList);
+        if (GodotObject.IsInstanceValid(_permanentScroll) && GodotObject.IsInstanceValid(_permanentList))
+            _permanentScroll.SetContent(_permanentList);
         ConfigureFocusNavigation();
         RestoreFocus();
     }
@@ -316,6 +488,42 @@ public partial class NCustomRunLibraryScreen : Control
                         belowIndex = Math.Min(actionIndex, belowRow.Actions.Count - 1);
                     action.FocusNeighborBottom = belowRow.Actions[belowIndex].GetPath();
                 }
+                else if (_permanentRulesHeader is not null)
+                {
+                    action.FocusNeighborBottom = _permanentRulesHeader.GetPath();
+                }
+            }
+        }
+
+        if (_customRunsHeader is not null && _rows.Count > 0 && _rows[0].Row.Actions.Count > 0)
+            _customRunsHeader.FocusNeighborBottom = _rows[0].Row.Actions[0].GetPath();
+        if (_permanentRulesHeader is not null)
+        {
+            _permanentRulesHeader.FocusNeighborTop = _customRunsHeader?.GetPath() ?? _permanentRulesHeader.GetPath();
+            if (_permanentRows.Count > 0 && _permanentRows[0].Actions.Count > 0)
+                _permanentRulesHeader.FocusNeighborBottom = _permanentRows[0].Actions[0].GetPath();
+            else if (_backButton is not null)
+                _permanentRulesHeader.FocusNeighborBottom = _backButton.GetPath();
+        }
+
+        for (int rowIndex = 0; rowIndex < _permanentRows.Count; rowIndex++)
+        {
+            IReadOnlyList<Control> actions = _permanentRows[rowIndex].Actions;
+            for (int actionIndex = 0; actionIndex < actions.Count; actionIndex++)
+            {
+                Control action = actions[actionIndex];
+                if (actionIndex > 0)
+                    action.FocusNeighborLeft = actions[actionIndex - 1].GetPath();
+                if (actionIndex + 1 < actions.Count)
+                    action.FocusNeighborRight = actions[actionIndex + 1].GetPath();
+                action.FocusNeighborTop = rowIndex > 0 && _permanentRows[rowIndex - 1].Actions.Count > 0
+                    ? _permanentRows[rowIndex - 1].Actions[Math.Min(actionIndex, _permanentRows[rowIndex - 1].Actions.Count - 1)].GetPath()
+                    : _permanentRulesHeader?.GetPath() ?? action.GetPath();
+                if (rowIndex + 1 < _permanentRows.Count && _permanentRows[rowIndex + 1].Actions.Count > 0)
+                {
+                    action.FocusNeighborBottom = _permanentRows[rowIndex + 1].Actions[
+                        Math.Min(actionIndex, _permanentRows[rowIndex + 1].Actions.Count - 1)].GetPath();
+                }
                 else if (_backButton is not null)
                 {
                     action.FocusNeighborBottom = _backButton.GetPath();
@@ -323,8 +531,15 @@ public partial class NCustomRunLibraryScreen : Control
             }
         }
 
-        if (_backButton is not null && _rows.Count > 0 && _rows[^1].Row.Actions.Count > 0)
-            _backButton.FocusNeighborTop = _rows[^1].Row.Actions[0].GetPath();
+        if (_backButton is not null)
+        {
+            if (_showingPermanentRules && _permanentRows.Count > 0 && _permanentRows[^1].Actions.Count > 0)
+                _backButton.FocusNeighborTop = _permanentRows[^1].Actions[0].GetPath();
+            else if (_showingPermanentRules && _permanentRulesHeader is not null)
+                _backButton.FocusNeighborTop = _permanentRulesHeader.GetPath();
+            else if (_rows.Count > 0 && _rows[^1].Row.Actions.Count > 0)
+                _backButton.FocusNeighborTop = _rows[^1].Row.Actions[0].GetPath();
+        }
     }
 
     private void CaptureFocus()
@@ -349,6 +564,19 @@ public partial class NCustomRunLibraryScreen : Control
 
     private void RestoreFocus()
     {
+        if (_showingPermanentRules)
+        {
+            NCustomRunPermanentRuleRow? permanentRow = _focusPermanentRuleId is null
+                ? _permanentRows.FirstOrDefault()
+                : _permanentRows.FirstOrDefault(row => string.Equals(
+                    row.RuleId,
+                    _focusPermanentRuleId,
+                    StringComparison.Ordinal));
+            permanentRow ??= _permanentRows.FirstOrDefault();
+            (permanentRow?.Actions.FirstOrDefault() ?? _permanentRulesHeader)?.GrabFocus();
+            return;
+        }
+
         if (_rows.Count == 0)
             return;
         int rowIndex = _focusDefinitionId is null
@@ -404,26 +632,9 @@ public partial class NCustomRunLibraryScreen : Control
 
     private async Task DeleteAsync(CustomRunDefinition definition)
     {
-        NModalContainer? modalContainer = NModalContainer.Instance;
-        if (modalContainer is null
-            || !GodotObject.IsInstanceValid(modalContainer)
-            || modalContainer.OpenModal is not null)
-        {
-            SetStatus("The delete confirmation is unavailable while another popup is open.", success: false);
-            return;
-        }
-
-        NGenericPopup? popup = NGenericPopup.Create();
-        if (popup is null)
-        {
-            SetStatus("Could not open the delete confirmation.", success: false);
-            return;
-        }
-
         LocString body = new("settings_ui", "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title");
         body.Add("Name", definition.Name);
-        modalContainer.Add(popup);
-        bool confirmed = await popup.WaitForConfirmation(
+        bool confirmed = await WaitForConfirmationAboveScreen(
             body,
             new LocString("settings_ui", "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title"),
             new LocString("settings_ui", "LOADOUT-DELETE_CUSTOM_RUN_NO.title"),
@@ -439,6 +650,73 @@ public partial class NCustomRunLibraryScreen : Control
             SetStatus($"Could not find '{definition.Name}' to delete.", success: false);
     }
 
+    private async Task DeletePermanentRuleAsync(RuleDefinition rule)
+    {
+        LocString body = new("settings_ui", "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title");
+        body.Add("Name", rule.Name);
+        bool confirmed = await WaitForConfirmationAboveScreen(
+            body,
+            new LocString("settings_ui", "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title"),
+            new LocString("settings_ui", "LOADOUT-DELETE_CUSTOM_RUN_NO.title"),
+            new LocString("settings_ui", "LOADOUT-DELETE_CUSTOM_RUN_YES.title"));
+        if (!confirmed)
+            return;
+
+        int index = _permanentRows.FindIndex(row => string.Equals(row.RuleId, rule.Id, StringComparison.Ordinal));
+        _focusPermanentRuleId = index >= 0 && index + 1 < _permanentRows.Count
+            ? _permanentRows[index + 1].RuleId
+            : _permanentRows.ElementAtOrDefault(Math.Max(0, index - 1))?.RuleId;
+        if (PermanentRuleStorageService.Delete(rule.Id))
+            SetStatus($"Deleted permanent rule '{rule.Name}'.", success: true);
+        else
+            SetStatus($"Could not find permanent rule '{rule.Name}' to delete.", success: false);
+    }
+
+    private async Task<bool> WaitForConfirmationAboveScreen(
+        LocString body,
+        LocString title,
+        LocString noText,
+        LocString yesText)
+    {
+        NModalContainer? modalContainer = NModalContainer.Instance;
+        if (modalContainer is null || !GodotObject.IsInstanceValid(modalContainer))
+        {
+            SetStatus("Could not open the delete confirmation.", success: false);
+            return false;
+        }
+
+        if (modalContainer.OpenModal is GodotObject openModal
+            && !GodotObject.IsInstanceValid(openModal))
+        {
+            modalContainer.Clear();
+        }
+        if (modalContainer.OpenModal is not null)
+        {
+            SetStatus("The delete confirmation is unavailable while another popup is open.", success: false);
+            return false;
+        }
+
+        NGenericPopup? popup = NGenericPopup.Create();
+        if (popup is null)
+        {
+            SetStatus("Could not open the delete confirmation.", success: false);
+            return false;
+        }
+
+        IDisposable? modalLease = NLoadoutPanelRoot.Instance?.HostNativeModal(modalContainer);
+        try
+        {
+            modalContainer.Add(popup);
+            return await popup.WaitForConfirmation(body, title, noText, yesText);
+        }
+        finally
+        {
+            if (GodotObject.IsInstanceValid(modalContainer))
+                modalContainer.Clear();
+            modalLease?.Dispose();
+        }
+    }
+
     private async Task PlayAsync(CustomRunDefinition definition)
     {
         if (_lobby is null || _launching)
@@ -450,7 +728,8 @@ public partial class NCustomRunLibraryScreen : Control
         }
 
         CustomRunDefinition saved = CustomRunStorageService.Upsert(definition);
-        CustomRunCompileResult compiled = CustomRunCompiler.Compile(saved, _lobby);
+        CustomRunDefinition effectiveDefinition = BuildEffectiveDefinition(saved);
+        CustomRunCompileResult compiled = CustomRunCompiler.Compile(effectiveDefinition, _lobby);
         if (!compiled.IsValid || compiled.Snapshot is null)
         {
             CustomRunValidationIssue? issue = compiled.Issues
@@ -516,6 +795,31 @@ public partial class NCustomRunLibraryScreen : Control
             RebuildLibrary();
         else
             _needsRebuild = true;
+    }
+
+    private void OnPermanentRulesChanged()
+    {
+        if (_suppressPermanentRebuild || !IsNodeReady() || _launching)
+            return;
+        if (Visible)
+            RebuildLibrary();
+        else
+            _needsRebuild = true;
+    }
+
+    private static CustomRunDefinition BuildEffectiveDefinition(CustomRunDefinition saved)
+    {
+        CustomRunDefinition effective = CustomRunNormalizationService.Clone(saved);
+        HashSet<string> scenarioRuleIds = effective.Rules
+            .Select(rule => rule.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        List<RuleDefinition> enabledPermanentRules = PermanentRuleStorageService.GetRules()
+            .Where(rule => rule.Enabled && !scenarioRuleIds.Contains(rule.Id))
+            .Select(CustomRunNormalizationService.CloneRule)
+            .ToList();
+        enabledPermanentRules.AddRange(effective.Rules);
+        effective.Rules = enabledPermanentRules;
+        return effective;
     }
 
     private void DetachLobby(StartRunLobby lobby)

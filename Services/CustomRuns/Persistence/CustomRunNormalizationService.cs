@@ -148,10 +148,11 @@ public static class CustomRunNormalizationService
         return variable;
     }
 
-    private static RuleDefinition NormalizeRule(RuleDefinition rule)
+    public static RuleDefinition NormalizeRule(RuleDefinition rule)
     {
         rule.Id = NormalizeObjectId(rule.Id);
         rule.Name = string.IsNullOrWhiteSpace(rule.Name) ? "New Rule" : rule.Name.Trim();
+        rule.Description = (rule.Description ?? string.Empty).Trim();
         rule.Trigger = NormalizeComponent(rule.Trigger);
         rule.Conditions = NormalizeConditionGroup(rule.Conditions ?? new ConditionGroupDefinition());
         rule.Actions = (rule.Actions ?? [])
@@ -163,6 +164,13 @@ public static class CustomRunNormalizationService
             rule.Limit.Kind = RuleLimitKind.Unlimited;
         rule.Limit.Count = Math.Max(1, rule.Limit.Count);
         return rule;
+    }
+
+    public static RuleDefinition CloneRule(RuleDefinition rule)
+    {
+        string json = JsonSerializer.Serialize(rule, CustomRunSerializationService.SharedJsonOptions);
+        return JsonSerializer.Deserialize<RuleDefinition>(json, CustomRunSerializationService.SharedJsonOptions)
+               ?? new RuleDefinition();
     }
 
     private static RuleComponentSpec NormalizeComponent(RuleComponentSpec? component)

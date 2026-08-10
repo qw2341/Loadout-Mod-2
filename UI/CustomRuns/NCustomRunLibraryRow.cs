@@ -9,7 +9,6 @@ using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
-using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
 
 public sealed record CustomRunLibraryRowOptions(
     string Name,
@@ -22,11 +21,13 @@ public sealed record CustomRunLibraryRowOptions(
     string TrailingLabel,
     Action TrailingAction,
     bool PrimaryEnabled = true,
-    bool IsCreateRow = false);
+    bool IsCreateRow = false,
+    string? ReorderId = null,
+    Action<string, string?, bool>? ReorderAction = null);
 
 public partial class NCustomRunLibraryRow : NButton
 {
-    private const string SettingsTabScenePath = "res://scenes/screens/settings_tab.tscn";
+    private const string DragPrefix = "loadout-custom-run|";
 
     private CustomRunLibraryRowOptions? _options;
     private ColorRect? _hoverTint;
@@ -52,20 +53,12 @@ public partial class NCustomRunLibraryRow : NButton
     {
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         PivotOffset = Size * 0.5f;
+        _ignoreDragThreshold = 8f;
         Build();
-
-        if (_options is { IsCreateRow: false })
-        {
-            FocusMode = FocusModeEnum.All;
-            MouseFilter = MouseFilterEnum.Stop;
-            ConnectSignals();
-            Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => _options.RowAction()));
-        }
-        else
-        {
-            FocusMode = FocusModeEnum.None;
-            MouseFilter = MouseFilterEnum.Ignore;
-        }
+        FocusMode = FocusModeEnum.All;
+        MouseFilter = MouseFilterEnum.Stop;
+        ConnectSignals();
+        Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => _options?.RowAction()));
     }
 
     public override void _ExitTree()
@@ -88,18 +81,27 @@ public partial class NCustomRunLibraryRow : NButton
             Animate(false);
     }
 
-    protected override void OnPress()
+    public override Variant _GetDragData(Vector2 atPosition)
     {
-        base.OnPress();
-        _tween?.Kill();
-        _tween = CreateTween();
-        _tween.TweenProperty(this, "scale", new Vector2(0.995f, 0.985f), 0.08f);
+        if (string.IsNullOrEmpty(_options?.ReorderId))
+            return default;
+        SetDragPreview(CreateDragPreview(_options.Name));
+        return DragPrefix + _options.ReorderId;
     }
 
-    protected override void OnRelease()
+    public override bool _CanDropData(Vector2 atPosition, Variant data)
     {
-        base.OnRelease();
-        Animate(true);
+        return _options?.ReorderAction is not null
+               && TryGetDragId(data, out string sourceId)
+               && !string.Equals(sourceId, _options.ReorderId, StringComparison.Ordinal);
+    }
+
+    public override void _DropData(Vector2 atPosition, Variant data)
+    {
+        if (_options?.ReorderAction is null || !TryGetDragId(data, out string sourceId))
+            return;
+        string? targetId = _options.IsCreateRow ? null : _options.ReorderId;
+        _options.ReorderAction(sourceId, targetId, targetId is not null && atPosition.Y >= Size.Y * 0.5f);
     }
 
     private void Build()
@@ -149,10 +151,10 @@ public partial class NCustomRunLibraryRow : NButton
         margin.AddThemeConstantOverride("margin_top", 8);
         margin.AddThemeConstantOverride("margin_right", 12);
         margin.AddThemeConstantOverride("margin_bottom", 8);
-        margin.MouseFilter = MouseFilterEnum.Pass;
+        margin.MouseFilter = MouseFilterEnum.Ignore;
         AddChild(margin);
 
-        HBoxContainer row = new() { MouseFilter = MouseFilterEnum.Pass };
+        HBoxContainer row = new() { MouseFilter = MouseFilterEnum.Ignore };
         row.AddThemeConstantOverride("separation", 16);
         margin.AddChild(row);
 
@@ -207,17 +209,23 @@ public partial class NCustomRunLibraryRow : NButton
         if (_options is null)
             return;
 
-        NClickableControl create = CreateCategoryAction(_options.PrimaryLabel, _options.PrimaryAction);
-        create.Name = "CreateCustomRun";
-        create.SetAnchorsPreset(LayoutPreset.Center);
-        create.OffsetLeft = -245f;
-        create.OffsetTop = -38f;
-        create.OffsetRight = 245f;
-        create.OffsetBottom = 38f;
-        AddChild(create);
-        if (create is NSettingsTab tab)
-            Callable.From(() => tab.SetLabel(_options.PrimaryLabel)).CallDeferred();
-        RegisterAction(create, "primary");
+        NLoadoutSettingsCategoryButton createVisual = new()
+        {
+            Name = "CreateCustomRunVisual",
+            CustomMinimumSize = new Vector2(540f, 78f),
+            FocusMode = FocusModeEnum.None,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        createVisual.Init("create_visual", _options.PrimaryLabel);
+        createVisual.SetAnchorsPreset(LayoutPreset.Center);
+        createVisual.OffsetLeft = -270f;
+        createVisual.OffsetTop = -39f;
+        createVisual.OffsetRight = 270f;
+        createVisual.OffsetBottom = 39f;
+        AddChild(createVisual);
+        createVisual.FocusMode = FocusModeEnum.None;
+        createVisual.MouseFilter = MouseFilterEnum.Ignore;
+        RegisterAction(this, "primary");
 
         NLoadoutSettingsActionButton import = new()
         {
@@ -235,31 +243,6 @@ public partial class NCustomRunLibraryRow : NButton
             Callable.From<NClickableControl>(_ => _options.TrailingAction()));
         AddChild(import);
         RegisterAction(import, "import");
-    }
-
-    private NClickableControl CreateCategoryAction(string label, Action? action)
-    {
-        NClickableControl button;
-        if (ResourceLoader.Exists(SettingsTabScenePath)
-            && GD.Load<PackedScene>(SettingsTabScenePath) is { } scene
-            && scene.Instantiate<NSettingsTab>() is { } tab)
-        {
-            button = tab;
-        }
-        else
-        {
-            NLoadoutSettingsActionButton fallback = new();
-            fallback.Init("create", label);
-            button = fallback;
-        }
-
-        if (action is not null)
-        {
-            button.Connect(
-                NClickableControl.SignalName.Released,
-                Callable.From<NClickableControl>(_ => action()));
-        }
-        return button;
     }
 
     private NLoadoutSettingsActionButton AddSettingsAction(
@@ -311,9 +294,6 @@ public partial class NCustomRunLibraryRow : NButton
     {
         _tween?.Kill();
         _tween = CreateTween().SetParallel();
-        _tween.TweenProperty(this, "scale", focused ? new Vector2(1.006f, 1.006f) : Vector2.One, focused ? 0.1f : 0.3f)
-            .SetEase(Tween.EaseType.Out)
-            .SetTrans(Tween.TransitionType.Expo);
         if (_hoverTint is not null)
         {
             _tween.TweenProperty(_hoverTint, "color:a", focused ? 0.07f : 0f, focused ? 0.1f : 0.3f);
@@ -322,6 +302,36 @@ public partial class NCustomRunLibraryRow : NButton
         {
             _tween.TweenProperty(_divider, "color:a", focused ? 0.5f : 0.25098f, focused ? 0.1f : 0.3f);
         }
+    }
+
+    private static bool TryGetDragId(Variant data, out string id)
+    {
+        id = string.Empty;
+        if (data.VariantType != Variant.Type.String)
+            return false;
+        string value = data.AsString();
+        if (!value.StartsWith(DragPrefix, StringComparison.Ordinal))
+            return false;
+        id = value[DragPrefix.Length..];
+        return id.Length > 0;
+    }
+
+    private static Control CreateDragPreview(string title)
+    {
+        PanelContainer panel = new()
+        {
+            CustomMinimumSize = new Vector2(460f, 68f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        StyleBoxFlat style = new()
+        {
+            BgColor = new Color(0.04f, 0.08f, 0.1f, 0.94f),
+            BorderColor = new Color(0.91f, 0.72f, 0.2f, 0.9f)
+        };
+        style.SetBorderWidthAll(2);
+        panel.AddThemeStyleboxOverride("panel", style);
+        panel.AddChild(CreateLabel(title, 24, StsColors.gold, true, 64f));
+        return panel;
     }
 
     private static MegaLabel CreateLabel(string value, int fontSize, Color color, bool bold, float height)

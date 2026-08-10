@@ -65,5 +65,7 @@
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title": "カスタムランを削除しますか？",
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title": "「{Name}」を削除しますか？保存されたカスタムランは完全に削除されます。",
   "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "いいえ",
-  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "削除"
+  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "削除",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "永久ルールを削除しますか？",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "「{Name}」を削除しますか？保存されたルールは完全に削除されます。"
 }

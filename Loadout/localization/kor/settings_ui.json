@@ -65,5 +65,7 @@
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title": "커스텀 런을 삭제할까요?",
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title": "'{Name}'을(를) 삭제할까요? 저장된 커스텀 런이 영구적으로 삭제됩니다.",
   "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "아니요",
-  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "삭제"
+  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "삭제",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "영구 규칙을 삭제할까요?",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "'{Name}'을(를) 삭제할까요? 저장된 규칙이 영구적으로 삭제됩니다."
 }

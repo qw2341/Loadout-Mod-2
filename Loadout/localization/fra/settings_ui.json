@@ -65,5 +65,7 @@
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title": "Supprimer la partie personnalisée ?",
   "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title": "Supprimer « {Name} » ? Cette action efface définitivement la partie personnalisée enregistrée.",
   "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "Non",
-  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "Supprimer"
+  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "Supprimer",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "Supprimer la règle permanente ?",
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "Supprimer « {Name} » ? Cette action efface définitivement la règle enregistrée."
 }
