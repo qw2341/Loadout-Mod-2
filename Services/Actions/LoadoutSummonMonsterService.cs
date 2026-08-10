@@ -5,6 +5,7 @@ namespace Loadout.Services.Actions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
@@ -25,6 +26,9 @@ using MegaCrit.Sts2.Core.Runs;
 public static class LoadoutSummonMonsterService
 {
     private static readonly AsyncLocal<MonsterModel?> IntentFallbackMonster = new();
+    private static readonly ConditionalWeakTable<MonsterModel, LoadoutSummonMarker> LoadoutSummonedMonsters = new();
+
+    private sealed class LoadoutSummonMarker;
 
     public static bool RequestSummonMonster(ModelId monsterId)
     {
@@ -91,6 +95,7 @@ public static class LoadoutSummonMonsterService
         CombatSide side,
         string? slotName)
     {
+        MarkAsLoadoutSummoned(monster);
         MonsterModel? previous = IntentFallbackMonster.Value;
         IntentFallbackMonster.Value = monster;
         try
@@ -101,6 +106,59 @@ public static class LoadoutSummonMonsterService
         {
             IntentFallbackMonster.Value = previous;
         }
+    }
+
+    internal static bool TryHandleQueenAddedWithoutAmalgam(
+        Queen queen,
+        out Task result)
+    {
+        if (!ReferenceEquals(IntentFallbackMonster.Value, queen)
+            || queen.CombatState.Enemies.Any(creature => creature.Monster is TorchHeadAmalgam))
+        {
+            result = Task.CompletedTask;
+            return false;
+        }
+
+        result = Task.CompletedTask;
+        return true;
+    }
+
+    internal static bool TryPrepareUnsupportedSummonSlot(
+        Creature creature,
+        out IReadOnlyList<NCreature> existingEnemyNodes)
+    {
+        existingEnemyNodes = [];
+        MonsterModel? monster = creature.Monster;
+        string? slotName = creature.SlotName;
+        ICombatState? combatState = creature.CombatState;
+        if (monster is null
+            || combatState is null
+            || string.IsNullOrWhiteSpace(slotName)
+            || combatState.Encounter?.Slots.Contains(slotName) == true)
+        {
+            return false;
+        }
+
+        bool summonedByLoadoutMonster = combatState
+            .GetTeammatesOf(creature)
+            .Select(teammate => teammate.Monster)
+            .Any(teammate => teammate is not null
+                && teammate.IsPerformingMove
+                && LoadoutSummonedMonsters.TryGetValue(teammate, out _));
+        if (!summonedByLoadoutMonster)
+            return false;
+
+        MarkAsLoadoutSummoned(monster);
+        existingEnemyNodes = GetCurrentEnemyNodes();
+        creature.SlotName = null;
+        return true;
+    }
+
+    internal static void PositionUnslottedNestedSummon(
+        Creature creature,
+        IReadOnlyList<NCreature> existingEnemyNodes)
+    {
+        PositionUnslottedSummonedMonster(creature, existingEnemyNodes);
     }
 
     internal static bool TryGetDefaultIntentStateId(
@@ -198,6 +256,12 @@ public static class LoadoutSummonMonsterService
             25m,
             creature,
             null);
+    }
+
+    private static void MarkAsLoadoutSummoned(MonsterModel monster)
+    {
+        LoadoutSummonedMonsters.Remove(monster);
+        LoadoutSummonedMonsters.Add(monster, new LoadoutSummonMarker());
     }
 
     private static string? GetNextAvailableMonsterSlot(CombatState combatState)

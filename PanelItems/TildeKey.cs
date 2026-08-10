@@ -128,6 +128,7 @@ public static partial class TildeKey
         item.BeforeOpen = target =>
         {
             TildeKeyStateService.EnsureLoaded();
+            AddSidebarControls(target);
         };
         item.QuickAction = () =>
         {
