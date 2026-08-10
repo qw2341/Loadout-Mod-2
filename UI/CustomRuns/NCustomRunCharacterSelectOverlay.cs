@@ -8,7 +8,6 @@ using System.Linq;
 using Godot;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
-using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -18,7 +17,6 @@ public partial class NCustomRunCharacterSelectOverlay : Control
 {
     private Control? _sourceScreen;
     private StartRunLobby? _lobby;
-    private MegaLabel? _statusLabel;
     private TextureRect? _confirmImage;
     private readonly Dictionary<NCharacterSelectButton, bool> _originalVisibility = [];
     private float _rainbowHue;
@@ -35,7 +33,6 @@ public partial class NCustomRunCharacterSelectOverlay : Control
         SetAnchorsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Ignore;
         ZIndex = 23;
-        BuildStatusLabel();
         _confirmImage = _sourceScreen?.GetNodeOrNull<TextureRect>("ConfirmButton/Image");
         RememberCharacterVisibility();
         CustomRunLobbyService.LoadedDefinitionChanged += OnLoadedDefinitionChanged;
@@ -67,7 +64,7 @@ public partial class NCustomRunCharacterSelectOverlay : Control
 
     public void RefreshLoadedRun()
     {
-        if (_lobby is null || _statusLabel is null)
+        if (_lobby is null)
             return;
 
         CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(_lobby);
@@ -76,62 +73,20 @@ public partial class NCustomRunCharacterSelectOverlay : Control
         SetProcess(loaded);
         if (!loaded)
         {
-            _statusLabel.Text = string.Empty;
-            _statusLabel.TooltipText = string.Empty;
-            _statusLabel.Visible = false;
             if (_confirmImage is not null && GodotObject.IsInstanceValid(_confirmImage))
                 _confirmImage.SelfModulate = Colors.White;
             RestoreCharacterVisibility();
+            NCustomRunEditorEntry.RefreshAttachedState(_sourceScreen, null);
             return;
         }
 
-        string name = string.IsNullOrWhiteSpace(definition!.Name) ? "Unnamed Custom Run" : definition.Name;
-        _statusLabel.Text = $"CUSTOM RUN LOADED  •  {name}";
-        _statusLabel.TooltipText = name;
-        _statusLabel.Visible = true;
-        _statusLabel.AddThemeColorOverride("font_color", StsColors.gold);
-        ApplyCharacterRestrictions(definition);
+        NCustomRunEditorEntry.RefreshAttachedState(_sourceScreen, definition);
+        ApplyCharacterRestrictions(definition!);
     }
 
     public void ShowError(string text)
     {
-        if (_statusLabel is null)
-            return;
-        _statusLabel.Visible = true;
-        _statusLabel.Text = text;
-        _statusLabel.TooltipText = text;
-        _statusLabel.AddThemeColorOverride("font_color", new Color(1f, 0.58f, 0.48f));
-    }
-
-    private void BuildStatusLabel()
-    {
-        _statusLabel = new MegaLabel
-        {
-            Name = "LoadedRunStatus",
-            AutoSizeEnabled = false,
-            MinFontSize = 18,
-            MaxFontSize = 27,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-            MouseFilter = MouseFilterEnum.Ignore,
-            Visible = false
-        };
-        _statusLabel.AnchorLeft = 0.5f;
-        _statusLabel.AnchorTop = 1f;
-        _statusLabel.AnchorRight = 0.5f;
-        _statusLabel.AnchorBottom = 1f;
-        _statusLabel.OffsetLeft = -480f;
-        _statusLabel.OffsetTop = -72f;
-        _statusLabel.OffsetRight = 480f;
-        _statusLabel.OffsetBottom = -18f;
-        _statusLabel.AddThemeFontOverride(
-            "font",
-            GD.Load<Font>("res://themes/kreon_bold_glyph_space_two.tres"));
-        _statusLabel.AddThemeFontSizeOverride("font_size", 27);
-        _statusLabel.AddThemeConstantOverride("outline_size", 8);
-        _statusLabel.AddThemeColorOverride("font_outline_color", Colors.Black);
-        AddChild(_statusLabel);
+        NCustomRunEditorEntry.ShowAttachedStatus(_sourceScreen, text, error: true);
     }
 
     private void OnLoadedDefinitionChanged(StartRunLobby lobby)
