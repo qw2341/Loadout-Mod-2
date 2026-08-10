@@ -61,5 +61,9 @@
   "LOADOUT-RESET_ALL_PERMANENT_RELIC_MODIFICATIONS.title": "모든 영구 유물 변경 초기화",
   "LOADOUT-RELIC_RESET_STATUS_SUCCEEDED.title": "상태: 영구 유물 변경을 초기화했습니다",
   "LOADOUT-RELIC_RESET_STATUS_NOTHING_TO_RESET.title": "상태: 초기화할 영구 유물 변경이 없습니다",
-  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "상태: 초기화에 실패했습니다. 자세한 내용은 로그를 확인하세요"
+  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "상태: 초기화에 실패했습니다. 자세한 내용은 로그를 확인하세요",
+  "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title": "커스텀 런을 삭제할까요?",
+  "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title": "'{Name}'을(를) 삭제할까요? 저장된 커스텀 런이 영구적으로 삭제됩니다.",
+  "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "아니요",
+  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "삭제"
 }

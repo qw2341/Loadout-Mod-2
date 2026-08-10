@@ -15,7 +15,7 @@ public sealed class ResolvedCustomRunSnapshot
     public string SourceDefinitionId { get; init; } = string.Empty;
 
     [JsonPropertyName("runSeed")]
-    public long RunSeed { get; init; }
+    public string RunSeed { get; init; } = string.Empty;
 
     [JsonPropertyName("players")]
     public IReadOnlyList<ResolvedPlayerSetup> Players { get; init; } = [];

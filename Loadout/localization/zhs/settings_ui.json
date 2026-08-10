@@ -61,5 +61,9 @@
   "LOADOUT-RESET_ALL_PERMANENT_RELIC_MODIFICATIONS.title": "重置所有永久遗物修改",
   "LOADOUT-RELIC_RESET_STATUS_SUCCEEDED.title": "状态：已成功重置永久遗物修改",
   "LOADOUT-RELIC_RESET_STATUS_NOTHING_TO_RESET.title": "状态：没有需要重置的永久遗物修改",
-  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "状态：重置失败；请查看日志了解详情"
+  "LOADOUT-RELIC_RESET_STATUS_FAILED.title": "状态：重置失败；请查看日志了解详情",
+  "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title": "删除自定义游戏？",
+  "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title": "删除“{Name}”？这将永久删除已保存的自定义游戏。",
+  "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "否",
+  "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "删除"
 }

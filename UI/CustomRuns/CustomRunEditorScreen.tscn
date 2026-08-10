@@ -1,32 +1,6 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://UI/CustomRuns/NCustomRunEditorScreen.cs" id="1_screen"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFrame"]
-bg_color = Color(0.035, 0.045, 0.065, 0.985)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.56, 0.42, 0.13, 0.95)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-shadow_color = Color(0, 0, 0, 0.65)
-shadow_size = 22
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxSection"]
-bg_color = Color(0.075, 0.085, 0.115, 0.94)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.42, 0.32, 0.13, 0.7)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
 
 [node name="CustomRunEditorScreen" type="Control"]
 layout_mode = 3
@@ -46,128 +20,60 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
-color = Color(0, 0, 0, 0.88)
+color = Color(0.015, 0.02, 0.035, 0.76)
 
-[node name="EditorFrame" type="PanelContainer" parent="."]
+[node name="OuterMargin" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 86.0
+offset_left = 120.0
 offset_top = 54.0
-offset_right = -86.0
-offset_bottom = -76.0
+offset_right = -120.0
+offset_bottom = -92.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFrame")
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 4
 
-[node name="OuterMargin" type="MarginContainer" parent="EditorFrame"]
-layout_mode = 2
-theme_override_constants/margin_left = 26
-theme_override_constants/margin_top = 18
-theme_override_constants/margin_right = 26
-theme_override_constants/margin_bottom = 20
-
-[node name="Root" type="VBoxContainer" parent="EditorFrame/OuterMargin"]
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="Header" type="HBoxContainer" parent="EditorFrame/OuterMargin/Root"]
-custom_minimum_size = Vector2(0, 68)
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="TitleMount" type="Control" parent="EditorFrame/OuterMargin/Root/Header"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="AuthorityMount" type="Control" parent="EditorFrame/OuterMargin/Root/Header"]
-custom_minimum_size = Vector2(340, 0)
-layout_mode = 2
-
-[node name="Body" type="HBoxContainer" parent="EditorFrame/OuterMargin/Root"]
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_constants/separation = 16
-
-[node name="Sidebar" type="PanelContainer" parent="EditorFrame/OuterMargin/Root/Body"]
-custom_minimum_size = Vector2(322, 0)
-layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxSection")
-
-[node name="Margin" type="MarginContainer" parent="EditorFrame/OuterMargin/Root/Body/Sidebar"]
-layout_mode = 2
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 14
-
-[node name="SidebarRoot" type="VBoxContainer" parent="EditorFrame/OuterMargin/Root/Body/Sidebar/Margin"]
+[node name="Root" type="VBoxContainer" parent="OuterMargin"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="SavedTitleMount" type="Control" parent="EditorFrame/OuterMargin/Root/Body/Sidebar/Margin/SidebarRoot"]
-custom_minimum_size = Vector2(0, 42)
+[node name="Header" type="HBoxContainer" parent="OuterMargin/Root"]
+custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
+theme_override_constants/separation = 16
 
-[node name="SavedListScroll" type="ScrollContainer" parent="EditorFrame/OuterMargin/Root/Body/Sidebar/Margin/SidebarRoot"]
-layout_mode = 2
-size_flags_vertical = 3
-horizontal_scroll_mode = 0
-
-[node name="SavedList" type="VBoxContainer" parent="EditorFrame/OuterMargin/Root/Body/Sidebar/Margin/SidebarRoot/SavedListScroll"]
-unique_name_in_owner = true
+[node name="TitleMount" type="Control" parent="OuterMargin/Root/Header"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 6
 
-[node name="SidebarActions" type="HBoxContainer" parent="EditorFrame/OuterMargin/Root/Body/Sidebar/Margin/SidebarRoot"]
+[node name="AuthorityMount" type="Control" parent="OuterMargin/Root/Header"]
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+
+[node name="Toolbar" type="HBoxContainer" parent="OuterMargin/Root"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="Workspace" type="VBoxContainer" parent="EditorFrame/OuterMargin/Root/Body"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 10
-
-[node name="Toolbar" type="HBoxContainer" parent="EditorFrame/OuterMargin/Root/Body/Workspace"]
+[node name="Tabs" type="HBoxContainer" parent="OuterMargin/Root"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="Tabs" type="HBoxContainer" parent="EditorFrame/OuterMargin/Root/Body/Workspace"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 46)
-layout_mode = 2
 theme_override_constants/separation = 7
 
-[node name="ContentPanel" type="PanelContainer" parent="EditorFrame/OuterMargin/Root/Body/Workspace"]
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxSection")
-
-[node name="ContentMargin" type="MarginContainer" parent="EditorFrame/OuterMargin/Root/Body/Workspace/ContentPanel"]
-layout_mode = 2
-theme_override_constants/margin_left = 22
-theme_override_constants/margin_top = 18
-theme_override_constants/margin_right = 22
-theme_override_constants/margin_bottom = 18
-
-[node name="ContentScroll" type="ScrollContainer" parent="EditorFrame/OuterMargin/Root/Body/Workspace/ContentPanel/ContentMargin"]
-layout_mode = 2
-horizontal_scroll_mode = 0
-
-[node name="ContentHost" type="VBoxContainer" parent="EditorFrame/OuterMargin/Root/Body/Workspace/ContentPanel/ContentMargin/ContentScroll"]
+[node name="ContentMount" type="Control" parent="OuterMargin/Root"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 12
+size_flags_vertical = 3
 
-[node name="StatusMount" type="Control" parent="EditorFrame/OuterMargin/Root"]
+[node name="StatusMount" type="Control" parent="OuterMargin/Root"]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 

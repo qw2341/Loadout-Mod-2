@@ -26,6 +26,11 @@ using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
 
+internal sealed record StartRunLobbyPlayerInfo(
+    ulong PlayerId,
+    int SlotId,
+    CharacterModel? Character);
+
 /// <summary>
 /// Resolves the two supported STS2 API shapes once: the 0.110 beta API
 /// and the 0.107 release API. Gameplay call sites use cached compiled delegates,
@@ -65,6 +70,8 @@ internal static class Sts2Compatibility
 
     private static readonly EventInfo StartRunLobbyPlayerConnectedEvent =
         ResolveEvent(typeof(StartRunLobby), "PlayerConnected");
+    private static readonly EventInfo StartRunLobbyPlayerDisconnectedEvent =
+        ResolveEvent(typeof(StartRunLobby), "PlayerDisconnected");
     private static readonly Type StartRunLobbyPlayerType =
         ResolvePlayerEventPayloadType(
             StartRunLobbyPlayerConnectedEvent,
@@ -76,6 +83,10 @@ internal static class Sts2Compatibility
         CreateStartRunLobbyPlayersGetter();
     private static readonly Func<object, ulong> GetStartRunLobbyPlayerId =
         CreatePlayerIdAccessor(StartRunLobbyPlayerType);
+    private static readonly Func<object, CharacterModel> GetStartRunLobbyPlayerCharacter =
+        CreatePlayerMemberAccessor<CharacterModel>(StartRunLobbyPlayerType, "character", "Character");
+    private static readonly Func<object, int> GetStartRunLobbyPlayerSlot =
+        CreatePlayerMemberAccessor<int>(StartRunLobbyPlayerType, "slotId", "slot", "SlotId", "Slot");
 
     private static readonly EventInfo RunLobbyPlayerRejoinedEvent =
         ResolveEvent(typeof(RunLobby), "PlayerRejoined");
@@ -195,6 +206,19 @@ internal static class Sts2Compatibility
             yield return GetStartRunLobbyPlayerId(player);
     }
 
+    internal static IEnumerable<StartRunLobbyPlayerInfo> EnumerateStartRunLobbyPlayers(StartRunLobby lobby)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+
+        foreach (object player in GetStartRunLobbyPlayers(lobby))
+        {
+            yield return new StartRunLobbyPlayerInfo(
+                GetStartRunLobbyPlayerId(player),
+                GetStartRunLobbyPlayerSlot(player),
+                GetStartRunLobbyPlayerCharacter(player));
+        }
+    }
+
     internal static IEnumerable<ulong> EnumerateLoadRunLobbyPlayerIds(LoadRunLobby lobby)
     {
         ArgumentNullException.ThrowIfNull(lobby);
@@ -223,6 +247,30 @@ internal static class Sts2Compatibility
         ArgumentNullException.ThrowIfNull(lobby);
         ArgumentNullException.ThrowIfNull(adapter);
         StartRunLobbyPlayerConnectedEvent.RemoveEventHandler(lobby, adapter);
+    }
+
+    internal static Delegate SubscribeStartRunLobbyPlayerDisconnected(
+        StartRunLobby lobby,
+        Action<ulong> handler)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        ArgumentNullException.ThrowIfNull(handler);
+
+        Delegate adapter = CreatePlayerIdEventAdapter(
+            StartRunLobbyPlayerDisconnectedEvent,
+            GetStartRunLobbyPlayerId,
+            handler);
+        StartRunLobbyPlayerDisconnectedEvent.AddEventHandler(lobby, adapter);
+        return adapter;
+    }
+
+    internal static void UnsubscribeStartRunLobbyPlayerDisconnected(
+        StartRunLobby lobby,
+        Delegate adapter)
+    {
+        ArgumentNullException.ThrowIfNull(lobby);
+        ArgumentNullException.ThrowIfNull(adapter);
+        StartRunLobbyPlayerDisconnectedEvent.RemoveEventHandler(lobby, adapter);
     }
 
     internal static Delegate SubscribeRunLobbyPlayerRejoined(
@@ -780,6 +828,33 @@ internal static class Sts2Compatibility
         return Expression.Lambda<Func<object, ulong>>(
             Expression.Field(Expression.Convert(player, playerType), idField),
             player).Compile();
+    }
+
+    private static Func<object, T> CreatePlayerMemberAccessor<T>(Type playerType, params string[] names)
+    {
+        ParameterExpression player = Expression.Parameter(typeof(object), "player");
+        Expression converted = Expression.Convert(player, playerType);
+
+        foreach (string name in names)
+        {
+            FieldInfo? field = AccessTools.Field(playerType, name);
+            if (field?.FieldType == typeof(T))
+            {
+                return Expression.Lambda<Func<object, T>>(
+                    Expression.Field(converted, field),
+                    player).Compile();
+            }
+
+            PropertyInfo? property = AccessTools.Property(playerType, name);
+            if (property?.PropertyType == typeof(T) && property.GetMethod is not null)
+            {
+                return Expression.Lambda<Func<object, T>>(
+                    Expression.Call(converted, property.GetMethod),
+                    player).Compile();
+            }
+        }
+
+        throw new MissingMemberException(playerType.FullName, string.Join(" or ", names));
     }
 
     private static Func<StartRunLobby, IEnumerable> CreateStartRunLobbyPlayersGetter()

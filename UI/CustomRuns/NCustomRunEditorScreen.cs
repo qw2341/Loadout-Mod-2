@@ -34,10 +34,10 @@ public partial class NCustomRunEditorScreen : Control
     private StartRunLobby? _lobby;
     private CustomRunDefinition? _workingDefinition;
     private VBoxContainer? _savedList;
-    private HBoxContainer? _sidebarActions;
     private HBoxContainer? _toolbar;
     private HBoxContainer? _tabs;
     private VBoxContainer? _contentHost;
+    private NScrollableContainer? _contentScroll;
     private MegaLabel? _authorityLabel;
     private MegaLabel? _statusLabel;
     private NLoadoutActionButton? _deleteButton;
@@ -47,10 +47,26 @@ public partial class NCustomRunEditorScreen : Control
     private bool _dirty;
     private bool _loadingFields;
     private bool _staticUiBuilt;
+    private StringName _returnRoute = "CustomRunLibraryScreen";
 
-    public static void Open(Control sourceScreen, StartRunLobby lobby)
+    public static void OpenFromLibrary(
+        Control libraryScreen,
+        StartRunLobby lobby,
+        string definitionId,
+        bool readOnly,
+        StringName returnRoute)
     {
-        NLoadoutPanelRoot? root = NLoadoutPanelRoot.GetOrAttach(sourceScreen.GetTree());
+        CustomRunDefinition? definition = readOnly
+            ? CustomRunLobbyService.GetRemoteDefinition()
+            : CustomRunStorageService.GetDefinitions().FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, definitionId, StringComparison.Ordinal));
+        if (definition is null || !string.Equals(definition.Id, definitionId, StringComparison.Ordinal))
+        {
+            GD.PushWarning($"Loadout Custom Run: definition '{definitionId}' was not available for editing.");
+            return;
+        }
+
+        NLoadoutPanelRoot? root = NLoadoutPanelRoot.GetOrAttach(libraryScreen.GetTree());
         if (root is null)
             return;
 
@@ -62,7 +78,7 @@ public partial class NCustomRunEditorScreen : Control
             screen.Name = "CustomRunEditorScreen";
         }
 
-        screen.Init(lobby);
+        screen.Init(lobby, definition, readOnly, returnRoute);
         root.OpenScreen(screen);
     }
 
@@ -86,11 +102,18 @@ public partial class NCustomRunEditorScreen : Control
         return new NCustomRunEditorScreen();
     }
 
-    public void Init(StartRunLobby lobby)
+    public void Init(
+        StartRunLobby lobby,
+        CustomRunDefinition definition,
+        bool readOnly,
+        StringName returnRoute)
     {
         _lobby = lobby;
-        _readOnly = lobby.NetService.Type == NetGameType.Client;
-        _deleteConfirmationId = null;
+        _readOnly = readOnly;
+        _workingDefinition = CustomRunNormalizationService.Clone(definition);
+        _returnRoute = returnRoute;
+        _dirty = false;
+        _activeTab = TabNames[0];
 
         if (IsNodeReady())
             RefreshForLobby();
@@ -130,11 +153,9 @@ public partial class NCustomRunEditorScreen : Control
     private void BindSceneNodes()
     {
         EnsureFallbackScene();
-        _savedList = GetNodeOrNull<VBoxContainer>("%SavedList");
-        _sidebarActions = GetNodeOrNull<HBoxContainer>("%SidebarActions");
         _toolbar = GetNodeOrNull<HBoxContainer>("%Toolbar");
         _tabs = GetNodeOrNull<HBoxContainer>("%Tabs");
-        _contentHost = GetNodeOrNull<VBoxContainer>("%ContentHost");
+        EnsureNativeContentScroll();
     }
 
     private void BuildStaticUi()
@@ -143,7 +164,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
         _staticUiBuilt = true;
 
-        Control? titleMount = GetNodeOrNull<Control>("EditorFrame/OuterMargin/Root/Header/TitleMount");
+        Control? titleMount = GetNodeOrNull<Control>("OuterMargin/Root/Header/TitleMount");
         if (titleMount is not null)
         {
             MegaLabel title = CreateLabel("CUSTOM RUN EDITOR", 42, StsColors.gold, HorizontalAlignment.Left);
@@ -151,7 +172,7 @@ public partial class NCustomRunEditorScreen : Control
             titleMount.AddChild(title);
         }
 
-        Control? authorityMount = GetNodeOrNull<Control>("EditorFrame/OuterMargin/Root/Header/AuthorityMount");
+        Control? authorityMount = GetNodeOrNull<Control>("OuterMargin/Root/Header/AuthorityMount");
         if (authorityMount is not null)
         {
             _authorityLabel = CreateLabel(string.Empty, 23, StsColors.cream, HorizontalAlignment.Right);
@@ -159,21 +180,11 @@ public partial class NCustomRunEditorScreen : Control
             authorityMount.AddChild(_authorityLabel);
         }
 
-        Control? savedTitleMount = GetNodeOrNull<Control>(
-            "EditorFrame/OuterMargin/Root/Body/Sidebar/Margin/SidebarRoot/SavedTitleMount");
-        if (savedTitleMount is not null)
-        {
-            MegaLabel label = CreateLabel("SAVED CUSTOM RUNS", 25, StsColors.gold, HorizontalAlignment.Left);
-            label.SetAnchorsPreset(LayoutPreset.FullRect);
-            savedTitleMount.AddChild(label);
-        }
-
         BuildToolbar();
         BuildTabs();
-        BuildSidebarActions();
         EnsureBackButton();
 
-        Control? statusMount = GetNodeOrNull<Control>("EditorFrame/OuterMargin/Root/StatusMount");
+        Control? statusMount = GetNodeOrNull<Control>("OuterMargin/Root/StatusMount");
         if (statusMount is not null)
         {
             _statusLabel = CreateLabel("Ready.", 20, StsColors.cream, HorizontalAlignment.Left);
@@ -188,13 +199,9 @@ public partial class NCustomRunEditorScreen : Control
         if (_toolbar is null)
             return;
 
-        AddActionButton(_toolbar, "new", "New", 118f, NewDefinition);
         AddActionButton(_toolbar, "save", "Save", 118f, () => SaveCurrent(showStatus: true));
         AddActionButton(_toolbar, "save_as", "Save As", 132f, DuplicateDefinition);
-        AddActionButton(_toolbar, "import", "Import", 126f, ImportDefinition);
-        AddActionButton(_toolbar, "export", "Export", 126f, ExportDefinition);
         AddActionButton(_toolbar, "validate", "Validate", 138f, ValidateDefinition);
-        AddActionButton(_toolbar, "apply", "Apply to Lobby", 184f, ApplyToLobby);
     }
 
     private void BuildTabs()
@@ -210,19 +217,6 @@ public partial class NCustomRunEditorScreen : Control
             button.Pressed += () => SelectTab(tabName);
             _tabs.AddChild(button);
         }
-    }
-
-    private void BuildSidebarActions()
-    {
-        if (_sidebarActions is null)
-            return;
-
-        _deleteButton = AddActionButton(
-            _sidebarActions,
-            "delete",
-            "Delete",
-            178f,
-            DeleteDefinition);
     }
 
     private void EnsureBackButton()
@@ -244,32 +238,18 @@ public partial class NCustomRunEditorScreen : Control
         if (!_staticUiBuilt || _lobby is null)
             return;
 
-        _readOnly = _lobby.NetService.Type == NetGameType.Client;
         if (_authorityLabel is not null)
         {
             _authorityLabel.Text = _readOnly
-                ? "CLIENT VIEW  |  HOST AUTHORITY"
-                : _lobby.NetService.Type == NetGameType.Host
-                    ? "MULTIPLAYER HOST  |  EDITABLE"
-                    : "SINGLEPLAYER  |  EDITABLE";
+                ? "LOBBY CUSTOM RUN  |  HOST APPLIED  |  READ ONLY"
+                : _lobby.NetService.Type == NetGameType.Client
+                    ? "PROFILE-LOCAL DRAFT  |  NOT APPLIED"
+                    : "PROFILE-LOCAL CUSTOM RUN  |  EDITABLE";
             _authorityLabel.AddThemeColorOverride(
                 "font_color",
                 _readOnly ? new Color(0.75f, 0.82f, 1f) : new Color(0.65f, 1f, 0.55f));
         }
 
-        if (_readOnly)
-        {
-            _workingDefinition = CustomRunLobbyService.GetRemoteDefinition();
-            _dirty = false;
-        }
-        else if (_workingDefinition is null)
-        {
-            _workingDefinition = CustomRunLobbyService.GetHostDefinition(_lobby)
-                                 ?? CustomRunStorageService.GetDefinitions().FirstOrDefault()
-                                 ?? CustomRunStorageService.CreateNew();
-        }
-
-        RefreshSavedList();
         RebuildContent();
         RefreshEditableState();
     }
@@ -380,6 +360,14 @@ public partial class NCustomRunEditorScreen : Control
 
         if (_readOnly)
             SetEditableRecursive(_contentHost, editable: false);
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(_contentScroll)
+                && GodotObject.IsInstanceValid(_contentHost))
+            {
+                _contentScroll.SetContent(_contentHost);
+            }
+        }).CallDeferred();
     }
 
     private void BuildOverviewPanel()
@@ -707,12 +695,12 @@ public partial class NCustomRunEditorScreen : Control
 
     private void ValidateDefinition()
     {
-        if (_workingDefinition is null)
+        if (_workingDefinition is null || _lobby is null)
             return;
-        CustomRunValidationResult result = CustomRunValidator.Validate(_workingDefinition);
+        CustomRunCompileResult result = CustomRunCompiler.Compile(_workingDefinition, _lobby);
         if (result.IsValid)
         {
-            SetStatus("Validation passed. This definition is ready for its implemented phases.", success: true);
+            SetStatus("Validation passed. This definition is ready to Play.", success: true);
             return;
         }
 
@@ -751,6 +739,8 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (!_readOnly && _dirty)
             SaveCurrent(showStatus: false);
+        if (_returnRoute.IsEmpty)
+            _returnRoute = "CustomRunLibraryScreen";
         NLoadoutPanelRoot.Instance?.CloseTopScreen();
     }
 
@@ -768,17 +758,24 @@ public partial class NCustomRunEditorScreen : Control
 
     private void OnStoredDefinitionsChanged()
     {
-        if (!_readOnly && IsNodeReady())
-            RefreshSavedList();
+        if (!_readOnly && IsNodeReady() && !_dirty && _workingDefinition is not null)
+        {
+            CustomRunDefinition? stored = CustomRunStorageService.GetDefinitions()
+                .FirstOrDefault(definition => string.Equals(definition.Id, _workingDefinition.Id, StringComparison.Ordinal));
+            if (stored is not null)
+                _workingDefinition = stored;
+        }
     }
 
     private void OnRemoteDefinitionChanged()
     {
         if (!_readOnly || !IsNodeReady())
             return;
-        _workingDefinition = CustomRunLobbyService.GetRemoteDefinition();
+        CustomRunDefinition? remote = CustomRunLobbyService.GetRemoteDefinition();
+        if (remote is null || !string.Equals(remote.Id, _workingDefinition?.Id, StringComparison.Ordinal))
+            return;
+        _workingDefinition = remote;
         _dirty = false;
-        RefreshSavedList();
         RebuildContent();
     }
 
@@ -1008,23 +1005,83 @@ public partial class NCustomRunEditorScreen : Control
         }
     }
 
+    private void EnsureNativeContentScroll()
+    {
+        Control? mount = GetNodeOrNull<Control>("%ContentMount");
+        if (mount is null)
+            return;
+
+        _contentScroll = mount.GetNodeOrNull<NScrollableContainer>("ContentScroll");
+        if (_contentScroll is not null)
+        {
+            _contentHost = _contentScroll.GetNodeOrNull<VBoxContainer>("Mask/Content");
+            return;
+        }
+
+        NScrollableContainer scroll = new()
+        {
+            Name = "ContentScroll",
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        scroll.SetAnchorsPreset(LayoutPreset.FullRect);
+        mount.AddChild(scroll);
+
+        Control mask = new()
+        {
+            Name = "Mask",
+            ClipContents = true,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        mask.SetAnchorsPreset(LayoutPreset.FullRect);
+        mask.OffsetRight = -NLoadoutNativeScrollbar.Width;
+        scroll.AddChild(mask);
+
+        VBoxContainer content = new()
+        {
+            Name = "Content",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0f, 1f),
+            MouseFilter = MouseFilterEnum.Pass
+        };
+        content.AddThemeConstantOverride("separation", 12);
+        content.SetAnchorsPreset(LayoutPreset.TopWide);
+        mask.AddChild(content);
+
+        NScrollbar scrollbar = NLoadoutNativeScrollbar.Create();
+        scrollbar.Name = "Scrollbar";
+        scrollbar.CustomMinimumSize = new Vector2(NLoadoutNativeScrollbar.Width, 0f);
+        scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
+        scrollbar.OffsetLeft = -NLoadoutNativeScrollbar.Width;
+        scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
+        scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
+        scroll.AddChild(scrollbar);
+        scroll.DisableScrollingIfContentFits();
+
+        _contentScroll = scroll;
+        _contentHost = content;
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(scroll) && GodotObject.IsInstanceValid(content))
+                scroll.SetContent(content);
+        }).CallDeferred();
+    }
+
     private void EnsureFallbackScene()
     {
-        if (GetNodeOrNull<VBoxContainer>("%ContentHost") is not null)
+        if (GetNodeOrNull<Control>("%ContentMount") is not null)
             return;
 
         ColorRect backdrop = new() { Color = new Color(0f, 0f, 0f, 0.92f) };
         backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(backdrop);
 
-        VBoxContainer root = new()
+        Control root = new()
         {
-            Name = "ContentHost",
+            Name = "ContentMount",
             UniqueNameInOwner = true,
             Position = new Vector2(180f, 120f),
             Size = new Vector2(1560f, 820f)
         };
         AddChild(root);
-        _contentHost = root;
     }
 }
