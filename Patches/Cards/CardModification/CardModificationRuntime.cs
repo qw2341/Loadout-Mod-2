@@ -1330,14 +1330,14 @@ public static class CardModificationRuntime
     }
 
     public static void ReconcileAuthoritativeDeckDeltas(
-        IReadOnlyDictionary<LoadoutDeckCardIdentity, CardModificationDelta> temporaryDeltas,
-        IReadOnlyDictionary<CardModel, CardModificationSpec> previousEffective)
+        IReadOnlyDictionary<LoadoutDeckCardIdentity, CardModificationDelta> temporaryDeltas)
     {
         if (!TryGetRunState(out RunState? runState))
             return;
 
         List<LoadoutChangedCard> changedCards = [];
         HashSet<ulong> changedPlayers = [];
+        bool anyChanged = false;
         foreach (Player owner in runState!.Players)
         {
             IReadOnlyList<CardModel> deck = owner.Deck.Cards;
@@ -1347,27 +1347,36 @@ public static class CardModificationRuntime
                 LoadoutDeckCardIdentity identity = new(owner.NetId, index, card.Id.ToString());
                 temporaryDeltas.TryGetValue(identity, out CardModificationDelta? delta);
 
-                CardModificationSpec previous = previousEffective.GetValueOrDefault(
-                    card,
-                    GetEffectiveSpec(card));
-                CardModificationFields.SetDelta(card, delta);
-                RebuildCard(card, previous, forceAllOwnedFields: true);
-
-                CardModificationSpec next = GetEffectiveSpec(card);
-                LoadoutCardVisualRefreshKind kind = GetVisualRefreshKind(previous, next);
-                RefreshLiveCardVisuals(card, kind);
-                changedPlayers.Add(owner.NetId);
-                changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, kind));
+                if (!CardModificationFields.MatchesDelta(card, delta))
+                {
+                    CardModificationSpec previous = GetEffectiveSpec(card);
+                    CardModificationFields.SetDelta(card, delta);
+                    RebuildCard(card, previous);
+                    CardModificationSpec next = GetEffectiveSpec(card);
+                    LoadoutCardVisualRefreshKind kind = GetVisualRefreshKind(previous, next);
+                    RefreshLiveCardVisuals(card, kind);
+                    changedPlayers.Add(owner.NetId);
+                    changedCards.Add(new LoadoutChangedCard(owner.NetId, index, card.Id, kind));
+                    anyChanged = true;
+                }
 
                 foreach (CardModel combatCard in owner.PlayerCombatState?.AllCards
                              .Where(candidate => ReferenceEquals(candidate.DeckVersion, card)) ?? [])
                 {
+                    if (CardModificationFields.MatchesDelta(combatCard, delta))
+                        continue;
+
                     CardModificationSpec combatPrevious = GetEffectiveSpec(combatCard);
-                    RebuildCard(combatCard, combatPrevious, forceAllOwnedFields: true);
+                    CardModificationFields.SetDelta(combatCard, delta);
+                    RebuildCard(combatCard, combatPrevious);
                     NotifyCombatCardChanged(combatCard, combatPrevious);
+                    anyChanged = true;
                 }
             }
         }
+
+        if (!anyChanged)
+            return;
 
         if (changedCards.Count > 0)
         {

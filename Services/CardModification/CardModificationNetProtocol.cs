@@ -885,15 +885,11 @@ public static class CardModificationNetProtocol
             return;
         }
 
-        Dictionary<CardModel, CardModificationSpec> previousEffective = new(ReferenceEqualityComparer.Instance);
-        foreach (Player owner in runState.Players)
-        {
-            foreach (CardModel card in owner.Deck.Cards)
-                previousEffective[card] = CardModificationRuntime.GetEffectiveSpec(card);
-        }
-
-        PermanentCardModificationStore.ApplyHostSnapshot(snapshot.PermanentJson);
-        CardModificationRuntime.ReconcileAuthoritativeDeckDeltas(temporaryDeltas, previousEffective);
+        Dictionary<ModelId, CardModificationSpec> previousPermanent = CaptureCurrentPermanentSpecs();
+        IReadOnlyList<ModelId> changedPermanent =
+            PermanentCardModificationStore.ApplyHostSnapshot(snapshot.PermanentJson);
+        CardModificationRuntime.RetrofitChangedPermanentCards(changedPermanent, previousPermanent);
+        CardModificationRuntime.ReconcileAuthoritativeDeckDeltas(temporaryDeltas);
     }
 
     private static void HandleTemporarySync(LoadoutCardModificationTemporarySyncMessage message, ulong senderId)
