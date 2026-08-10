@@ -87,12 +87,12 @@ public static class CustomRunLobbyCleanupPatch
 public static class CustomRunHandDrawPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(Player player, ref decimal originalAmount)
+    public static void Prefix(Player __1, ref decimal __2)
     {
-        if (CustomRunRuntimeSnapshotService.TryGetPlayerSetup(player, out ResolvedPlayerSetup setup)
+        if (CustomRunRuntimeSnapshotService.TryGetPlayerSetup(__1, out ResolvedPlayerSetup setup)
             && setup.CardsDrawnPerTurn.HasValue)
         {
-            originalAmount = setup.CardsDrawnPerTurn.Value;
+            __2 = setup.CardsDrawnPerTurn.Value;
         }
     }
 }
