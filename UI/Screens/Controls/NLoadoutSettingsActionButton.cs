@@ -20,6 +20,7 @@ public partial class NLoadoutSettingsActionButton : NSettingsButton
 
     public string ActionButtonId { get; private set; } = string.Empty;
     public bool UseRainbowColor { get; set; }
+    public bool UseDangerColor { get; set; }
 
     public void Init(string id, string label)
     {
@@ -66,7 +67,7 @@ public partial class NLoadoutSettingsActionButton : NSettingsButton
         {
             image.Modulate = NLoadoutPanelButton.GetSineRainbowColor(0f);
         }
-        else if (ResourceLoader.Exists("res://shaders/hsv.gdshader"))
+        else if (!UseDangerColor && ResourceLoader.Exists("res://shaders/hsv.gdshader"))
         {
             ShaderMaterial buttonMaterial = new()
             {

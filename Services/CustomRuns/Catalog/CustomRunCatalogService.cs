@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Loadout.PanelItems;
 using Loadout.Services.CustomRuns.Models;
+using Loadout.Services.Morphing;
 using MegaCrit.Sts2.Core.Models;
 
 public sealed record CustomRunCatalogEntry(
@@ -52,6 +53,18 @@ public static class CustomRunCatalogService
         return TryResolve(kind, modelId, out CustomRunCatalogEntry entry)
             ? entry.ModelId
             : modelId.Trim();
+    }
+
+    public static bool TryResolveMorph(string modelId, out AbstractModel model)
+    {
+        model = ModelDb.AllCharacters
+            .Where(character => character.IsPlayable)
+            .Cast<AbstractModel>()
+            .Concat(BottledMonsterMorphService.GetMonsterModels())
+            .FirstOrDefault(candidate =>
+                string.Equals(candidate.Id.ToString(), modelId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate.Id.Entry, modelId, StringComparison.OrdinalIgnoreCase))!;
+        return model is not null;
     }
 
     public static bool IsModelKind(AbstractModel model, SelectionModelKind kind)

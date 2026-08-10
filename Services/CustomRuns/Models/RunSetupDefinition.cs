@@ -2,7 +2,9 @@
 
 namespace Loadout.Services.CustomRuns.Models;
 
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Loadout.Services.Loadouts;
 
 public sealed class RunSetupDefinition
 {
@@ -12,11 +14,26 @@ public sealed class RunSetupDefinition
     [JsonPropertyName("startingDeck")]
     public SelectionSpec StartingDeck { get; set; } = SelectionSpec.Default(SelectionModelKind.Card);
 
+    [JsonPropertyName("startingCardEntries")]
+    public List<SavedCardLoadoutEntry> StartingCardEntries { get; set; } = [];
+
     [JsonPropertyName("startingRelics")]
     public SelectionSpec StartingRelics { get; set; } = SelectionSpec.Default(SelectionModelKind.Relic);
 
+    [JsonPropertyName("startingRelicEntries")]
+    public List<SavedRelicLoadoutEntry> StartingRelicEntries { get; set; } = [];
+
     [JsonPropertyName("startingPotions")]
     public SelectionSpec StartingPotions { get; set; } = SelectionSpec.Default(SelectionModelKind.Potion);
+
+    [JsonPropertyName("startingPowers")]
+    public List<StartingPowerDefinition> StartingPowers { get; set; } = [];
+
+    [JsonPropertyName("startingMorphModelId")]
+    public string? StartingMorphModelId { get; set; }
+
+    [JsonPropertyName("startingAscension")]
+    public int? StartingAscension { get; set; }
 
     [JsonPropertyName("potionSlots")]
     public int? PotionSlots { get; set; }
@@ -38,4 +55,13 @@ public sealed class RunSetupDefinition
 
     [JsonPropertyName("runSeed")]
     public string? RunSeed { get; set; }
+}
+
+public sealed class StartingPowerDefinition
+{
+    [JsonPropertyName("modelId")]
+    public string ModelId { get; set; } = string.Empty;
+
+    [JsonPropertyName("amount")]
+    public int Amount { get; set; }
 }

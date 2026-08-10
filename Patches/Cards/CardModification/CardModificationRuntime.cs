@@ -347,6 +347,18 @@ public static class CardModificationRuntime
         }
     }
 
+    public static void ApplyCustomRunStartingState(CardModel card, CardModificationSpec? state)
+    {
+        if (state is null || state.IsEmpty || card.IsCanonical)
+            return;
+
+        CardModificationSpec normalized = state.Clone();
+        normalized.Normalize();
+        CardModificationSpec previous = GetEffectiveSpec(card);
+        if (CardModificationFields.Set(card, normalized))
+            RebuildCard(card, previous, forceAllOwnedFields: true);
+    }
+
     public static void ApplyDeltaToCard(CardModel? card, CardModificationDelta? delta, bool includeAffliction = true)
     {
         if (card is null || delta is null || delta.IsEmpty || card.IsCanonical) return;

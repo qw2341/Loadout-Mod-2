@@ -68,6 +68,10 @@ public partial class NRelicModificationScreen : Control
     private bool _isClosing;
     private bool _reloadAfterNextUpdate;
     private bool _previewRefreshQueued;
+    private bool _customRunAuthoringMode;
+    private Func<LoadoutOwnedItem<RelicModel>, RelicModificationState>? _customRunStateProvider;
+    private Action<LoadoutOwnedItem<RelicModel>, RelicModificationState>? _customRunStateSaved;
+    private Action<LoadoutOwnedItem<RelicModel>, int>? _customRunAddCopies;
 
     public static NRelicModificationScreen Create()
     {
@@ -96,6 +100,20 @@ public partial class NRelicModificationScreen : Control
             RebuildScreen();
     }
 
+    public void InitForCustomRun(
+        LoadoutOwnedItem<RelicModel> item,
+        IReadOnlyList<LoadoutOwnedItem<RelicModel>> items,
+        Func<LoadoutOwnedItem<RelicModel>, RelicModificationState> stateProvider,
+        Action<LoadoutOwnedItem<RelicModel>, RelicModificationState> stateSaved,
+        Action<LoadoutOwnedItem<RelicModel>, int> addCopies)
+    {
+        _customRunAuthoringMode = true;
+        _customRunStateProvider = stateProvider;
+        _customRunStateSaved = stateSaved;
+        _customRunAddCopies = addCopies;
+        Init(item, items);
+    }
+
     public override void _Ready()
     {
         ApplyFullRectLayout(this);
@@ -118,7 +136,8 @@ public partial class NRelicModificationScreen : Control
             RefreshNativeButtonState();
             if (Visible && IsInsideTree() && _item is not null && !_isClosing)
             {
-                BindRunContentEvents();
+                if (!_customRunAuthoringMode)
+                    BindRunContentEvents();
                 QueuePreviewRefresh();
             }
             else if (!Visible)
@@ -190,7 +209,9 @@ public partial class NRelicModificationScreen : Control
     private void LoadItem(LoadoutOwnedItem<RelicModel> item)
     {
         _item = item;
-        _workingState = RelicModificationStateService.GetEffectiveState(item.Model);
+        _workingState = _customRunAuthoringMode
+            ? _customRunStateProvider?.Invoke(item).Clone() ?? new RelicModificationState()
+            : RelicModificationStateService.GetEffectiveState(item.Model);
 
         foreach ((string key, var dynamicVar) in item.Model.DynamicVars)
             _workingState.DynamicVars.TryAdd(key, dynamicVar.BaseValue);
@@ -751,7 +772,7 @@ public partial class NRelicModificationScreen : Control
 
         NLoadoutActionButton permanentButton = CreateActionButton(
             "save_permanent",
-            LocMan.Loc("SAVE_PERMANENT", "Save Permanent"),
+            _customRunAuthoringMode ? "Save to Custom Run" : LocMan.Loc("SAVE_PERMANENT", "Save Permanent"),
             CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
         ConnectActionButton(permanentButton, SavePermanent);
         _actionControls.AddChild(permanentButton);
@@ -759,17 +780,20 @@ public partial class NRelicModificationScreen : Control
 
         NLoadoutActionButton resetTemporaryButton = CreateActionButton(
             "reset_temporary",
-            LocMan.Loc("RESET_TEMPORARY", "Reset Temporary"));
+            _customRunAuthoringMode ? "Revert Relic" : LocMan.Loc("RESET_TEMPORARY", "Reset Temporary"));
         ConnectActionButton(resetTemporaryButton, ResetTemporary);
         _actionControls.AddChild(resetTemporaryButton);
         ConfigureActionButtonSize(resetTemporaryButton);
 
-        NLoadoutActionButton resetPermanentButton = CreateActionButton(
-            "reset_permanent",
-            LocMan.Loc("RESET_PERMANENT", "Reset Permanent"));
-        ConnectActionButton(resetPermanentButton, ResetPermanent);
-        _actionControls.AddChild(resetPermanentButton);
-        ConfigureActionButtonSize(resetPermanentButton);
+        if (!_customRunAuthoringMode)
+        {
+            NLoadoutActionButton resetPermanentButton = CreateActionButton(
+                "reset_permanent",
+                LocMan.Loc("RESET_PERMANENT", "Reset Permanent"));
+            ConnectActionButton(resetPermanentButton, ResetPermanent);
+            _actionControls.AddChild(resetPermanentButton);
+            ConfigureActionButtonSize(resetPermanentButton);
+        }
 
         NLoadoutActionButton addCopiesButton = CreateActionButton(
             "add_copies",
@@ -1100,6 +1124,13 @@ public partial class NRelicModificationScreen : Control
 
         RelicModificationState state = _workingState.Clone();
         state.Normalize();
+        if (_customRunAuthoringMode)
+        {
+            _customRunStateSaved?.Invoke(_item, state);
+            _hasPendingTemporaryCommit = false;
+            RefreshParentView();
+            return true;
+        }
         if (!RelicModificationMultiplayerSyncService.RequestOperation(
                 RelicModificationOperation.SaveTemporary,
                 _item,
@@ -1120,6 +1151,13 @@ public partial class NRelicModificationScreen : Control
 
         RelicModificationState state = _workingState.Clone();
         state.Normalize();
+        if (_customRunAuthoringMode)
+        {
+            _customRunStateSaved?.Invoke(_item, state);
+            _hasPendingTemporaryCommit = false;
+            RefreshParentView();
+            return;
+        }
         if (!RelicModificationMultiplayerSyncService.RequestOperation(
                 RelicModificationOperation.ApplyPermanent,
                 _item,
@@ -1138,6 +1176,14 @@ public partial class NRelicModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
+        if (_customRunAuthoringMode)
+        {
+            _workingState = new RelicModificationState();
+            _customRunStateSaved?.Invoke(_item, _workingState);
+            RebuildControls();
+            QueuePreviewRefresh();
+            return;
+        }
         _reloadAfterNextUpdate = true;
         if (!RelicModificationMultiplayerSyncService.RequestOperation(
                 RelicModificationOperation.ResetTemporaryToBasic,
@@ -1153,6 +1199,11 @@ public partial class NRelicModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
+        if (_customRunAuthoringMode)
+        {
+            ResetTemporary();
+            return;
+        }
         _reloadAfterNextUpdate = true;
         if (!RelicModificationMultiplayerSyncService.RequestOperation(
                 RelicModificationOperation.ResetPermanentToBasic,
@@ -1166,6 +1217,14 @@ public partial class NRelicModificationScreen : Control
     {
         if (_item is null || !CommitPendingTemporaryModification())
             return;
+
+        if (_customRunAuthoringMode)
+        {
+            _customRunAddCopies?.Invoke(
+                _item,
+                Math.Max(1, NGenericSelectScreen.GetCurrentInputMultiplier()));
+            return;
+        }
 
         RelicModificationMultiplayerSyncService.RequestAddCopies(
             _item,

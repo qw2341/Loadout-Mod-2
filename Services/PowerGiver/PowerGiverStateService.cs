@@ -150,6 +150,23 @@ public static class PowerGiverStateService
         }
     }
 
+    public static void ReplaceCustomRunPlayerCounters(
+        ulong playerNetId,
+        IReadOnlyDictionary<string, int> counters)
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            Dictionary<string, int> normalized = NormalizeCounters(
+                counters.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
+            if (normalized.Count == 0)
+                _run.PlayerCountersByNetId.Remove(playerNetId);
+            else
+                _run.PlayerCountersByNetId[playerNetId] = normalized;
+            SaveRunState();
+        }
+    }
+
     private static bool AdjustCounterLocked(string powerId, int delta, LoadoutTargetSelection target)
     {
         Dictionary<string, int>? counters = GetCounters(target, createPlayerBucket: true);

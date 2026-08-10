@@ -17,6 +17,7 @@ public static class CustomRunHashService
             SchemaVersion = snapshot.SchemaVersion,
             SourceDefinitionId = snapshot.SourceDefinitionId,
             RunSeed = snapshot.RunSeed,
+            AscensionLevel = snapshot.AscensionLevel,
             Players = snapshot.Players.OrderBy(player => player.PlayerId).ToList(),
             Rules = snapshot.Rules.ToList(),
             Variables = snapshot.Variables.OrderBy(variable => variable.Id, StringComparer.Ordinal).ToList(),

@@ -1235,6 +1235,17 @@ public static class BottledMonster
 
     private sealed record MorphOption(string Id, AbstractModel? Model, MorphOptionKind Kind);
 
+    internal static bool TryGetMorphOptionModel(object? value, out AbstractModel? model)
+    {
+        if (value is MorphOption option)
+        {
+            model = option.Model;
+            return true;
+        }
+        model = null;
+        return false;
+    }
+
     private sealed record MonsterMembership(ActModel? Act, RoomType RoomType);
 
     private sealed record MonsterPlacement(

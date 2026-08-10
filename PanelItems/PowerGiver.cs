@@ -88,12 +88,18 @@ public class PowerGiver
 			GetName = GetPowerTitle,
 			GetSearchTextFromName = CreateSafePowerSearchText,
 			CapturePreloadResourcePaths = power => [power.IconPath],
-			CreateView = (power, _) => CreatePowerGridItem(
+			CreateView = (power, state) => CreatePowerGridItem(
 				power,
-				PowerGiverStateService.GetCounter(PowerId(power)),
+				screen.IsReusedSelectionActive
+					? state.SelectionAmount
+					: PowerGiverStateService.GetCounter(PowerId(power)),
 				PowerGiverStateService.IsFavorite(PowerId(power)) && !showPowerGiverFavoritesOnly,
 				GetPowerTitle(power)),
-			UpdateView = (power, view, _) => UpdatePowerGridItem(view, power, showPowerGiverFavoritesOnly),
+			UpdateView = (power, view, state) => UpdatePowerGridItem(
+				view,
+				power,
+				showPowerGiverFavoritesOnly,
+				screen.IsReusedSelectionActive ? state.SelectionAmount : int.MinValue),
 			BindActivationWithCleanup = (power, view, _) => BindPowerGiverActivationWithCleanup(
 				screen,
 				power,
@@ -359,10 +365,16 @@ public class PowerGiver
 		}
 	}
 
-	private static void UpdatePowerGridItem(Control view, PowerModel model, bool favoritesOnly)
+	private static void UpdatePowerGridItem(
+		Control view,
+		PowerModel model,
+		bool favoritesOnly,
+		int selectionAmount = int.MinValue)
 	{
 		string powerId = PowerId(model);
-		int selectedAmount = PowerGiverStateService.GetCounter(powerId);
+		int selectedAmount = selectionAmount == int.MinValue
+			? PowerGiverStateService.GetCounter(powerId)
+			: selectionAmount;
 		if (view.GetNodeOrNull<MegaLabel>("PowerAmount") is { } amountLabel)
 		{
 			amountLabel.Text = selectedAmount != 0 ? selectedAmount.ToString() : string.Empty;
@@ -415,6 +427,14 @@ public class PowerGiver
 
 			int multiplier = screen.GetCurrentActivationMultiplier();
 			int delta = mouseButton.ButtonIndex == MouseButton.Right ? -multiplier : multiplier;
+			if (screen.IsReusedSelectionActive)
+			{
+				int amount = screen.SelectedAmounts.GetValueOrDefault(powerId) + delta;
+				screen.SelectItem(powerId, amount);
+				screen.RefreshItemView(powerId);
+				view.AcceptEvent();
+				return;
+			}
 			LoadoutTargetSelection target = LoadoutTargetService.GetSelected(PowerGiverStateService.TargetKey, LoadoutTargetMode.PowerGiver);
 			if (LoadoutImmediateMutationService.RequestAdjustPower(power.Id, delta, target))
 			{

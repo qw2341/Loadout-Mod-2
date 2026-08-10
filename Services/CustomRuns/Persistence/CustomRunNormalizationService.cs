@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Loadout.Services.CustomRuns.Models;
+using Loadout.Services.Loadouts;
 
 public static class CustomRunNormalizationService
 {
@@ -52,8 +53,101 @@ public static class CustomRunNormalizationService
         setup.StartingDeck = NormalizeSelection(setup.StartingDeck, SelectionModelKind.Card);
         setup.StartingRelics = NormalizeSelection(setup.StartingRelics, SelectionModelKind.Relic);
         setup.StartingPotions = NormalizeSelection(setup.StartingPotions, SelectionModelKind.Potion);
+        setup.StartingCardEntries = NormalizeCardEntries(setup.StartingCardEntries, setup.StartingDeck);
+        setup.StartingRelicEntries = NormalizeRelicEntries(setup.StartingRelicEntries, setup.StartingRelics);
+        setup.StartingPowers = (setup.StartingPowers ?? [])
+            .Where(power => power is not null && !string.IsNullOrWhiteSpace(power.ModelId) && power.Amount != 0)
+            .Select(power => new StartingPowerDefinition
+            {
+                ModelId = power.ModelId.Trim(),
+                Amount = power.Amount
+            })
+            .GroupBy(power => power.ModelId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new StartingPowerDefinition
+            {
+                ModelId = group.First().ModelId,
+                Amount = group.Sum(power => power.Amount)
+            })
+            .Where(power => power.Amount != 0)
+            .OrderBy(power => power.ModelId, StringComparer.Ordinal)
+            .ToList();
+        setup.StartingMorphModelId = string.IsNullOrWhiteSpace(setup.StartingMorphModelId)
+            ? null
+            : setup.StartingMorphModelId.Trim();
+        setup.StartingAscension = setup.StartingAscension.HasValue
+            ? Math.Clamp(setup.StartingAscension.Value, 0, 10)
+            : null;
         setup.RunSeed = string.IsNullOrWhiteSpace(setup.RunSeed) ? null : setup.RunSeed.Trim();
         return setup;
+    }
+
+    private static List<SavedCardLoadoutEntry> NormalizeCardEntries(
+        List<SavedCardLoadoutEntry>? entries,
+        SelectionSpec selection)
+    {
+        if (selection.Mode != SelectionMode.Fixed)
+            return [];
+
+        List<SavedCardLoadoutEntry> normalized = (entries ?? [])
+            .Where(entry => entry is not null && !string.IsNullOrWhiteSpace(entry.ModelId))
+            .SelectMany(entry => Enumerable.Range(0, Math.Max(1, entry.Count)).Select(_ =>
+            {
+                SavedCardLoadoutEntry clone = entry.Clone();
+                clone.ModelId = clone.ModelId.Trim();
+                clone.Count = 1;
+                clone.UpgradeLevel = Math.Max(0, clone.UpgradeLevel);
+                clone.ModificationState?.Normalize();
+                if (clone.ModificationState?.IsEmpty == true)
+                    clone.ModificationState = null;
+                return clone;
+            }))
+            .ToList();
+
+        if (normalized.Count == 0)
+        {
+            normalized.AddRange(selection.FixedModelIds.Select(id => new SavedCardLoadoutEntry
+            {
+                ModelId = id,
+                Count = 1
+            }));
+        }
+
+        selection.FixedModelIds = normalized.Select(entry => entry.ModelId).ToList();
+        return normalized;
+    }
+
+    private static List<SavedRelicLoadoutEntry> NormalizeRelicEntries(
+        List<SavedRelicLoadoutEntry>? entries,
+        SelectionSpec selection)
+    {
+        if (selection.Mode != SelectionMode.Fixed)
+            return [];
+
+        List<SavedRelicLoadoutEntry> normalized = (entries ?? [])
+            .Where(entry => entry is not null && !string.IsNullOrWhiteSpace(entry.ModelId))
+            .SelectMany(entry => Enumerable.Range(0, Math.Max(1, entry.Count)).Select(_ =>
+            {
+                SavedRelicLoadoutEntry clone = entry.Clone();
+                clone.ModelId = clone.ModelId.Trim();
+                clone.Count = 1;
+                clone.ModificationState?.Normalize();
+                if (clone.ModificationState?.IsEmpty == true)
+                    clone.ModificationState = null;
+                return clone;
+            }))
+            .ToList();
+
+        if (normalized.Count == 0)
+        {
+            normalized.AddRange(selection.FixedModelIds.Select(id => new SavedRelicLoadoutEntry
+            {
+                ModelId = id,
+                Count = 1
+            }));
+        }
+
+        selection.FixedModelIds = normalized.Select(entry => entry.ModelId).ToList();
+        return normalized;
     }
 
     public static SelectionSpec NormalizeSelection(SelectionSpec? selection, SelectionModelKind fallbackKind)

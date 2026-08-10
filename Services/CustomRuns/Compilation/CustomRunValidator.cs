@@ -67,12 +67,24 @@ public static class CustomRunValidator
         ValidateSelection(setup.StartingRelics, result, section, objectId);
         ValidateSelection(setup.StartingPotions, result, section, objectId);
 
+        foreach (StartingPowerDefinition power in setup.StartingPowers)
+        {
+            if (!CustomRunCatalogService.TryResolve(SelectionModelKind.Power, power.ModelId, out _))
+                Error(result, section, objectId, $"Unknown power '{power.ModelId}'.");
+        }
+        if (setup.StartingMorphModelId is not null
+            && !CustomRunCatalogService.TryResolveMorph(setup.StartingMorphModelId, out _))
+        {
+            Error(result, section, objectId, $"Unknown morph '{setup.StartingMorphModelId}'.");
+        }
+
         Range(setup.PotionSlots, 0, 20, "Potion slots", result, section, objectId);
         Range(setup.StartingGold, 0, 999999, "Starting gold", result, section, objectId);
         Range(setup.StartingCurrentHp, 1, 99999, "Starting current HP", result, section, objectId);
         Range(setup.StartingMaxHp, 1, 99999, "Starting max HP", result, section, objectId);
         Range(setup.BaseEnergyPerTurn, 0, 99, "Base energy", result, section, objectId);
         Range(setup.CardsDrawnPerTurn, 0, 99, "Cards drawn", result, section, objectId);
+        Range(setup.StartingAscension, 0, 10, "Starting ascension", result, section, objectId);
         if (setup.StartingCurrentHp.HasValue && setup.StartingMaxHp.HasValue
             && setup.StartingCurrentHp > setup.StartingMaxHp)
         {
@@ -86,8 +98,6 @@ public static class CustomRunValidator
         string section,
         string objectId)
     {
-        if (selection.Mode == SelectionMode.Fixed && selection.FixedModelIds.Count == 0)
-            Error(result, section, objectId, $"Fixed {selection.Kind} selection has no model.");
         if (selection.Mode == SelectionMode.PlayerChoice && string.IsNullOrWhiteSpace(selection.PlayerChoiceId))
             Error(result, section, objectId, $"{selection.Kind} player choice has no choice ID.");
         if (selection.Pool.MaximumCopiesPerItem < 1)

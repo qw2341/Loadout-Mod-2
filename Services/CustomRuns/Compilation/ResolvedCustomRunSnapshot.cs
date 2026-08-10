@@ -4,6 +4,7 @@ namespace Loadout.Services.CustomRuns.Compilation;
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Loadout.Services.Loadouts;
 using Loadout.Services.CustomRuns.Models;
 
 public sealed class ResolvedCustomRunSnapshot
@@ -16,6 +17,9 @@ public sealed class ResolvedCustomRunSnapshot
 
     [JsonPropertyName("runSeed")]
     public string RunSeed { get; init; } = string.Empty;
+
+    [JsonPropertyName("ascensionLevel")]
+    public int? AscensionLevel { get; init; }
 
     [JsonPropertyName("players")]
     public IReadOnlyList<ResolvedPlayerSetup> Players { get; init; } = [];
@@ -47,11 +51,32 @@ public sealed class ResolvedPlayerSetup
     [JsonPropertyName("deckModelIds")]
     public IReadOnlyList<string> DeckModelIds { get; init; } = [];
 
+    [JsonPropertyName("overrideDeck")]
+    public bool OverrideDeck { get; init; }
+
+    [JsonPropertyName("deckEntries")]
+    public IReadOnlyList<SavedCardLoadoutEntry> DeckEntries { get; init; } = [];
+
     [JsonPropertyName("relicModelIds")]
     public IReadOnlyList<string> RelicModelIds { get; init; } = [];
 
+    [JsonPropertyName("overrideRelics")]
+    public bool OverrideRelics { get; init; }
+
+    [JsonPropertyName("relicEntries")]
+    public IReadOnlyList<SavedRelicLoadoutEntry> RelicEntries { get; init; } = [];
+
     [JsonPropertyName("potionModelIds")]
     public IReadOnlyList<string> PotionModelIds { get; init; } = [];
+
+    [JsonPropertyName("overridePotions")]
+    public bool OverridePotions { get; init; }
+
+    [JsonPropertyName("startingPowers")]
+    public IReadOnlyList<StartingPowerDefinition> StartingPowers { get; init; } = [];
+
+    [JsonPropertyName("startingMorphModelId")]
+    public string? StartingMorphModelId { get; init; }
 
     [JsonPropertyName("potionSlots")]
     public int? PotionSlots { get; init; }

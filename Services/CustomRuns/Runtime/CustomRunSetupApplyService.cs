@@ -3,23 +3,71 @@
 namespace Loadout.Services.CustomRuns.Runtime;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Loadout.Services.CustomRuns.Catalog;
+using Loadout.Keywords;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Models;
+using Loadout.Services.Loadouts;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
+using Loadout.Services.Morphing;
+using Loadout.Services.PowerGiver;
+using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Saves;
+using MegaCrit.Sts2.Core.Runs;
 
 public static class CustomRunSetupApplyService
 {
+    public static void ApplyInitialRuntimeSetup()
+    {
+        RunState? runState;
+        try
+        {
+            runState = RunManager.Instance.DebugOnlyGetState();
+        }
+        catch (Exception exception)
+        {
+            MainFile.Logger.Error($"[Loadout] Could not resolve the launched Custom Run state: {exception}");
+            return;
+        }
+        if (runState is null
+            || !CustomRunRuntimeSnapshotService.TryConsumeInitialRuntimeSetup(runState, out ResolvedCustomRunSnapshot snapshot))
+            return;
+
+        foreach (ResolvedPlayerSetup setup in snapshot.Players)
+        {
+            try
+            {
+                Dictionary<string, int> powers = setup.StartingPowers
+                    .GroupBy(power => power.ModelId, StringComparer.Ordinal)
+                    .ToDictionary(group => group.Key, group => group.Sum(power => power.Amount), StringComparer.Ordinal);
+                PowerGiverStateService.ReplaceCustomRunPlayerCounters(setup.PlayerId, powers);
+
+                if (!string.IsNullOrWhiteSpace(setup.StartingMorphModelId)
+                    && CustomRunCatalogService.TryResolveMorph(setup.StartingMorphModelId, out AbstractModel morph))
+                {
+                    BottledMonsterMorphService.ApplySynchronizedMorph(
+                        morph.Id,
+                        LoadoutTargetSelection.ForPlayer(setup.PlayerId));
+                }
+            }
+            catch (Exception exception)
+            {
+                MainFile.Logger.Error($"[Loadout] Custom Run initial powers/morph failed for player {setup.PlayerId}: {exception}");
+            }
+        }
+    }
+
     public static void ApplyToNewPlayer(Player player, ResolvedPlayerSetup setup)
     {
         ApplyStats(player, setup);
-        ApplyDeck(player, setup.DeckModelIds);
-        ApplyRelics(player, setup.RelicModelIds);
-        ApplyPotions(player, setup.PotionModelIds);
+        ApplyDeck(player, setup.DeckEntries, setup.DeckModelIds, setup.OverrideDeck);
+        ApplyRelics(player, setup.RelicEntries, setup.RelicModelIds, setup.OverrideRelics);
+        ApplyPotions(player, setup.PotionModelIds, setup.OverridePotions);
     }
 
     private static void ApplyStats(Player player, ResolvedPlayerSetup setup)
@@ -48,17 +96,38 @@ public static class CustomRunSetupApplyService
             player.MaxEnergy = setup.BaseEnergyPerTurn.Value;
     }
 
-    private static void ApplyDeck(Player player, System.Collections.Generic.IReadOnlyList<string> modelIds)
+    private static void ApplyDeck(
+        Player player,
+        System.Collections.Generic.IReadOnlyList<SavedCardLoadoutEntry> entries,
+        System.Collections.Generic.IReadOnlyList<string> legacyModelIds,
+        bool shouldOverride)
     {
-        if (modelIds.Count == 0)
+        IReadOnlyList<SavedCardLoadoutEntry> effectiveEntries = entries.Count > 0
+            ? entries
+            : legacyModelIds.Select(id => new SavedCardLoadoutEntry { ModelId = id }).ToList();
+        if (!shouldOverride)
             return;
 
-        CardModel[] cards = modelIds
-            .Select(id => Resolve<CardModel>(SelectionModelKind.Card, id))
-            .Where(model => model is not null)
-            .Select(model => model!.ToMutable())
-            .ToArray();
-        if (cards.Length != modelIds.Count)
+        List<CardModel> cards = [];
+        foreach (SavedCardLoadoutEntry entry in effectiveEntries)
+        {
+            CardModel? canonical = Resolve<CardModel>(SelectionModelKind.Card, entry.ModelId);
+            if (canonical is null)
+                break;
+
+            for (int copy = 0; copy < Math.Max(1, entry.Count); copy++)
+            {
+                CardModel card = canonical.ToMutable();
+                for (int upgrade = 0; upgrade < entry.UpgradeLevel && card.IsUpgradable; upgrade++)
+                {
+                    card.UpgradeInternal();
+                    card.FinalizeUpgradeInternal();
+                }
+                CardModificationRuntime.ApplyCustomRunStartingState(card, entry.ModificationState);
+                cards.Add(card);
+            }
+        }
+        if (cards.Count != effectiveEntries.Sum(entry => Math.Max(1, entry.Count)))
         {
             MainFile.Logger.Error($"[Loadout] Custom Run deck setup for player {player.NetId} contained an unresolved card.");
             return;
@@ -70,19 +139,31 @@ public static class CustomRunSetupApplyService
             card.FloorAddedToDeck = 1;
             player.Deck.AddInternal(card, -1, silent: true);
         }
+        LoadoutKeywordRuntimePatches.Reconcile();
     }
 
-    private static void ApplyRelics(Player player, System.Collections.Generic.IReadOnlyList<string> modelIds)
+    private static void ApplyRelics(
+        Player player,
+        System.Collections.Generic.IReadOnlyList<SavedRelicLoadoutEntry> entries,
+        System.Collections.Generic.IReadOnlyList<string> legacyModelIds,
+        bool shouldOverride)
     {
-        if (modelIds.Count == 0)
+        IReadOnlyList<SavedRelicLoadoutEntry> effectiveEntries = entries.Count > 0
+            ? entries
+            : legacyModelIds.Select(id => new SavedRelicLoadoutEntry { ModelId = id }).ToList();
+        if (!shouldOverride)
             return;
 
-        RelicModel[] relics = modelIds
-            .Select(id => Resolve<RelicModel>(SelectionModelKind.Relic, id))
-            .Where(model => model is not null)
-            .Select(model => model!.ToMutable())
-            .ToArray();
-        if (relics.Length != modelIds.Count)
+        List<(RelicModel Relic, SavedRelicLoadoutEntry Entry)> relics = [];
+        foreach (SavedRelicLoadoutEntry entry in effectiveEntries)
+        {
+            RelicModel? canonical = Resolve<RelicModel>(SelectionModelKind.Relic, entry.ModelId);
+            if (canonical is null)
+                break;
+            for (int copy = 0; copy < Math.Max(1, entry.Count); copy++)
+                relics.Add((canonical.ToMutable(), entry));
+        }
+        if (relics.Count != effectiveEntries.Sum(entry => Math.Max(1, entry.Count)))
         {
             MainFile.Logger.Error($"[Loadout] Custom Run relic setup for player {player.NetId} contained an unresolved relic.");
             return;
@@ -90,18 +171,23 @@ public static class CustomRunSetupApplyService
 
         foreach (RelicModel relic in player.Relics.ToList())
             player.RemoveRelicInternal(relic, silent: true);
-        foreach (RelicModel relic in relics)
+        foreach ((RelicModel relic, SavedRelicLoadoutEntry entry) in relics)
         {
             relic.FloorAddedToDeck = 1;
             SaveManager.Instance.MarkRelicAsSeen(relic);
             RelicModificationStateService.ApplyPermanentToRelic(relic);
+            if (entry.ModificationState is not null)
+                RelicModificationStateService.ApplyLoadoutTemporaryState(relic, entry.ModificationState);
             player.AddRelicInternal(relic, -1, silent: true);
         }
     }
 
-    private static void ApplyPotions(Player player, System.Collections.Generic.IReadOnlyList<string> modelIds)
+    private static void ApplyPotions(
+        Player player,
+        System.Collections.Generic.IReadOnlyList<string> modelIds,
+        bool shouldOverride)
     {
-        if (modelIds.Count == 0)
+        if (!shouldOverride)
             return;
 
         PotionModel[] potions = modelIds

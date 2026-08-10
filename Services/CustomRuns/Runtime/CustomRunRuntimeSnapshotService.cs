@@ -14,6 +14,7 @@ public static class CustomRunRuntimeSnapshotService
 {
     private static readonly ConditionalWeakTable<RunState, SnapshotAttachment> SnapshotsByRun = new();
     private static ResolvedCustomRunSnapshot? _pendingSnapshot;
+    private static RunState? _needsInitialRuntimeApply;
 
     public static ResolvedCustomRunSnapshot? PendingSnapshot => _pendingSnapshot;
 
@@ -26,6 +27,7 @@ public static class CustomRunRuntimeSnapshotService
     public static void ClearPending()
     {
         _pendingSnapshot = null;
+        _needsInitialRuntimeApply = null;
     }
 
     public static bool TryGetPendingPlayerSetup(ulong playerId, out ResolvedPlayerSetup setup)
@@ -42,7 +44,25 @@ public static class CustomRunRuntimeSnapshotService
             return;
 
         Attach(runState, _pendingSnapshot);
+        _needsInitialRuntimeApply = runState;
         _pendingSnapshot = null;
+    }
+
+    public static bool TryConsumeInitialRuntimeSetup(
+        RunState runState,
+        out ResolvedCustomRunSnapshot snapshot)
+    {
+        snapshot = new ResolvedCustomRunSnapshot();
+        if (!ReferenceEquals(_needsInitialRuntimeApply, runState)
+            || !SnapshotsByRun.TryGetValue(runState, out SnapshotAttachment? attachment)
+            || attachment.Snapshot is null)
+        {
+            return false;
+        }
+
+        _needsInitialRuntimeApply = null;
+        snapshot = attachment.Snapshot;
+        return true;
     }
 
     public static void Attach(RunState runState, ResolvedCustomRunSnapshot snapshot)

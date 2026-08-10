@@ -87,6 +87,10 @@ public partial class NCardModificationScreen : Control
     private bool _isClosing;
     private bool _hasBeenVisible;
     private bool _awaitingResetConfirmation;
+    private bool _customRunAuthoringMode;
+    private Func<LoadoutOwnedItem<CardModel>, CardModificationSpec>? _customRunStateProvider;
+    private Action<LoadoutOwnedItem<CardModel>, CardModificationSpec>? _customRunStateSaved;
+    private Action<LoadoutOwnedItem<CardModel>, int>? _customRunAddCopies;
     private string _selectedKeywordModId = NCardKeywordEditor.AllModFilterId;
 
     public static NCardModificationScreen Create()
@@ -115,6 +119,20 @@ public partial class NCardModificationScreen : Control
 
         if (IsNodeReady())
             RebuildScreen();
+    }
+
+    public void InitForCustomRun(
+        LoadoutOwnedItem<CardModel> item,
+        IReadOnlyList<LoadoutOwnedItem<CardModel>> items,
+        Func<LoadoutOwnedItem<CardModel>, CardModificationSpec> stateProvider,
+        Action<LoadoutOwnedItem<CardModel>, CardModificationSpec> stateSaved,
+        Action<LoadoutOwnedItem<CardModel>, int> addCopies)
+    {
+        _customRunAuthoringMode = true;
+        _customRunStateProvider = stateProvider;
+        _customRunStateSaved = stateSaved;
+        _customRunAddCopies = addCopies;
+        Init(item, items);
     }
 
     public override void _Ready()
@@ -165,7 +183,8 @@ public partial class NCardModificationScreen : Control
             RefreshNativeButtonState();
             if (Visible && IsInsideTree() && _item is not null && !_isClosing)
             {
-                BindRunContentEvents();
+                if (!_customRunAuthoringMode)
+                    BindRunContentEvents();
                 _hasBeenVisible = true;
                 Callable.From(() => RefreshPreview(forceReload: false)).CallDeferred();
             }
@@ -538,13 +557,19 @@ public partial class NCardModificationScreen : Control
     {
         _item = item;
         _awaitingResetConfirmation = false;
-        _workingState = CardModificationRuntime.GetEffectiveSpec(item);
-        _temporaryState = CardModificationRuntime.GetTemporarySpec(item);
+        _workingState = _customRunAuthoringMode
+            ? _customRunStateProvider?.Invoke(item).Clone() ?? new CardModificationSpec()
+            : CardModificationRuntime.GetEffectiveSpec(item);
+        _temporaryState = _customRunAuthoringMode
+            ? _workingState.Clone()
+            : CardModificationRuntime.GetTemporarySpec(item);
         // The live deck card already contains its effective attached/permanent
         // state. Do not allocate and fully rebuild another mutable card merely to
         // open or close the editor. A detached preview clone is created lazily only
         // after the user actually changes a control.
-        _previewDisplayModel = item.Model;
+        _previewDisplayModel = _customRunAuthoringMode && !_workingState.IsEmpty
+            ? CardModificationRuntime.CreatePreviewCard(item.Model, _workingState)
+            : item.Model;
         _lastAppliedState = _workingState.Clone();
         _hasPendingTemporaryCommit = false;
         BindObservedPile();
@@ -610,20 +635,25 @@ public partial class NCardModificationScreen : Control
         AddAttachmentControls();
         AddModifyUpgradeAction();
 
-        if (CanSavePermanent())
+        if (_customRunAuthoringMode || CanSavePermanent())
         {
-            NLoadoutActionButton permanentButton = CreateActionButton("save_permanent", LocMan.Loc("SAVE_PERMANENT", "Save Permanent"), CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
+            NLoadoutActionButton permanentButton = CreateActionButton(
+                "save_permanent",
+                _customRunAuthoringMode ? "Save to Custom Run" : LocMan.Loc("SAVE_PERMANENT", "Save Permanent"),
+                CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
             ConnectActionButton(permanentButton, SavePermanent);
             _actionControls.AddChild(permanentButton);
             ConfigureActionButtonSize(permanentButton);
         }
 
-        NLoadoutActionButton resetTemporaryButton = CreateActionButton("reset_temporary", LocMan.Loc("RESET_TEMPORARY", "Reset Temporary"));
+        NLoadoutActionButton resetTemporaryButton = CreateActionButton(
+            "reset_temporary",
+            _customRunAuthoringMode ? "Revert Card" : LocMan.Loc("RESET_TEMPORARY", "Reset Temporary"));
         ConnectActionButton(resetTemporaryButton, ResetTemporary);
         _actionControls.AddChild(resetTemporaryButton);
         ConfigureActionButtonSize(resetTemporaryButton);
 
-        if (CanSavePermanent())
+        if (!_customRunAuthoringMode && CanSavePermanent())
         {
             NLoadoutActionButton resetPermanentButton = CreateActionButton("reset_permanent", LocMan.Loc("RESET_PERMANENT", "Reset Permanent"));
             ConnectActionButton(resetPermanentButton, ResetPermanent);
@@ -1399,6 +1429,15 @@ public partial class NCardModificationScreen : Control
         permanentState.Normalize();
         _hasPendingTemporaryCommit = false;
 
+        if (_customRunAuthoringMode)
+        {
+            _customRunStateSaved?.Invoke(_item, permanentState);
+            _temporaryState = permanentState.Clone();
+            _workingState = permanentState.Clone();
+            _lastAppliedState = permanentState.Clone();
+            return;
+        }
+
         bool requestedPermanent = LoadoutImmediateMutationService.RequestCardModification(
             CardModificationOperation.ApplyPermanent,
             _item,
@@ -1420,6 +1459,17 @@ public partial class NCardModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
+        if (_customRunAuthoringMode)
+        {
+            _workingState = new CardModificationSpec();
+            _temporaryState = new CardModificationSpec();
+            _lastAppliedState = new CardModificationSpec();
+            _previewDisplayModel = _item.Model;
+            _customRunStateSaved?.Invoke(_item, _workingState);
+            RebuildControls();
+            RefreshPreview(forceReload: true);
+            return;
+        }
         _awaitingResetConfirmation = true;
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetTemporaryToBasic, _item);
         if (!requested)
@@ -1432,6 +1482,11 @@ public partial class NCardModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
+        if (_customRunAuthoringMode)
+        {
+            ResetTemporary();
+            return;
+        }
         _awaitingResetConfirmation = true;
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);
         if (!requested)
@@ -1449,6 +1504,11 @@ public partial class NCardModificationScreen : Control
         CommitPendingTemporaryModification();
 
         int amount = NGenericSelectScreen.GetCurrentInputMultiplier();
+        if (_customRunAuthoringMode)
+        {
+            _customRunAddCopies?.Invoke(_item, amount);
+            return;
+        }
         if (!CardModifier.AddCopiesToTargetDeck(_item, amount))
         {
             GD.PushWarning($"CardModification: failed adding {amount} copies of '{_item.Model.Id}' to player {_item.OwnerNetId}.");
@@ -1477,6 +1537,14 @@ public partial class NCardModificationScreen : Control
             return false;
 
         _hasPendingTemporaryCommit = false;
+        if (_customRunAuthoringMode)
+        {
+            CardModificationSpec authored = _workingState.Clone();
+            authored.Normalize();
+            _customRunStateSaved?.Invoke(_item, authored);
+            _temporaryState = authored.Clone();
+            return true;
+        }
         CardModificationSpec state = _temporaryState.Clone();
         state.Normalize();
         SuppressStateRefreshThisFrame();

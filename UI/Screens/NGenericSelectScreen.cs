@@ -231,6 +231,7 @@ public partial class NGenericSelectScreen : Control
     public bool IsConfiguredForCurrentLocale => string.Equals(_configuredLocaleLanguage, GetCurrentLocaleLanguage(), StringComparison.Ordinal);
     public bool IsFirstOpenPrewarmed => _hiddenPrewarmCompleted;
     public bool IsScreenActive => _isScreenActive;
+    public bool IsReusedSelectionActive => _reusedSelectionSession is not null;
 
     public override void _Ready()
     {
@@ -1603,13 +1604,22 @@ public partial class NGenericSelectScreen : Control
 
     public IDisposable BeginReusedSelection(
         SelectScreenOptions options,
-        IReadOnlyDictionary<string, int>? selectedAmounts = null)
+        IReadOnlyDictionary<string, int>? selectedAmounts = null,
+        Func<IGenericSelectItem, bool>? visibilityPredicateOverride = null,
+        Action<NGenericSelectScreen, IGenericSelectItem>? activationOverride = null,
+        bool allowSignedAmounts = false)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (_reusedSelectionSession is not null)
             throw new InvalidOperationException($"Select screen '{Name}' already has an active reused selection session.");
 
-        ReusedSelectionSession session = new(this, _options, _selectedAmounts);
+        ReusedSelectionSession session = new(
+            this,
+            _options,
+            _selectedAmounts,
+            _customVisibilityPredicate,
+            activationOverride,
+            allowSignedAmounts);
         _reusedSelectionSession = session;
         _options = options;
         _selectedAmounts.Clear();
@@ -1618,12 +1628,24 @@ public partial class NGenericSelectScreen : Control
             foreach ((string itemId, int amount) in selectedAmounts)
             {
                 if (_items.Any(item => string.Equals(item.Id, itemId, StringComparison.Ordinal)))
-                    _selectedAmounts[itemId] = Math.Clamp(amount, 1, options.MaxCopiesPerItem);
+                {
+                    int clamped = allowSignedAmounts
+                        ? Math.Clamp(amount, -options.MaxCopiesPerItem, options.MaxCopiesPerItem)
+                        : Math.Clamp(amount, 1, options.MaxCopiesPerItem);
+                    if (clamped != 0)
+                        _selectedAmounts[itemId] = clamped;
+                }
             }
         }
 
+        if (visibilityPredicateOverride is not null)
+            _customVisibilityPredicate = visibilityPredicateOverride;
+
         ApplyReusedSelectionSidebarState();
-        RefreshVisibleItemStates();
+        if (visibilityPredicateOverride is null)
+            RefreshVisibleItemStates();
+        else
+            RefreshNow(resetScroll: true);
         UpdateConfirmButtonState();
         return session;
     }
@@ -1637,7 +1659,7 @@ public partial class NGenericSelectScreen : Control
 
     public void SelectItem(string itemId, int amount = 1)
     {
-        if (amount <= 0)
+        if (amount == 0 || (amount < 0 && _reusedSelectionSession?.AllowSignedAmounts != true))
         {
             DeselectItem(itemId);
             return;
@@ -1649,7 +1671,9 @@ public partial class NGenericSelectScreen : Control
         if (_options.SelectionMode == SelectSelectionMode.Single)
             _selectedAmounts.Clear();
 
-        _selectedAmounts[itemId] = Math.Clamp(amount, 1, _options.MaxCopiesPerItem);
+        _selectedAmounts[itemId] = _reusedSelectionSession?.AllowSignedAmounts == true
+            ? Math.Clamp(amount, -_options.MaxCopiesPerItem, _options.MaxCopiesPerItem)
+            : Math.Clamp(amount, 1, _options.MaxCopiesPerItem);
         RefreshVisibleItemStates();
         UpdateConfirmButtonState();
     }
@@ -1671,7 +1695,9 @@ public partial class NGenericSelectScreen : Control
         CloseOpenDropdowns();
 
         List<IGenericSelectItem> selected = _items
-            .Where(item => _selectedAmounts.GetValueOrDefault(item.Id) > 0)
+            .Where(item => _reusedSelectionSession?.AllowSignedAmounts == true
+                ? _selectedAmounts.GetValueOrDefault(item.Id) != 0
+                : _selectedAmounts.GetValueOrDefault(item.Id) > 0)
             .ToList();
 
         Confirmed?.Invoke(selected);
@@ -3853,10 +3879,11 @@ public partial class NGenericSelectScreen : Control
     private void ActivateItem(IGenericSelectItem item)
     {
         SelectItemState before = BuildState(item, _visibleItems.IndexOf(item));
+        bool activationHandled = _reusedSelectionSession?.TryActivate(item) == true;
         if (_reusedSelectionSession is null)
             ItemActivated?.Invoke(item, before);
 
-        if (_options.SelectionMode != SelectSelectionMode.None)
+        if (!activationHandled && _options.SelectionMode != SelectSelectionMode.None)
             ToggleSelection(item);
 
         SelectItemState after = BuildState(item, _visibleItems.IndexOf(item));
@@ -3879,11 +3906,18 @@ public partial class NGenericSelectScreen : Control
             return;
 
         _options = previousOptions;
+        bool visibilityChanged = !ReferenceEquals(
+            _customVisibilityPredicate,
+            session.PreviousVisibilityPredicate);
+        _customVisibilityPredicate = session.PreviousVisibilityPredicate;
         _selectedAmounts.Clear();
         foreach ((string itemId, int amount) in previousSelection)
             _selectedAmounts[itemId] = amount;
         session.RestoreSidebarVisibility();
-        RefreshVisibleItemStates();
+        if (visibilityChanged)
+            RefreshNow(resetScroll: true);
+        else
+            RefreshVisibleItemStates();
         UpdateConfirmButtonState();
     }
 
@@ -3905,20 +3939,38 @@ public partial class NGenericSelectScreen : Control
         private NGenericSelectScreen? _owner;
         private readonly SelectScreenOptions _previousOptions;
         private readonly IReadOnlyDictionary<string, int> _previousSelection;
+        private readonly Action<NGenericSelectScreen, IGenericSelectItem>? _activationOverride;
         private readonly Dictionary<Control, bool> _sidebarVisibility = [];
 
         public ReusedSelectionSession(
             NGenericSelectScreen owner,
             SelectScreenOptions previousOptions,
-            IReadOnlyDictionary<string, int> previousSelection)
+            IReadOnlyDictionary<string, int> previousSelection,
+            Func<IGenericSelectItem, bool>? previousVisibilityPredicate,
+            Action<NGenericSelectScreen, IGenericSelectItem>? activationOverride,
+            bool allowSignedAmounts)
         {
             _owner = owner;
             _previousOptions = previousOptions;
             _previousSelection = new Dictionary<string, int>(previousSelection, StringComparer.Ordinal);
+            PreviousVisibilityPredicate = previousVisibilityPredicate;
+            _activationOverride = activationOverride;
+            AllowSignedAmounts = allowSignedAmounts;
             CaptureVisibility(owner._actionButtonsContainer);
             CaptureVisibility(owner._bottomActionButtonsContainer);
             CaptureVisibility(owner._customControlsContainer);
             CaptureVisibility(owner._bottomCustomControlsContainer);
+        }
+
+        public Func<IGenericSelectItem, bool>? PreviousVisibilityPredicate { get; }
+        public bool AllowSignedAmounts { get; }
+
+        public bool TryActivate(IGenericSelectItem item)
+        {
+            if (_activationOverride is null || _owner is null)
+                return false;
+            _activationOverride(_owner, item);
+            return true;
         }
 
         public void Dispose() => End(restoreState: true);
@@ -3982,7 +4034,7 @@ public partial class NGenericSelectScreen : Control
             originalIndex: item.OriginalIndex,
             visibleIndex: visibleIndex,
             selectionAmount: amount,
-            isSelected: amount > 0,
+            isSelected: _reusedSelectionSession?.AllowSignedAmounts == true ? amount != 0 : amount > 0,
             isEnabled: true,
             toggleStates: new Dictionary<string, bool>(_toggleStates, StringComparer.Ordinal));
     }
@@ -4782,7 +4834,9 @@ public partial class NGenericSelectScreen : Control
 
     private bool IsConfirmAllowed()
     {
-        int selectedCount = _selectedAmounts.Values.Sum();
+        int selectedCount = _reusedSelectionSession?.AllowSignedAmounts == true
+            ? _selectedAmounts.Values.Sum(Math.Abs)
+            : _selectedAmounts.Values.Sum();
         return selectedCount >= _options.MinSelection
             && selectedCount <= _options.MaxTotalSelection;
     }
@@ -4791,7 +4845,9 @@ public partial class NGenericSelectScreen : Control
     {
         bool isActive = IsVisibleInTree();
         bool usesSelection = _options.SelectionMode != SelectSelectionMode.None;
-        int selectedCount = _selectedAmounts.Values.Sum();
+        int selectedCount = _reusedSelectionSession?.AllowSignedAmounts == true
+            ? _selectedAmounts.Values.Sum(Math.Abs)
+            : _selectedAmounts.Values.Sum();
 
         if (_selectedCountLabel is Label selectedCountLabel)
         {

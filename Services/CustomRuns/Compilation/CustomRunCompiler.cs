@@ -12,6 +12,7 @@ using Loadout.Services.Compatibility;
 using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Persistence;
+using Loadout.Services.Loadouts;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -57,6 +58,25 @@ public static class CustomRunCompiler
         IReadOnlyList<string> deckModelIds = ResolveFixedModelIds(definition.Setup.StartingDeck);
         IReadOnlyList<string> relicModelIds = ResolveFixedModelIds(definition.Setup.StartingRelics);
         IReadOnlyList<string> potionModelIds = ResolveFixedModelIds(definition.Setup.StartingPotions);
+        IReadOnlyList<SavedCardLoadoutEntry> deckEntries = definition.Setup.StartingDeck.Mode == SelectionMode.Fixed
+            ? definition.Setup.StartingCardEntries.Select(entry => entry.Clone()).ToList()
+            : [];
+        IReadOnlyList<SavedRelicLoadoutEntry> relicEntries = definition.Setup.StartingRelics.Mode == SelectionMode.Fixed
+            ? definition.Setup.StartingRelicEntries.Select(entry => entry.Clone()).ToList()
+            : [];
+        IReadOnlyList<StartingPowerDefinition> startingPowers = definition.Setup.StartingPowers
+            .Select(power => new StartingPowerDefinition
+            {
+                ModelId = CustomRunCatalogService.CanonicalizeModelId(SelectionModelKind.Power, power.ModelId),
+                Amount = power.Amount
+            })
+            .ToList();
+        string? startingMorphModelId = definition.Setup.StartingMorphModelId;
+        if (startingMorphModelId is not null
+            && CustomRunCatalogService.TryResolveMorph(startingMorphModelId, out AbstractModel morphModel))
+        {
+            startingMorphModelId = morphModel.Id.ToString();
+        }
         if (potionModelIds.Count > (definition.Setup.PotionSlots ?? 3))
         {
             AddError(
@@ -101,8 +121,19 @@ public static class CustomRunCompiler
                 PlayerId = player.PlayerId,
                 CharacterModelId = character.Id.ToString(),
                 DeckModelIds = deckModelIds,
+                OverrideDeck = definition.Setup.StartingDeck.Mode == SelectionMode.Fixed,
+                DeckEntries = deckEntries.Select(entry => entry.Clone()).ToList(),
                 RelicModelIds = relicModelIds,
+                OverrideRelics = definition.Setup.StartingRelics.Mode == SelectionMode.Fixed,
+                RelicEntries = relicEntries.Select(entry => entry.Clone()).ToList(),
                 PotionModelIds = potionModelIds,
+                OverridePotions = definition.Setup.StartingPotions.Mode == SelectionMode.Fixed,
+                StartingPowers = startingPowers.Select(power => new StartingPowerDefinition
+                {
+                    ModelId = power.ModelId,
+                    Amount = power.Amount
+                }).ToList(),
+                StartingMorphModelId = startingMorphModelId,
                 PotionSlots = definition.Setup.PotionSlots,
                 StartingGold = definition.Setup.StartingGold,
                 StartingCurrentHp = definition.Setup.StartingCurrentHp,
@@ -118,6 +149,7 @@ public static class CustomRunCompiler
         {
             SourceDefinitionId = definition.Id,
             RunSeed = seed,
+            AscensionLevel = definition.Setup.StartingAscension,
             Players = resolvedPlayers,
             RequiredModIds = requiredModIds
         };
@@ -126,6 +158,7 @@ public static class CustomRunCompiler
             SchemaVersion = unhashed.SchemaVersion,
             SourceDefinitionId = unhashed.SourceDefinitionId,
             RunSeed = unhashed.RunSeed,
+            AscensionLevel = unhashed.AscensionLevel,
             Players = unhashed.Players,
             Rules = unhashed.Rules,
             Variables = unhashed.Variables,
@@ -216,6 +249,13 @@ public static class CustomRunCompiler
                 AddModelMod(required, SelectionModelKind.Relic, id);
             foreach (string id in player.PotionModelIds)
                 AddModelMod(required, SelectionModelKind.Potion, id);
+            foreach (StartingPowerDefinition power in player.StartingPowers)
+                AddModelMod(required, SelectionModelKind.Power, power.ModelId);
+            if (player.StartingMorphModelId is not null
+                && CustomRunCatalogService.TryResolveMorph(player.StartingMorphModelId, out AbstractModel morph))
+            {
+                required.Add(CommonHelpers.GetModelModId(morph));
+            }
         }
 
         required.RemoveWhere(id => string.Equals(id, "slaythespire2", StringComparison.OrdinalIgnoreCase));

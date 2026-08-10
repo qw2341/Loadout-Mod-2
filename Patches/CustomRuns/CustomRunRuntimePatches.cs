@@ -51,6 +51,13 @@ public static class CustomRunPlayerCreationPatch
 [HarmonyPatch(typeof(RunState), nameof(RunState.CreateForNewRun))]
 public static class CustomRunStateCreationPatch
 {
+    [HarmonyPrefix]
+    public static void Prefix(ref int ascensionLevel)
+    {
+        if (CustomRunRuntimeSnapshotService.PendingSnapshot?.AscensionLevel is int customAscension)
+            ascensionLevel = Math.Clamp(customAscension, 0, 10);
+    }
+
     [HarmonyPostfix]
     public static void Postfix(RunState __result)
     {
