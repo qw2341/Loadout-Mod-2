@@ -48,7 +48,7 @@ public static class CustomRunCompiler
                 AddError(issues, "Run Setup", definition.Id, $"Unknown character '{id}'.");
         }
 
-        string seed = CanonicalizeSeed(definition.Setup.RunSeed, issues, definition.Id);
+        string seed = CanonicalizeSeed(definition.Setup.RunSeed, lobby.Seed, issues, definition.Id);
         IReadOnlyList<string> missingMods = GetMissingRequiredMods(definition.RequiredModIds);
         if (missingMods.Count > 0)
         {
@@ -187,14 +187,17 @@ public static class CustomRunCompiler
 
     private static string CanonicalizeSeed(
         string? authoredSeed,
+        string? lobbySeed,
         List<CustomRunValidationIssue> issues,
         string definitionId)
     {
         try
         {
-            string seed = string.IsNullOrWhiteSpace(authoredSeed)
-                ? SeedHelper.GetRandomSeed()
-                : authoredSeed;
+            string seed = !string.IsNullOrWhiteSpace(authoredSeed)
+                ? authoredSeed
+                : !string.IsNullOrWhiteSpace(lobbySeed)
+                    ? lobbySeed
+                    : SeedHelper.GetRandomSeed();
             return SeedHelper.CanonicalizeSeed(seed);
         }
         catch (Exception exception)

@@ -56,8 +56,11 @@ public static class NLoadoutConfirmButtonFactory
             "Icon",
             LoadTexture("res://images/atlases/compressed.sprites/confirm_button_tick.tres"));
         icon.Modulate = StsColors.cream;
-        icon.Position = new Vector2(88f, 28f);
-        icon.Size = new Vector2(80f, 80f);
+        icon.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        icon.OffsetLeft = 88f;
+        icon.OffsetTop = 28f;
+        icon.OffsetRight = 168f;
+        icon.OffsetBottom = 108f;
         image.AddChild(icon);
 
         TextureRect controllerIcon = new()

@@ -75,9 +75,9 @@ public static class NCustomRunEditorEntry
         button.AnchorLeft = 0.5f;
         button.AnchorRight = 0.5f;
         button.OffsetLeft = -180f;
-        button.OffsetTop = -72f;
+        button.OffsetTop = -64f;
         button.OffsetRight = 180f;
-        button.OffsetBottom = -8f;
+        button.OffsetBottom = 0f;
         button.GrowHorizontal = Control.GrowDirection.Both;
         button.GrowVertical = Control.GrowDirection.Begin;
         button.PivotOffset = button.Size * 0.5f;

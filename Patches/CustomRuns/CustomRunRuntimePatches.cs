@@ -8,6 +8,7 @@ using System.Reflection;
 using BaseLib.Patches.Saves;
 using HarmonyLib;
 using Loadout.Services.CustomRuns.Compilation;
+using Loadout.Services.CustomRuns.Networking;
 using Loadout.Services.CustomRuns.Runtime;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -76,10 +77,12 @@ public static class CustomRunStateCreationPatch
 public static class CustomRunLobbyCleanupPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(bool disconnectSession)
+    public static void Postfix(StartRunLobby __instance, bool disconnectSession)
     {
         if (disconnectSession)
-            CustomRunRuntimeSnapshotService.ClearPending();
+            CustomRunLobbyService.CancelPreparedRun(__instance);
+        else
+            CustomRunLobbyService.CompletePreparedRun(__instance);
     }
 }
 

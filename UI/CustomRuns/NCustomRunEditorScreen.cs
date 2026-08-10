@@ -39,12 +39,13 @@ public partial class NCustomRunEditorScreen : Control
     private HBoxContainer? _toolbar;
     private HBoxContainer? _tabs;
     private readonly Dictionary<string, Button> _tabButtons = new(StringComparer.Ordinal);
+    private Control? _contentMount;
     private VBoxContainer? _contentHost;
     private NScrollableContainer? _contentScroll;
     private MegaLabel? _runNameLabel;
     private MegaLabel? _authorityLabel;
     private MegaLabel? _statusLabel;
-    private NLoadoutSettingsActionButton? _saveAsButton;
+    private NLoadoutSettingsActionButton? _duplicateButton;
     private NConfirmButton? _confirmButton;
     private NLoadoutActionButton? _deleteButton;
     private string _activeTab = TabNames[0];
@@ -170,6 +171,8 @@ public partial class NCustomRunEditorScreen : Control
 
     public override void _ExitTree()
     {
+        if (_contentMount is not null)
+            _contentMount.Resized -= OnContentMountResized;
         CustomRunStorageService.Changed -= OnStoredDefinitionsChanged;
         CustomRunLobbyService.RemoteDefinitionChanged -= OnRemoteDefinitionChanged;
     }
@@ -207,24 +210,24 @@ public partial class NCustomRunEditorScreen : Control
             titleMount.AddChild(titleRow);
         }
 
-        Control? saveAsMount = GetNodeOrNull<Control>("OuterMargin/Root/Header/SaveAsMount");
-        if (saveAsMount is not null)
+        Control? duplicateMount = GetNodeOrNull<Control>("OuterMargin/Root/Header/DuplicateMount");
+        if (duplicateMount is not null)
         {
-            _saveAsButton = new NLoadoutSettingsActionButton
+            _duplicateButton = new NLoadoutSettingsActionButton
             {
-                Name = "SaveAsButton",
+                Name = "DuplicateButton",
                 CustomMinimumSize = new Vector2(260f, 58f)
             };
-            _saveAsButton.Init("save_as", "SAVE AS");
-            _saveAsButton.SetAnchorsPreset(LayoutPreset.CenterRight);
-            _saveAsButton.OffsetLeft = -260f;
-            _saveAsButton.OffsetTop = -29f;
-            _saveAsButton.OffsetRight = 0f;
-            _saveAsButton.OffsetBottom = 29f;
-            _saveAsButton.Connect(
+            _duplicateButton.Init("duplicate", "DUPLICATE");
+            _duplicateButton.SetAnchorsPreset(LayoutPreset.CenterRight);
+            _duplicateButton.OffsetLeft = -260f;
+            _duplicateButton.OffsetTop = -29f;
+            _duplicateButton.OffsetRight = 0f;
+            _duplicateButton.OffsetBottom = 29f;
+            _duplicateButton.Connect(
                 NClickableControl.SignalName.Released,
                 Callable.From<NClickableControl>(_ => DuplicateDefinition()));
-            saveAsMount.AddChild(_saveAsButton);
+            duplicateMount.AddChild(_duplicateButton);
         }
 
         BuildTabs();
@@ -247,7 +250,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         AddActionButton(_toolbar, "save", "Save", 118f, () => SaveCurrent(showStatus: true));
-        AddActionButton(_toolbar, "save_as", "Save As", 132f, DuplicateDefinition);
+        AddActionButton(_toolbar, "duplicate", "Duplicate", 150f, DuplicateDefinition);
         AddActionButton(_toolbar, "validate", "Validate", 138f, ValidateDefinition);
     }
 
@@ -457,6 +460,7 @@ public partial class NCustomRunEditorScreen : Control
             {
                 _contentScroll.SetContent(_contentHost);
                 _contentScroll.InstantlyScrollToTop();
+                RefreshContentScrollHeight();
             }
         }).CallDeferred();
     }
@@ -498,9 +502,8 @@ public partial class NCustomRunEditorScreen : Control
         };
         _contentHost.AddChild(description);
 
-        GridContainer summary = new() { Columns = 2, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        summary.AddThemeConstantOverride("h_separation", 34);
-        summary.AddThemeConstantOverride("v_separation", 10);
+        VBoxContainer summary = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        summary.AddThemeConstantOverride("separation", 10);
         AddSummaryRow(summary, "Definition ID", _workingDefinition.Id);
         AddSummaryRow(summary, "Schema", _workingDefinition.SchemaVersion.ToString());
         AddSummaryRow(summary, "Rules", _workingDefinition.Rules.Count.ToString());
@@ -967,7 +970,7 @@ public partial class NCustomRunEditorScreen : Control
 
     private void RefreshEditableState()
     {
-        _saveAsButton?.Enable();
+        _duplicateButton?.Enable();
         _confirmButton?.Enable();
         if (_deleteButton is not null)
         {
@@ -993,12 +996,28 @@ public partial class NCustomRunEditorScreen : Control
             success ? new Color(0.68f, 1f, 0.55f) : new Color(1f, 0.55f, 0.45f));
     }
 
-    private static void AddSummaryRow(GridContainer grid, string label, string value)
+    private static void AddSummaryRow(VBoxContainer summary, string label, string value)
     {
-        grid.AddChild(CreateLabel(label, 20, StsColors.gold, HorizontalAlignment.Left));
+        HBoxContainer row = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 38f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        row.AddThemeConstantOverride("separation", 34);
+        MegaLabel nameLabel = CreateLabel(label, 20, StsColors.gold, HorizontalAlignment.Left);
+        nameLabel.CustomMinimumSize = new Vector2(250f, 38f);
+        nameLabel.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        row.AddChild(nameLabel);
         MegaLabel valueLabel = CreateLabel(value, 20, StsColors.cream, HorizontalAlignment.Left);
-        valueLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        grid.AddChild(valueLabel);
+        valueLabel.CustomMinimumSize = new Vector2(0f, 38f);
+        valueLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        valueLabel.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        valueLabel.AutowrapMode = TextServer.AutowrapMode.Off;
+        valueLabel.ClipText = true;
+        valueLabel.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        valueLabel.TooltipText = value;
+        row.AddChild(valueLabel);
+        summary.AddChild(row);
     }
 
     private static HBoxContainer CreateRow()
@@ -1175,11 +1194,12 @@ public partial class NCustomRunEditorScreen : Control
 
     private void EnsureNativeContentScroll()
     {
-        Control? mount = GetNodeOrNull<Control>("%ContentMount");
-        if (mount is null)
+        _contentMount = GetNodeOrNull<Control>("%ContentMount");
+        if (_contentMount is null)
             return;
+        _contentMount.Resized += OnContentMountResized;
 
-        _contentScroll = mount.GetNodeOrNull<NScrollableContainer>("ContentScroll");
+        _contentScroll = _contentMount.GetNodeOrNull<NScrollableContainer>("ContentScroll");
         if (_contentScroll is not null)
         {
             _contentHost = _contentScroll.GetNodeOrNull<VBoxContainer>("Mask/Content");
@@ -1191,7 +1211,7 @@ public partial class NCustomRunEditorScreen : Control
             Name = "ContentScroll",
             MouseFilter = MouseFilterEnum.Stop
         };
-        scroll.SetAnchorsPreset(LayoutPreset.FullRect);
+        scroll.SetAnchorsPreset(LayoutPreset.TopWide);
 
         Control mask = new()
         {
@@ -1222,7 +1242,7 @@ public partial class NCustomRunEditorScreen : Control
         scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
         scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
         scroll.AddChild(scrollbar);
-        mount.AddChild(scroll);
+        _contentMount.AddChild(scroll);
         scroll.DisableScrollingIfContentFits();
 
         _contentScroll = scroll;
@@ -1232,6 +1252,33 @@ public partial class NCustomRunEditorScreen : Control
             if (GodotObject.IsInstanceValid(scroll) && GodotObject.IsInstanceValid(content))
                 scroll.SetContent(content);
         }).CallDeferred();
+    }
+
+    private void RefreshContentScrollHeight()
+    {
+        if (_contentMount is null
+            || _contentScroll is null
+            || _contentHost is null
+            || !GodotObject.IsInstanceValid(_contentMount)
+            || !GodotObject.IsInstanceValid(_contentScroll)
+            || !GodotObject.IsInstanceValid(_contentHost))
+        {
+            return;
+        }
+
+        float availableHeight = _contentMount.Size.Y;
+        float contentHeight = _contentHost.GetCombinedMinimumSize().Y;
+        if (availableHeight <= 0f || contentHeight <= 0f)
+            return;
+
+        _contentScroll.OffsetTop = 0f;
+        _contentScroll.OffsetBottom = Mathf.Min(availableHeight, contentHeight);
+        _contentScroll.SetContent(_contentHost);
+    }
+
+    private void OnContentMountResized()
+    {
+        Callable.From(RefreshContentScrollHeight).CallDeferred();
     }
 
     private void EnsureFallbackScene()

@@ -5,9 +5,11 @@ namespace Loadout.Services.CustomRuns.Networking;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
+using HarmonyLib;
 using Loadout.Services.Compatibility;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Models;
@@ -33,6 +35,10 @@ public static class CustomRunLobbyService
     private static readonly Dictionary<StartRunLobby, Delegate> DisconnectedHandlers = new();
     private static readonly Dictionary<StartRunLobby, CustomRunDefinition> HostDefinitions = new();
     private static readonly Dictionary<StartRunLobby, HostPreparationState> HostPreparations = new();
+    private static readonly Dictionary<StartRunLobby, string?> PreparedPreviousSeeds = new();
+    private static readonly MethodInfo? SeedSetter = AccessTools.PropertySetter(
+        typeof(StartRunLobby),
+        nameof(StartRunLobby.Seed));
     private static CustomRunDefinition? _remoteDefinition;
 
     public static event Action? RemoteDefinitionChanged;
@@ -137,19 +143,15 @@ public static class CustomRunLobbyService
             .FirstOrDefault(player => player.PlayerId == lobby.NetService.NetId);
         if (currentLocalPlayer?.Character?.Id != localCharacter.Id)
             lobby.SetLocalCharacter(localCharacter);
-        if (!string.Equals(lobby.Seed, snapshot.RunSeed, StringComparison.Ordinal))
-            lobby.SetSeed(snapshot.RunSeed);
-        CustomRunRuntimeSnapshotService.SetPending(snapshot);
-        MainFile.Logger.Info($"[Loadout] Prepared Custom Run snapshot {snapshot.SnapshotHash}.");
 
         if (lobby.NetService.Type != NetGameType.Host)
-            return CustomRunPreparationResult.Success;
+            return StagePreparedSnapshot(lobby, snapshot);
 
         HashSet<ulong> expected = Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby)
             .Where(playerId => playerId != lobby.NetService.NetId)
             .ToHashSet();
         if (expected.Count == 0)
-            return CustomRunPreparationResult.Success;
+            return StagePreparedSnapshot(lobby, snapshot);
 
         HostPreparationState state = new(snapshot, expected);
         HostPreparations[lobby] = state;
@@ -172,18 +174,66 @@ public static class CustomRunLobbyService
         }
         state.Timeout.Cancel();
         state.Timeout.Dispose();
-        if (!result.Succeeded)
+        if (result.Succeeded)
+            result = StagePreparedSnapshot(lobby, snapshot);
+        else
             CustomRunRuntimeSnapshotService.ClearPending();
         return result;
     }
 
     public static void CancelPreparation(StartRunLobby lobby, string reason)
     {
-        if (!HostPreparations.Remove(lobby, out HostPreparationState? state))
-            return;
+        if (HostPreparations.Remove(lobby, out HostPreparationState? state))
+            state.Completion.TrySetResult(new CustomRunPreparationResult(false, reason));
+        CancelPreparedRun(lobby);
+    }
 
-        state.Completion.TrySetResult(new CustomRunPreparationResult(false, reason));
+    public static void CancelPreparedRun(StartRunLobby lobby)
+    {
+        if (PreparedPreviousSeeds.Remove(lobby, out string? previousSeed))
+            SetSeedWithoutStandardModeNotification(lobby, previousSeed);
         CustomRunRuntimeSnapshotService.ClearPending();
+    }
+
+    public static void CompletePreparedRun(StartRunLobby lobby)
+    {
+        PreparedPreviousSeeds.Remove(lobby);
+    }
+
+    private static CustomRunPreparationResult StagePreparedSnapshot(
+        StartRunLobby lobby,
+        ResolvedCustomRunSnapshot snapshot)
+    {
+        if (!PreparedPreviousSeeds.ContainsKey(lobby))
+            PreparedPreviousSeeds[lobby] = lobby.Seed;
+        if (!SetSeedWithoutStandardModeNotification(lobby, snapshot.RunSeed))
+        {
+            PreparedPreviousSeeds.Remove(lobby);
+            return new CustomRunPreparationResult(false, "Could not apply the Custom Run seed.");
+        }
+
+        CustomRunRuntimeSnapshotService.SetPending(snapshot);
+        MainFile.Logger.Info($"[Loadout] Prepared Custom Run snapshot {snapshot.SnapshotHash}.");
+        return CustomRunPreparationResult.Success;
+    }
+
+    private static bool SetSeedWithoutStandardModeNotification(StartRunLobby lobby, string? seed)
+    {
+        if (string.Equals(lobby.Seed, seed, StringComparison.Ordinal))
+            return true;
+        if (SeedSetter is null)
+            return false;
+
+        try
+        {
+            SeedSetter.Invoke(lobby, [seed]);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            MainFile.Logger.Error($"[Loadout] Could not set the prepared Custom Run seed: {exception}");
+            return false;
+        }
     }
 
     private static async Task TimeoutPreparationAsync(StartRunLobby lobby, HostPreparationState state)

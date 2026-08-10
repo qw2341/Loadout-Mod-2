@@ -68,7 +68,7 @@ theme_override_constants/separation = 16
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="SaveAsMount" type="Control" parent="OuterMargin/Root/Header"]
+[node name="DuplicateMount" type="Control" parent="OuterMargin/Root/Header"]
 custom_minimum_size = Vector2(280, 0)
 layout_mode = 2
 

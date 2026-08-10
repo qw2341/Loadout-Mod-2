@@ -12,7 +12,6 @@ using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
 using Loadout.Services.CustomRuns.PermanentRules;
 using Loadout.Services.CustomRuns.Persistence;
-using Loadout.Services.CustomRuns.Runtime;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.UI;
@@ -40,6 +39,7 @@ public partial class NCustomRunLibraryScreen : Control
     private Control? _permanentListMount;
     private NDeckLoadoutTextAction? _customRunsHeader;
     private NDeckLoadoutTextAction? _permanentRulesHeader;
+    private NLoadoutSettingsActionButton? _importAndPlayButton;
     private MegaLabel? _statusLabel;
     private NBackButton? _backButton;
     private Tween? _statusTween;
@@ -145,6 +145,22 @@ public partial class NCustomRunLibraryScreen : Control
                 NClickableControl.SignalName.Released,
                 Callable.From<NClickableControl>(_ => SwitchSection(showPermanentRules: false)));
             customHeaderMount.AddChild(_customRunsHeader);
+
+            _importAndPlayButton = new NLoadoutSettingsActionButton
+            {
+                Name = "ImportAndPlayButton",
+                CustomMinimumSize = new Vector2(300f, 58f)
+            };
+            _importAndPlayButton.Init("import_and_play", "IMPORT AND PLAY");
+            _importAndPlayButton.SetAnchorsPreset(LayoutPreset.CenterRight);
+            _importAndPlayButton.OffsetLeft = -300f;
+            _importAndPlayButton.OffsetTop = -29f;
+            _importAndPlayButton.OffsetRight = 0f;
+            _importAndPlayButton.OffsetBottom = 29f;
+            _importAndPlayButton.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => TaskHelper.RunSafely(ImportAndPlayAsync())));
+            customHeaderMount.AddChild(_importAndPlayButton);
         }
 
         Control? permanentHeaderMount = GetNodeOrNull<Control>("%PermanentRulesHeaderMount");
@@ -252,6 +268,14 @@ public partial class NCustomRunLibraryScreen : Control
     {
         if (_customList is null || _lobby is null)
             return;
+
+        if (_importAndPlayButton is not null)
+        {
+            if (_launching || _lobby.NetService.Type == NetGameType.Client)
+                _importAndPlayButton.Disable();
+            else
+                _importAndPlayButton.Enable();
+        }
 
         CaptureFocus();
         foreach (Node child in _customList.GetChildren())
@@ -522,6 +546,12 @@ public partial class NCustomRunLibraryScreen : Control
             else if (_permanentRulesHeader is not null)
                 _customRunsHeader.FocusNeighborBottom = _permanentRulesHeader.GetPath();
         }
+        if (_customRunsHeader is not null && _importAndPlayButton is not null)
+        {
+            _customRunsHeader.FocusNeighborRight = _importAndPlayButton.GetPath();
+            _importAndPlayButton.FocusNeighborLeft = _customRunsHeader.GetPath();
+            _importAndPlayButton.FocusNeighborBottom = _customRunsHeader.FocusNeighborBottom;
+        }
         if (_permanentRulesHeader is not null)
         {
             if (_showingPermanentRules && _permanentRows.Count > 0 && _permanentRows[^1].Actions.Count > 0)
@@ -646,6 +676,17 @@ public partial class NCustomRunLibraryScreen : Control
             validation.IsValid);
     }
 
+    private async Task ImportAndPlayAsync()
+    {
+        if (!CustomRunClipboardService.TryImport(out CustomRunDefinition definition, out string error))
+        {
+            SetStatus(error, success: false);
+            return;
+        }
+
+        await PlayAsync(definition, persistDefinition: false);
+    }
+
     private void Export(CustomRunDefinition definition)
     {
         if (CustomRunClipboardService.Copy(definition, out string error))
@@ -741,7 +782,7 @@ public partial class NCustomRunLibraryScreen : Control
         }
     }
 
-    private async Task PlayAsync(CustomRunDefinition definition)
+    private async Task PlayAsync(CustomRunDefinition definition, bool persistDefinition = true)
     {
         if (_lobby is null || _launching)
             return;
@@ -751,8 +792,10 @@ public partial class NCustomRunLibraryScreen : Control
             return;
         }
 
-        CustomRunDefinition saved = CustomRunStorageService.Upsert(definition);
-        CustomRunDefinition effectiveDefinition = BuildEffectiveDefinition(saved);
+        CustomRunDefinition launchDefinition = persistDefinition
+            ? CustomRunStorageService.Upsert(definition)
+            : CustomRunNormalizationService.Normalize(CustomRunNormalizationService.Clone(definition));
+        CustomRunDefinition effectiveDefinition = BuildEffectiveDefinition(launchDefinition);
         CustomRunCompileResult compiled = CustomRunCompiler.Compile(effectiveDefinition, _lobby);
         if (!compiled.IsValid || compiled.Snapshot is null)
         {
@@ -762,7 +805,7 @@ public partial class NCustomRunLibraryScreen : Control
             return;
         }
 
-        if (!CustomRunLobbyService.ApplyHostDefinition(_lobby, saved, out string applyError))
+        if (!CustomRunLobbyService.ApplyHostDefinition(_lobby, launchDefinition, out string applyError))
         {
             SetStatus(applyError, success: false);
             return;
@@ -786,7 +829,7 @@ public partial class NCustomRunLibraryScreen : Control
             if (_sourceConfirmButton is null || !GodotObject.IsInstanceValid(_sourceConfirmButton))
             {
                 _launching = false;
-                CustomRunRuntimeSnapshotService.ClearPending();
+                CustomRunLobbyService.CancelPreparedRun(_lobby);
                 SetStatus("Could not find the source screen's Embark button.", success: false);
                 return;
             }
@@ -803,7 +846,7 @@ public partial class NCustomRunLibraryScreen : Control
         catch (Exception exception)
         {
             _launching = false;
-            CustomRunRuntimeSnapshotService.ClearPending();
+            CustomRunLobbyService.CancelPreparedRun(_lobby);
             MainFile.Logger.Error($"[Loadout] Custom Run launch failed: {exception}");
             if (screensClosedForLaunch)
                 NLoadoutPanelRoot.Instance?.OpenScreen(this);
