@@ -697,6 +697,7 @@ public partial class NDeckLoadoutTextAction : NButton
     private string _pendingLabel = string.Empty;
 
     public string ActionButtonId { get; private set; } = string.Empty;
+    public HorizontalAlignment TextAlignment { get; set; } = HorizontalAlignment.Left;
 
     public void Init(string id, string label)
     {
@@ -759,7 +760,7 @@ public partial class NDeckLoadoutTextAction : NButton
             AutoSizeEnabled = true,
             MinFontSize = 13,
             MaxFontSize = 18,
-            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalAlignment = TextAlignment,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
         };

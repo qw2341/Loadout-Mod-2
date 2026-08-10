@@ -32,6 +32,8 @@ public partial class NCustomRunLibraryRow : NButton
     private CustomRunLibraryRowOptions? _options;
     private ColorRect? _hoverTint;
     private ColorRect? _divider;
+    private ColorRect? _topDropIndicator;
+    private ColorRect? _bottomDropIndicator;
     private Tween? _tween;
     private int _focusedActions;
     private readonly List<NClickableControl> _actions = [];
@@ -58,11 +60,15 @@ public partial class NCustomRunLibraryRow : NButton
         FocusMode = FocusModeEnum.All;
         MouseFilter = MouseFilterEnum.Stop;
         ConnectSignals();
-        Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => _options?.RowAction()));
+        Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ =>
+        {
+            _options?.RowAction();
+        }));
     }
 
     public override void _ExitTree()
     {
+        NCustomRunDragVisual.HideInsertion(this);
         _tween?.Kill();
         _tween = null;
         base._ExitTree();
@@ -85,15 +91,20 @@ public partial class NCustomRunLibraryRow : NButton
     {
         if (string.IsNullOrEmpty(_options?.ReorderId))
             return default;
-        SetDragPreview(CreateDragPreview(_options.Name));
+        NCustomRunDragVisual.Show(_options.Name);
         return DragPrefix + _options.ReorderId;
     }
 
     public override bool _CanDropData(Vector2 atPosition, Variant data)
     {
-        return _options?.ReorderAction is not null
-               && TryGetDragId(data, out string sourceId)
-               && !string.Equals(sourceId, _options.ReorderId, StringComparison.Ordinal);
+        bool canDrop = _options?.ReorderAction is not null
+                       && TryGetDragId(data, out string sourceId)
+                       && !string.Equals(sourceId, _options.ReorderId, StringComparison.Ordinal);
+        if (canDrop)
+            ShowDropIndicator(_options!.IsCreateRow || atPosition.Y < Size.Y * 0.5f);
+        else
+            NCustomRunDragVisual.HideInsertion(this);
+        return canDrop;
     }
 
     public override void _DropData(Vector2 atPosition, Variant data)
@@ -101,7 +112,15 @@ public partial class NCustomRunLibraryRow : NButton
         if (_options?.ReorderAction is null || !TryGetDragId(data, out string sourceId))
             return;
         string? targetId = _options.IsCreateRow ? null : _options.ReorderId;
+        NCustomRunDragVisual.Clear();
         _options.ReorderAction(sourceId, targetId, targetId is not null && atPosition.Y >= Size.Y * 0.5f);
+    }
+
+    public override void _Notification(int what)
+    {
+        base._Notification(what);
+        if (what == NotificationDragEnd)
+            NCustomRunDragVisual.Clear();
     }
 
     private void Build()
@@ -138,6 +157,16 @@ public partial class NCustomRunLibraryRow : NButton
         _divider.SetAnchorsPreset(LayoutPreset.BottomWide);
         _divider.OffsetTop = -2f;
         AddChild(_divider);
+
+        _topDropIndicator = CreateDropIndicator();
+        _topDropIndicator.SetAnchorsPreset(LayoutPreset.TopWide);
+        _topDropIndicator.OffsetBottom = 5f;
+        AddChild(_topDropIndicator);
+
+        _bottomDropIndicator = CreateDropIndicator();
+        _bottomDropIndicator.SetAnchorsPreset(LayoutPreset.BottomWide);
+        _bottomDropIndicator.OffsetTop = -5f;
+        AddChild(_bottomDropIndicator);
     }
 
     private void BuildSavedRow()
@@ -209,10 +238,11 @@ public partial class NCustomRunLibraryRow : NButton
         if (_options is null)
             return;
 
-        NLoadoutSettingsCategoryButton createVisual = new()
+        NDeckLoadoutTextAction createVisual = new()
         {
             Name = "CreateCustomRunVisual",
             CustomMinimumSize = new Vector2(540f, 78f),
+            TextAlignment = HorizontalAlignment.Center,
             FocusMode = FocusModeEnum.None,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -316,22 +346,26 @@ public partial class NCustomRunLibraryRow : NButton
         return id.Length > 0;
     }
 
-    private static Control CreateDragPreview(string title)
+    private void ShowDropIndicator(bool before)
     {
-        PanelContainer panel = new()
+        ColorRect? indicator = before ? _topDropIndicator : _bottomDropIndicator;
+        if (indicator is not null)
+            NCustomRunDragVisual.ShowInsertion(this, indicator);
+    }
+
+    private static ColorRect CreateDropIndicator()
+    {
+        ColorRect indicator = new()
         {
-            CustomMinimumSize = new Vector2(460f, 68f),
+            Visible = false,
+            ZIndex = 80,
+            Color = new Color(1f, 0.77f, 0.18f, 0.98f),
             MouseFilter = MouseFilterEnum.Ignore
         };
-        StyleBoxFlat style = new()
-        {
-            BgColor = new Color(0.04f, 0.08f, 0.1f, 0.94f),
-            BorderColor = new Color(0.91f, 0.72f, 0.2f, 0.9f)
-        };
-        style.SetBorderWidthAll(2);
-        panel.AddThemeStyleboxOverride("panel", style);
-        panel.AddChild(CreateLabel(title, 24, StsColors.gold, true, 64f));
-        return panel;
+        string materialPath = "res://themes/canvas_item_material_additive_shared.tres";
+        if (ResourceLoader.Exists(materialPath))
+            indicator.Material = GD.Load<Material>(materialPath);
+        return indicator;
     }
 
     private static MegaLabel CreateLabel(string value, int fontSize, Color color, bool bold, float height)

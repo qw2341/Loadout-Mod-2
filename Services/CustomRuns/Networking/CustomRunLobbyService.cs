@@ -132,8 +132,13 @@ public static class CustomRunLobbyService
         if (localCharacter is null)
             return new CustomRunPreparationResult(false, $"Unknown local character '{localSetup.CharacterModelId}'.");
 
-        lobby.SetLocalCharacter(localCharacter);
-        lobby.SetSeed(snapshot.RunSeed);
+        MainFile.Logger.Info($"[Loadout] Preparing Custom Run snapshot {snapshot.SnapshotHash}.");
+        StartRunLobbyPlayerInfo? currentLocalPlayer = Sts2Compatibility.EnumerateStartRunLobbyPlayers(lobby)
+            .FirstOrDefault(player => player.PlayerId == lobby.NetService.NetId);
+        if (currentLocalPlayer?.Character?.Id != localCharacter.Id)
+            lobby.SetLocalCharacter(localCharacter);
+        if (!string.Equals(lobby.Seed, snapshot.RunSeed, StringComparison.Ordinal))
+            lobby.SetSeed(snapshot.RunSeed);
         CustomRunRuntimeSnapshotService.SetPending(snapshot);
         MainFile.Logger.Info($"[Loadout] Prepared Custom Run snapshot {snapshot.SnapshotHash}.");
 

@@ -38,8 +38,8 @@ public partial class NCustomRunLibraryScreen : Control
     private VBoxContainer? _permanentList;
     private Control? _customListMount;
     private Control? _permanentListMount;
-    private NLoadoutSettingsCategoryButton? _customRunsHeader;
-    private NLoadoutSettingsCategoryButton? _permanentRulesHeader;
+    private NDeckLoadoutTextAction? _customRunsHeader;
+    private NDeckLoadoutTextAction? _permanentRulesHeader;
     private MegaLabel? _statusLabel;
     private NBackButton? _backButton;
     private Tween? _statusTween;
@@ -236,7 +236,10 @@ public partial class NCustomRunLibraryScreen : Control
         _backButton.ZIndex = 200;
         _backButton.Connect(
             NClickableControl.SignalName.Released,
-            Callable.From<NClickableControl>(_ => NLoadoutPanelRoot.Instance?.CloseTopScreen()));
+            Callable.From<NClickableControl>(_ =>
+            {
+                NLoadoutPanelRoot.Instance?.CloseTopScreen();
+            }));
         mount.AddChild(_backButton);
         Callable.From(() =>
         {
@@ -288,10 +291,16 @@ public partial class NCustomRunLibraryScreen : Control
             captured.Name,
             captured.Description,
             isLobbyDefinition ? "LOBBY" : "PLAY",
-            isLobbyDefinition ? null : () => TaskHelper.RunSafely(PlayAsync(captured)),
+            isLobbyDefinition ? null : () =>
+            {
+                TaskHelper.RunSafely(PlayAsync(captured));
+            },
             RowAction: () => OpenEditor(captured, isLobbyDefinition),
             ShowDelete: !isLobbyDefinition,
-            DeleteAction: isLobbyDefinition ? null : () => TaskHelper.RunSafely(DeleteAsync(captured)),
+            DeleteAction: isLobbyDefinition ? null : () =>
+            {
+                TaskHelper.RunSafely(DeleteAsync(captured));
+            },
             TrailingLabel: "EXPORT",
             TrailingAction: () => Export(captured),
             PrimaryEnabled: canPlay,
@@ -356,7 +365,10 @@ public partial class NCustomRunLibraryScreen : Control
             row.Init(
                 captured,
                 TogglePermanentRule,
-                selected => TaskHelper.RunSafely(DeletePermanentRuleAsync(selected)),
+                selected =>
+                {
+                    TaskHelper.RunSafely(DeletePermanentRuleAsync(selected));
+                },
                 ReorderPermanentRule);
             _permanentList.AddChild(row);
             _permanentRows.Add(row);
@@ -373,13 +385,17 @@ public partial class NCustomRunLibraryScreen : Control
 
         if (showPermanentRules)
         {
-            _customRunsHeader?.Deselect();
-            _permanentRulesHeader?.Select();
+            if (_customRunsHeader is not null)
+                _customRunsHeader.Modulate = new Color(0.72f, 0.72f, 0.72f, 0.78f);
+            if (_permanentRulesHeader is not null)
+                _permanentRulesHeader.Modulate = Colors.White;
         }
         else
         {
-            _permanentRulesHeader?.Deselect();
-            _customRunsHeader?.Select();
+            if (_permanentRulesHeader is not null)
+                _permanentRulesHeader.Modulate = new Color(0.72f, 0.72f, 0.72f, 0.78f);
+            if (_customRunsHeader is not null)
+                _customRunsHeader.Modulate = Colors.White;
         }
 
         Control? activeMount = showPermanentRules ? _permanentListMount : _customListMount;
@@ -409,18 +425,19 @@ public partial class NCustomRunLibraryScreen : Control
         }).CallDeferred();
     }
 
-    private static NLoadoutSettingsCategoryButton CreateSectionHeader(string id, string label)
+    private static NDeckLoadoutTextAction CreateSectionHeader(string id, string label)
     {
-        NLoadoutSettingsCategoryButton button = new()
+        NDeckLoadoutTextAction button = new()
         {
-            CustomMinimumSize = new Vector2(520f, 72f)
+            CustomMinimumSize = new Vector2(520f, 52f),
+            TextAlignment = HorizontalAlignment.Center
         };
         button.Init(id, label);
         button.SetAnchorsPreset(LayoutPreset.Center);
         button.OffsetLeft = -260f;
-        button.OffsetTop = -36f;
+        button.OffsetTop = -26f;
         button.OffsetRight = 260f;
-        button.OffsetBottom = 36f;
+        button.OffsetBottom = 26f;
         return button;
     }
 
@@ -495,14 +512,24 @@ public partial class NCustomRunLibraryScreen : Control
             }
         }
 
-        if (_customRunsHeader is not null && _rows.Count > 0 && _rows[0].Row.Actions.Count > 0)
-            _customRunsHeader.FocusNeighborBottom = _rows[0].Row.Actions[0].GetPath();
+        if (_customRunsHeader is not null)
+        {
+            if (_showingPermanentRules && _permanentRows.Count > 0 && _permanentRows[0].Actions.Count > 0)
+                _customRunsHeader.FocusNeighborBottom = _permanentRows[0].Actions[0].GetPath();
+            else if (!_showingPermanentRules && _rows.Count > 0 && _rows[0].Row.Actions.Count > 0)
+                _customRunsHeader.FocusNeighborBottom = _rows[0].Row.Actions[0].GetPath();
+            else if (_permanentRulesHeader is not null)
+                _customRunsHeader.FocusNeighborBottom = _permanentRulesHeader.GetPath();
+        }
         if (_permanentRulesHeader is not null)
         {
-            _permanentRulesHeader.FocusNeighborTop = _customRunsHeader?.GetPath() ?? _permanentRulesHeader.GetPath();
-            if (_permanentRows.Count > 0 && _permanentRows[0].Actions.Count > 0)
-                _permanentRulesHeader.FocusNeighborBottom = _permanentRows[0].Actions[0].GetPath();
-            else if (_backButton is not null)
+            if (_showingPermanentRules && _permanentRows.Count > 0 && _permanentRows[^1].Actions.Count > 0)
+                _permanentRulesHeader.FocusNeighborTop = _permanentRows[^1].Actions[0].GetPath();
+            else if (!_showingPermanentRules && _rows.Count > 0 && _rows[^1].Row.Actions.Count > 0)
+                _permanentRulesHeader.FocusNeighborTop = _rows[^1].Row.Actions[0].GetPath();
+            else
+                _permanentRulesHeader.FocusNeighborTop = _customRunsHeader?.GetPath() ?? _permanentRulesHeader.GetPath();
+            if (_backButton is not null)
                 _permanentRulesHeader.FocusNeighborBottom = _backButton.GetPath();
         }
 
@@ -518,27 +545,23 @@ public partial class NCustomRunLibraryScreen : Control
                     action.FocusNeighborRight = actions[actionIndex + 1].GetPath();
                 action.FocusNeighborTop = rowIndex > 0 && _permanentRows[rowIndex - 1].Actions.Count > 0
                     ? _permanentRows[rowIndex - 1].Actions[Math.Min(actionIndex, _permanentRows[rowIndex - 1].Actions.Count - 1)].GetPath()
-                    : _permanentRulesHeader?.GetPath() ?? action.GetPath();
+                    : _customRunsHeader?.GetPath() ?? action.GetPath();
                 if (rowIndex + 1 < _permanentRows.Count && _permanentRows[rowIndex + 1].Actions.Count > 0)
                 {
                     action.FocusNeighborBottom = _permanentRows[rowIndex + 1].Actions[
                         Math.Min(actionIndex, _permanentRows[rowIndex + 1].Actions.Count - 1)].GetPath();
                 }
-                else if (_backButton is not null)
+                else if (_permanentRulesHeader is not null)
                 {
-                    action.FocusNeighborBottom = _backButton.GetPath();
+                    action.FocusNeighborBottom = _permanentRulesHeader.GetPath();
                 }
             }
         }
 
         if (_backButton is not null)
         {
-            if (_showingPermanentRules && _permanentRows.Count > 0 && _permanentRows[^1].Actions.Count > 0)
-                _backButton.FocusNeighborTop = _permanentRows[^1].Actions[0].GetPath();
-            else if (_showingPermanentRules && _permanentRulesHeader is not null)
+            if (_permanentRulesHeader is not null)
                 _backButton.FocusNeighborTop = _permanentRulesHeader.GetPath();
-            else if (_rows.Count > 0 && _rows[^1].Row.Actions.Count > 0)
-                _backButton.FocusNeighborTop = _rows[^1].Row.Actions[0].GetPath();
         }
     }
 
@@ -747,27 +770,45 @@ public partial class NCustomRunLibraryScreen : Control
         _launching = true;
         RebuildLibrary();
         SetStatus("Preparing the Custom Run…", success: true, persistent: true);
-        CustomRunPreparationResult result = await CustomRunLobbyService.PrepareHostRunAsync(_lobby, compiled.Snapshot);
-        if (!result.Succeeded)
+        bool screensClosedForLaunch = false;
+        try
         {
-            _launching = false;
-            RebuildLibrary();
-            SetStatus(result.Error, success: false);
-            return;
-        }
+            CustomRunPreparationResult result = await CustomRunLobbyService.PrepareHostRunAsync(_lobby, compiled.Snapshot);
+            if (!result.Succeeded)
+            {
+                _launching = false;
+                RebuildLibrary();
+                SetStatus(result.Error, success: false);
+                return;
+            }
 
-        if (_sourceConfirmButton is null || !GodotObject.IsInstanceValid(_sourceConfirmButton))
+            if (_sourceConfirmButton is null || !GodotObject.IsInstanceValid(_sourceConfirmButton))
+            {
+                _launching = false;
+                CustomRunRuntimeSnapshotService.ClearPending();
+                SetStatus("Could not find the source screen's Embark button.", success: false);
+                return;
+            }
+
+            NLoadoutPanelRoot.Instance?.CloseScreen("CustomRunEditorScreen");
+            NLoadoutPanelRoot.Instance?.CloseScreen(Name);
+            screensClosedForLaunch = true;
+            NButton embark = _sourceConfirmButton;
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            if (!GodotObject.IsInstanceValid(embark))
+                throw new InvalidOperationException("The source screen's Embark button was removed before launch.");
+            embark.ForceClick();
+        }
+        catch (Exception exception)
         {
             _launching = false;
             CustomRunRuntimeSnapshotService.ClearPending();
-            SetStatus("Could not find the source screen's Embark button.", success: false);
-            return;
+            MainFile.Logger.Error($"[Loadout] Custom Run launch failed: {exception}");
+            if (screensClosedForLaunch)
+                NLoadoutPanelRoot.Instance?.OpenScreen(this);
+            RebuildLibrary();
+            SetStatus($"Could not start the Custom Run: {exception.Message}", success: false);
         }
-
-        NLoadoutPanelRoot.Instance?.CloseScreen("CustomRunEditorScreen");
-        NLoadoutPanelRoot.Instance?.CloseScreen(Name);
-        NButton embark = _sourceConfirmButton;
-        Callable.From(embark.ForceClick).CallDeferred();
     }
 
     private void SetStatus(string text, bool success, bool persistent = false)

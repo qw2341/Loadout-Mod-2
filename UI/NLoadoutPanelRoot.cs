@@ -22,6 +22,7 @@ public partial class NLoadoutPanelRoot : Control
 	private const int HoverTipLayerZIndex = 1010;
 	private const int NativeFeedbackLayerZIndex = 1020;
 	private const int ModalLayerZIndex = 1030;
+	private const int DragLayerZIndex = 1040;
 
 	private static CanvasLayer _overlayLayer;
 	private static NLoadoutPanelRoot _instance;
@@ -35,6 +36,8 @@ public partial class NLoadoutPanelRoot : Control
 	private Control _hoverTipLayer;
 	private NLoadoutNativeFeedback _nativeFeedbackLayer;
 	private Control _modalLayer;
+	private Control _dragLayer;
+	private Control _dragVisual;
 	private NCreatureManipulationPanel _creatureManipulationPanel;
 	private bool _lastHasOpenScreen;
 
@@ -67,6 +70,7 @@ public partial class NLoadoutPanelRoot : Control
 		BindHoverTipLayer();
 		BindNativeFeedbackLayer();
 		BindModalLayer();
+		BindDragLayer();
 		RefreshScreens();
 		GetCreatureManipulationPanel();
 		SetProcess(false);
@@ -100,6 +104,7 @@ public partial class NLoadoutPanelRoot : Control
 	public override void _ExitTree()
 	{
 		ClearNativeFeedback();
+		ClearDragVisual();
 		LoadoutThemeManager.ThemeChanged -= OnThemeChanged;
 		_screens.Clear();
 		_screenProcessModes.Clear();
@@ -198,6 +203,46 @@ public partial class NLoadoutPanelRoot : Control
 
 		_modalLayer.ZIndex = ModalLayerZIndex;
 		_modalLayer.MoveToFront();
+	}
+
+	private void BindDragLayer()
+	{
+		_dragLayer = GetNodeOrNull<Control>("DragLayer");
+		if (!IsInstanceValid(_dragLayer))
+		{
+			_dragLayer = new Control
+			{
+				Name = "DragLayer",
+				MouseFilter = MouseFilterEnum.Ignore
+			};
+			_dragLayer.SetAnchorsPreset(LayoutPreset.FullRect);
+			AddChild(_dragLayer);
+		}
+
+		_dragLayer.ZIndex = DragLayerZIndex;
+		_dragLayer.MoveToFront();
+	}
+
+	public void HostDragVisual(Control visual)
+	{
+		if (!IsInstanceValid(visual) || !IsInstanceValid(_dragLayer))
+			return;
+		ClearDragVisual();
+		_dragVisual = visual;
+		_dragLayer.AddChild(visual);
+		_dragLayer.MoveToFront();
+	}
+
+	public void ClearDragVisual()
+	{
+		if (!IsInstanceValid(_dragVisual))
+		{
+			_dragVisual = null;
+			return;
+		}
+		_dragVisual.GetParent()?.RemoveChild(_dragVisual);
+		_dragVisual.QueueFree();
+		_dragVisual = null;
 	}
 
 	public IDisposable HostNativeModal(NModalContainer modal)

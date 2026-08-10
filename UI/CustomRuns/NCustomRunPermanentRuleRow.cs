@@ -19,6 +19,8 @@ public partial class NCustomRunPermanentRuleRow : Control
     private Action<string, bool>? _toggleAction;
     private Action<RuleDefinition>? _deleteAction;
     private Action<string, string?, bool>? _reorderAction;
+    private ColorRect? _topDropIndicator;
+    private ColorRect? _bottomDropIndicator;
     private readonly List<Control> _actions = [];
 
     public IReadOnlyList<Control> Actions => _actions;
@@ -48,22 +50,40 @@ public partial class NCustomRunPermanentRuleRow : Control
     {
         if (_rule is null)
             return default;
-        SetDragPreview(CreateDragPreview(_rule.Name));
+        NCustomRunDragVisual.Show(_rule.Name);
         return DragPrefix + _rule.Id;
     }
 
     public override bool _CanDropData(Vector2 atPosition, Variant data)
     {
-        return TryGetDragId(data, out string sourceId)
-               && _rule is not null
-               && !string.Equals(sourceId, _rule.Id, StringComparison.Ordinal);
+        bool canDrop = TryGetDragId(data, out string sourceId)
+                       && _rule is not null
+                       && !string.Equals(sourceId, _rule.Id, StringComparison.Ordinal);
+        if (canDrop)
+            ShowDropIndicator(atPosition.Y < Size.Y * 0.5f);
+        else
+            NCustomRunDragVisual.HideInsertion(this);
+        return canDrop;
     }
 
     public override void _DropData(Vector2 atPosition, Variant data)
     {
         if (!TryGetDragId(data, out string sourceId) || _rule is null)
             return;
+        NCustomRunDragVisual.Clear();
         _reorderAction?.Invoke(sourceId, _rule.Id, atPosition.Y >= Size.Y * 0.5f);
+    }
+
+    public override void _Notification(int what)
+    {
+        base._Notification(what);
+        if (what == NotificationDragEnd)
+            NCustomRunDragVisual.Clear();
+    }
+
+    public override void _ExitTree()
+    {
+        NCustomRunDragVisual.HideInsertion(this);
     }
 
     private void Build()
@@ -110,7 +130,10 @@ public partial class NCustomRunPermanentRuleRow : Control
         toggle.Init(_rule.Id, string.Empty, _rule.Enabled);
         toggle.Connect(
             NLoadoutToggle.SignalName.Toggled,
-            Callable.From<NLoadoutToggle>(changed => _toggleAction?.Invoke(_rule.Id, changed.IsChecked)));
+            Callable.From<NLoadoutToggle>(changed =>
+            {
+                _toggleAction?.Invoke(_rule.Id, changed.IsChecked);
+            }));
         row.AddChild(toggle);
         _actions.Add(toggle);
 
@@ -122,7 +145,10 @@ public partial class NCustomRunPermanentRuleRow : Control
         };
         delete.Connect(
             NClickableControl.SignalName.Released,
-            Callable.From<NClickableControl>(_ => _deleteAction?.Invoke(_rule)));
+            Callable.From<NClickableControl>(_ =>
+            {
+                _deleteAction?.Invoke(_rule);
+            }));
         row.AddChild(delete);
         _actions.Add(delete);
 
@@ -135,6 +161,16 @@ public partial class NCustomRunPermanentRuleRow : Control
         divider.SetAnchorsPreset(LayoutPreset.BottomWide);
         divider.OffsetTop = -2f;
         AddChild(divider);
+
+        _topDropIndicator = CreateDropIndicator();
+        _topDropIndicator.SetAnchorsPreset(LayoutPreset.TopWide);
+        _topDropIndicator.OffsetBottom = 5f;
+        AddChild(_topDropIndicator);
+
+        _bottomDropIndicator = CreateDropIndicator();
+        _bottomDropIndicator.SetAnchorsPreset(LayoutPreset.BottomWide);
+        _bottomDropIndicator.OffsetTop = -5f;
+        AddChild(_bottomDropIndicator);
     }
 
     private static string DescribeRule(RuleDefinition rule)
@@ -156,23 +192,26 @@ public partial class NCustomRunPermanentRuleRow : Control
         return id.Length > 0;
     }
 
-    private static Control CreateDragPreview(string title)
+    private void ShowDropIndicator(bool before)
     {
-        PanelContainer panel = new()
+        ColorRect? indicator = before ? _topDropIndicator : _bottomDropIndicator;
+        if (indicator is not null)
+            NCustomRunDragVisual.ShowInsertion(this, indicator);
+    }
+
+    private static ColorRect CreateDropIndicator()
+    {
+        ColorRect indicator = new()
         {
-            CustomMinimumSize = new Vector2(420f, 68f),
+            Visible = false,
+            ZIndex = 80,
+            Color = new Color(1f, 0.77f, 0.18f, 0.98f),
             MouseFilter = MouseFilterEnum.Ignore
         };
-        StyleBoxFlat style = new()
-        {
-            BgColor = new Color(0.04f, 0.08f, 0.1f, 0.94f),
-            BorderColor = new Color(0.91f, 0.72f, 0.2f, 0.9f)
-        };
-        style.SetBorderWidthAll(2);
-        style.SetCornerRadiusAll(6);
-        panel.AddThemeStyleboxOverride("panel", style);
-        panel.AddChild(CreateLabel(title, 24, StsColors.gold, true, 64f));
-        return panel;
+        string materialPath = "res://themes/canvas_item_material_additive_shared.tres";
+        if (ResourceLoader.Exists(materialPath))
+            indicator.Material = GD.Load<Material>(materialPath);
+        return indicator;
     }
 
     private static MegaLabel CreateLabel(string value, int fontSize, Color color, bool bold, float height)

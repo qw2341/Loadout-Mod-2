@@ -45,9 +45,9 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 150.0
-offset_top = 38.0
+offset_top = 28.0
 offset_right = -150.0
-offset_bottom = -118.0
+offset_bottom = -24.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -57,18 +57,13 @@ theme_override_constants/separation = 4
 
 [node name="CustomRunsHeaderMount" type="Control" parent="OuterMargin/Root"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 76)
+custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
 
 [node name="ListMount" type="Control" parent="OuterMargin/Root"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
-
-[node name="PermanentRulesHeaderMount" type="Control" parent="OuterMargin/Root"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 76)
-layout_mode = 2
 
 [node name="PermanentRulesListMount" type="Control" parent="OuterMargin/Root"]
 unique_name_in_owner = true
@@ -77,7 +72,12 @@ layout_mode = 2
 size_flags_vertical = 3
 
 [node name="StatusMount" type="Control" parent="OuterMargin/Root"]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+
+[node name="PermanentRulesHeaderMount" type="Control" parent="OuterMargin/Root"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
 
 [node name="BackButtonMount" type="Control" parent="."]
