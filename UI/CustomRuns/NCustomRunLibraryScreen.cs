@@ -430,7 +430,8 @@ public partial class NCustomRunLibraryScreen : Control
         NDeckLoadoutTextAction button = new()
         {
             CustomMinimumSize = new Vector2(520f, 52f),
-            TextAlignment = HorizontalAlignment.Center
+            TextAlignment = HorizontalAlignment.Center,
+            FontSize = 28
         };
         button.Init(id, label);
         button.SetAnchorsPreset(LayoutPreset.Center);
@@ -746,7 +747,7 @@ public partial class NCustomRunLibraryScreen : Control
             return;
         if (_lobby.NetService.Type == NetGameType.Client)
         {
-            SetStatus("Only the host can Play a profile-local Custom Run in this lobby.", success: false);
+            SetStatus("Only the host can Play a local Custom Run in this lobby.", success: false);
             return;
         }
 

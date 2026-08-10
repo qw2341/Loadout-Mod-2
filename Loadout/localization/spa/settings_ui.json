@@ -68,4 +68,8 @@
   "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "Eliminar",
   "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "¿Eliminar regla permanente?",
   "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "¿Eliminar '{Name}'? Esto borrará permanentemente la regla guardada."
+  ,"LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "¿Descartar los cambios?",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "Si sales ahora, se perderán los cambios no guardados de '{Name}'.",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "Cancelar",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "Descartar cambios"
 }

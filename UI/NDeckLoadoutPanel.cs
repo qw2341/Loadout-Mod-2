@@ -695,9 +695,19 @@ public partial class NDeckLoadoutTextAction : NButton
 
     private MegaLabel? _label;
     private string _pendingLabel = string.Empty;
+    private int _fontSize = 18;
 
     public string ActionButtonId { get; private set; } = string.Empty;
     public HorizontalAlignment TextAlignment { get; set; } = HorizontalAlignment.Left;
+    public int FontSize
+    {
+        get => _fontSize;
+        set
+        {
+            _fontSize = Math.Max(10, value);
+            ApplyFontSize();
+        }
+    }
 
     public void Init(string id, string label)
     {
@@ -758,15 +768,15 @@ public partial class NDeckLoadoutTextAction : NButton
         {
             Name = "Label",
             AutoSizeEnabled = true,
-            MinFontSize = 13,
-            MaxFontSize = 18,
+            MinFontSize = Math.Max(10, _fontSize - 5),
+            MaxFontSize = _fontSize,
             HorizontalAlignment = TextAlignment,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
         };
         label.SetAnchorsPreset(LayoutPreset.FullRect);
         label.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/kreon_bold_glyph_space_one.tres"));
-        label.AddThemeFontSizeOverride("font_size", 18);
+        label.AddThemeFontSizeOverride("font_size", _fontSize);
         AddChild(label);
         _label = label;
     }
@@ -774,6 +784,17 @@ public partial class NDeckLoadoutTextAction : NButton
     private void ApplyLabel()
     {
         _label?.SetTextAutoSize(_pendingLabel);
+    }
+
+    private void ApplyFontSize()
+    {
+        if (_label is null)
+            return;
+
+        _label.MinFontSize = Math.Max(10, _fontSize - 5);
+        _label.MaxFontSize = _fontSize;
+        _label.AddThemeFontSizeOverride("font_size", _fontSize);
+        ApplyLabel();
     }
 
     private void ApplyVisualState(bool isHot, bool isPressed)

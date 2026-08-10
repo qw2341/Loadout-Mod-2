@@ -51,6 +51,14 @@ public static class SaveUtility
         return new LoadResult<T>(fallback, null, Loaded: false);
     }
 
+    public static LoadResult<T> LoadGlobalJson<T>(string relativePath, T fallback)
+    {
+        if (TryLoadJson(GetGlobalPath(relativePath), relativePath, out T? value))
+            return new LoadResult<T>(value!, relativePath, Loaded: true);
+
+        return new LoadResult<T>(fallback, null, Loaded: false);
+    }
+
     public static void SaveProfileJson<T>(string relativePath, T data) where T:ISerializable
     {
         try
@@ -78,6 +86,11 @@ public static class SaveUtility
         {
             GD.PushWarning($"Loadout: failed to save profile JSON '{relativePath}'. {exception.Message}");
         }
+    }
+
+    public static void SaveGlobalJson<T>(string relativePath, T data) where T : ISerializable
+    {
+        SaveJson(GetGlobalPath(relativePath), relativePath, data);
     }
 
     public static bool TryGetProfileScopedPath(string relativePath, out string? profilePath)
@@ -139,7 +152,28 @@ public static class SaveUtility
     {
         try
         {
-            string globalPath = ProjectSettings.GlobalizePath(GetProfileScopedPath(relativePath));
+            return TryLoadJson(
+                ProjectSettings.GlobalizePath(GetProfileScopedPath(relativePath)),
+                relativePath,
+                out value);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Loadout: failed to load profile JSON '{relativePath}'. {exception.Message}");
+            value = default;
+            return false;
+        }
+    }
+
+    private static string GetGlobalPath(string relativePath)
+    {
+        return ProjectSettings.GlobalizePath($"user://{relativePath}");
+    }
+
+    private static bool TryLoadJson<T>(string globalPath, string displayPath, out T? value)
+    {
+        try
+        {
             if (!File.Exists(globalPath))
             {
                 value = default;
@@ -152,9 +186,30 @@ public static class SaveUtility
         }
         catch (Exception exception)
         {
-            GD.PushWarning($"Loadout: failed to load profile JSON '{relativePath}'. {exception.Message}");
+            GD.PushWarning($"Loadout: failed to load JSON '{displayPath}'. {exception.Message}");
             value = default;
             return false;
+        }
+    }
+
+    private static void SaveJson<T>(string globalPath, string displayPath, T data) where T : ISerializable
+    {
+        try
+        {
+            string? directory = Path.GetDirectoryName(globalPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            string json = JsonSerializer.Serialize(data, JsonOptions);
+            string tempPath = $"{globalPath}.tmp";
+            File.WriteAllText(tempPath, json);
+            if (File.Exists(globalPath))
+                File.Delete(globalPath);
+            File.Move(tempPath, globalPath);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Loadout: failed to save JSON '{displayPath}'. {exception.Message}");
         }
     }
 }

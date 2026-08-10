@@ -18,7 +18,7 @@ public partial class NLoadoutPanelButton : Button
 
 	private const string TabTextureFileName = "SidePanelTab.png";
 	private const string ArrowTextureFileName = "SidePanelArrow.png";
-	private const float RainbowSpeed = 0.12f;
+	public const float RainbowSpeed = 0.12f;
 	private const double CompanionEnterSeconds = 0.28;
 	private const double CompanionExitSeconds = 0.18;
 	private const float HiddenPanelCompanionOffsetX = 33f;
@@ -543,7 +543,7 @@ public partial class NLoadoutPanelButton : Button
 			_arrowImage.Modulate = arrowColor;
 	}
 
-	private static Color GetSineRainbowColor(float phase)
+	public static Color GetSineRainbowColor(float phase)
 	{
 		const float baseChannel = 0.18f;
 		const float channelRange = 0.82f;

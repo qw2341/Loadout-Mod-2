@@ -9,15 +9,15 @@ using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.Saving;
-using MegaCrit.Sts2.Core.Saves;
 
 public static class CustomRunStorageService
 {
     public const int CurrentSchemaVersion = 1;
 
-    private const string ProfilePath = "loadout/services/custom_runs/profile_custom_runs.json";
+    private const string GlobalPath = "loadout/services/custom_runs/custom_runs.json";
+    private const string LegacyProfilePath = "loadout/services/custom_runs/profile_custom_runs.json";
     private static readonly object SyncRoot = new();
-    private static CustomRunProfileSaveData _profile = new();
+    private static CustomRunSaveData _store = new();
     private static bool _loaded;
     private static bool _registered;
 
@@ -28,7 +28,6 @@ public static class CustomRunStorageService
         if (_registered)
             return;
         _registered = true;
-        SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
         EnsureLoaded();
     }
 
@@ -36,7 +35,6 @@ public static class CustomRunStorageService
     {
         if (!_registered)
             return;
-        SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
         _registered = false;
     }
 
@@ -45,7 +43,7 @@ public static class CustomRunStorageService
         EnsureLoaded();
         lock (SyncRoot)
         {
-            return _profile.Definitions
+            return _store.Definitions
                 .Select(CustomRunNormalizationService.Clone)
                 .ToList();
         }
@@ -65,16 +63,16 @@ public static class CustomRunStorageService
 
         lock (SyncRoot)
         {
-            int index = _profile.Definitions.FindIndex(existing =>
+            int index = _store.Definitions.FindIndex(existing =>
                 string.Equals(existing.Id, normalized.Id, StringComparison.Ordinal));
             if (index >= 0)
             {
-                normalized.CreatedAtUnixSeconds = _profile.Definitions[index].CreatedAtUnixSeconds;
-                _profile.Definitions[index] = normalized;
+                normalized.CreatedAtUnixSeconds = _store.Definitions[index].CreatedAtUnixSeconds;
+                _store.Definitions[index] = normalized;
             }
             else
             {
-                _profile.Definitions.Add(normalized);
+                _store.Definitions.Add(normalized);
             }
             SaveLocked();
         }
@@ -110,7 +108,7 @@ public static class CustomRunStorageService
         bool changed;
         lock (SyncRoot)
         {
-            changed = _profile.Definitions.RemoveAll(definition =>
+            changed = _store.Definitions.RemoveAll(definition =>
                 string.Equals(definition.Id, id, StringComparison.Ordinal)) > 0;
             if (changed)
                 SaveLocked();
@@ -126,23 +124,23 @@ public static class CustomRunStorageService
         bool changed = false;
         lock (SyncRoot)
         {
-            int sourceIndex = _profile.Definitions.FindIndex(definition =>
+            int sourceIndex = _store.Definitions.FindIndex(definition =>
                 string.Equals(definition.Id, sourceId, StringComparison.Ordinal));
             if (sourceIndex < 0)
                 return false;
 
-            CustomRunDefinition source = _profile.Definitions[sourceIndex];
-            _profile.Definitions.RemoveAt(sourceIndex);
+            CustomRunDefinition source = _store.Definitions[sourceIndex];
+            _store.Definitions.RemoveAt(sourceIndex);
             int targetIndex = string.IsNullOrEmpty(targetId)
-                ? _profile.Definitions.Count
-                : _profile.Definitions.FindIndex(definition =>
+                ? _store.Definitions.Count
+                : _store.Definitions.FindIndex(definition =>
                     string.Equals(definition.Id, targetId, StringComparison.Ordinal));
             if (targetIndex < 0)
-                targetIndex = _profile.Definitions.Count;
+                targetIndex = _store.Definitions.Count;
             else if (placeAfter)
                 targetIndex++;
-            targetIndex = Math.Clamp(targetIndex, 0, _profile.Definitions.Count);
-            _profile.Definitions.Insert(targetIndex, source);
+            targetIndex = Math.Clamp(targetIndex, 0, _store.Definitions.Count);
+            _store.Definitions.Insert(targetIndex, source);
             changed = targetIndex != sourceIndex;
             if (changed)
                 SaveLocked();
@@ -158,48 +156,44 @@ public static class CustomRunStorageService
         {
             if (_loaded)
                 return;
-            SaveUtility.LoadResult<CustomRunProfileSaveData> loaded =
-                SaveUtility.LoadProfileJson(ProfilePath, new CustomRunProfileSaveData());
-            _profile = NormalizeProfile(loaded.Value);
+            SaveUtility.LoadResult<CustomRunSaveData> loaded =
+                SaveUtility.LoadGlobalJson(GlobalPath, new CustomRunSaveData());
+            if (!loaded.Loaded)
+            {
+                SaveUtility.LoadResult<CustomRunSaveData> legacy =
+                    SaveUtility.LoadProfileJson(LegacyProfilePath, new CustomRunSaveData());
+                loaded = legacy;
+            }
+
+            _store = NormalizeStore(loaded.Value);
             _loaded = true;
-            if (loaded.Loaded && loaded.Value.SchemaVersion != CurrentSchemaVersion)
+            if (loaded.Loaded)
                 SaveLocked();
         }
     }
 
-    private static CustomRunProfileSaveData NormalizeProfile(CustomRunProfileSaveData profile)
+    private static CustomRunSaveData NormalizeStore(CustomRunSaveData store)
     {
-        profile.SchemaVersion = CurrentSchemaVersion;
-        profile.Definitions = (profile.Definitions ?? [])
+        store.SchemaVersion = CurrentSchemaVersion;
+        store.Definitions = (store.Definitions ?? [])
             .Where(definition => definition is not null)
             .Select(CustomRunNormalizationService.Normalize)
             .GroupBy(definition => definition.Id, StringComparer.Ordinal)
             .Select(group => group.Last())
             .ToList();
-        return profile;
+        return store;
     }
 
     private static void SaveLocked()
     {
-        _profile = NormalizeProfile(_profile);
-        SaveUtility.SaveProfileJson(ProfilePath, _profile);
-    }
-
-    private static void OnProfileIdChanged(int _)
-    {
-        lock (SyncRoot)
-        {
-            _profile = new CustomRunProfileSaveData();
-            _loaded = false;
-        }
-        EnsureLoaded();
-        Changed?.Invoke();
+        _store = NormalizeStore(_store);
+        SaveUtility.SaveGlobalJson(GlobalPath, _store);
     }
 }
 
-public sealed class CustomRunProfileSaveData : ISerializable
+public sealed class CustomRunSaveData : ISerializable
 {
-    public CustomRunProfileSaveData()
+    public CustomRunSaveData()
     {
     }
 

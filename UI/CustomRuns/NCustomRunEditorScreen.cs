@@ -5,6 +5,7 @@ namespace Loadout.UI.CustomRuns;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Models;
@@ -22,13 +23,14 @@ using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 
 public partial class NCustomRunEditorScreen : Control
 {
     private const string ScenePath = "res://UI/CustomRuns/CustomRunEditorScreen.tscn";
     private static readonly string[] TabNames =
     [
-        "Overview", "Run Setup", "Roles & Choices", "Rules", "Variables", "Permanent Rules"
+        "Overview", "Run Setup", "Roles & Choices", "Rules", "Variables"
     ];
 
     private StartRunLobby? _lobby;
@@ -36,10 +38,14 @@ public partial class NCustomRunEditorScreen : Control
     private VBoxContainer? _savedList;
     private HBoxContainer? _toolbar;
     private HBoxContainer? _tabs;
+    private readonly Dictionary<string, Button> _tabButtons = new(StringComparer.Ordinal);
     private VBoxContainer? _contentHost;
     private NScrollableContainer? _contentScroll;
+    private MegaLabel? _runNameLabel;
     private MegaLabel? _authorityLabel;
     private MegaLabel? _statusLabel;
+    private NLoadoutSettingsActionButton? _saveAsButton;
+    private NConfirmButton? _confirmButton;
     private NLoadoutActionButton? _deleteButton;
     private string _activeTab = TabNames[0];
     private string? _deleteConfirmationId;
@@ -47,6 +53,7 @@ public partial class NCustomRunEditorScreen : Control
     private bool _dirty;
     private bool _loadingFields;
     private bool _staticUiBuilt;
+    private bool _discardPromptOpen;
     private StringName _returnRoute = "CustomRunLibraryScreen";
 
     public static void OpenFromLibrary(
@@ -140,8 +147,25 @@ public partial class NCustomRunEditorScreen : Control
 
         if (Visible)
             RefreshForLobby();
-        else if (!_readOnly && _dirty)
-            SaveCurrent(showStatus: false);
+    }
+
+    public override void _Input(InputEvent inputEvent)
+    {
+        if (!Visible || _contentScroll is null || !GodotObject.IsInstanceValid(_contentScroll))
+            return;
+
+        float drag = ScrollHelper.GetDragForScrollEvent(inputEvent);
+        if (Mathf.IsZeroApprox(drag))
+            return;
+
+        Vector2 pointer = inputEvent is InputEventMouse mouse
+            ? mouse.GlobalPosition
+            : GetViewport().GetMousePosition();
+        if (!_contentScroll.GetGlobalRect().HasPoint(pointer))
+            return;
+
+        _contentScroll._GuiInput(inputEvent);
+        GetViewport().SetInputAsHandled();
     }
 
     public override void _ExitTree()
@@ -153,7 +177,6 @@ public partial class NCustomRunEditorScreen : Control
     private void BindSceneNodes()
     {
         EnsureFallbackScene();
-        _toolbar = GetNodeOrNull<HBoxContainer>("%Toolbar");
         _tabs = GetNodeOrNull<HBoxContainer>("%Tabs");
         EnsureNativeContentScroll();
     }
@@ -167,22 +190,46 @@ public partial class NCustomRunEditorScreen : Control
         Control? titleMount = GetNodeOrNull<Control>("OuterMargin/Root/Header/TitleMount");
         if (titleMount is not null)
         {
+            HBoxContainer titleRow = new()
+            {
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            titleRow.AddThemeConstantOverride("separation", 22);
+            titleRow.SetAnchorsPreset(LayoutPreset.FullRect);
             MegaLabel title = CreateLabel("CUSTOM RUN EDITOR", 42, StsColors.gold, HorizontalAlignment.Left);
-            title.SetAnchorsPreset(LayoutPreset.FullRect);
-            titleMount.AddChild(title);
+            title.CustomMinimumSize = new Vector2(430f, 0f);
+            titleRow.AddChild(title);
+            _runNameLabel = CreateLabel(string.Empty, 31, StsColors.cream, HorizontalAlignment.Left);
+            _runNameLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            _runNameLabel.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+            titleRow.AddChild(_runNameLabel);
+            titleMount.AddChild(titleRow);
         }
 
-        Control? authorityMount = GetNodeOrNull<Control>("OuterMargin/Root/Header/AuthorityMount");
-        if (authorityMount is not null)
+        Control? saveAsMount = GetNodeOrNull<Control>("OuterMargin/Root/Header/SaveAsMount");
+        if (saveAsMount is not null)
         {
-            _authorityLabel = CreateLabel(string.Empty, 23, StsColors.cream, HorizontalAlignment.Right);
-            _authorityLabel.SetAnchorsPreset(LayoutPreset.FullRect);
-            authorityMount.AddChild(_authorityLabel);
+            _saveAsButton = new NLoadoutSettingsActionButton
+            {
+                Name = "SaveAsButton",
+                CustomMinimumSize = new Vector2(260f, 58f)
+            };
+            _saveAsButton.Init("save_as", "SAVE AS");
+            _saveAsButton.SetAnchorsPreset(LayoutPreset.CenterRight);
+            _saveAsButton.OffsetLeft = -260f;
+            _saveAsButton.OffsetTop = -29f;
+            _saveAsButton.OffsetRight = 0f;
+            _saveAsButton.OffsetBottom = 29f;
+            _saveAsButton.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => DuplicateDefinition()));
+            saveAsMount.AddChild(_saveAsButton);
         }
 
-        BuildToolbar();
         BuildTabs();
         EnsureBackButton();
+        EnsureConfirmButton();
 
         Control? statusMount = GetNodeOrNull<Control>("OuterMargin/Root/StatusMount");
         if (statusMount is not null)
@@ -209,14 +256,17 @@ public partial class NCustomRunEditorScreen : Control
         if (_tabs is null)
             return;
 
+        _tabButtons.Clear();
         foreach (string tabName in TabNames)
         {
-            Button button = CreateCompactButton(tabName, 19, 0f);
+            Button button = CreateCompactButton(tabName, 23, 0f);
             button.Name = tabName.Replace(" ", string.Empty).Replace("&", "And") + "Tab";
             button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             button.Pressed += () => SelectTab(tabName);
             _tabs.AddChild(button);
+            _tabButtons[tabName] = button;
         }
+        RefreshTabVisuals();
     }
 
     private void EnsureBackButton()
@@ -229,7 +279,7 @@ public partial class NCustomRunEditorScreen : Control
         backButton.Name = "BackButton";
         backButton.Connect(
             NClickableControl.SignalName.Released,
-            Callable.From<NClickableControl>(_ => CloseEditor()));
+            Callable.From<NClickableControl>(_ => TaskHelper.RunSafely(TryCloseEditorAsync())));
         mount.AddChild(backButton);
         Callable.From(() =>
         {
@@ -238,25 +288,45 @@ public partial class NCustomRunEditorScreen : Control
         }).CallDeferred();
     }
 
+    private void EnsureConfirmButton()
+    {
+        Control? mount = GetNodeOrNull<Control>("%ConfirmButtonMount");
+        if (mount is null || mount.GetNodeOrNull<NConfirmButton>("ConfirmButton") is not null)
+            return;
+
+        _confirmButton = NLoadoutConfirmButtonFactory.Create();
+        _confirmButton.Name = "ConfirmButton";
+        _confirmButton.Connect(
+            NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>(_ => SaveAndClose()));
+        mount.AddChild(_confirmButton);
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(_confirmButton))
+                _confirmButton.Enable();
+        }).CallDeferred();
+    }
+
     private void RefreshForLobby()
     {
         if (!_staticUiBuilt || _lobby is null)
             return;
 
-        if (_authorityLabel is not null)
-        {
-            _authorityLabel.Text = _readOnly
-                ? "LOBBY CUSTOM RUN  |  HOST APPLIED  |  READ ONLY"
-                : _lobby.NetService.Type == NetGameType.Client
-                    ? "PROFILE-LOCAL DRAFT  |  NOT APPLIED"
-                    : "PROFILE-LOCAL CUSTOM RUN  |  EDITABLE";
-            _authorityLabel.AddThemeColorOverride(
-                "font_color",
-                _readOnly ? new Color(0.75f, 0.82f, 1f) : new Color(0.65f, 1f, 0.55f));
-        }
+        RefreshRunName();
+        RefreshTabVisuals();
 
         RebuildContent();
         RefreshEditableState();
+    }
+
+    private void RefreshRunName()
+    {
+        if (_runNameLabel is null)
+            return;
+
+        string name = _workingDefinition?.Name?.Trim() ?? string.Empty;
+        _runNameLabel.Text = string.IsNullOrWhiteSpace(name) ? "UNTITLED CUSTOM RUN" : name;
+        _runNameLabel.TooltipText = _runNameLabel.Text;
     }
 
     private void RefreshSavedList()
@@ -321,7 +391,22 @@ public partial class NCustomRunEditorScreen : Control
         _activeTab = tabName;
         _deleteConfirmationId = null;
         ResetDeleteButton();
+        RefreshTabVisuals();
         RebuildContent();
+    }
+
+    private void RefreshTabVisuals()
+    {
+        foreach ((string tabName, Button button) in _tabButtons)
+        {
+            Color normalColor = string.Equals(tabName, _activeTab, StringComparison.Ordinal)
+                ? StsColors.gold
+                : StsColors.cream;
+            button.AddThemeColorOverride("font_color", normalColor);
+            button.AddThemeColorOverride("font_pressed_color", StsColors.gold);
+            button.AddThemeColorOverride("font_hover_color", StsColors.gold);
+            button.AddThemeColorOverride("font_focus_color", StsColors.gold);
+        }
     }
 
     private void RebuildContent()
@@ -371,6 +456,7 @@ public partial class NCustomRunEditorScreen : Control
                 && GodotObject.IsInstanceValid(_contentHost))
             {
                 _contentScroll.SetContent(_contentHost);
+                _contentScroll.InstantlyScrollToTop();
             }
         }).CallDeferred();
     }
@@ -388,6 +474,7 @@ public partial class NCustomRunEditorScreen : Control
             if (_loadingFields || _workingDefinition is null)
                 return;
             _workingDefinition.Name = value;
+            RefreshRunName();
             MarkDirty();
         };
         _contentHost.AddChild(name);
@@ -434,12 +521,12 @@ public partial class NCustomRunEditorScreen : Control
 
         HBoxContainer characterRow = CreateRow();
         characterRow.AddChild(CreateRowLabel("Character"));
-        OptionButton character = CreateCharacterSelector(setup.Character);
-        character.ItemSelected += index =>
+        NSelectFilterDropdown character = CreateCharacterSelector(setup.Character);
+        character.SelectedItemChanged += modelId =>
         {
             if (_loadingFields || _workingDefinition is null)
                 return;
-            ApplyCharacterSelection(_workingDefinition.Setup.Character, character, index);
+            ApplyCharacterSelection(_workingDefinition.Setup.Character, modelId);
             MarkDirty();
         };
         characterRow.AddChild(character);
@@ -541,41 +628,46 @@ public partial class NCustomRunEditorScreen : Control
         _contentHost.AddChild(row);
     }
 
-    private OptionButton CreateCharacterSelector(SelectionSpec selection)
+    private NSelectFilterDropdown CreateCharacterSelector(SelectionSpec selection)
     {
-        OptionButton option = new()
-        {
-            CustomMinimumSize = new Vector2(420f, 44f),
-            SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
-            MouseFilter = MouseFilterEnum.Stop,
-            FocusMode = FocusModeEnum.All
-        };
-        ApplyInputFont(option, 22);
-        option.AddItem("Game Default");
-        option.SetItemMetadata(0, string.Empty);
-
-        int selected = 0;
         string fixedId = selection.FixedModelIds.FirstOrDefault() ?? string.Empty;
-        int index = 1;
+        string selectedId = string.Empty;
+        List<LoadoutDropdownOption> options =
+        [
+            new LoadoutDropdownOption(string.Empty, "Game Default")
+        ];
         foreach (CharacterModel character in ModelDb.AllCharacters.OrderBy(GetCharacterDisplayName, StringComparer.OrdinalIgnoreCase))
         {
-            option.AddItem(GetCharacterDisplayName(character));
-            option.SetItemMetadata(index, character.Id.ToString());
+            string modelId = character.Id.ToString();
+            options.Add(new LoadoutDropdownOption(modelId, GetCharacterDisplayName(character)));
             if (selection.Mode == SelectionMode.Fixed
-                && (string.Equals(character.Id.ToString(), fixedId, StringComparison.Ordinal)
+                && (string.Equals(modelId, fixedId, StringComparison.Ordinal)
                     || string.Equals(character.Id.Entry, fixedId, StringComparison.OrdinalIgnoreCase)))
             {
-                selected = index;
+                selectedId = modelId;
             }
-            index++;
         }
-        option.Select(selected);
-        return option;
+
+        NSelectFilterDropdown dropdown = new()
+        {
+            CustomMinimumSize = new Vector2(420f, 52f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
+            MouseFilter = MouseFilterEnum.Stop,
+            FocusMode = FocusModeEnum.All,
+            DropdownWidth = 420f,
+            ButtonHeight = 52f,
+            MaxVisibleItems = 7,
+            LabelMinFontSize = 18,
+            LabelMaxFontSize = 24,
+            ItemFontSize = 22,
+            ExpandToAvailableWidth = false
+        };
+        dropdown.SetItems(string.Empty, options, selectedId);
+        return dropdown;
     }
 
-    private static void ApplyCharacterSelection(SelectionSpec selection, OptionButton option, long index)
+    private static void ApplyCharacterSelection(SelectionSpec selection, string modelId)
     {
-        string modelId = option.GetItemMetadata((int)index).AsString();
         selection.Kind = SelectionModelKind.Character;
         selection.FixedModelIds.Clear();
         if (string.IsNullOrWhiteSpace(modelId))
@@ -610,11 +702,16 @@ public partial class NCustomRunEditorScreen : Control
 
     private void DuplicateDefinition()
     {
-        if (_readOnly || _workingDefinition is null)
+        if (_workingDefinition is null)
             return;
-        SaveCurrent(showStatus: false);
-        LoadDefinition(CustomRunStorageService.Duplicate(_workingDefinition));
-        SetStatus("Saved a copy with a new stable ID.", success: true);
+
+        _workingDefinition = CustomRunStorageService.Duplicate(_workingDefinition);
+        _readOnly = false;
+        _dirty = false;
+        RefreshRunName();
+        RebuildContent();
+        RefreshEditableState();
+        SetStatus($"Saved as '{_workingDefinition.Name}'.", success: true);
     }
 
     private void DeleteDefinition()
@@ -662,7 +759,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
         _workingDefinition = CustomRunStorageService.Upsert(_workingDefinition);
         _dirty = false;
-        RefreshSavedList();
+        RefreshRunName();
         if (showStatus)
             SetStatus($"Saved '{_workingDefinition.Name}'.", success: true);
     }
@@ -740,10 +837,86 @@ public partial class NCustomRunEditorScreen : Control
             success: true);
     }
 
-    private void CloseEditor()
+    private void SaveAndClose()
     {
-        if (!_readOnly && _dirty)
+        if (!_readOnly)
             SaveCurrent(showStatus: false);
+        CloseEditorWithoutSaving();
+    }
+
+    private async Task TryCloseEditorAsync()
+    {
+        if (_discardPromptOpen)
+            return;
+        if (_readOnly || !_dirty)
+        {
+            CloseEditorWithoutSaving();
+            return;
+        }
+
+        _discardPromptOpen = true;
+        try
+        {
+            LocString body = new("settings_ui", "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title");
+            body.Add("Name", _workingDefinition?.Name ?? string.Empty);
+            bool discard = await WaitForDiscardConfirmation(
+                body,
+                new LocString("settings_ui", "LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title"),
+                new LocString("settings_ui", "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title"),
+                new LocString("settings_ui", "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title"));
+            if (discard)
+                CloseEditorWithoutSaving();
+        }
+        finally
+        {
+            _discardPromptOpen = false;
+        }
+    }
+
+    private async Task<bool> WaitForDiscardConfirmation(
+        LocString body,
+        LocString title,
+        LocString cancelText,
+        LocString discardText)
+    {
+        NModalContainer? modalContainer = NModalContainer.Instance;
+        if (modalContainer is null || !GodotObject.IsInstanceValid(modalContainer))
+        {
+            SetStatus("Could not open the unsaved-changes warning.", success: false);
+            return false;
+        }
+
+        if (modalContainer.OpenModal is GodotObject openModal
+            && !GodotObject.IsInstanceValid(openModal))
+        {
+            modalContainer.Clear();
+        }
+        if (modalContainer.OpenModal is not null)
+            return false;
+
+        NGenericPopup? popup = NGenericPopup.Create();
+        if (popup is null)
+        {
+            SetStatus("Could not open the unsaved-changes warning.", success: false);
+            return false;
+        }
+
+        IDisposable? modalLease = NLoadoutPanelRoot.Instance?.HostNativeModal(modalContainer);
+        try
+        {
+            modalContainer.Add(popup);
+            return await popup.WaitForConfirmation(body, title, cancelText, discardText);
+        }
+        finally
+        {
+            if (GodotObject.IsInstanceValid(modalContainer))
+                modalContainer.Clear();
+            modalLease?.Dispose();
+        }
+    }
+
+    private void CloseEditorWithoutSaving()
+    {
         if (_returnRoute.IsEmpty)
             _returnRoute = "CustomRunLibraryScreen";
         NLoadoutPanelRoot.Instance?.CloseTopScreen();
@@ -753,8 +926,6 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (!ReferenceEquals(_lobby, lobby))
             return;
-        if (!_readOnly && _dirty)
-            SaveCurrent(showStatus: false);
         NLoadoutPanelRoot.Instance?.CloseScreen(Name);
         _lobby = null;
         _workingDefinition = null;
@@ -796,20 +967,8 @@ public partial class NCustomRunEditorScreen : Control
 
     private void RefreshEditableState()
     {
-        if (_toolbar is not null)
-        {
-            foreach (Node child in _toolbar.GetChildren())
-            {
-                if (child is NLoadoutActionButton button)
-                {
-                    bool enabled = !_readOnly || button.ActionButtonId is "export" or "validate";
-                    if (enabled)
-                        button.Enable();
-                    else
-                        button.Disable();
-                }
-            }
-        }
+        _saveAsButton?.Enable();
+        _confirmButton?.Enable();
         if (_deleteButton is not null)
         {
             if (_readOnly)
@@ -980,6 +1139,10 @@ public partial class NCustomRunEditorScreen : Control
     {
         switch (node)
         {
+            case NLoadoutDropdown dropdown:
+                dropdown.SetEnabled(editable);
+                dropdown.FocusMode = editable ? FocusModeEnum.All : FocusModeEnum.None;
+                break;
             case BaseButton button:
                 button.Disabled = !editable;
                 button.FocusMode = editable ? FocusModeEnum.All : FocusModeEnum.None;
@@ -1029,7 +1192,6 @@ public partial class NCustomRunEditorScreen : Control
             MouseFilter = MouseFilterEnum.Stop
         };
         scroll.SetAnchorsPreset(LayoutPreset.FullRect);
-        mount.AddChild(scroll);
 
         Control mask = new()
         {
@@ -1060,6 +1222,7 @@ public partial class NCustomRunEditorScreen : Control
         scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
         scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
         scroll.AddChild(scrollbar);
+        mount.AddChild(scroll);
         scroll.DisableScrollingIfContentFits();
 
         _contentScroll = scroll;

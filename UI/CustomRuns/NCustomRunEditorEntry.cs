@@ -22,17 +22,18 @@ public static class NCustomRunEditorEntry
             return;
         }
 
-        NLoadoutActionButton? existing = screen.GetNodeOrNull<NLoadoutActionButton>(NodeName);
+        NLoadoutSettingsActionButton? existing = screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName);
         if (existing is not null)
         {
             PositionButton(existing);
             return;
         }
 
-        NLoadoutActionButton button = new()
+        NLoadoutSettingsActionButton button = new()
         {
             Name = NodeName,
-            CustomMinimumSize = new Vector2(350f, 48f),
+            CustomMinimumSize = new Vector2(360f, 64f),
+            UseRainbowColor = true,
             ZIndex = 24
         };
         button.Init(
@@ -55,7 +56,7 @@ public static class NCustomRunEditorEntry
     {
         if (screen is not null)
         {
-            NLoadoutActionButton? button = screen.GetNodeOrNull<NLoadoutActionButton>(NodeName);
+            NLoadoutSettingsActionButton? button = screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName);
             button?.QueueFree();
         }
 
@@ -71,11 +72,13 @@ public static class NCustomRunEditorEntry
         button.AnchorTop = 1f;
         button.AnchorRight = 1f;
         button.AnchorBottom = 1f;
-        button.OffsetLeft = -570f;
-        button.OffsetTop = -337f;
-        button.OffsetRight = -210f;
-        button.OffsetBottom = -289f;
-        button.GrowHorizontal = Control.GrowDirection.Begin;
+        button.AnchorLeft = 0.5f;
+        button.AnchorRight = 0.5f;
+        button.OffsetLeft = -180f;
+        button.OffsetTop = -72f;
+        button.OffsetRight = 180f;
+        button.OffsetBottom = -8f;
+        button.GrowHorizontal = Control.GrowDirection.Both;
         button.GrowVertical = Control.GrowDirection.Begin;
         button.PivotOffset = button.Size * 0.5f;
     }

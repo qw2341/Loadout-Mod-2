@@ -67,5 +67,9 @@
   "LOADOUT-DELETE_CUSTOM_RUN_NO.title": "No",
   "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "Delete",
   "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "Delete Permanent Rule?",
-  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "Delete '{Name}'? This permanently removes the saved rule."
+  "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "Delete '{Name}'? This permanently removes the saved rule.",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "Discard Changes?",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "If you exit now, your unsaved changes to '{Name}' will be lost.",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "Cancel",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "Discard Changes"
 }

@@ -68,4 +68,8 @@
   "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "削除",
   "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "永久ルールを削除しますか？",
   "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "「{Name}」を削除しますか？保存されたルールは完全に削除されます。"
+  ,"LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "変更を破棄しますか？",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "今終了すると、「{Name}」の未保存の変更は失われます。",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "キャンセル",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "変更を破棄"
 }

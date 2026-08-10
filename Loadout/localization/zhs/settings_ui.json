@@ -68,4 +68,8 @@
   "LOADOUT-DELETE_CUSTOM_RUN_YES.title": "删除",
   "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_TITLE.title": "删除永久规则？",
   "LOADOUT-DELETE_PERMANENT_RULE_CONFIRM_BODY.title": "删除“{Name}”？这将永久删除已保存的规则。"
+  ,"LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "放弃更改？",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "如果现在退出，“{Name}”的未保存更改将会丢失。",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "取消",
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "放弃更改"
 }

@@ -3,6 +3,7 @@
 namespace Loadout.UI.Screens.Controls;
 
 using Godot;
+using Loadout.UI;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
@@ -13,9 +14,12 @@ public partial class NLoadoutSettingsActionButton : NSettingsButton
     private const string ReticleScenePath = "res://scenes/ui/selection_reticle.tscn";
 
     private MegaLabel? _label;
+    private TextureRect? _image;
     private string _pendingLabel = string.Empty;
+    private float _rainbowHue;
 
     public string ActionButtonId { get; private set; } = string.Empty;
+    public bool UseRainbowColor { get; set; }
 
     public void Init(string id, string label)
     {
@@ -32,6 +36,18 @@ public partial class NLoadoutSettingsActionButton : NSettingsButton
         MouseFilter = MouseFilterEnum.Stop;
         ConnectSignals();
         _label?.SetTextAutoSize(_pendingLabel);
+        SetProcess(UseRainbowColor);
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!UseRainbowColor || _image is null)
+            return;
+
+        _rainbowHue = Mathf.PosMod(
+            _rainbowHue + (float)delta * NLoadoutPanelButton.RainbowSpeed * Mathf.Tau,
+            Mathf.Tau);
+        _image.Modulate = NLoadoutPanelButton.GetSineRainbowColor(_rainbowHue);
     }
 
     private void BuildControlTree()
@@ -44,18 +60,23 @@ public partial class NLoadoutSettingsActionButton : NSettingsButton
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             MouseFilter = MouseFilterEnum.Ignore
         };
+        _image = image;
         image.SetAnchorsPreset(LayoutPreset.FullRect);
-        if (ResourceLoader.Exists("res://shaders/hsv.gdshader"))
+        if (UseRainbowColor)
         {
-            ShaderMaterial material = new()
+            image.Modulate = NLoadoutPanelButton.GetSineRainbowColor(0f);
+        }
+        else if (ResourceLoader.Exists("res://shaders/hsv.gdshader"))
+        {
+            ShaderMaterial buttonMaterial = new()
             {
                 ResourceLocalToScene = true,
                 Shader = GD.Load<Shader>("res://shaders/hsv.gdshader")
             };
-            material.SetShaderParameter("h", 0.82f);
-            material.SetShaderParameter("s", 1.4f);
-            material.SetShaderParameter("v", 0.8f);
-            image.Material = material;
+            buttonMaterial.SetShaderParameter("h", 0.82f);
+            buttonMaterial.SetShaderParameter("s", 1.4f);
+            buttonMaterial.SetShaderParameter("v", 0.8f);
+            image.Material = buttonMaterial;
         }
         AddChild(image);
 

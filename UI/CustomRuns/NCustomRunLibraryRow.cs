@@ -243,6 +243,7 @@ public partial class NCustomRunLibraryRow : NButton
             Name = "CreateCustomRunVisual",
             CustomMinimumSize = new Vector2(540f, 78f),
             TextAlignment = HorizontalAlignment.Center,
+            FontSize = 26,
             FocusMode = FocusModeEnum.None,
             MouseFilter = MouseFilterEnum.Ignore
         };
