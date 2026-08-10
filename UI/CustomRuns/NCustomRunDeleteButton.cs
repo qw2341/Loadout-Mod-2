@@ -28,6 +28,7 @@ public partial class NCustomRunDeleteButton : NButton
         };
         _image.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(_image);
+        ConnectSignals();
     }
 
     public override void _ExitTree()

@@ -130,19 +130,6 @@ public partial class NCustomRunLibraryScreen : Control
             titleMount.AddChild(title);
         }
 
-        Control? subtitleMount = GetNodeOrNull<Control>("OuterMargin/Root/SubtitleMount");
-        if (subtitleMount is not null && subtitleMount.GetChildCount() == 0)
-        {
-            MegaLabel subtitle = CreateLabel(
-                "Choose a saved run, or author a new one.",
-                21,
-                new Color(0.92f, 0.89f, 0.8f),
-                HorizontalAlignment.Center,
-                bold: false);
-            subtitle.SetAnchorsPreset(LayoutPreset.FullRect);
-            subtitleMount.AddChild(subtitle);
-        }
-
         Control? statusMount = GetNodeOrNull<Control>("OuterMargin/Root/StatusMount");
         if (statusMount is not null && statusMount.GetChildCount() == 0)
         {
@@ -165,7 +152,6 @@ public partial class NCustomRunLibraryScreen : Control
             MouseFilter = MouseFilterEnum.Stop
         };
         scroll.SetAnchorsPreset(LayoutPreset.FullRect);
-        mount.AddChild(scroll);
 
         Control mask = new()
         {
@@ -184,7 +170,7 @@ public partial class NCustomRunLibraryScreen : Control
             MouseFilter = MouseFilterEnum.Pass
         };
         list.SetAnchorsPreset(LayoutPreset.TopWide);
-        list.AddThemeConstantOverride("separation", 10);
+        list.AddThemeConstantOverride("separation", 0);
         mask.AddChild(list);
 
         NScrollbar scrollbar = NLoadoutNativeScrollbar.Create();
@@ -195,11 +181,11 @@ public partial class NCustomRunLibraryScreen : Control
         scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
         scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
         scroll.AddChild(scrollbar);
+        mount.AddChild(scroll);
         scroll.DisableScrollingIfContentFits();
 
         _scroll = scroll;
         _list = list;
-        Callable.From(() => scroll.SetContent(list)).CallDeferred();
     }
 
     private void EnsureBackButton()
@@ -207,8 +193,13 @@ public partial class NCustomRunLibraryScreen : Control
         Control? mount = GetNodeOrNull<Control>("%BackButtonMount");
         if (mount is null)
             return;
-        _backButton = NLoadoutBackButtonFactory.Create();
+        const string backButtonScenePath = "res://scenes/ui/back_button.tscn";
+        _backButton = ResourceLoader.Exists(backButtonScenePath)
+                      && GD.Load<PackedScene>(backButtonScenePath) is { } scene
+            ? scene.Instantiate<NBackButton>()
+            : NLoadoutBackButtonFactory.Create();
         _backButton.Name = "BackButton";
+        _backButton.ZIndex = 200;
         _backButton.Connect(
             NClickableControl.SignalName.Released,
             Callable.From<NClickableControl>(_ => NLoadoutPanelRoot.Instance?.CloseTopScreen()));
@@ -258,8 +249,7 @@ public partial class NCustomRunLibraryScreen : Control
             captured.Description,
             isLobbyDefinition ? "LOBBY" : "PLAY",
             isLobbyDefinition ? null : () => TaskHelper.RunSafely(PlayAsync(captured)),
-            isLobbyDefinition ? "VIEW" : "EDIT",
-            () => OpenEditor(captured, isLobbyDefinition),
+            RowAction: () => OpenEditor(captured, isLobbyDefinition),
             ShowDelete: !isLobbyDefinition,
             DeleteAction: isLobbyDefinition ? null : () => TaskHelper.RunSafely(DeleteAsync(captured)),
             TrailingLabel: "EXPORT",
@@ -276,16 +266,16 @@ public partial class NCustomRunLibraryScreen : Control
 
         NCustomRunLibraryRow row = new();
         row.Init(new CustomRunLibraryRowOptions(
-            "CREATE A CUSTOM RUN",
-            "Start with native defaults, then choose the setup values you want to override.",
-            "+ NEW CUSTOM RUN",
+            string.Empty,
+            string.Empty,
+            "+  CREATE NEW CUSTOM RUN",
             NewRun,
-            null,
-            null,
+            RowAction: NewRun,
             ShowDelete: false,
             DeleteAction: null,
             TrailingLabel: "IMPORT",
-            TrailingAction: Import));
+            TrailingAction: Import,
+            IsCreateRow: true));
         _list.AddChild(row);
         _rows.Add(("new", row));
     }

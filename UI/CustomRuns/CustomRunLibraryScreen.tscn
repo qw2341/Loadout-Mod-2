@@ -30,20 +30,16 @@ anchor_bottom = 1.0
 offset_left = 150.0
 offset_top = 58.0
 offset_right = -150.0
-offset_bottom = -106.0
+offset_bottom = -118.0
 grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Root" type="VBoxContainer" parent="OuterMargin"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="TitleMount" type="Control" parent="OuterMargin/Root"]
 custom_minimum_size = Vector2(0, 74)
-layout_mode = 2
-
-[node name="SubtitleMount" type="Control" parent="OuterMargin/Root"]
-custom_minimum_size = Vector2(0, 38)
 layout_mode = 2
 
 [node name="ListMount" type="Control" parent="OuterMargin/Root"]
