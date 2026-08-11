@@ -105,25 +105,32 @@ public static class CustomRunCompiler
                 selectableCharacters,
                 template.FixedCharacters,
                 template.RandomCharacter);
+            IStartingLoadoutDefinition loadout = ResolveStartingLoadout(template.Setup, character);
+            ResolvedStartingLoadout resolvedLoadout = ResolveStartingLoadout(
+                loadout,
+                template.Setup.PotionSlots,
+                roleId is null ? "Run Setup" : "Roles",
+                roleId ?? definition.Id,
+                issues);
             resolvedPlayers.Add(new ResolvedPlayerSetup
             {
                 PlayerId = player.PlayerId,
                 CharacterModelId = character.Id.ToString(),
                 RoleId = roleId,
-                DeckModelIds = template.DeckModelIds,
-                OverrideDeck = template.OverrideDeck,
-                DeckEntries = template.DeckEntries.Select(entry => entry.Clone()).ToList(),
-                RelicModelIds = template.RelicModelIds,
-                OverrideRelics = template.OverrideRelics,
-                RelicEntries = template.RelicEntries.Select(entry => entry.Clone()).ToList(),
-                PotionModelIds = template.PotionModelIds,
-                OverridePotions = template.OverridePotions,
-                StartingPowers = template.StartingPowers.Select(power => new StartingPowerDefinition
+                DeckModelIds = resolvedLoadout.DeckModelIds,
+                OverrideDeck = resolvedLoadout.OverrideDeck,
+                DeckEntries = resolvedLoadout.DeckEntries.Select(entry => entry.Clone()).ToList(),
+                RelicModelIds = resolvedLoadout.RelicModelIds,
+                OverrideRelics = resolvedLoadout.OverrideRelics,
+                RelicEntries = resolvedLoadout.RelicEntries.Select(entry => entry.Clone()).ToList(),
+                PotionModelIds = resolvedLoadout.PotionModelIds,
+                OverridePotions = resolvedLoadout.OverridePotions,
+                StartingPowers = resolvedLoadout.StartingPowers.Select(power => new StartingPowerDefinition
                 {
                     ModelId = power.ModelId,
                     Amount = power.Amount
                 }).ToList(),
-                StartingMorphModelId = template.StartingMorphModelId,
+                StartingMorphModelId = resolvedLoadout.StartingMorphModelId,
                 PotionSlots = template.Setup.PotionSlots,
                 StartingGold = template.Setup.StartingGold,
                 StartingCurrentHp = template.Setup.StartingCurrentHp,
@@ -132,6 +139,9 @@ public static class CustomRunCompiler
                 CardsDrawnPerTurn = template.Setup.CardsDrawnPerTurn
             });
         }
+
+        if (issues.Any(issue => issue.Severity == CustomRunValidationSeverity.Error))
+            return new CustomRunCompileResult { Issues = issues };
 
         IReadOnlyList<string> requiredModIds = BuildRequiredModIds(definition.RequiredModIds, resolvedPlayers);
 
@@ -204,9 +214,26 @@ public static class CustomRunCompiler
     {
         if (setup.Character.Mode == SelectionMode.PlayerChoice)
             AddError(issues, section, objectId, "Character mode cannot use a separate player choice before Play.");
-        RejectUnsupportedSelectionMode(setup.StartingDeck, "starting deck", section, objectId, issues);
-        RejectUnsupportedSelectionMode(setup.StartingRelics, "starting relics", section, objectId, issues);
-        RejectUnsupportedSelectionMode(setup.StartingPotions, "starting potions", section, objectId, issues);
+        if (setup.StartingLoadoutMode == StartingLoadoutMode.Unified)
+        {
+            ValidateStartingLoadoutRuntimeSupport(setup, section, objectId, issues);
+        }
+        else
+        {
+            foreach (CharacterStartingLoadoutDefinition loadout in setup.CharacterStartingLoadouts)
+                ValidateStartingLoadoutRuntimeSupport(loadout, section, objectId, issues);
+        }
+    }
+
+    private static void ValidateStartingLoadoutRuntimeSupport(
+        IStartingLoadoutDefinition loadout,
+        string section,
+        string objectId,
+        List<CustomRunValidationIssue> issues)
+    {
+        RejectUnsupportedSelectionMode(loadout.StartingDeck, "starting deck", section, objectId, issues);
+        RejectUnsupportedSelectionMode(loadout.StartingRelics, "starting relics", section, objectId, issues);
+        RejectUnsupportedSelectionMode(loadout.StartingPotions, "starting potions", section, objectId, issues);
     }
 
     private static void RejectUnsupportedSelectionMode(
@@ -229,7 +256,7 @@ public static class CustomRunCompiler
         List<CustomRunValidationIssue> issues)
     {
         List<CharacterModel> fixedCharacters = [];
-        if (setup.Character.Mode == SelectionMode.Fixed)
+        if (setup.Character.Mode is SelectionMode.Fixed or SelectionMode.Random)
         {
             foreach (string id in setup.Character.FixedModelIds.Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -237,44 +264,65 @@ public static class CustomRunCompiler
                 if (character is null)
                     AddError(issues, section, objectId, $"Unknown character '{id}'.");
                 else if (IsRandomCharacter(character))
-                    AddError(issues, section, objectId, "Use Random character mode instead of restricting to the random character button.");
+                    AddError(issues, section, objectId, "The random character cannot be part of a character filter.");
                 else
                     fixedCharacters.Add(character);
             }
         }
+        return new ResolvedSetupTemplate(
+            setup,
+            fixedCharacters,
+            setup.Character.Mode == SelectionMode.Random);
+    }
 
-        IReadOnlyList<string> deckModelIds = ResolveFixedModelIds(setup.StartingDeck);
-        IReadOnlyList<string> relicModelIds = ResolveFixedModelIds(setup.StartingRelics);
-        IReadOnlyList<string> potionModelIds = ResolveFixedModelIds(setup.StartingPotions);
-        if (potionModelIds.Count > (setup.PotionSlots ?? 3))
+    private static IStartingLoadoutDefinition ResolveStartingLoadout(
+        RunSetupDefinition setup,
+        CharacterModel character)
+    {
+        if (setup.StartingLoadoutMode == StartingLoadoutMode.Unified)
+            return setup;
+        return setup.CharacterStartingLoadouts.FirstOrDefault(loadout =>
+                   string.Equals(loadout.CharacterModelId, character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(loadout.CharacterModelId, character.Id.Entry, StringComparison.OrdinalIgnoreCase))
+               ?? new CharacterStartingLoadoutDefinition { CharacterModelId = character.Id.ToString() };
+    }
+
+    private static ResolvedStartingLoadout ResolveStartingLoadout(
+        IStartingLoadoutDefinition loadout,
+        int? potionSlots,
+        string section,
+        string objectId,
+        List<CustomRunValidationIssue> issues)
+    {
+        IReadOnlyList<string> deckModelIds = ResolveFixedModelIds(loadout.StartingDeck);
+        IReadOnlyList<string> relicModelIds = ResolveFixedModelIds(loadout.StartingRelics);
+        IReadOnlyList<string> potionModelIds = ResolveFixedModelIds(loadout.StartingPotions);
+        if (potionModelIds.Count > (potionSlots ?? 3))
         {
             AddError(
                 issues,
                 section,
                 objectId,
-                $"Starting potions ({potionModelIds.Count}) exceed the configured potion slots ({setup.PotionSlots ?? 3}).");
+                $"Starting potions ({potionModelIds.Count}) exceed the configured potion slots ({potionSlots ?? 3}).");
         }
 
-        string? startingMorphModelId = setup.StartingMorphModelId;
+        string? startingMorphModelId = loadout.StartingMorphModelId;
         if (startingMorphModelId is not null
             && CustomRunCatalogService.TryResolveMorph(startingMorphModelId, out AbstractModel morphModel))
         {
             startingMorphModelId = morphModel.Id.ToString();
         }
 
-        return new ResolvedSetupTemplate(
-            setup,
-            fixedCharacters,
-            setup.Character.Mode == SelectionMode.Random,
+        return new ResolvedStartingLoadout(
             deckModelIds,
-            setup.StartingDeck.Mode == SelectionMode.Fixed,
-            setup.StartingCardEntries.Select(entry => entry.Clone()).ToList(),
+            loadout.StartingDeck.Mode == SelectionMode.Fixed,
+            loadout.StartingCardEntries.Select(entry => entry.Clone()).ToList(),
             relicModelIds,
-            setup.StartingRelics.Mode == SelectionMode.Fixed,
-            setup.StartingRelicEntries.Select(entry => entry.Clone()).ToList(),
+            loadout.StartingRelics.Mode == SelectionMode.Fixed,
+            loadout.StartingRelicEntries.Select(entry => entry.Clone()).ToList(),
             potionModelIds,
-            setup.StartingPotions.Mode == SelectionMode.Fixed,
-            setup.StartingPowers.Select(power => new StartingPowerDefinition
+            loadout.StartingPotions.Mode == SelectionMode.Fixed,
+            loadout.StartingPowers.Select(power => new StartingPowerDefinition
             {
                 ModelId = CustomRunCatalogService.CanonicalizeModelId(SelectionModelKind.Power, power.ModelId),
                 Amount = power.Amount
@@ -386,10 +434,13 @@ public static class CustomRunCompiler
     {
         if (randomCharacter)
         {
+            IReadOnlyList<CharacterModel> randomPool = fixedCharacters.Count > 0
+                ? fixedCharacters.OrderBy(character => character.Id.ToString(), StringComparer.Ordinal).ToList()
+                : selectableCharacters;
             byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(
                 $"{seed}:random_character:{player.SlotId}:{player.PlayerId}"));
-            int index = (int)(BitConverter.ToUInt32(digest, 0) % (uint)selectableCharacters.Count);
-            return selectableCharacters[index];
+            int index = (int)(BitConverter.ToUInt32(digest, 0) % (uint)randomPool.Count);
+            return randomPool[index];
         }
         if (fixedCharacters.Count == 0)
             return ResolveDefaultCharacter(player, seed, selectableCharacters);
@@ -426,7 +477,9 @@ public static class CustomRunCompiler
     private sealed record ResolvedSetupTemplate(
         RunSetupDefinition Setup,
         IReadOnlyList<CharacterModel> FixedCharacters,
-        bool RandomCharacter,
+        bool RandomCharacter);
+
+    private sealed record ResolvedStartingLoadout(
         IReadOnlyList<string> DeckModelIds,
         bool OverrideDeck,
         IReadOnlyList<SavedCardLoadoutEntry> DeckEntries,

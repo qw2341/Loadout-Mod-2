@@ -6,10 +6,33 @@ using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Loadout.Services.Loadouts;
 
-public sealed class RunSetupDefinition
+public enum StartingLoadoutMode
+{
+    PerCharacter,
+    Unified
+}
+
+public interface IStartingLoadoutDefinition
+{
+    SelectionSpec StartingDeck { get; set; }
+    List<SavedCardLoadoutEntry> StartingCardEntries { get; set; }
+    SelectionSpec StartingRelics { get; set; }
+    List<SavedRelicLoadoutEntry> StartingRelicEntries { get; set; }
+    SelectionSpec StartingPotions { get; set; }
+    List<StartingPowerDefinition> StartingPowers { get; set; }
+    string? StartingMorphModelId { get; set; }
+}
+
+public sealed class RunSetupDefinition : IStartingLoadoutDefinition
 {
     [JsonPropertyName("character")]
     public SelectionSpec Character { get; set; } = SelectionSpec.Default(SelectionModelKind.Character);
+
+    [JsonPropertyName("startingLoadoutMode")]
+    public StartingLoadoutMode StartingLoadoutMode { get; set; } = StartingLoadoutMode.PerCharacter;
+
+    [JsonPropertyName("characterStartingLoadouts")]
+    public List<CharacterStartingLoadoutDefinition> CharacterStartingLoadouts { get; set; } = [];
 
     [JsonPropertyName("startingDeck")]
     public SelectionSpec StartingDeck { get; set; } = SelectionSpec.Default(SelectionModelKind.Card);
@@ -55,6 +78,33 @@ public sealed class RunSetupDefinition
 
     [JsonPropertyName("runSeed")]
     public string? RunSeed { get; set; }
+}
+
+public sealed class CharacterStartingLoadoutDefinition : IStartingLoadoutDefinition
+{
+    [JsonPropertyName("characterModelId")]
+    public string CharacterModelId { get; set; } = string.Empty;
+
+    [JsonPropertyName("startingDeck")]
+    public SelectionSpec StartingDeck { get; set; } = SelectionSpec.Default(SelectionModelKind.Card);
+
+    [JsonPropertyName("startingCardEntries")]
+    public List<SavedCardLoadoutEntry> StartingCardEntries { get; set; } = [];
+
+    [JsonPropertyName("startingRelics")]
+    public SelectionSpec StartingRelics { get; set; } = SelectionSpec.Default(SelectionModelKind.Relic);
+
+    [JsonPropertyName("startingRelicEntries")]
+    public List<SavedRelicLoadoutEntry> StartingRelicEntries { get; set; } = [];
+
+    [JsonPropertyName("startingPotions")]
+    public SelectionSpec StartingPotions { get; set; } = SelectionSpec.Default(SelectionModelKind.Potion);
+
+    [JsonPropertyName("startingPowers")]
+    public List<StartingPowerDefinition> StartingPowers { get; set; } = [];
+
+    [JsonPropertyName("startingMorphModelId")]
+    public string? StartingMorphModelId { get; set; }
 }
 
 public sealed class StartingPowerDefinition

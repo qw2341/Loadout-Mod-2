@@ -81,6 +81,7 @@ public partial class NCustomRunEditorScreen : Control
     private HFlowContainer? _startingRelicPreview;
     private HBoxContainer? _startingPotionHolders;
     private string? _activeSetupRoleId;
+    private string? _activeLoadoutCharacterId;
 
     public static void OpenFromLibrary(
         Control libraryScreen,
@@ -673,12 +674,13 @@ public partial class NCustomRunEditorScreen : Control
             BuildDefaultRoleDetails(noRole);
 
         BuildCharacterRestrictionEditor(setup);
+        IStartingLoadoutDefinition loadout = BuildStartingLoadoutEditor(setup);
 
-        BuildStartingDeckSection(setup);
-        BuildStartingRelicSection(setup);
-        BuildStartingPotionSection(setup);
-        BuildStartingPowerSection(setup);
-        BuildStartingMorphSection(setup);
+        BuildStartingDeckSection(loadout);
+        BuildStartingRelicSection(loadout);
+        BuildStartingPotionSection(setup, loadout);
+        BuildStartingPowerSection(loadout);
+        BuildStartingMorphSection(loadout);
 
         _contentHost.AddChild(CreateSectionDivider());
 
@@ -692,8 +694,9 @@ public partial class NCustomRunEditorScreen : Control
             value => setup.PotionSlots = value,
             () =>
             {
-                NormalizeStartingPotionCapacity(setup);
-                RefreshStartingPotionInventory(setup);
+                IStartingLoadoutDefinition activeLoadout = GetActiveLoadout();
+                NormalizeStartingPotionCapacity(setup, activeLoadout);
+                RefreshStartingPotionInventory(setup, activeLoadout);
             });
         AddNullableNumberRow("Base Energy / Turn", setup.BaseEnergyPerTurn, 3, 0, 99,
             value => setup.BaseEnergyPerTurn = value);
@@ -819,7 +822,158 @@ public partial class NCustomRunEditorScreen : Control
         return ReferenceEquals(ResolveSetup(roleId), setup);
     }
 
-    private void BuildStartingDeckSection(RunSetupDefinition setup)
+    private IStartingLoadoutDefinition BuildStartingLoadoutEditor(RunSetupDefinition setup)
+    {
+        if (_contentHost is null)
+            return setup;
+
+        HBoxContainer modeRow = CreateRow();
+        modeRow.AddChild(CreateRowLabel("Starting Loadout"));
+        NLoadoutDropdown mode = new()
+        {
+            CustomMinimumSize = new Vector2(420f, 52f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
+            DropdownWidth = 420f
+        };
+        mode.SetItems(string.Empty,
+        [
+            new LoadoutDropdownOption(StartingLoadoutMode.PerCharacter.ToString(), "Per Character"),
+            new LoadoutDropdownOption(StartingLoadoutMode.Unified.ToString(), "Unified")
+        ], setup.StartingLoadoutMode.ToString());
+        string? ownerId = _activeSetupRoleId;
+        mode.SelectedItemChanged += selected =>
+        {
+            if (_loadingFields || !IsSetupOwnerValid(ownerId, setup)
+                || !Enum.TryParse(selected, out StartingLoadoutMode selectedMode))
+            {
+                return;
+            }
+            if (selectedMode == StartingLoadoutMode.Unified)
+                InitializeUnifiedStartingLoadout(setup);
+            setup.StartingLoadoutMode = selectedMode;
+            MarkDirty();
+            RebuildContent();
+        };
+        modeRow.AddChild(mode);
+        _contentHost.AddChild(modeRow);
+
+        if (setup.StartingLoadoutMode == StartingLoadoutMode.Unified)
+            return setup;
+
+        IReadOnlyList<CharacterModel> characters = GetLoadoutCharacters(setup);
+        if (characters.Count == 0)
+        {
+            _contentHost.AddChild(CreateHint("Select at least one character for per-character loadouts."));
+            return setup;
+        }
+
+        CharacterModel activeCharacter = ResolveActiveLoadoutCharacter(characters);
+        HBoxContainer categories = CreateRow();
+        categories.AddChild(CreateRowLabel("Character Loadout"));
+        foreach (CharacterModel character in characters)
+        {
+            Button category = CreateCompactButton(GetCharacterDisplayName(character), 19, 46f);
+            category.CustomMinimumSize = new Vector2(160f, 46f);
+            if (character.Id == activeCharacter.Id)
+                category.AddThemeColorOverride("font_color", StsColors.gold);
+            category.Pressed += () =>
+            {
+                if (!IsSetupOwnerValid(ownerId, setup))
+                    return;
+                _activeLoadoutCharacterId = character.Id.ToString();
+                RebuildContent();
+            };
+            categories.AddChild(category);
+        }
+        AddToolSpacer(categories);
+        _contentHost.AddChild(categories);
+        _contentHost.AddChild(CreateSectionTitle($"{GetCharacterDisplayName(activeCharacter).ToUpperInvariant()} LOADOUT"));
+        return GetOrCreateCharacterLoadout(setup, activeCharacter);
+    }
+
+    private static void InitializeUnifiedStartingLoadout(RunSetupDefinition setup)
+    {
+        bool alreadyInitialized = setup.StartingDeck.Mode != SelectionMode.Default
+                                  || setup.StartingRelics.Mode != SelectionMode.Default
+                                  || setup.StartingPotions.Mode != SelectionMode.Default
+                                  || setup.StartingPowers.Count > 0
+                                  || setup.StartingMorphModelId is not null;
+        if (alreadyInitialized)
+            return;
+        setup.StartingDeck.Mode = SelectionMode.Fixed;
+        setup.StartingDeck.FixedModelIds.Clear();
+        setup.StartingCardEntries.Clear();
+        setup.StartingRelics.Mode = SelectionMode.Fixed;
+        setup.StartingRelics.FixedModelIds.Clear();
+        setup.StartingRelicEntries.Clear();
+        setup.StartingPotions.Mode = SelectionMode.Fixed;
+        setup.StartingPotions.FixedModelIds.Clear();
+        setup.StartingPowers.Clear();
+        setup.StartingMorphModelId = null;
+    }
+
+    private IReadOnlyList<CharacterModel> GetLoadoutCharacters(RunSetupDefinition setup)
+    {
+        List<CharacterModel> characters = ModelDb.AllCharacters
+            .Where(character => character.IsPlayable && !IsRandomCharacterModel(character))
+            .ToList();
+        if (setup.Character.Mode is not (SelectionMode.Fixed or SelectionMode.Random)
+            || setup.Character.FixedModelIds.Count == 0)
+        {
+            return characters;
+        }
+        HashSet<string> allowed = setup.Character.FixedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return characters.Where(character =>
+                allowed.Contains(character.Id.ToString()) || allowed.Contains(character.Id.Entry))
+            .ToList();
+    }
+
+    private CharacterModel ResolveActiveLoadoutCharacter(IReadOnlyList<CharacterModel> characters)
+    {
+        CharacterModel? active = characters.FirstOrDefault(character =>
+            string.Equals(character.Id.ToString(), _activeLoadoutCharacterId, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(character.Id.Entry, _activeLoadoutCharacterId, StringComparison.OrdinalIgnoreCase));
+        active ??= characters.FirstOrDefault(character =>
+            _lobby is not null
+            && Sts2Compatibility.EnumerateStartRunLobbyPlayers(_lobby)
+                .Any(player => player.Character?.Id == character.Id));
+        active ??= characters[0];
+        _activeLoadoutCharacterId = active.Id.ToString();
+        return active;
+    }
+
+    private static CharacterStartingLoadoutDefinition GetOrCreateCharacterLoadout(
+        RunSetupDefinition setup,
+        CharacterModel character)
+    {
+        CharacterStartingLoadoutDefinition? loadout = setup.CharacterStartingLoadouts.FirstOrDefault(candidate =>
+            string.Equals(candidate.CharacterModelId, character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(candidate.CharacterModelId, character.Id.Entry, StringComparison.OrdinalIgnoreCase));
+        if (loadout is not null)
+            return loadout;
+        loadout = new CharacterStartingLoadoutDefinition { CharacterModelId = character.Id.ToString() };
+        setup.CharacterStartingLoadouts.Add(loadout);
+        return loadout;
+    }
+
+    private IStartingLoadoutDefinition GetActiveLoadout()
+    {
+        RunSetupDefinition setup = GetActiveSetup();
+        if (setup.StartingLoadoutMode == StartingLoadoutMode.Unified)
+            return setup;
+        CharacterModel character = ResolveActiveLoadoutCharacter(GetLoadoutCharacters(setup));
+        return GetOrCreateCharacterLoadout(setup, character);
+    }
+
+    private bool IsLoadoutOwnerValid(
+        string? roleId,
+        RunSetupDefinition setup,
+        IStartingLoadoutDefinition loadout)
+    {
+        return IsSetupOwnerValid(roleId, setup) && ReferenceEquals(GetActiveLoadout(), loadout);
+    }
+
+    private void BuildStartingDeckSection(IStartingLoadoutDefinition loadout)
     {
         if (_contentHost is null)
             return;
@@ -829,15 +983,15 @@ public partial class NCustomRunEditorScreen : Control
         AddSettingsActionButton(actions, "card_shredder", "CARD SHREDDER", RunSetupToolButtonWidth, OpenStartingCardShredder);
         AddSettingsActionButton(actions, "card_modifier", "CARD MODIFIER", RunSetupToolButtonWidth, OpenStartingCardModifierInventory);
         AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_deck", "REVERT", 142f, () => ResetSelection(setup.StartingDeck), danger: true);
+        AddSettingsActionButton(actions, "revert_deck", "REVERT", 142f, () => ResetSelection(loadout.StartingDeck), danger: true);
         _contentHost.AddChild(actions);
 
         _startingDeckPreview = CreateInventoryPreview();
         _contentHost.AddChild(_startingDeckPreview);
-        RefreshStartingDeckPreview(setup);
+        RefreshStartingDeckPreview(loadout);
     }
 
-    private void BuildStartingRelicSection(RunSetupDefinition setup)
+    private void BuildStartingRelicSection(IStartingLoadoutDefinition loadout)
     {
         if (_contentHost is null)
             return;
@@ -847,15 +1001,15 @@ public partial class NCustomRunEditorScreen : Control
         AddSettingsActionButton(actions, "trash_bin", "TRASH BIN", RunSetupToolButtonWidth, OpenStartingTrashBin);
         AddSettingsActionButton(actions, "relic_modifier", "RELIC MODIFIER", RunSetupToolButtonWidth, OpenStartingRelicModifierInventory);
         AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_relics", "REVERT", 142f, () => ResetSelection(setup.StartingRelics), danger: true);
+        AddSettingsActionButton(actions, "revert_relics", "REVERT", 142f, () => ResetSelection(loadout.StartingRelics), danger: true);
         _contentHost.AddChild(actions);
 
         _startingRelicPreview = CreateInventoryPreview();
         _contentHost.AddChild(_startingRelicPreview);
-        RefreshStartingRelicPreview(setup);
+        RefreshStartingRelicPreview(loadout);
     }
 
-    private void BuildStartingPotionSection(RunSetupDefinition setup)
+    private void BuildStartingPotionSection(RunSetupDefinition setup, IStartingLoadoutDefinition loadout)
     {
         if (_contentHost is null)
             return;
@@ -863,29 +1017,29 @@ public partial class NCustomRunEditorScreen : Control
         HBoxContainer actions = CreateToolRow("Starting Potions");
         AddSettingsActionButton(actions, "potion_cauldron", "POTION CAULDRON", RunSetupToolButtonWidth, OpenStartingPotionCauldron);
         AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_potions", "REVERT", 142f, () => ResetSelection(setup.StartingPotions), danger: true);
+        AddSettingsActionButton(actions, "revert_potions", "REVERT", 142f, () => ResetSelection(loadout.StartingPotions), danger: true);
         _contentHost.AddChild(actions);
 
         VBoxContainer inventory = new() { SizeFlagsHorizontal = SizeFlags.ShrinkBegin };
         MarginContainer topBarInventory = CreateTopBarPotionInventory();
         inventory.AddChild(topBarInventory);
         _contentHost.AddChild(inventory);
-        RefreshStartingPotionInventory(setup);
+        RefreshStartingPotionInventory(setup, loadout);
     }
 
-    private void RefreshStartingDeckPreview(RunSetupDefinition setup)
+    private void RefreshStartingDeckPreview(IStartingLoadoutDefinition loadout)
     {
         if (_startingDeckPreview is null || !GodotObject.IsInstanceValid(_startingDeckPreview))
             return;
 
         ClearChildren(_startingDeckPreview);
-        if (setup.StartingDeck.Mode != SelectionMode.Fixed)
+        if (loadout.StartingDeck.Mode != SelectionMode.Fixed)
         {
             _startingDeckPreview.AddChild(CreateHint("Character Default"));
             RefreshContentSizeDeferred();
             return;
         }
-        List<CardModel> cards = GetStartingCardEntries(setup)
+        List<CardModel> cards = GetStartingCardEntries(loadout)
             .Select(CreateStartingCardPreview)
             .Where(card => card is not null)
             .Cast<CardModel>()
@@ -955,19 +1109,19 @@ public partial class NCustomRunEditorScreen : Control
         CommonHelpers.ShowHoverTips(view, tips);
     }
 
-    private void RefreshStartingRelicPreview(RunSetupDefinition setup)
+    private void RefreshStartingRelicPreview(IStartingLoadoutDefinition loadout)
     {
         if (_startingRelicPreview is null || !GodotObject.IsInstanceValid(_startingRelicPreview))
             return;
 
         ClearChildren(_startingRelicPreview);
-        if (setup.StartingRelics.Mode != SelectionMode.Fixed)
+        if (loadout.StartingRelics.Mode != SelectionMode.Fixed)
         {
             _startingRelicPreview.AddChild(CreateHint("Character Default"));
             RefreshContentSizeDeferred();
             return;
         }
-        IReadOnlyList<SavedRelicLoadoutEntry> relics = GetStartingRelicEntries(setup);
+        IReadOnlyList<SavedRelicLoadoutEntry> relics = GetStartingRelicEntries(loadout);
         if (relics.Count == 0)
         {
             _startingRelicPreview.AddChild(CreateHint("This starting relic collection is empty."));
@@ -1027,15 +1181,18 @@ public partial class NCustomRunEditorScreen : Control
         return panel;
     }
 
-    private void RefreshStartingPotionInventory(RunSetupDefinition setup)
+    private void RefreshStartingPotionInventory(
+        RunSetupDefinition setup,
+        IStartingLoadoutDefinition loadout)
     {
         if (_startingPotionHolders is null || !GodotObject.IsInstanceValid(_startingPotionHolders))
             return;
 
         ClearChildren(_startingPotionHolders);
-        IReadOnlyList<string> potionIds = setup.StartingPotions.Mode == SelectionMode.Fixed
-            ? setup.StartingPotions.FixedModelIds
-            : ResolvePreviewCharacter(setup)?.StartingPotions.Select(potion => potion.Id.ToString()).ToList() ?? [];
+        IReadOnlyList<string> potionIds = loadout.StartingPotions.Mode == SelectionMode.Fixed
+            ? loadout.StartingPotions.FixedModelIds
+            : ResolveLoadoutCharacter(loadout, setup)?.StartingPotions
+                .Select(potion => potion.Id.ToString()).ToList() ?? [];
         int slotCount = Math.Clamp(setup.PotionSlots ?? 3, 0, 20);
 
         for (int index = 0; index < slotCount; index++)
@@ -1065,16 +1222,20 @@ public partial class NCustomRunEditorScreen : Control
         RefreshContentSizeDeferred();
     }
 
-    private static void NormalizeStartingPotionCapacity(RunSetupDefinition setup)
+    private static void NormalizeStartingPotionCapacity(
+        RunSetupDefinition setup,
+        IStartingLoadoutDefinition loadout)
     {
-        if (setup.StartingPotions.Mode != SelectionMode.Fixed)
+        if (loadout.StartingPotions.Mode != SelectionMode.Fixed)
             return;
         int capacity = Math.Clamp(setup.PotionSlots ?? 3, 0, 20);
-        if (setup.StartingPotions.FixedModelIds.Count > capacity)
-            setup.StartingPotions.FixedModelIds.RemoveRange(capacity, setup.StartingPotions.FixedModelIds.Count - capacity);
+        if (loadout.StartingPotions.FixedModelIds.Count > capacity)
+            loadout.StartingPotions.FixedModelIds.RemoveRange(
+                capacity,
+                loadout.StartingPotions.FixedModelIds.Count - capacity);
     }
 
-    private void BuildStartingPowerSection(RunSetupDefinition setup)
+    private void BuildStartingPowerSection(IStartingLoadoutDefinition loadout)
     {
         if (_contentHost is null)
             return;
@@ -1083,17 +1244,17 @@ public partial class NCustomRunEditorScreen : Control
         AddToolSpacer(actions);
         AddSettingsActionButton(actions, "revert_powers", "REVERT", 142f, () =>
         {
-            setup.StartingPowers.Clear();
+            loadout.StartingPowers.Clear();
             MarkDirty();
             RebuildContent();
         }, danger: true);
         _contentHost.AddChild(actions);
-        _contentHost.AddChild(CreateStartingPowerPreview(setup));
+        _contentHost.AddChild(CreateStartingPowerPreview(loadout));
     }
 
-    private static Control CreateStartingPowerPreview(RunSetupDefinition setup)
+    private static Control CreateStartingPowerPreview(IStartingLoadoutDefinition loadout)
     {
-        if (setup.StartingPowers.Count == 0)
+        if (loadout.StartingPowers.Count == 0)
             return CreateHint("No starting Power Giver amounts.");
 
         VBoxContainer list = new()
@@ -1102,7 +1263,7 @@ public partial class NCustomRunEditorScreen : Control
             MouseFilter = MouseFilterEnum.Ignore
         };
         list.AddThemeConstantOverride("separation", 6);
-        foreach (StartingPowerDefinition startingPower in setup.StartingPowers)
+        foreach (StartingPowerDefinition startingPower in loadout.StartingPowers)
         {
             HBoxContainer row = new()
             {
@@ -1149,7 +1310,7 @@ public partial class NCustomRunEditorScreen : Control
         return list;
     }
 
-    private void BuildStartingMorphSection(RunSetupDefinition setup)
+    private void BuildStartingMorphSection(IStartingLoadoutDefinition loadout)
     {
         if (_contentHost is null)
             return;
@@ -1158,14 +1319,14 @@ public partial class NCustomRunEditorScreen : Control
         AddToolSpacer(actions);
         AddSettingsActionButton(actions, "revert_morph", "REVERT", 142f, () =>
         {
-            setup.StartingMorphModelId = null;
+            loadout.StartingMorphModelId = null;
             MarkDirty();
             RebuildContent();
         }, danger: true);
         _contentHost.AddChild(actions);
-        _contentHost.AddChild(CreateHint(setup.StartingMorphModelId is null
+        _contentHost.AddChild(CreateHint(loadout.StartingMorphModelId is null
             ? "Original character form."
-            : $"Starts morphed as {GetMorphName(setup.StartingMorphModelId)}."));
+            : $"Starts morphed as {GetMorphName(loadout.StartingMorphModelId)}."));
     }
 
     private void ResetSelection(SelectionSpec selection)
@@ -1174,10 +1335,11 @@ public partial class NCustomRunEditorScreen : Control
         selection.FixedModelIds.Clear();
         if (_workingDefinition is not null)
         {
+            IStartingLoadoutDefinition loadout = GetActiveLoadout();
             if (selection.Kind == SelectionModelKind.Card)
-                GetActiveSetup().StartingCardEntries.Clear();
+                loadout.StartingCardEntries.Clear();
             else if (selection.Kind == SelectionModelKind.Relic)
-                GetActiveSetup().StartingRelicEntries.Clear();
+                loadout.StartingRelicEntries.Clear();
         }
         MarkDirty();
         RebuildContent();
@@ -1187,10 +1349,11 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
 
         if (selection.Kind == SelectionModelKind.Card)
         {
-            List<SavedCardLoadoutEntry> previous = GetActiveSetup().StartingCardEntries.ToList();
+            List<SavedCardLoadoutEntry> previous = loadout.StartingCardEntries.ToList();
             List<SavedCardLoadoutEntry> next = [];
             foreach (string id in selectedIds)
             {
@@ -1205,11 +1368,11 @@ public partial class NCustomRunEditorScreen : Control
                     next.Add(new SavedCardLoadoutEntry { ModelId = id, Count = 1 });
                 }
             }
-            GetActiveSetup().StartingCardEntries = next;
+            loadout.StartingCardEntries = next;
         }
         else if (selection.Kind == SelectionModelKind.Relic)
         {
-            List<SavedRelicLoadoutEntry> previous = GetActiveSetup().StartingRelicEntries.ToList();
+            List<SavedRelicLoadoutEntry> previous = loadout.StartingRelicEntries.ToList();
             List<SavedRelicLoadoutEntry> next = [];
             foreach (string id in selectedIds)
             {
@@ -1224,7 +1387,7 @@ public partial class NCustomRunEditorScreen : Control
                     next.Add(new SavedRelicLoadoutEntry { ModelId = id, Count = 1 });
                 }
             }
-            GetActiveSetup().StartingRelicEntries = next;
+            loadout.StartingRelicEntries = next;
         }
     }
 
@@ -1237,10 +1400,11 @@ public partial class NCustomRunEditorScreen : Control
             if (_workingDefinition is null || item.UntypedModel is not CardModel card)
                 return;
             EnsureDetailedStartingSelection(SelectionModelKind.Card);
+            IStartingLoadoutDefinition loadout = GetActiveLoadout();
             int upgradeLevel = screen.IsToggleEnabled("view_upgrades") && card.IsUpgradable ? 1 : 0;
             for (int copy = 0; copy < amount; copy++)
             {
-                GetActiveSetup().StartingCardEntries.Add(new SavedCardLoadoutEntry
+                loadout.StartingCardEntries.Add(new SavedCardLoadoutEntry
                 {
                     ModelId = card.Id.ToString(),
                     UpgradeLevel = upgradeLevel,
@@ -1249,7 +1413,7 @@ public partial class NCustomRunEditorScreen : Control
             }
             SynchronizeStartingSelectionIds(SelectionModelKind.Card);
             MarkDirty();
-            RefreshStartingDeckPreview(GetActiveSetup());
+            RefreshStartingDeckPreview(loadout);
             CustomRunEditorPreviewService.PreviewCardAdd(
                 card,
                 upgradeLevel,
@@ -1267,9 +1431,10 @@ public partial class NCustomRunEditorScreen : Control
             if (_workingDefinition is null || item.UntypedModel is not RelicModel relic)
                 return;
             EnsureDetailedStartingSelection(SelectionModelKind.Relic);
+            IStartingLoadoutDefinition loadout = GetActiveLoadout();
             for (int copy = 0; copy < amount; copy++)
             {
-                GetActiveSetup().StartingRelicEntries.Add(new SavedRelicLoadoutEntry
+                loadout.StartingRelicEntries.Add(new SavedRelicLoadoutEntry
                 {
                     ModelId = relic.Id.ToString(),
                     Count = 1
@@ -1277,7 +1442,7 @@ public partial class NCustomRunEditorScreen : Control
             }
             SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
             MarkDirty();
-            RefreshStartingRelicPreview(GetActiveSetup());
+            RefreshStartingRelicPreview(loadout);
             CustomRunEditorPreviewService.PreviewRelicAdd(
                 relic,
                 amount,
@@ -1294,13 +1459,15 @@ public partial class NCustomRunEditorScreen : Control
         {
             if (_workingDefinition is null || item.UntypedModel is not PotionModel potion)
                 return;
-            SelectionSpec selection = GetActiveSetup().StartingPotions;
+            RunSetupDefinition setup = GetActiveSetup();
+            IStartingLoadoutDefinition loadout = GetActiveLoadout();
+            SelectionSpec selection = loadout.StartingPotions;
             if (selection.Mode == SelectionMode.Default)
             {
                 selection.Mode = SelectionMode.Fixed;
                 selection.FixedModelIds = GetDefaultStartingIds(SelectionModelKind.Potion).ToList();
             }
-            int capacity = Math.Clamp(GetActiveSetup().PotionSlots ?? 3, 0, 20);
+            int capacity = Math.Clamp(setup.PotionSlots ?? 3, 0, 20);
             int copies = Math.Min(amount, Math.Max(0, capacity - selection.FixedModelIds.Count));
             for (int copy = 0; copy < copies; copy++)
                 selection.FixedModelIds.Add(potion.Id.ToString());
@@ -1310,7 +1477,7 @@ public partial class NCustomRunEditorScreen : Control
                 return;
             }
             MarkDirty();
-            RefreshStartingPotionInventory(GetActiveSetup());
+            RefreshStartingPotionInventory(setup, loadout);
             CustomRunEditorPreviewService.PreviewPotionAdd(
                 potion,
                 copies,
@@ -1325,18 +1492,19 @@ public partial class NCustomRunEditorScreen : Control
             return;
         string? ownerId = _activeSetupRoleId;
         RunSetupDefinition setup = GetActiveSetup();
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
         IReadOnlyList<LoadoutOwnedItem<CardModel>> cards = CustomRunEditorPreviewService.CreateOwnedCards(
-            GetStartingCardEntries(setup));
+            GetStartingCardEntries(loadout));
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenOwnedCardAction(
                 "CardShredder",
                 cards,
                 (_, item, amount) =>
                 {
-                    if (!IsSetupOwnerValid(ownerId, setup))
+                    if (!IsLoadoutOwnerValid(ownerId, setup, loadout))
                         return null;
                     EnsureDetailedStartingSelection(SelectionModelKind.Card);
-                    List<SavedCardLoadoutEntry> entries = GetActiveSetup().StartingCardEntries;
+                    List<SavedCardLoadoutEntry> entries = loadout.StartingCardEntries;
                     if (item.Index < 0 || item.Index >= entries.Count)
                         return CustomRunEditorPreviewService.CreateOwnedCards(entries);
                     SavedCardLoadoutEntry selected = entries[item.Index];
@@ -1355,7 +1523,7 @@ public partial class NCustomRunEditorScreen : Control
                     }
                     SynchronizeStartingSelectionIds(SelectionModelKind.Card);
                     MarkDirty();
-                    RefreshStartingDeckPreview(GetActiveSetup());
+                    RefreshStartingDeckPreview(loadout);
                     CustomRunEditorPreviewService.PreviewCardRemoval(removedCards);
                     return CustomRunEditorPreviewService.CreateOwnedCards(entries);
                 },
@@ -1374,18 +1542,19 @@ public partial class NCustomRunEditorScreen : Control
             return;
         string? ownerId = _activeSetupRoleId;
         RunSetupDefinition setup = GetActiveSetup();
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
         IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics = CustomRunEditorPreviewService.CreateOwnedRelics(
-            GetStartingRelicEntries(setup));
+            GetStartingRelicEntries(loadout));
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenOwnedRelicAction(
                 "TrashBin",
                 relics,
                 (_, item, amount) =>
                 {
-                    if (!IsSetupOwnerValid(ownerId, setup))
+                    if (!IsLoadoutOwnerValid(ownerId, setup, loadout))
                         return null;
                     EnsureDetailedStartingSelection(SelectionModelKind.Relic);
-                    List<SavedRelicLoadoutEntry> entries = GetActiveSetup().StartingRelicEntries;
+                    List<SavedRelicLoadoutEntry> entries = loadout.StartingRelicEntries;
                     if (item.Index < 0 || item.Index >= entries.Count)
                         return CustomRunEditorPreviewService.CreateOwnedRelics(entries);
                     SavedRelicLoadoutEntry selected = entries[item.Index];
@@ -1400,7 +1569,7 @@ public partial class NCustomRunEditorScreen : Control
                     }
                     SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
                     MarkDirty();
-                    RefreshStartingRelicPreview(GetActiveSetup());
+                    RefreshStartingRelicPreview(loadout);
                     return CustomRunEditorPreviewService.CreateOwnedRelics(entries);
                 },
                 out IDisposable? session,
@@ -1418,7 +1587,8 @@ public partial class NCustomRunEditorScreen : Control
             return;
         string? ownerId = _activeSetupRoleId;
         RunSetupDefinition setup = GetActiveSetup();
-        IReadOnlyList<SavedCardLoadoutEntry> entries = GetStartingCardEntries(setup);
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
+        IReadOnlyList<SavedCardLoadoutEntry> entries = GetStartingCardEntries(loadout);
         if (entries.Count == 0)
         {
             SetStatus("The starting deck is empty.", success: false);
@@ -1429,23 +1599,23 @@ public partial class NCustomRunEditorScreen : Control
         if (!CustomRunCatalogSelector.TryOpenOwnedCardActions(
                 "CardModifier",
                 cards,
-                (screen, item, amount) => UpgradeStartingCard(screen, item, amount, ownerId, setup),
+                (screen, item, amount) => UpgradeStartingCard(screen, item, amount, ownerId, setup, loadout),
                 (_, item, _) =>
                 {
-                    if (!IsSetupOwnerValid(ownerId, setup))
+                    if (!IsLoadoutOwnerValid(ownerId, setup, loadout))
                         return null;
                     EnsureDetailedStartingSelection(SelectionModelKind.Card);
                     CloseCatalogSelector();
                     CustomRunEditorPreviewService.OpenCardModifier(
-                        GetActiveSetup().StartingCardEntries,
+                        loadout.StartingCardEntries,
                         item.Index,
                         () =>
                         {
-                            if (!IsSetupOwnerValid(ownerId, setup))
+                            if (!IsLoadoutOwnerValid(ownerId, setup, loadout))
                                 return;
                             SynchronizeStartingSelectionIds(SelectionModelKind.Card);
                             MarkDirty();
-                            RefreshStartingDeckPreview(GetActiveSetup());
+                            RefreshStartingDeckPreview(loadout);
                         });
                     return null;
                 },
@@ -1464,7 +1634,8 @@ public partial class NCustomRunEditorScreen : Control
             return;
         string? ownerId = _activeSetupRoleId;
         RunSetupDefinition setup = GetActiveSetup();
-        IReadOnlyList<SavedRelicLoadoutEntry> entries = GetStartingRelicEntries(setup);
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
+        IReadOnlyList<SavedRelicLoadoutEntry> entries = GetStartingRelicEntries(loadout);
         if (entries.Count == 0)
         {
             SetStatus("The starting relic inventory is empty.", success: false);
@@ -1477,20 +1648,20 @@ public partial class NCustomRunEditorScreen : Control
                 relics,
                 (_, item, _) =>
                 {
-                    if (!IsSetupOwnerValid(ownerId, setup))
+                    if (!IsLoadoutOwnerValid(ownerId, setup, loadout))
                         return null;
                     EnsureDetailedStartingSelection(SelectionModelKind.Relic);
                     CloseCatalogSelector();
                     CustomRunEditorPreviewService.OpenRelicModifier(
-                        GetActiveSetup().StartingRelicEntries,
+                        loadout.StartingRelicEntries,
                         item.Index,
                         () =>
                         {
-                            if (!IsSetupOwnerValid(ownerId, setup))
+                            if (!IsLoadoutOwnerValid(ownerId, setup, loadout))
                                 return;
                             SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
                             MarkDirty();
-                            RefreshStartingRelicPreview(GetActiveSetup());
+                            RefreshStartingRelicPreview(loadout);
                         });
                     return null;
                 },
@@ -1509,12 +1680,13 @@ public partial class NCustomRunEditorScreen : Control
     {
         string? ownerId = _activeSetupRoleId;
         RunSetupDefinition setup = GetActiveSetup();
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenCatalogAction(
                 kind,
                 (screen, item, amount) =>
                 {
-                    if (IsSetupOwnerValid(ownerId, setup))
+                    if (IsLoadoutOwnerValid(ownerId, setup, loadout))
                         activated(screen, item, amount);
                 },
                 out IDisposable? session,
@@ -1537,7 +1709,9 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
-        SelectionSpec potions = GetActiveSetup().StartingPotions;
+        RunSetupDefinition setup = GetActiveSetup();
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
+        SelectionSpec potions = loadout.StartingPotions;
         if (potions.Mode == SelectionMode.Default)
         {
             potions.Mode = SelectionMode.Fixed;
@@ -1547,7 +1721,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
         potions.FixedModelIds.RemoveAt(index);
         MarkDirty();
-        RefreshStartingPotionInventory(GetActiveSetup());
+        RefreshStartingPotionInventory(setup, loadout);
     }
 
     private IReadOnlyList<LoadoutOwnedItem<CardModel>>? UpgradeStartingCard(
@@ -1555,12 +1729,13 @@ public partial class NCustomRunEditorScreen : Control
         LoadoutOwnedItem<CardModel> item,
         int amount,
         string? ownerId,
-        RunSetupDefinition setup)
+        RunSetupDefinition setup,
+        IStartingLoadoutDefinition loadout)
     {
-        if (!IsSetupOwnerValid(ownerId, setup))
+        if (!IsLoadoutOwnerValid(ownerId, setup, loadout))
             return null;
         EnsureDetailedStartingSelection(SelectionModelKind.Card);
-        List<SavedCardLoadoutEntry> entries = GetActiveSetup().StartingCardEntries;
+        List<SavedCardLoadoutEntry> entries = loadout.StartingCardEntries;
         if (item.Index < 0 || item.Index >= entries.Count)
             return CustomRunEditorPreviewService.CreateOwnedCards(entries);
 
@@ -1584,7 +1759,7 @@ public partial class NCustomRunEditorScreen : Control
             CommonHelpers.PlayCardSmithFeedback(view);
         SynchronizeStartingSelectionIds(SelectionModelKind.Card);
         MarkDirty();
-        RefreshStartingDeckPreview(GetActiveSetup());
+        RefreshStartingDeckPreview(loadout);
         return CustomRunEditorPreviewService.CreateOwnedCards(entries);
     }
 
@@ -1594,13 +1769,14 @@ public partial class NCustomRunEditorScreen : Control
             return;
         string? ownerId = _activeSetupRoleId;
         RunSetupDefinition setup = GetActiveSetup();
-        Dictionary<string, int> current = GetActiveSetup().StartingPowers
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
+        Dictionary<string, int> current = loadout.StartingPowers
             .ToDictionary(power => power.ModelId, power => power.Amount, StringComparer.OrdinalIgnoreCase);
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenPowerSelection(current, selected =>
             {
-                if (!IsSetupOwnerValid(ownerId, setup)) return;
-                GetActiveSetup().StartingPowers = selected
+                if (!IsLoadoutOwnerValid(ownerId, setup, loadout)) return;
+                loadout.StartingPowers = selected
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                     .Select(pair => new StartingPowerDefinition { ModelId = pair.Key, Amount = pair.Value })
                     .ToList();
@@ -1620,13 +1796,14 @@ public partial class NCustomRunEditorScreen : Control
             return;
         string? ownerId = _activeSetupRoleId;
         RunSetupDefinition setup = GetActiveSetup();
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenMorphSelection(
-                GetActiveSetup().StartingMorphModelId,
+                loadout.StartingMorphModelId,
                 selected =>
                 {
-                    if (!IsSetupOwnerValid(ownerId, setup)) return;
-                    GetActiveSetup().StartingMorphModelId = selected;
+                    if (!IsLoadoutOwnerValid(ownerId, setup, loadout)) return;
+                    loadout.StartingMorphModelId = selected;
                     MarkDirty();
                     RebuildContent();
                     _catalogSelectorSession = null;
@@ -1640,26 +1817,35 @@ public partial class NCustomRunEditorScreen : Control
         _catalogSelectorSession = session;
     }
 
-    private IReadOnlyList<SavedCardLoadoutEntry> GetStartingCardEntries(RunSetupDefinition setup)
+    private IReadOnlyList<SavedCardLoadoutEntry> GetStartingCardEntries(IStartingLoadoutDefinition loadout)
     {
-        if (setup.StartingDeck.Mode != SelectionMode.Fixed)
-            return ResolvePreviewCharacter(setup)?.StartingDeck
+        if (loadout.StartingDeck.Mode != SelectionMode.Fixed)
+            return ResolveLoadoutCharacter(loadout, GetActiveSetup())?.StartingDeck
                 .Select(card => new SavedCardLoadoutEntry { ModelId = card.Id.ToString() })
                 .ToList() ?? [];
-        return setup.StartingCardEntries.Count > 0
-            ? setup.StartingCardEntries
-            : setup.StartingDeck.FixedModelIds.Select(id => new SavedCardLoadoutEntry { ModelId = id }).ToList();
+        return loadout.StartingCardEntries.Count > 0
+            ? loadout.StartingCardEntries
+            : loadout.StartingDeck.FixedModelIds.Select(id => new SavedCardLoadoutEntry { ModelId = id }).ToList();
     }
 
-    private IReadOnlyList<SavedRelicLoadoutEntry> GetStartingRelicEntries(RunSetupDefinition setup)
+    private IReadOnlyList<SavedRelicLoadoutEntry> GetStartingRelicEntries(IStartingLoadoutDefinition loadout)
     {
-        if (setup.StartingRelics.Mode != SelectionMode.Fixed)
-            return ResolvePreviewCharacter(setup)?.StartingRelics
+        if (loadout.StartingRelics.Mode != SelectionMode.Fixed)
+            return ResolveLoadoutCharacter(loadout, GetActiveSetup())?.StartingRelics
                 .Select(relic => new SavedRelicLoadoutEntry { ModelId = relic.Id.ToString() })
                 .ToList() ?? [];
-        return setup.StartingRelicEntries.Count > 0
-            ? setup.StartingRelicEntries
-            : setup.StartingRelics.FixedModelIds.Select(id => new SavedRelicLoadoutEntry { ModelId = id }).ToList();
+        return loadout.StartingRelicEntries.Count > 0
+            ? loadout.StartingRelicEntries
+            : loadout.StartingRelics.FixedModelIds.Select(id => new SavedRelicLoadoutEntry { ModelId = id }).ToList();
+    }
+
+    private CharacterModel? ResolveLoadoutCharacter(
+        IStartingLoadoutDefinition loadout,
+        RunSetupDefinition setup)
+    {
+        if (loadout is CharacterStartingLoadoutDefinition characterLoadout)
+            return CustomRunCompiler.ResolveCharacter(characterLoadout.CharacterModelId);
+        return ResolvePreviewCharacter(setup);
     }
 
     private CharacterModel? ResolvePreviewCharacter(RunSetupDefinition? setup = null)
@@ -1687,7 +1873,7 @@ public partial class NCustomRunEditorScreen : Control
 
     private IReadOnlyList<string> GetDefaultStartingIds(SelectionModelKind kind)
     {
-        CharacterModel? character = ResolvePreviewCharacter();
+        CharacterModel? character = ResolveLoadoutCharacter(GetActiveLoadout(), GetActiveSetup());
         if (character is null)
             return [];
         return kind switch
@@ -1703,9 +1889,10 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
         SelectionSpec selection = kind == SelectionModelKind.Card
-            ? GetActiveSetup().StartingDeck
-            : GetActiveSetup().StartingRelics;
+            ? loadout.StartingDeck
+            : loadout.StartingRelics;
         if (selection.Mode == SelectionMode.Default)
         {
             selection.Mode = SelectionMode.Fixed;
@@ -1719,17 +1906,18 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
+        IStartingLoadoutDefinition loadout = GetActiveLoadout();
         if (kind == SelectionModelKind.Card)
         {
-            GetActiveSetup().StartingDeck.Mode = SelectionMode.Fixed;
-            GetActiveSetup().StartingDeck.FixedModelIds = GetActiveSetup().StartingCardEntries
+            loadout.StartingDeck.Mode = SelectionMode.Fixed;
+            loadout.StartingDeck.FixedModelIds = loadout.StartingCardEntries
                 .Select(entry => entry.ModelId)
                 .ToList();
         }
         else if (kind == SelectionModelKind.Relic)
         {
-            GetActiveSetup().StartingRelics.Mode = SelectionMode.Fixed;
-            GetActiveSetup().StartingRelics.FixedModelIds = GetActiveSetup().StartingRelicEntries
+            loadout.StartingRelics.Mode = SelectionMode.Fixed;
+            loadout.StartingRelics.FixedModelIds = loadout.StartingRelicEntries
                 .Select(entry => entry.ModelId)
                 .ToList();
         }
@@ -2083,7 +2271,8 @@ public partial class NCustomRunEditorScreen : Control
         List<LoadoutDropdownOption> options =
         [
             new LoadoutDropdownOption(SelectionMode.Default.ToString(), "No Restriction"),
-            new LoadoutDropdownOption(SelectionMode.Fixed.ToString(), "Restricted")
+            new LoadoutDropdownOption(SelectionMode.Fixed.ToString(), "Restricted"),
+            new LoadoutDropdownOption(SelectionMode.Random.ToString(), "Random")
         ];
         NLoadoutDropdown mode = new()
         {
@@ -2092,7 +2281,7 @@ public partial class NCustomRunEditorScreen : Control
             DropdownWidth = 420f,
         };
         string selectedMode = selection.Mode is SelectionMode.Fixed or SelectionMode.Random
-            ? SelectionMode.Fixed.ToString()
+            ? selection.Mode.ToString()
             : SelectionMode.Default.ToString();
         mode.SetItems(string.Empty, options, selectedMode);
         mode.SelectedItemChanged += selected =>
@@ -2102,7 +2291,7 @@ public partial class NCustomRunEditorScreen : Control
                 return;
             selection.Kind = SelectionModelKind.Character;
             selection.Mode = selectedSelectionMode;
-            if (selectedSelectionMode != SelectionMode.Fixed)
+            if (selectedSelectionMode == SelectionMode.Default)
                 selection.FixedModelIds.Clear();
             else if (selection.FixedModelIds.Count == 0)
             {
@@ -2122,17 +2311,11 @@ public partial class NCustomRunEditorScreen : Control
 
         HashSet<string> selectedIds = selection.FixedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         HBoxContainer characters = CreateCharacterButtonRow();
-        List<NCustomRunCharacterFilterButton> characterButtons = [];
-        List<CharacterModel> displayedCharacters = ModelDb.AllCharacters.ToList();
-        displayedCharacters.Add(ModelDb.Character<RandomCharacter>());
-        foreach (CharacterModel character in displayedCharacters)
+        foreach (CharacterModel character in ModelDb.AllCharacters
+                     .Where(character => character.IsPlayable && !IsRandomCharacterModel(character)))
         {
             string modelId = character.Id.ToString();
-            bool isRandom = IsRandomCharacterModel(character);
-            bool selected = isRandom
-                ? selection.Mode == SelectionMode.Random
-                : selection.Mode == SelectionMode.Fixed
-                  && (selectedIds.Contains(modelId) || selectedIds.Contains(character.Id.Entry));
+            bool selected = selectedIds.Contains(modelId) || selectedIds.Contains(character.Id.Entry);
             NCustomRunCharacterFilterButton characterButton = new();
             characterButton.Init(
                 character,
@@ -2140,10 +2323,8 @@ public partial class NCustomRunEditorScreen : Control
                 pressed => ToggleCharacterRestriction(
                     selection,
                     pressed,
-                    characterButtons,
                     ownerId,
                     setup));
-            characterButtons.Add(characterButton);
             characters.AddChild(characterButton);
         }
         _contentHost.AddChild(characters);
@@ -2164,45 +2345,39 @@ public partial class NCustomRunEditorScreen : Control
     private void ToggleCharacterRestriction(
         SelectionSpec selection,
         NCustomRunCharacterFilterButton pressedButton,
-        IReadOnlyList<NCustomRunCharacterFilterButton> buttons,
         string? ownerId,
         RunSetupDefinition setup)
     {
         if (_loadingFields || !IsSetupOwnerValid(ownerId, setup))
             return;
         selection.Kind = SelectionModelKind.Character;
-        if (pressedButton.IsRandom)
-        {
-            bool selectRandom = !pressedButton.IsSelected;
-            selection.FixedModelIds.Clear();
-            selection.Mode = selectRandom ? SelectionMode.Random : SelectionMode.Fixed;
-            foreach (NCustomRunCharacterFilterButton button in buttons)
-                button.SetSelected(selectRandom && button == pressedButton);
-        }
-        else
-        {
-            if (selection.Mode == SelectionMode.Random)
-            {
-                selection.FixedModelIds.Clear();
-                foreach (NCustomRunCharacterFilterButton button in buttons)
-                    button.SetSelected(false);
-            }
-            selection.Mode = SelectionMode.Fixed;
-            selection.FixedModelIds.RemoveAll(id =>
-                string.Equals(id, pressedButton.Character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
-                || string.Equals(id, pressedButton.Character.Id.Entry, StringComparison.OrdinalIgnoreCase));
-            bool selectCharacter = !pressedButton.IsSelected;
-            pressedButton.SetSelected(selectCharacter);
-            if (selectCharacter)
-                selection.FixedModelIds.Add(pressedButton.Character.Id.ToString());
-        }
+        selection.FixedModelIds.RemoveAll(id =>
+            string.Equals(id, pressedButton.Character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(id, pressedButton.Character.Id.Entry, StringComparison.OrdinalIgnoreCase));
+        bool selectCharacter = !pressedButton.IsSelected;
+        pressedButton.SetSelected(selectCharacter);
+        if (selectCharacter)
+            selection.FixedModelIds.Add(pressedButton.Character.Id.ToString());
         MarkDirty();
+        RebuildContent();
     }
 
     private static bool IsRandomCharacterModel(CharacterModel character)
     {
         return character.GetType().Name.Contains("Random", StringComparison.OrdinalIgnoreCase)
                || character.Id.Entry.Contains("RANDOM", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetCharacterDisplayName(CharacterModel character)
+    {
+        try
+        {
+            return new LocString("characters", character.CharacterSelectTitle).GetFormattedText();
+        }
+        catch
+        {
+            return character.Id.Entry;
+        }
     }
 
     private void NewDefinition()
@@ -2620,7 +2795,8 @@ public partial class NCustomRunEditorScreen : Control
     {
         MegaLabel label = CreateLabel(text, 19, new Color(0.76f, 0.79f, 0.86f), HorizontalAlignment.Left);
         label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        label.CustomMinimumSize = new Vector2(0f, 64f);
+        label.CustomMinimumSize = new Vector2(360f, 64f);
+        label.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
         return label;
     }
 

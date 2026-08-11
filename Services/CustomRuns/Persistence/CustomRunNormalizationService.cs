@@ -16,6 +16,7 @@ public static class CustomRunNormalizationService
     public static CustomRunDefinition Normalize(CustomRunDefinition definition)
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        bool migrateStartingLoadouts = definition.SchemaVersion < 3;
         if (definition.SchemaVersion < 2)
         {
             RoleAssignmentMode[] legacyModes = (definition.Roles ?? [])
@@ -42,12 +43,15 @@ public static class CustomRunNormalizationService
         definition.UpdatedAtUnixSeconds = definition.UpdatedAtUnixSeconds > 0
             ? definition.UpdatedAtUnixSeconds
             : definition.CreatedAtUnixSeconds;
-        definition.Setup = NormalizeSetup(definition.Setup ?? new RunSetupDefinition());
+        definition.Setup ??= new RunSetupDefinition();
+        if (migrateStartingLoadouts)
+            InferLegacyStartingLoadoutMode(definition.Setup);
+        definition.Setup = NormalizeSetup(definition.Setup);
         if (!Enum.IsDefined(definition.RoleAssignmentMode))
             definition.RoleAssignmentMode = RoleAssignmentMode.PlayersChoose;
         definition.Roles = (definition.Roles ?? [])
             .Where(role => role is not null)
-            .Select(NormalizeRole)
+            .Select(role => NormalizeRole(role, migrateStartingLoadouts))
             .ToList();
         definition.PlayerChoices = (definition.PlayerChoices ?? [])
             .Where(choice => choice is not null)
@@ -68,12 +72,37 @@ public static class CustomRunNormalizationService
     public static RunSetupDefinition NormalizeSetup(RunSetupDefinition setup)
     {
         setup.Character = NormalizeSelection(setup.Character, SelectionModelKind.Character);
-        setup.StartingDeck = NormalizeSelection(setup.StartingDeck, SelectionModelKind.Card);
-        setup.StartingRelics = NormalizeSelection(setup.StartingRelics, SelectionModelKind.Relic);
-        setup.StartingPotions = NormalizeSelection(setup.StartingPotions, SelectionModelKind.Potion);
-        setup.StartingCardEntries = NormalizeCardEntries(setup.StartingCardEntries, setup.StartingDeck);
-        setup.StartingRelicEntries = NormalizeRelicEntries(setup.StartingRelicEntries, setup.StartingRelics);
-        setup.StartingPowers = (setup.StartingPowers ?? [])
+        if (!Enum.IsDefined(setup.StartingLoadoutMode))
+            setup.StartingLoadoutMode = StartingLoadoutMode.PerCharacter;
+        NormalizeStartingLoadout(setup);
+        setup.CharacterStartingLoadouts = (setup.CharacterStartingLoadouts ?? [])
+            .Where(loadout => loadout is not null && !string.IsNullOrWhiteSpace(loadout.CharacterModelId))
+            .Select(loadout =>
+            {
+                loadout.CharacterModelId = loadout.CharacterModelId.Trim();
+                NormalizeStartingLoadout(loadout);
+                return loadout;
+            })
+            .GroupBy(loadout => loadout.CharacterModelId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(loadout => loadout.CharacterModelId, StringComparer.Ordinal)
+            .ToList();
+        setup.StartingAscension = setup.StartingAscension.HasValue
+            ? Math.Clamp(setup.StartingAscension.Value, 0, 10)
+            : null;
+        setup.RunSeed = string.IsNullOrWhiteSpace(setup.RunSeed) ? null : setup.RunSeed.Trim();
+        return setup;
+    }
+
+    public static T NormalizeStartingLoadout<T>(T loadout)
+        where T : IStartingLoadoutDefinition
+    {
+        loadout.StartingDeck = NormalizeSelection(loadout.StartingDeck, SelectionModelKind.Card);
+        loadout.StartingRelics = NormalizeSelection(loadout.StartingRelics, SelectionModelKind.Relic);
+        loadout.StartingPotions = NormalizeSelection(loadout.StartingPotions, SelectionModelKind.Potion);
+        loadout.StartingCardEntries = NormalizeCardEntries(loadout.StartingCardEntries, loadout.StartingDeck);
+        loadout.StartingRelicEntries = NormalizeRelicEntries(loadout.StartingRelicEntries, loadout.StartingRelics);
+        loadout.StartingPowers = (loadout.StartingPowers ?? [])
             .Where(power => power is not null && !string.IsNullOrWhiteSpace(power.ModelId) && power.Amount != 0)
             .Select(power => new StartingPowerDefinition
             {
@@ -89,14 +118,10 @@ public static class CustomRunNormalizationService
             .Where(power => power.Amount != 0)
             .OrderBy(power => power.ModelId, StringComparer.Ordinal)
             .ToList();
-        setup.StartingMorphModelId = string.IsNullOrWhiteSpace(setup.StartingMorphModelId)
+        loadout.StartingMorphModelId = string.IsNullOrWhiteSpace(loadout.StartingMorphModelId)
             ? null
-            : setup.StartingMorphModelId.Trim();
-        setup.StartingAscension = setup.StartingAscension.HasValue
-            ? Math.Clamp(setup.StartingAscension.Value, 0, 10)
-            : null;
-        setup.RunSeed = string.IsNullOrWhiteSpace(setup.RunSeed) ? null : setup.RunSeed.Trim();
-        return setup;
+            : loadout.StartingMorphModelId.Trim();
+        return loadout;
     }
 
     private static List<SavedCardLoadoutEntry> NormalizeCardEntries(
@@ -213,7 +238,7 @@ public static class CustomRunNormalizationService
         return pool;
     }
 
-    private static RoleDefinition NormalizeRole(RoleDefinition role)
+    private static RoleDefinition NormalizeRole(RoleDefinition role, bool migrateStartingLoadouts)
     {
         role.Id = NormalizeObjectId(role.Id);
         role.Name = string.IsNullOrWhiteSpace(role.Name) ? "New Role" : role.Name.Trim();
@@ -223,10 +248,24 @@ public static class CustomRunNormalizationService
             0,
             role.MaximumPlayers == 0 ? 4 : role.MaximumPlayers);
         role.LegacyAssignmentMode = null;
-        role.Setup = NormalizeSetup(role.Setup ?? new RunSetupDefinition());
+        role.Setup ??= new RunSetupDefinition();
+        if (migrateStartingLoadouts)
+            InferLegacyStartingLoadoutMode(role.Setup);
+        role.Setup = NormalizeSetup(role.Setup);
         role.Setup.RunSeed = null;
         role.Setup.StartingAscension = null;
         return role;
+    }
+
+    private static void InferLegacyStartingLoadoutMode(RunSetupDefinition setup)
+    {
+        setup.StartingLoadoutMode = setup.StartingDeck?.Mode != SelectionMode.Default
+                                    || setup.StartingRelics?.Mode != SelectionMode.Default
+                                    || setup.StartingPotions?.Mode != SelectionMode.Default
+                                    || setup.StartingPowers?.Count > 0
+                                    || !string.IsNullOrWhiteSpace(setup.StartingMorphModelId)
+            ? StartingLoadoutMode.Unified
+            : StartingLoadoutMode.PerCharacter;
     }
 
     private static PlayerChoiceDefinition NormalizeChoice(PlayerChoiceDefinition choice)

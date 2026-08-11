@@ -65,19 +65,27 @@ public static class CustomRunValidator
         string objectId)
     {
         ValidateSelection(setup.Character, result, section, objectId);
-        ValidateSelection(setup.StartingDeck, result, section, objectId);
-        ValidateSelection(setup.StartingRelics, result, section, objectId);
-        ValidateSelection(setup.StartingPotions, result, section, objectId);
-
-        foreach (StartingPowerDefinition power in setup.StartingPowers)
+        if (!Enum.IsDefined(setup.StartingLoadoutMode))
+            Error(result, section, objectId, "Starting loadout mode is invalid.");
+        if (setup.StartingLoadoutMode == StartingLoadoutMode.Unified)
         {
-            if (!CustomRunCatalogService.TryResolve(SelectionModelKind.Power, power.ModelId, out _))
-                Error(result, section, objectId, $"Unknown power '{power.ModelId}'.");
+            ValidateStartingLoadout(setup, setup.PotionSlots, result, section, objectId);
         }
-        if (setup.StartingMorphModelId is not null
-            && !CustomRunCatalogService.TryResolveMorph(setup.StartingMorphModelId, out _))
+        else
         {
-            Error(result, section, objectId, $"Unknown morph '{setup.StartingMorphModelId}'.");
+            foreach (CharacterStartingLoadoutDefinition loadout in setup.CharacterStartingLoadouts)
+            {
+                if (!CustomRunCatalogService.TryResolve(
+                        SelectionModelKind.Character,
+                        loadout.CharacterModelId,
+                        out CustomRunCatalogEntry characterEntry)
+                    || characterEntry.Model is not CharacterModel character
+                    || !character.IsPlayable)
+                {
+                    Error(result, section, objectId, $"Unknown character loadout '{loadout.CharacterModelId}'.");
+                }
+                ValidateStartingLoadout(loadout, setup.PotionSlots, result, section, objectId);
+            }
         }
 
         Range(setup.PotionSlots, 0, 20, "Potion slots", result, section, objectId);
@@ -94,6 +102,33 @@ public static class CustomRunValidator
         }
     }
 
+    private static void ValidateStartingLoadout(
+        IStartingLoadoutDefinition loadout,
+        int? potionSlots,
+        CustomRunValidationResult result,
+        string section,
+        string objectId)
+    {
+        ValidateSelection(loadout.StartingDeck, result, section, objectId);
+        ValidateSelection(loadout.StartingRelics, result, section, objectId);
+        ValidateSelection(loadout.StartingPotions, result, section, objectId);
+        foreach (StartingPowerDefinition power in loadout.StartingPowers)
+        {
+            if (!CustomRunCatalogService.TryResolve(SelectionModelKind.Power, power.ModelId, out _))
+                Error(result, section, objectId, $"Unknown power '{power.ModelId}'.");
+        }
+        if (loadout.StartingMorphModelId is not null
+            && !CustomRunCatalogService.TryResolveMorph(loadout.StartingMorphModelId, out _))
+        {
+            Error(result, section, objectId, $"Unknown morph '{loadout.StartingMorphModelId}'.");
+        }
+        if (loadout.StartingPotions.Mode == SelectionMode.Fixed
+            && loadout.StartingPotions.FixedModelIds.Count > (potionSlots ?? 3))
+        {
+            Error(result, section, objectId, "Starting potions exceed the configured potion slots.");
+        }
+    }
+
     private static void ValidateSelection(
         SelectionSpec selection,
         CustomRunValidationResult result,
@@ -105,7 +140,8 @@ public static class CustomRunValidator
         if (selection.Pool.MaximumCopiesPerItem < 1)
             Error(result, section, objectId, $"{selection.Kind} pool copy limit must be at least 1.");
 
-        if (selection.Mode != SelectionMode.Fixed)
+        if (selection.Mode != SelectionMode.Fixed
+            && !(selection.Kind == SelectionModelKind.Character && selection.Mode == SelectionMode.Random))
             return;
 
         foreach (string id in selection.FixedModelIds.Distinct(StringComparer.OrdinalIgnoreCase))

@@ -45,6 +45,8 @@ public partial class NCustomRunCharacterFilterButton : Button
         CustomMinimumSize = new Vector2(100f, 148f);
         Size = CustomMinimumSize;
         PivotOffset = CustomMinimumSize * 0.5f;
+        SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+        SizeFlagsVertical = SizeFlags.ShrinkCenter;
         FocusMode = FocusModeEnum.All;
         MouseFilter = MouseFilterEnum.Stop;
         TooltipText = character.Id.Entry;

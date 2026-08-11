@@ -12,7 +12,7 @@ using Loadout.Services.Saving;
 
 public static class CustomRunStorageService
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     private const string GlobalPath = "loadout/services/custom_runs/custom_runs.json";
     private const string LegacyProfilePath = "loadout/services/custom_runs/profile_custom_runs.json";

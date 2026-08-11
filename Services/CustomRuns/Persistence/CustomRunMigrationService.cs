@@ -19,39 +19,49 @@ public static class CustomRunMigrationService
         if (schemaVersion == CustomRunStorageService.CurrentSchemaVersion)
             return true;
 
-        if (schemaVersion == 1)
+        if (schemaVersion is 1 or 2)
         {
             try
             {
                 JsonObject root = JsonNode.Parse(json)?.AsObject()
                                   ?? throw new JsonException("Custom Run root is missing.");
-                List<RoleAssignmentMode> legacyModes = [];
-                if (root["roles"] is JsonArray roles)
+                if (schemaVersion == 1)
                 {
-                    foreach (JsonNode? node in roles)
+                    List<RoleAssignmentMode> legacyModes = [];
+                    if (root["roles"] is JsonArray legacyRoles)
                     {
-                        if (node is not JsonObject role)
-                            continue;
-                        if (role["assignmentMode"]?.GetValue<int>() is int value
-                            && Enum.IsDefined((RoleAssignmentMode)value))
+                        foreach (JsonNode? node in legacyRoles)
                         {
-                            legacyModes.Add((RoleAssignmentMode)value);
+                            if (node is not JsonObject role)
+                                continue;
+                            if (role["assignmentMode"]?.GetValue<int>() is int value
+                                && Enum.IsDefined((RoleAssignmentMode)value))
+                            {
+                                legacyModes.Add((RoleAssignmentMode)value);
+                            }
+                            role.Remove("assignmentMode");
                         }
-                        role.Remove("assignmentMode");
                     }
+
+                    RoleAssignmentMode mode = legacyModes.Distinct().Count() == 1
+                        ? legacyModes[0]
+                        : RoleAssignmentMode.PlayersChoose;
+                    root["roleAssignmentMode"] = (int)mode;
                 }
 
-                RoleAssignmentMode mode = legacyModes.Distinct().Count() == 1
-                    ? legacyModes[0]
-                    : RoleAssignmentMode.PlayersChoose;
-                root["roleAssignmentMode"] = (int)mode;
+                MigrateStartingLoadout(root["setup"] as JsonObject);
+                if (root["roles"] is JsonArray roles)
+                {
+                    foreach (JsonObject role in roles.OfType<JsonObject>())
+                        MigrateStartingLoadout(role["setup"] as JsonObject);
+                }
                 root["schemaVersion"] = CustomRunStorageService.CurrentSchemaVersion;
                 migratedJson = root.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
                 return true;
             }
             catch (Exception exception)
             {
-                error = $"Could not migrate Custom Run schema 1. {exception.Message}";
+                error = $"Could not migrate Custom Run schema {schemaVersion}. {exception.Message}";
                 return false;
             }
         }
@@ -60,5 +70,24 @@ public static class CustomRunMigrationService
             ? $"Custom Run schema {schemaVersion} is newer than this version supports."
             : $"Custom Run schema {schemaVersion} is not supported.";
         return false;
+    }
+
+    private static void MigrateStartingLoadout(JsonObject? setup)
+    {
+        if (setup is null || setup.ContainsKey("startingLoadoutMode"))
+            return;
+        bool authored = HasNonDefaultSelection(setup["startingDeck"] as JsonObject)
+                        || HasNonDefaultSelection(setup["startingRelics"] as JsonObject)
+                        || HasNonDefaultSelection(setup["startingPotions"] as JsonObject)
+                        || setup["startingPowers"] is JsonArray { Count: > 0 }
+                        || setup["startingMorphModelId"] is JsonValue;
+        setup["startingLoadoutMode"] = (int)(authored
+            ? StartingLoadoutMode.Unified
+            : StartingLoadoutMode.PerCharacter);
+    }
+
+    private static bool HasNonDefaultSelection(JsonObject? selection)
+    {
+        return selection?["mode"]?.GetValue<int>() is int mode && mode != (int)SelectionMode.Default;
     }
 }

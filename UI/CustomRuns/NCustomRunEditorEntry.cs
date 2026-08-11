@@ -203,7 +203,7 @@ public static class NCustomRunEditorEntry
                     accepted = true;
                     error = string.Empty;
                     RefreshRoleControls(screen, lobby, definition);
-                    screen.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(OverlayNodeName)?.RefreshRoleGate();
+                    screen.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(OverlayNodeName)?.RefreshRoleSelection();
                 }
                 if (!accepted)
                     ShowAttachedStatus(screen, error, error: true);
@@ -411,6 +411,17 @@ public static class NCustomRunEditorEntry
         }
         return definition.RoleAssignmentMode == RoleAssignmentMode.HostAssigns
                && !CustomRunRoleAssignmentService.AreMinimumsSatisfied(lobby, definition);
+    }
+
+    internal static string? GetEffectiveLocalRoleId(StartRunLobby lobby)
+    {
+        CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(lobby);
+        if (definition?.RoleAssignmentMode == RoleAssignmentMode.PlayersChoose
+            && PendingLocalRoles.TryGetValue(lobby, out string? pending))
+        {
+            return pending;
+        }
+        return CustomRunRoleAssignmentService.GetRoleId(lobby, lobby.NetService.NetId);
     }
 
     internal static void CompleteLocalRoleLock(Control? screen, StartRunLobby lobby, bool accepted)

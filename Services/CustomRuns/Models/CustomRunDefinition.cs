@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 public sealed class CustomRunDefinition
 {
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 3;
 
     [JsonPropertyName("id")]
     public string Id { get; set; } = Guid.NewGuid().ToString("N");

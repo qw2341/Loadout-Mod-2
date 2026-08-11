@@ -152,6 +152,16 @@ public partial class NCustomRunCharacterSelectOverlay : Control
         }
     }
 
+    public void RefreshRoleSelection()
+    {
+        if (_lobby is null)
+            return;
+        CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(_lobby);
+        if (definition is not null)
+            ApplyCharacterRestrictions(definition);
+        RefreshRoleGate();
+    }
+
     private void ReleaseConfirmRoleGate()
     {
         if (!_roleGateDisabledConfirm)
@@ -176,13 +186,14 @@ public partial class NCustomRunCharacterSelectOverlay : Control
         RestoreCharacterVisibility();
         RunSetupDefinition setup = definition.Setup;
         if (_lobby is not null
-            && CustomRunRoleAssignmentService.GetRoleId(_lobby, _lobby.NetService.NetId) is { } roleId)
+            && NCustomRunEditorEntry.GetEffectiveLocalRoleId(_lobby) is { } roleId)
         {
             setup = definition.Roles.FirstOrDefault(role =>
                 string.Equals(role.Id, roleId, StringComparison.Ordinal))?.Setup ?? definition.Setup;
         }
-        if (setup.Character.Mode != SelectionMode.Fixed
-            || setup.Character.FixedModelIds.Count == 0)
+        bool fixedSelection = setup.Character.Mode == SelectionMode.Fixed;
+        bool randomSelection = setup.Character.Mode == SelectionMode.Random;
+        if (!fixedSelection && !randomSelection)
         {
             return;
         }
@@ -193,18 +204,23 @@ public partial class NCustomRunCharacterSelectOverlay : Control
         List<NCharacterSelectButton> visibleButtons = [];
         foreach (NCharacterSelectButton button in _originalVisibility.Keys)
         {
-            bool visible = !button.IsRandom
-                           && (allowed.Contains(button.Character.Id.ToString())
-                               || allowed.Contains(button.Character.Id.Entry));
+            bool characterAllowed = allowed.Count == 0
+                                    || allowed.Contains(button.Character.Id.ToString())
+                                    || allowed.Contains(button.Character.Id.Entry);
+            bool visible = button.IsRandom ? randomSelection : characterAllowed;
             button.Visible = visible;
             if (visible)
                 visibleButtons.Add(button);
         }
 
         RebuildFocusNeighbors(visibleButtons);
-        NCharacterSelectButton? selected = visibleButtons.FirstOrDefault(button => button.IsSelected);
+        NCharacterSelectButton? selected = randomSelection
+            ? visibleButtons.FirstOrDefault(button => button.IsRandom && !button.IsLocked)
+            : visibleButtons.FirstOrDefault(button => button.IsSelected && !button.IsRandom);
         if (selected is null)
             visibleButtons.FirstOrDefault(button => !button.IsLocked)?.Select();
+        else if (!selected.IsSelected)
+            selected.Select();
     }
 
     private void RestoreCharacterVisibility()
