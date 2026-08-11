@@ -77,10 +77,19 @@ public static class CustomRunRegistry
 
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:RunStart", "Run Start", "Run");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CombatStart", "Combat Start", "Combat");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CombatEnd", "Combat End", "Combat");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:TurnStart", "Turn Start", "Combat");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:TurnEnd", "Turn End", "Combat");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardPlayed", "Card Played", "Cards");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardDrawn", "Card Drawn", "Cards");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardDiscarded", "Card Discarded", "Cards");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardExhausted", "Card Exhausted", "Cards");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardGenerated", "Card Generated", "Cards");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PlayerTakesDamage", "Player Takes Damage", "Players");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PlayerGainsBlock", "Player Gains Block", "Players");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PowerReceived", "Power Received", "Powers");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PotionUsed", "Potion Used", "Potions");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:EnergySpent", "Energy Spent", "Players");
 
             RuleParameterDescriptor playerTarget = new("target", "Target", RuleParameterKind.PlayerTarget);
             RuleParameterDescriptor amount = new("amount", "Amount", RuleParameterKind.NumericSource);

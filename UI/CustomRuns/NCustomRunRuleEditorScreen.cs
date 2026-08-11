@@ -4,7 +4,6 @@ namespace Loadout.UI.CustomRuns;
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
@@ -15,17 +14,21 @@ using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.PermanentRules;
 using Loadout.Services.CustomRuns.Persistence;
 using Loadout.Services.CustomRuns.Registry;
+using Loadout.Services.Loadouts;
+using Loadout.Services.Targets;
 using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Screens.RunHistoryScreen;
 
@@ -33,13 +36,13 @@ public partial class NCustomRunRuleEditorScreen : Control
 {
     private const string ScenePath = "res://UI/CustomRuns/CustomRunRuleEditorScreen.tscn";
     private const int MaximumConditionDepth = 5;
+    private const double SpecificCardHoverDelaySeconds = 0.2d;
 
     private CustomRunDefinition? _definitionContext;
     private RuleDefinition? _workingRule;
     private Action<RuleDefinition>? _saveAction;
     private NScrollableContainer? _contentScroll;
     private VBoxContainer? _contentHost;
-    private MegaLabel? _ruleNameLabel;
     private MegaLabel? _statusLabel;
     private NConfirmButton? _confirmButton;
     private NLoadoutSettingsActionButton? _permanentButton;
@@ -197,12 +200,8 @@ public partial class NCustomRunRuleEditorScreen : Control
             titleRow.AddThemeConstantOverride("separation", 22);
             titleRow.SetAnchorsPreset(LayoutPreset.FullRect);
             MegaLabel title = CreateLabel("RULE EDITOR", 42, StsColors.gold, HorizontalAlignment.Left);
-            title.CustomMinimumSize = new Vector2(330f, 0f);
+            title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             titleRow.AddChild(title);
-            _ruleNameLabel = CreateLabel(string.Empty, 31, StsColors.cream, HorizontalAlignment.Left);
-            _ruleNameLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            _ruleNameLabel.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
-            titleRow.AddChild(_ruleNameLabel);
             titleMount.AddChild(titleRow);
         }
 
@@ -271,11 +270,6 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         if (!_staticUiBuilt || _workingRule is null)
             return;
-        if (_ruleNameLabel is not null)
-        {
-            _ruleNameLabel.Text = _workingRule.Name;
-            _ruleNameLabel.TooltipText = _workingRule.Name;
-        }
         if (_permanentButton is not null)
         {
             _permanentButton.Visible = !_readOnly && !_editingPermanent;
@@ -318,20 +312,20 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         if (_contentHost is null || _workingRule is null)
             return;
-        _contentHost.AddChild(CreateSectionTitle("RULE"));
-
-        _contentHost.AddChild(CreateFieldLabel("Name"));
+        HBoxContainer row = CreateRow();
+        MegaLabel title = CreateSectionTitle("RULE");
+        title.CustomMinimumSize = new Vector2(150f, 52f);
+        row.AddChild(title);
         LineEdit name = CreateLineEdit(_workingRule.Name);
         name.TextChanged += value =>
         {
             if (_loadingFields || _workingRule is null)
                 return;
             _workingRule.Name = value;
-            if (_ruleNameLabel is not null)
-                _ruleNameLabel.Text = value;
             MarkDirty();
         };
-        _contentHost.AddChild(name);
+        row.AddChild(name);
+        _contentHost.AddChild(row);
     }
 
     private void BuildTriggerSection()
@@ -389,11 +383,18 @@ public partial class NCustomRunRuleEditorScreen : Control
             AddSettingsActionButton(header, "delete_group", "DELETE GROUP", 180f, deleteAction, danger: true);
         panel.AddChild(header);
 
+        MarginContainer bodyIndent = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        bodyIndent.AddThemeConstantOverride("margin_left", 36);
+        VBoxContainer body = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", 12);
+        bodyIndent.AddChild(body);
+        panel.AddChild(bodyIndent);
+
         for (int index = 0; index < group.Conditions.Count; index++)
         {
             RuleComponentSpec condition = group.Conditions[index];
             int capturedIndex = index;
-            panel.AddChild(BuildComponentEditor(
+            body.AddChild(BuildComponentEditor(
                 condition,
                 RuleComponentKind.Condition,
                 () =>
@@ -410,7 +411,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         {
             ConditionGroupDefinition child = group.Groups[index];
             int capturedIndex = index;
-            panel.AddChild(BuildConditionGroup(
+            body.AddChild(BuildConditionGroup(
                 child,
                 depth + 1,
                 () =>
@@ -425,7 +426,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         {
             MegaLabel empty = CreateHint("No conditions. This group currently passes automatically.");
             empty.CustomMinimumSize = new Vector2(0f, 54f);
-            panel.AddChild(empty);
+            body.AddChild(empty);
         }
         return panel;
     }
@@ -805,6 +806,105 @@ public partial class NCustomRunRuleEditorScreen : Control
         parent.AddChild(row);
     }
 
+    private void BuildSpecificCardsPreview(
+        VBoxContainer parent,
+        RuleComponentSpec component,
+        string key,
+        CardMatchSpec filter,
+        Action? afterChanged)
+    {
+        MarginContainer indent = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        indent.AddThemeConstantOverride("margin_left", 274);
+        HFlowContainer preview = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Pass
+        };
+        preview.AddThemeConstantOverride("h_separation", 18);
+        preview.AddThemeConstantOverride("v_separation", 14);
+        indent.AddChild(preview);
+        parent.AddChild(indent);
+
+        IReadOnlyList<LoadoutOwnedItem<CardModel>> cards =
+            CustomRunEditorPreviewService.CreateOwnedCards(filter.CardIds
+                .Select(id => new SavedCardLoadoutEntry { ModelId = id })
+                .ToList());
+        foreach (LoadoutOwnedItem<CardModel> item in cards)
+        {
+            NDeckHistoryEntry? view = NDeckHistoryEntry.Create(item.Model, 1);
+            if (view is null)
+                continue;
+            string modelId = item.Model.Id.ToString();
+            view.TooltipText = "Click to remove this card.";
+            AttachSpecificCardHover(view, item.Model);
+            view.Connect(
+                NDeckHistoryEntry.SignalName.Clicked,
+                Callable.From<NDeckHistoryEntry>(_ =>
+                {
+                    int removed = filter.CardIds.RemoveAll(id => CardIdsMatch(id, modelId));
+                    if (removed == 0)
+                        return;
+                    RuleComponentParameterService.Set(component, key, filter);
+                    afterChanged?.Invoke();
+                    MarkDirty();
+                    RebuildContentDeferred();
+                }));
+            preview.AddChild(view);
+        }
+    }
+
+    private void AttachSpecificCardHover(Control view, CardModel card)
+    {
+        bool hovered = false;
+        int generation = 0;
+        view.MouseEntered += () =>
+        {
+            hovered = true;
+            int requestedGeneration = ++generation;
+            TaskHelper.RunSafely(ShowSpecificCardHoverAfterDelay(
+                view,
+                card,
+                () => hovered && generation == requestedGeneration));
+        };
+        view.MouseExited += () =>
+        {
+            hovered = false;
+            generation++;
+            NHoverTipSet.Remove(view);
+        };
+        view.TreeExiting += () => NHoverTipSet.Remove(view);
+    }
+
+    private async Task ShowSpecificCardHoverAfterDelay(
+        Control view,
+        CardModel card,
+        Func<bool> shouldShow)
+    {
+        SceneTreeTimer timer = GetTree().CreateTimer(SpecificCardHoverDelaySeconds);
+        await ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
+        if (!shouldShow() || !GodotObject.IsInstanceValid(view) || !view.IsVisibleInTree())
+            return;
+
+        List<IHoverTip> tips = [HoverTipFactory.FromCard(card)];
+        try
+        {
+            tips.AddRange(card.HoverTips);
+        }
+        catch
+        {
+        }
+        CommonHelpers.ShowHoverTips(view, tips);
+    }
+
+    private static bool CardIdsMatch(string candidate, string canonicalId)
+    {
+        if (string.Equals(candidate, canonicalId, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return CustomRunCatalogService.TryResolve(SelectionModelKind.Card, candidate, out CustomRunCatalogEntry entry)
+               && entry.Model is CardModel card
+               && string.Equals(card.Id.ToString(), canonicalId, StringComparison.OrdinalIgnoreCase);
+    }
+
     private void BuildCardFilterParameter(
         VBoxContainer parent,
         RuleComponentSpec component,
@@ -925,6 +1025,8 @@ public partial class NCustomRunRuleEditorScreen : Control
                 });
         }
         parent.AddChild(row);
+        if (filter.CardIds.Count > 0)
+            BuildSpecificCardsPreview(parent, component, parameter.Key, filter, afterChanged);
     }
 
     private void OpenCardMatchSelector(
@@ -943,6 +1045,16 @@ public partial class NCustomRunRuleEditorScreen : Control
                     RuleComponentParameterService.Set(component, key, filter);
                     afterChanged?.Invoke();
                     MarkDirty();
+                },
+                (screen, item, added) =>
+                {
+                    if (!added || item.UntypedModel is not CardModel card)
+                        return;
+                    CustomRunEditorPreviewService.PreviewCardAdd(
+                        card,
+                        upgradeLevel: 0,
+                        amount: 1,
+                        screen.GetNodeOrNull<Control>(screen.CancelButtonPath));
                 },
                 out IDisposable? session,
                 out string error))
@@ -1193,13 +1305,11 @@ public partial class NCustomRunRuleEditorScreen : Control
         {
             case NumericValueSourceKind.Constant:
             {
-                LineEdit constant = CreateLineEdit(captured.Constant.ToString(CultureInfo.InvariantCulture));
-                constant.CustomMinimumSize = new Vector2(230f, 46f);
-                constant.TextChanged += text =>
+                NLoadoutDecimalStepper constant = new();
+                constant.Init(captured.Constant, -999999m, 999999m, 0.01m);
+                constant.ValueChanged += value =>
                 {
-                    if (!decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsed))
-                        return;
-                    captured.Constant = parsed;
+                    captured.Constant = value;
                     RuleComponentParameterService.Set(component, parameter.Key, captured);
                     afterChanged?.Invoke();
                     MarkDirty();
@@ -1544,7 +1654,6 @@ public partial class NCustomRunRuleEditorScreen : Control
             MouseFilter = MouseFilterEnum.Pass
         };
         panel.AddThemeConstantOverride("separation", 10);
-        panel.AddThemeConstantOverride("margin_left", depth * 24);
         ColorRect accent = new()
         {
             CustomMinimumSize = new Vector2(0f, 2f),
@@ -1629,13 +1738,6 @@ public partial class NCustomRunRuleEditorScreen : Control
         MegaLabel title = CreateLabel(text, 32, StsColors.gold, HorizontalAlignment.Left);
         title.CustomMinimumSize = new Vector2(0f, 52f);
         return title;
-    }
-
-    private static MegaLabel CreateFieldLabel(string text)
-    {
-        MegaLabel label = CreateLabel(text, 22, StsColors.gold, HorizontalAlignment.Left);
-        label.CustomMinimumSize = new Vector2(0f, 34f);
-        return label;
     }
 
     private static MegaLabel CreateHint(string text)

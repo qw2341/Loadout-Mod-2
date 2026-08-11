@@ -57,6 +57,7 @@ public static class CustomRunCatalogSelector
         SelectionModelKind kind,
         IReadOnlyCollection<string> selectedModelIds,
         Action<IReadOnlyList<string>> changed,
+        Action<NGenericSelectScreen, IGenericSelectItem, bool>? selectionToggled,
         out IDisposable? session,
         out string error)
     {
@@ -94,10 +95,14 @@ public static class CustomRunCatalogSelector
                 selectedAmounts,
                 activationOverride: (target, item) =>
                 {
-                    if (target.SelectedAmounts.ContainsKey(item.Id))
+                    bool wasSelected = target.SelectedAmounts.ContainsKey(item.Id);
+                    if (wasSelected)
                         target.DeselectItem(item.Id);
                     else
                         target.SelectItem(item.Id);
+                    bool isSelected = target.SelectedAmounts.ContainsKey(item.Id);
+                    if (wasSelected != isSelected)
+                        selectionToggled?.Invoke(target, item, isSelected);
                 },
                 showSelectionChrome: false,
                 useCustomRunBackdrop: true,

@@ -29,6 +29,7 @@ public class CardPrinter
 {
 	private const string ViewUpgradesToggleId = "view_upgrades";
 	private const string PreviewUpgradeMetaKey = "loadout_preview_upgrade";
+	private const string SelectionOutlineName = "LoadoutSelectionOutline";
 	private const string TargetDropdownName = "CardPrinterTargetDropdown";
 	private const string PlayModeFilterGroupId = "play_mode";
 	private const string MultiplayerFilterId = "play_mode_multiplayer";
@@ -302,6 +303,7 @@ public class CardPrinter
 	    holder.CustomMinimumSize = NCard.defaultSize * holder.SmallScale;
 	    holder.ReassignToCard(displayModel, pileType, null, ModelVisibility.Visible);
 	    ApplyCardUpgradePreview(holder, state);
+	    ApplyCardSelectionOutline(holder, state.IsSelected);
 	    return holder;
     }
 
@@ -581,6 +583,29 @@ public class CardPrinter
 		    return;
 
 	    ApplyCardUpgradePreview(holder, state);
+	    ApplyCardSelectionOutline(holder, state.IsSelected);
+    }
+
+    private static void ApplyCardSelectionOutline(NGridCardHolder holder, bool isSelected)
+    {
+	    ReferenceRect outline = holder.GetNodeOrNull<ReferenceRect>(SelectionOutlineName);
+	    if (outline is null)
+	    {
+		    const float inset = 8f;
+		    outline = new ReferenceRect
+		    {
+			    Name = SelectionOutlineName,
+			    Position = -(NCard.defaultSize * 0.5f) - new Vector2(inset, inset),
+			    Size = NCard.defaultSize + new Vector2(inset * 2f, inset * 2f),
+			    MouseFilter = Control.MouseFilterEnum.Ignore,
+			    BorderColor = new Color(1f, 0.82f, 0.08f, 0.98f),
+			    BorderWidth = 7f,
+			    EditorOnly = false,
+			    ZIndex = 50
+		    };
+		    holder.AddChild(outline);
+	    }
+	    outline.Visible = isSelected;
     }
 
     private static void RefreshHolderModel(NGridCardHolder holder, CardModel sourceModel, bool forceReassign, PileType pileType = PileType.None)
