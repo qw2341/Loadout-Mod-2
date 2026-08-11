@@ -60,11 +60,29 @@ public static class CustomRunCatalogSelector
         out IDisposable? session,
         out string error)
     {
+        return TryOpenOwnedCardActions(
+            screenNameFragment,
+            cards,
+            activated,
+            alternateActivated: null,
+            out session,
+            out error);
+    }
+
+    public static bool TryOpenOwnedCardActions(
+        string screenNameFragment,
+        IReadOnlyList<LoadoutOwnedItem<CardModel>> cards,
+        Func<NGenericSelectScreen, LoadoutOwnedItem<CardModel>, int, IReadOnlyList<LoadoutOwnedItem<CardModel>>?> activated,
+        Func<NGenericSelectScreen, LoadoutOwnedItem<CardModel>, int, IReadOnlyList<LoadoutOwnedItem<CardModel>>?>? alternateActivated,
+        out IDisposable? session,
+        out string error)
+    {
         session = null;
         if (!TryFindNamedScreen(screenNameFragment, out NGenericSelectScreen screen, out error))
             return false;
 
-        SelectItemAdapter<LoadoutOwnedItem<CardModel>> adapter = new()
+        SelectItemAdapter<LoadoutOwnedItem<CardModel>> adapter = null!;
+        adapter = new SelectItemAdapter<LoadoutOwnedItem<CardModel>>
         {
             GetId = CommonHelpers.OwnedSlotItemId,
             GetName = item => CardPrinter.FormatCardTitle(item.Model),
@@ -77,7 +95,17 @@ public static class CustomRunCatalogSelector
                 CardPrinter.ForceRefreshCardVisuals(view, item.Model, PileType.Deck);
                 CardPrinter.UpdateCardGridItem(view, state);
             },
-            BindActivationWithCleanup = (_, view, activate) => CardPrinter.BindCardActivationWithCleanup(view, activate)
+            BindActivationWithCleanup = (boundItem, view, activate) => alternateActivated is null
+                ? CardPrinter.BindCardActivationWithCleanup(view, activate)
+                : CardPrinter.BindCardActivationWithCleanup(
+                    view,
+                    activate,
+                    () => ActivateOwnedCard(
+                        screen,
+                        view,
+                        boundItem,
+                        alternateActivated,
+                        adapter))
         };
 
         try
@@ -136,11 +164,45 @@ public static class CustomRunCatalogSelector
         out IDisposable? session,
         out string error)
     {
+        return TryOpenOwnedRelicAction(
+            screenNameFragment,
+            relics,
+            activated,
+            rightClickOnly: false,
+            out session,
+            out error);
+    }
+
+    public static bool TryOpenOwnedRelicRightAction(
+        string screenNameFragment,
+        IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics,
+        Func<NGenericSelectScreen, LoadoutOwnedItem<RelicModel>, int, IReadOnlyList<LoadoutOwnedItem<RelicModel>>?> activated,
+        out IDisposable? session,
+        out string error)
+    {
+        return TryOpenOwnedRelicAction(
+            screenNameFragment,
+            relics,
+            activated,
+            rightClickOnly: true,
+            out session,
+            out error);
+    }
+
+    private static bool TryOpenOwnedRelicAction(
+        string screenNameFragment,
+        IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics,
+        Func<NGenericSelectScreen, LoadoutOwnedItem<RelicModel>, int, IReadOnlyList<LoadoutOwnedItem<RelicModel>>?> activated,
+        bool rightClickOnly,
+        out IDisposable? session,
+        out string error)
+    {
         session = null;
         if (!TryFindNamedScreen(screenNameFragment, out NGenericSelectScreen screen, out error))
             return false;
 
-        SelectItemAdapter<LoadoutOwnedItem<RelicModel>> adapter = new()
+        SelectItemAdapter<LoadoutOwnedItem<RelicModel>> adapter = null!;
+        adapter = new SelectItemAdapter<LoadoutOwnedItem<RelicModel>>
         {
             GetId = CommonHelpers.OwnedSlotItemId,
             GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
@@ -148,7 +210,11 @@ public static class CustomRunCatalogSelector
             CapturePreloadResourcePaths = item => [item.Model.IconPath],
             CreateView = (item, _) => NLoadoutPanel.CreateOwnedRelicGridItem(item.Model),
             UpdateView = (item, view, _) => RefreshRelicView(view, item.Model),
-            BindActivationWithCleanup = (_, view, activate) => LoadoutBag.BindRelicActivationWithCleanup(view, activate)
+            BindActivationWithCleanup = (boundItem, view, activate) => rightClickOnly
+                ? RelicModifier.BindRightClickWithCleanup(
+                    view,
+                    () => ActivateOwnedRelic(screen, view, boundItem, activated, adapter))
+                : LoadoutBag.BindRelicActivationWithCleanup(view, activate)
         };
 
         try
@@ -287,6 +353,48 @@ public static class CustomRunCatalogSelector
         session = activeSession;
         root.OpenScreen(screen);
         return true;
+    }
+
+    private static void ActivateOwnedCard(
+        NGenericSelectScreen screen,
+        Control sourceView,
+        LoadoutOwnedItem<CardModel> fallback,
+        Func<NGenericSelectScreen, LoadoutOwnedItem<CardModel>, int, IReadOnlyList<LoadoutOwnedItem<CardModel>>?> activated,
+        SelectItemAdapter<LoadoutOwnedItem<CardModel>> adapter)
+    {
+        LoadoutOwnedItem<CardModel> item = fallback;
+        if (screen.TryGetItemForView(sourceView, out IGenericSelectItem current)
+            && current.UntypedModel is LoadoutOwnedItem<CardModel> currentCard)
+        {
+            item = currentCard;
+        }
+        IReadOnlyList<LoadoutOwnedItem<CardModel>>? next = activated(
+            screen,
+            item,
+            screen.GetCurrentActivationMultiplier());
+        if (next is not null && screen.IsScreenActive)
+            screen.RefreshItemsPreservingViews(next, adapter, animateRelayout: true, updateExistingViews: true);
+    }
+
+    private static void ActivateOwnedRelic(
+        NGenericSelectScreen screen,
+        Control sourceView,
+        LoadoutOwnedItem<RelicModel> fallback,
+        Func<NGenericSelectScreen, LoadoutOwnedItem<RelicModel>, int, IReadOnlyList<LoadoutOwnedItem<RelicModel>>?> activated,
+        SelectItemAdapter<LoadoutOwnedItem<RelicModel>> adapter)
+    {
+        LoadoutOwnedItem<RelicModel> item = fallback;
+        if (screen.TryGetItemForView(sourceView, out IGenericSelectItem current)
+            && current.UntypedModel is LoadoutOwnedItem<RelicModel> currentRelic)
+        {
+            item = currentRelic;
+        }
+        IReadOnlyList<LoadoutOwnedItem<RelicModel>>? next = activated(
+            screen,
+            item,
+            screen.GetCurrentActivationMultiplier());
+        if (next is not null && screen.IsScreenActive)
+            screen.RefreshItemsPreservingViews(next, adapter, animateRelayout: true, updateExistingViews: true);
     }
 
     private static bool TryFindCatalogScreen(

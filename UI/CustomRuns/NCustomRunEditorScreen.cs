@@ -30,6 +30,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Potions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.RunHistoryScreen;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -41,6 +42,9 @@ using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 public partial class NCustomRunEditorScreen : Control
 {
     private const string ScenePath = "res://UI/CustomRuns/CustomRunEditorScreen.tscn";
+    private const float RunSetupToolButtonWidth = 224f;
+    private const string PotionInventoryBackdropPath =
+        "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_char_backdrop.tres";
     private static readonly string[] TabNames =
     [
         "Overview", "Run Setup", "Roles & Choices", "Rules", "Variables"
@@ -69,6 +73,12 @@ public partial class NCustomRunEditorScreen : Control
     private bool _discardPromptOpen;
     private StringName _returnRoute = "CustomRunLibraryScreen";
     private IDisposable? _catalogSelectorSession;
+    private HFlowContainer? _startingDeckPreview;
+    private HFlowContainer? _startingRelicPreview;
+    private HBoxContainer? _startingPotionHolders;
+    private NLoadoutSettingsActionButton? _startingPotionDiscardButton;
+    private readonly List<NPotionHolder> _startingPotionHolderViews = [];
+    private int _selectedStartingPotionIndex = -1;
 
     public static void OpenFromLibrary(
         Control libraryScreen,
@@ -429,6 +439,12 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_contentHost is null)
             return;
+        _startingDeckPreview = null;
+        _startingRelicPreview = null;
+        _startingPotionHolders = null;
+        _startingPotionDiscardButton = null;
+        _startingPotionHolderViews.Clear();
+        _selectedStartingPotionIndex = -1;
         ClearChildren(_contentHost);
 
         if (_workingDefinition is null)
@@ -480,6 +496,18 @@ public partial class NCustomRunEditorScreen : Control
                 _contentScroll.SetContent(_contentHost);
                 ResizeContentToChildren();
                 _contentScroll.InstantlyScrollToTop();
+            }
+        }).CallDeferred();
+    }
+
+    private void RefreshContentSizeDeferred()
+    {
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(_contentScroll)
+                && GodotObject.IsInstanceValid(_contentHost))
+            {
+                ResizeContentToChildren();
             }
         }).CallDeferred();
     }
@@ -586,7 +614,12 @@ public partial class NCustomRunEditorScreen : Control
         AddNullableNumberRow("Starting Current HP", setup.StartingCurrentHp, 80, 1, 99999,
             value => setup.StartingCurrentHp = value);
         AddNullableNumberRow("Potion Slots", setup.PotionSlots, 3, 0, 20,
-            value => setup.PotionSlots = value);
+            value => setup.PotionSlots = value,
+            () =>
+            {
+                NormalizeStartingPotionCapacity(setup);
+                RefreshStartingPotionInventory(setup);
+            });
         AddNullableNumberRow("Base Energy / Turn", setup.BaseEnergyPerTurn, 3, 0, 99,
             value => setup.BaseEnergyPerTurn = value);
         AddNullableNumberRow("Cards Drawn / Turn", setup.CardsDrawnPerTurn, 5, 0, 99,
@@ -601,36 +634,16 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         HBoxContainer actions = CreateToolRow("Starting Deck");
-        AddSettingsActionButton(actions, "card_printer", "CARD PRINTER", 184f, OpenStartingCardPrinter);
-        AddSettingsActionButton(actions, "card_shredder", "CARD SHREDDER", 194f, OpenStartingCardShredder);
-        AddSettingsActionButton(actions, "card_modifier", "CARD MODIFIER", 194f, OpenStartingCardModifierInventory);
+        AddSettingsActionButton(actions, "card_printer", "CARD PRINTER", RunSetupToolButtonWidth, OpenStartingCardPrinter);
+        AddSettingsActionButton(actions, "card_shredder", "CARD SHREDDER", RunSetupToolButtonWidth, OpenStartingCardShredder);
+        AddSettingsActionButton(actions, "card_modifier", "CARD MODIFIER", RunSetupToolButtonWidth, OpenStartingCardModifierInventory);
         AddToolSpacer(actions);
         AddSettingsActionButton(actions, "revert_deck", "REVERT", 142f, () => ResetSelection(setup.StartingDeck), danger: true);
         _contentHost.AddChild(actions);
 
-        IReadOnlyList<SavedCardLoadoutEntry> cards = GetStartingCardEntries(setup);
-        if (cards.Count == 0)
-        {
-            _contentHost.AddChild(CreateHint("This starting deck is empty."));
-            return;
-        }
-
-        HFlowContainer preview = CreateInventoryPreview();
-        foreach (IGrouping<string, SavedCardLoadoutEntry> group in cards.GroupBy(
-                     entry => $"{entry.ModelId}|{entry.UpgradeLevel}|{JsonSerializer.Serialize(entry.ModificationState)}",
-                     StringComparer.Ordinal))
-        {
-            SavedCardLoadoutEntry entry = group.First();
-            CardModel? card = CreateStartingCardPreview(entry);
-            if (card is null)
-                continue;
-            NDeckHistoryEntry? view = NDeckHistoryEntry.Create(card, group.Count());
-            if (view is null)
-                continue;
-            view.TooltipText = card.Id.ToString();
-            preview.AddChild(view);
-        }
-        _contentHost.AddChild(preview);
+        _startingDeckPreview = CreateInventoryPreview();
+        _contentHost.AddChild(_startingDeckPreview);
+        RefreshStartingDeckPreview(setup);
     }
 
     private void BuildStartingRelicSection(RunSetupDefinition setup)
@@ -639,21 +652,116 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         HBoxContainer actions = CreateToolRow("Starting Relics");
-        AddSettingsActionButton(actions, "loadout_bag", "LOADOUT BAG", 184f, OpenStartingLoadoutBag);
-        AddSettingsActionButton(actions, "trash_bin", "TRASH BIN", 164f, OpenStartingTrashBin);
-        AddSettingsActionButton(actions, "relic_modifier", "RELIC MODIFIER", 194f, OpenStartingRelicModifierInventory);
+        AddSettingsActionButton(actions, "loadout_bag", "LOADOUT BAG", RunSetupToolButtonWidth, OpenStartingLoadoutBag);
+        AddSettingsActionButton(actions, "trash_bin", "TRASH BIN", RunSetupToolButtonWidth, OpenStartingTrashBin);
+        AddSettingsActionButton(actions, "relic_modifier", "RELIC MODIFIER", RunSetupToolButtonWidth, OpenStartingRelicModifierInventory);
         AddToolSpacer(actions);
         AddSettingsActionButton(actions, "revert_relics", "REVERT", 142f, () => ResetSelection(setup.StartingRelics), danger: true);
         _contentHost.AddChild(actions);
 
-        IReadOnlyList<SavedRelicLoadoutEntry> relics = GetStartingRelicEntries(setup);
-        if (relics.Count == 0)
+        _startingRelicPreview = CreateInventoryPreview();
+        _contentHost.AddChild(_startingRelicPreview);
+        RefreshStartingRelicPreview(setup);
+    }
+
+    private void BuildStartingPotionSection(RunSetupDefinition setup)
+    {
+        if (_contentHost is null)
+            return;
+
+        HBoxContainer actions = CreateToolRow("Starting Potions");
+        AddSettingsActionButton(actions, "potion_cauldron", "POTION CAULDRON", RunSetupToolButtonWidth, OpenStartingPotionCauldron);
+        AddToolSpacer(actions);
+        AddSettingsActionButton(actions, "revert_potions", "REVERT", 142f, () => ResetSelection(setup.StartingPotions), danger: true);
+        _contentHost.AddChild(actions);
+
+        VBoxContainer inventory = new() { SizeFlagsHorizontal = SizeFlags.ShrinkBegin };
+        inventory.AddThemeConstantOverride("separation", 8);
+        MarginContainer topBarInventory = CreateTopBarPotionInventory();
+        inventory.AddChild(topBarInventory);
+        _startingPotionDiscardButton = CreateSettingsActionButton(
+            "discard_potion",
+            "DISCARD POTION",
+            RunSetupToolButtonWidth,
+            danger: true);
+        _startingPotionDiscardButton.Visible = false;
+        _startingPotionDiscardButton.Connect(
+            NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>(_ => DiscardStartingPotion(_selectedStartingPotionIndex)));
+        inventory.AddChild(_startingPotionDiscardButton);
+        _contentHost.AddChild(inventory);
+        RefreshStartingPotionInventory(setup);
+    }
+
+    private void RefreshStartingDeckPreview(RunSetupDefinition setup)
+    {
+        if (_startingDeckPreview is null || !GodotObject.IsInstanceValid(_startingDeckPreview))
+            return;
+
+        ClearChildren(_startingDeckPreview);
+        List<CardModel> cards = GetStartingCardEntries(setup)
+            .Select(CreateStartingCardPreview)
+            .Where(card => card is not null)
+            .Cast<CardModel>()
+            .ToList();
+        if (cards.Count == 0)
         {
-            _contentHost.AddChild(CreateHint("This starting relic collection is empty."));
+            _startingDeckPreview.AddChild(CreateHint("This starting deck is empty."));
+            RefreshContentSizeDeferred();
             return;
         }
 
-        HFlowContainer preview = CreateInventoryPreview();
+        foreach (IGrouping<string, CardModel> group in cards.GroupBy(
+                     card => $"{card.Id}|{card.CurrentUpgradeLevel}|{JsonSerializer.Serialize(CardModificationRuntime.GetEffectiveSpec(card))}",
+                     StringComparer.Ordinal))
+        {
+            NDeckHistoryEntry? view = NDeckHistoryEntry.Create(group.First(), group.Count());
+            if (view is null)
+                continue;
+            view.TooltipText = view.Card.Id.ToString();
+            view.Connect(
+                NDeckHistoryEntry.SignalName.Clicked,
+                Callable.From<NDeckHistoryEntry>(entry => OpenStartingDeckCardInspect(cards, entry)));
+            _startingDeckPreview.AddChild(view);
+        }
+        RefreshContentSizeDeferred();
+    }
+
+    private void OpenStartingDeckCardInspect(List<CardModel> cards, NDeckHistoryEntry entry)
+    {
+        NInspectCardScreen? inspect = NGame.Instance?.GetInspectCardScreen();
+        int index = cards.IndexOf(entry.Card);
+        if (inspect is null || index < 0)
+            return;
+
+        void RestoreEditorWhenClosed()
+        {
+            if (inspect.Visible)
+                return;
+            inspect.VisibilityChanged -= RestoreEditorWhenClosed;
+            if (GodotObject.IsInstanceValid(this))
+                Visible = true;
+        }
+
+        inspect.VisibilityChanged += RestoreEditorWhenClosed;
+        inspect.Open(cards, index);
+        Visible = false;
+    }
+
+    private void RefreshStartingRelicPreview(RunSetupDefinition setup)
+    {
+        if (_startingRelicPreview is null || !GodotObject.IsInstanceValid(_startingRelicPreview))
+            return;
+
+        ClearChildren(_startingRelicPreview);
+        IReadOnlyList<SavedRelicLoadoutEntry> relics = GetStartingRelicEntries(setup);
+        if (relics.Count == 0)
+        {
+            _startingRelicPreview.AddChild(CreateHint("This starting relic collection is empty."));
+            RefreshContentSizeDeferred();
+            return;
+        }
+
         foreach (SavedRelicLoadoutEntry entry in relics)
         {
             RelicModel? relic = CreateStartingRelicPreview(entry);
@@ -663,62 +771,113 @@ public partial class NCustomRunEditorScreen : Control
             if (holder is null)
                 continue;
             holder.TooltipText = relic.Id.ToString();
-            preview.AddChild(holder);
+            _startingRelicPreview.AddChild(holder);
         }
-        _contentHost.AddChild(preview);
+        RefreshContentSizeDeferred();
     }
 
-    private void BuildStartingPotionSection(RunSetupDefinition setup)
+    private MarginContainer CreateTopBarPotionInventory()
     {
-        if (_contentHost is null)
+        MarginContainer panel = new()
+        {
+            CustomMinimumSize = new Vector2(140f, 80f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            MouseFilter = MouseFilterEnum.Pass
+        };
+
+        if (ResourceLoader.Exists(PotionInventoryBackdropPath))
+        {
+            NinePatchRect background = new()
+            {
+                Texture = GD.Load<Texture2D>(PotionInventoryBackdropPath),
+                PatchMarginLeft = 32,
+                PatchMarginTop = 32,
+                PatchMarginRight = 32,
+                PatchMarginBottom = 32,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            background.SetAnchorsPreset(LayoutPreset.FullRect);
+            panel.AddChild(background);
+        }
+
+        MarginContainer inset = new() { MouseFilter = MouseFilterEnum.Pass };
+        inset.SetAnchorsPreset(LayoutPreset.FullRect);
+        inset.AddThemeConstantOverride("margin_left", 18);
+        inset.AddThemeConstantOverride("margin_top", 5);
+        inset.AddThemeConstantOverride("margin_right", 19);
+        inset.AddThemeConstantOverride("margin_bottom", 6);
+        panel.AddChild(inset);
+
+        _startingPotionHolders = new HBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+        _startingPotionHolders.AddThemeConstantOverride("separation", 2);
+        inset.AddChild(_startingPotionHolders);
+        return panel;
+    }
+
+    private void RefreshStartingPotionInventory(RunSetupDefinition setup)
+    {
+        if (_startingPotionHolders is null || !GodotObject.IsInstanceValid(_startingPotionHolders))
             return;
 
-        HBoxContainer actions = CreateToolRow("Starting Potions");
-        AddSettingsActionButton(actions, "potion_cauldron", "POTION CAULDRON", 224f, OpenStartingPotionCauldron);
-        AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_potions", "REVERT", 142f, () => ResetSelection(setup.StartingPotions), danger: true);
-        _contentHost.AddChild(actions);
-
+        ClearChildren(_startingPotionHolders);
+        _startingPotionHolderViews.Clear();
         IReadOnlyList<string> potionIds = setup.StartingPotions.Mode == SelectionMode.Fixed
             ? setup.StartingPotions.FixedModelIds
             : ResolvePreviewCharacter()?.StartingPotions.Select(potion => potion.Id.ToString()).ToList() ?? [];
-        HBoxContainer preview = new()
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            MouseFilter = MouseFilterEnum.Pass
-        };
-        preview.AddThemeConstantOverride("separation", 18);
-        int slotCount = Math.Clamp(Math.Max(potionIds.Count, setup.PotionSlots ?? 3), 0, 20);
+        int slotCount = Math.Clamp(setup.PotionSlots ?? 3, 0, 20);
+        if (_selectedStartingPotionIndex >= Math.Min(slotCount, potionIds.Count))
+            _selectedStartingPotionIndex = -1;
+
         for (int index = 0; index < slotCount; index++)
         {
             int capturedIndex = index;
-            VBoxContainer slot = new()
-            {
-                CustomMinimumSize = new Vector2(112f, 126f),
-                MouseFilter = MouseFilterEnum.Pass
-            };
             NPotionHolder holder = NPotionHolder.Create(isUsable: false);
-            NLoadoutSettingsActionButton discard = CreateSettingsActionButton("discard_potion", "DISCARD", 112f, danger: true);
-            discard.Visible = false;
-            if (index < potionIds.Count
-                && CustomRunCatalogService.TryResolve(SelectionModelKind.Potion, potionIds[index], out CustomRunCatalogEntry catalog)
-                && catalog.Model is PotionModel canonical
-                && NPotion.Create(canonical.ToMutable()) is { } potion)
+            _startingPotionHolders.AddChild(holder);
+            _startingPotionHolderViews.Add(holder);
+            if (index >= potionIds.Count
+                || !CustomRunCatalogService.TryResolve(SelectionModelKind.Potion, potionIds[index], out CustomRunCatalogEntry catalog)
+                || catalog.Model is not PotionModel canonical
+                || NPotion.Create(canonical.ToMutable()) is not { } potion)
             {
-                holder.AddPotion(potion);
-                potion.Position = Vector2.Zero;
-                holder.Connect(
-                    NClickableControl.SignalName.Released,
-                    Callable.From<NButton>(_ => discard.Visible = !discard.Visible));
-                discard.Connect(
-                    NClickableControl.SignalName.Released,
-                    Callable.From<NButton>(_ => DiscardStartingPotion(capturedIndex)));
+                continue;
             }
-            slot.AddChild(holder);
-            slot.AddChild(discard);
-            preview.AddChild(slot);
+
+            holder.AddPotion(potion);
+            potion.Position = Vector2.Zero;
+            holder.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => SelectStartingPotion(capturedIndex)));
         }
-        _contentHost.AddChild(preview);
+
+        RefreshStartingPotionSelection();
+        RefreshContentSizeDeferred();
+    }
+
+    private void SelectStartingPotion(int index)
+    {
+        _selectedStartingPotionIndex = _selectedStartingPotionIndex == index ? -1 : index;
+        RefreshStartingPotionSelection();
+    }
+
+    private void RefreshStartingPotionSelection()
+    {
+        for (int index = 0; index < _startingPotionHolderViews.Count; index++)
+        {
+            NPotionHolder holder = _startingPotionHolderViews[index];
+            if (GodotObject.IsInstanceValid(holder))
+                holder.Modulate = index == _selectedStartingPotionIndex ? StsColors.gold : Colors.White;
+        }
+        if (_startingPotionDiscardButton is not null)
+            _startingPotionDiscardButton.Visible = _selectedStartingPotionIndex >= 0;
+    }
+
+    private static void NormalizeStartingPotionCapacity(RunSetupDefinition setup)
+    {
+        if (setup.StartingPotions.Mode != SelectionMode.Fixed)
+            return;
+        int capacity = Math.Clamp(setup.PotionSlots ?? 3, 0, 20);
+        if (setup.StartingPotions.FixedModelIds.Count > capacity)
+            setup.StartingPotions.FixedModelIds.RemoveRange(capacity, setup.StartingPotions.FixedModelIds.Count - capacity);
     }
 
     private void BuildStartingPowerSection(RunSetupDefinition setup)
@@ -841,7 +1000,7 @@ public partial class NCustomRunEditorScreen : Control
             }
             SynchronizeStartingSelectionIds(SelectionModelKind.Card);
             MarkDirty();
-            RebuildContent();
+            RefreshStartingDeckPreview(_workingDefinition.Setup);
             CustomRunEditorPreviewService.PreviewCardAdd(card, upgradeLevel, amount);
         });
     }
@@ -865,7 +1024,7 @@ public partial class NCustomRunEditorScreen : Control
             }
             SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
             MarkDirty();
-            RebuildContent();
+            RefreshStartingRelicPreview(_workingDefinition.Setup);
         });
     }
 
@@ -893,7 +1052,8 @@ public partial class NCustomRunEditorScreen : Control
                 return;
             }
             MarkDirty();
-            RebuildContent();
+            _selectedStartingPotionIndex = -1;
+            RefreshStartingPotionInventory(_workingDefinition.Setup);
         });
     }
 
@@ -931,7 +1091,7 @@ public partial class NCustomRunEditorScreen : Control
                     }
                     SynchronizeStartingSelectionIds(SelectionModelKind.Card);
                     MarkDirty();
-                    RebuildContent();
+                    RefreshStartingDeckPreview(_workingDefinition.Setup);
                     CustomRunEditorPreviewService.PreviewCardRemoval(removedCards);
                     return CustomRunEditorPreviewService.CreateOwnedCards(entries);
                 },
@@ -974,7 +1134,7 @@ public partial class NCustomRunEditorScreen : Control
                     }
                     SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
                     MarkDirty();
-                    RebuildContent();
+                    RefreshStartingRelicPreview(_workingDefinition.Setup);
                     return CustomRunEditorPreviewService.CreateOwnedRelics(entries);
                 },
                 out IDisposable? session,
@@ -998,9 +1158,10 @@ public partial class NCustomRunEditorScreen : Control
         }
         IReadOnlyList<LoadoutOwnedItem<CardModel>> cards = CustomRunEditorPreviewService.CreateOwnedCards(entries);
         _catalogSelectorSession?.Dispose();
-        if (!CustomRunCatalogSelector.TryOpenOwnedCardAction(
+        if (!CustomRunCatalogSelector.TryOpenOwnedCardActions(
                 "CardModifier",
                 cards,
+                (screen, item, amount) => UpgradeStartingCard(screen, item, amount),
                 (_, item, _) =>
                 {
                     if (_workingDefinition is null)
@@ -1014,7 +1175,7 @@ public partial class NCustomRunEditorScreen : Control
                         {
                             SynchronizeStartingSelectionIds(SelectionModelKind.Card);
                             MarkDirty();
-                            RebuildContent();
+                            RefreshStartingDeckPreview(_workingDefinition.Setup);
                         });
                     return null;
                 },
@@ -1039,7 +1200,7 @@ public partial class NCustomRunEditorScreen : Control
         }
         IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics = CustomRunEditorPreviewService.CreateOwnedRelics(entries);
         _catalogSelectorSession?.Dispose();
-        if (!CustomRunCatalogSelector.TryOpenOwnedRelicAction(
+        if (!CustomRunCatalogSelector.TryOpenOwnedRelicRightAction(
                 "RelicModifier",
                 relics,
                 (_, item, _) =>
@@ -1055,7 +1216,7 @@ public partial class NCustomRunEditorScreen : Control
                         {
                             SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
                             MarkDirty();
-                            RebuildContent();
+                            RefreshStartingRelicPreview(_workingDefinition.Setup);
                         });
                     return null;
                 },
@@ -1105,8 +1266,45 @@ public partial class NCustomRunEditorScreen : Control
         if (index < 0 || index >= potions.FixedModelIds.Count)
             return;
         potions.FixedModelIds.RemoveAt(index);
+        _selectedStartingPotionIndex = -1;
         MarkDirty();
-        RebuildContent();
+        RefreshStartingPotionInventory(_workingDefinition.Setup);
+    }
+
+    private IReadOnlyList<LoadoutOwnedItem<CardModel>>? UpgradeStartingCard(
+        NGenericSelectScreen screen,
+        LoadoutOwnedItem<CardModel> item,
+        int amount)
+    {
+        if (_workingDefinition is null)
+            return null;
+        EnsureDetailedStartingSelection(SelectionModelKind.Card);
+        List<SavedCardLoadoutEntry> entries = _workingDefinition.Setup.StartingCardEntries;
+        if (item.Index < 0 || item.Index >= entries.Count)
+            return CustomRunEditorPreviewService.CreateOwnedCards(entries);
+
+        SavedCardLoadoutEntry entry = entries[item.Index];
+        CardModel? preview = CreateStartingCardPreview(entry);
+        int upgradesApplied = 0;
+        while (preview is { IsUpgradable: true } && upgradesApplied < Math.Max(1, amount))
+        {
+            preview.UpgradeInternal();
+            preview.FinalizeUpgradeInternal();
+            entry.UpgradeLevel++;
+            upgradesApplied++;
+        }
+        if (upgradesApplied == 0)
+            return null;
+
+        IGenericSelectItem? selectedItem = screen.Items.FirstOrDefault(candidate =>
+            candidate.UntypedModel is LoadoutOwnedItem<CardModel> owned
+            && owned.Index == item.Index);
+        if (selectedItem?.View is Control view)
+            CommonHelpers.PlayCardSmithFeedback(view);
+        SynchronizeStartingSelectionIds(SelectionModelKind.Card);
+        MarkDirty();
+        RefreshStartingDeckPreview(_workingDefinition.Setup);
+        return CustomRunEditorPreviewService.CreateOwnedCards(entries);
     }
 
     private void OpenStartingPowerSelector()
@@ -1346,7 +1544,8 @@ public partial class NCustomRunEditorScreen : Control
         int fallback,
         int minimum,
         int maximum,
-        Action<int?> setter)
+        Action<int?> setter,
+        Action? afterChanged = null)
     {
         if (_contentHost is null)
             return;
@@ -1365,15 +1564,17 @@ public partial class NCustomRunEditorScreen : Control
             toggle.SetChecked(true);
             setter(value);
             MarkDirty();
+            afterChanged?.Invoke();
         };
         toggle.Connect(
             NLoadoutToggle.SignalName.Toggled,
-            Callable.From<NLoadoutToggle>(changed =>
+            Callable.From<NLoadoutToggle>(toggleState =>
             {
                 if (_loadingFields)
                     return;
-                setter(changed.IsChecked ? stepper.Value : null);
+                setter(toggleState.IsChecked ? stepper.Value : null);
                 MarkDirty();
+                afterChanged?.Invoke();
             }));
         row.AddChild(stepper);
         _contentHost.AddChild(row);
@@ -1670,7 +1871,13 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_returnRoute.IsEmpty)
             _returnRoute = "CustomRunLibraryScreen";
-        NLoadoutPanelRoot.Instance?.CloseTopScreen();
+        NLoadoutPanelRoot? root = NLoadoutPanelRoot.Instance;
+        string? definitionId = _workingDefinition?.Id;
+        NCustomRunLibraryScreen? library = root?.GetNodeOrNull<NCustomRunLibraryScreen>(
+            $"ScreenStack/{_returnRoute}");
+        root?.CloseTopScreen();
+        if (definitionId is not null)
+            library?.RestoreDefinitionHighlight(definitionId);
     }
 
     private void DetachLobby(StartRunLobby lobby)

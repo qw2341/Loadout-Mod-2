@@ -90,6 +90,31 @@ public partial class NCustomRunLibraryScreen : Control
         return new NCustomRunLibraryScreen();
     }
 
+    public void RestoreDefinitionHighlight(string definitionId)
+    {
+        _focusDefinitionId = definitionId;
+        int preparedIndex = _rows.FindIndex(row => string.Equals(row.Id, definitionId, StringComparison.Ordinal));
+        if (preparedIndex >= 0)
+        {
+            int editIndex = _rows[preparedIndex].Row.FindActionSlot("edit");
+            _focusActionIndex = editIndex >= 0 ? editIndex : 0;
+        }
+
+        Callable.From(() =>
+        {
+            if (!Visible)
+                return;
+            int rowIndex = _rows.FindIndex(row => string.Equals(row.Id, definitionId, StringComparison.Ordinal));
+            if (rowIndex < 0)
+                return;
+            NCustomRunLibraryRow row = _rows[rowIndex].Row;
+            int editIndex = row.FindActionSlot("edit");
+            IReadOnlyList<NClickableControl> actions = row.Actions;
+            if (actions.Count > 0)
+                actions[Math.Clamp(editIndex >= 0 ? editIndex : 0, 0, actions.Count - 1)].GrabFocus();
+        }).CallDeferred();
+    }
+
     public void Init(Control sourceScreen, StartRunLobby lobby)
     {
         _sourceScreen = sourceScreen;
@@ -653,6 +678,13 @@ public partial class NCustomRunLibraryScreen : Control
     {
         if (_lobby is null)
             return;
+        _focusDefinitionId = definition.Id;
+        int rowIndex = _rows.FindIndex(row => string.Equals(row.Id, definition.Id, StringComparison.Ordinal));
+        if (rowIndex >= 0)
+        {
+            int editIndex = _rows[rowIndex].Row.FindActionSlot("edit");
+            _focusActionIndex = editIndex >= 0 ? editIndex : 0;
+        }
         NCustomRunEditorScreen.OpenFromLibrary(this, _lobby, definition.Id, readOnly, Name);
     }
 

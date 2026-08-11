@@ -772,7 +772,7 @@ public partial class NRelicModificationScreen : Control
 
         NLoadoutActionButton permanentButton = CreateActionButton(
             "save_permanent",
-            _customRunAuthoringMode ? "Save for This Run" : LocMan.Loc("SAVE_PERMANENT", "Save Permanent"),
+            _customRunAuthoringMode ? "SAVE PERMANENT FOR THIS RUN" : LocMan.Loc("SAVE_PERMANENT", "Save Permanent"),
             CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
         ConnectActionButton(permanentButton, SavePermanent);
         _actionControls.AddChild(permanentButton);
@@ -780,7 +780,7 @@ public partial class NRelicModificationScreen : Control
 
         NLoadoutActionButton resetTemporaryButton = CreateActionButton(
             "reset_temporary",
-            _customRunAuthoringMode ? "Revert Run Modifications" : LocMan.Loc("RESET_TEMPORARY", "Reset Temporary"));
+            _customRunAuthoringMode ? "RESET PERMANENT FOR THIS RUN" : LocMan.Loc("RESET_TEMPORARY", "Reset Temporary"));
         ConnectActionButton(resetTemporaryButton, ResetTemporary);
         _actionControls.AddChild(resetTemporaryButton);
         ConfigureActionButtonSize(resetTemporaryButton);

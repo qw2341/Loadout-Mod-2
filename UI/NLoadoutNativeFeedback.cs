@@ -77,7 +77,7 @@ public partial class NLoadoutNativeFeedback : Control
 
     public void PreviewCustomRunCardAdd(IReadOnlyList<CardModel> cards)
     {
-        if (TestMode.IsOn || CombatManager.Instance.IsEnding)
+        if (TestMode.IsOn)
             return;
         foreach (CardModel card in cards)
         {

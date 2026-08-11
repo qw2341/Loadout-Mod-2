@@ -996,10 +996,12 @@ public partial class NLoadoutDropdownContainer : Control
 
     private float GetTrainHeight()
     {
+        float availableHeight = MathF.Max(0f, Size.Y - ScrollbarPadding * 2f);
         if (_contentHeight <= 0f)
-            return MinimumTrainHeight;
+            return MathF.Min(MinimumTrainHeight, availableHeight);
 
-        return Mathf.Clamp((Size.Y - ScrollbarPadding * 2f) * Size.Y / _contentHeight, MinimumTrainHeight, Size.Y - ScrollbarPadding * 2f);
+        float minimumHeight = MathF.Min(MinimumTrainHeight, availableHeight);
+        return Mathf.Clamp(availableHeight * Size.Y / _contentHeight, minimumHeight, availableHeight);
     }
 
     private float GetTrainTravelRange()

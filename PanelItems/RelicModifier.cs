@@ -103,7 +103,7 @@ public static class RelicModifier
         root.OpenScreen(screen);
     }
 
-    private static Action? BindRightClickWithCleanup(Control view, Action activate)
+    public static Action? BindRightClickWithCleanup(Control view, Action activate)
     {
         if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder holder)) return null;
         void OnGuiInput(InputEvent input)
