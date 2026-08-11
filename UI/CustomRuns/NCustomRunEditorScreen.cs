@@ -33,7 +33,6 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Potions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
-using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.RunHistoryScreen;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -46,8 +45,6 @@ using MegaCrit.Sts2.Core.Models.Characters;
 public partial class NCustomRunEditorScreen : Control
 {
     private const string ScenePath = "res://UI/CustomRuns/CustomRunEditorScreen.tscn";
-    private const string CharacterSelectButtonScenePath =
-        "res://scenes/screens/char_select/char_select_button.tscn";
     private const float RunSetupToolButtonWidth = 224f;
     private const double StartingCardHoverDelaySeconds = 0.2d;
     private const string PotionInventoryBackdropPath =
@@ -882,6 +879,12 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         ClearChildren(_startingDeckPreview);
+        if (setup.StartingDeck.Mode != SelectionMode.Fixed)
+        {
+            _startingDeckPreview.AddChild(CreateHint("Character Default"));
+            RefreshContentSizeDeferred();
+            return;
+        }
         List<CardModel> cards = GetStartingCardEntries(setup)
             .Select(CreateStartingCardPreview)
             .Where(card => card is not null)
@@ -958,6 +961,12 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         ClearChildren(_startingRelicPreview);
+        if (setup.StartingRelics.Mode != SelectionMode.Fixed)
+        {
+            _startingRelicPreview.AddChild(CreateHint("Character Default"));
+            RefreshContentSizeDeferred();
+            return;
+        }
         IReadOnlyList<SavedRelicLoadoutEntry> relics = GetStartingRelicEntries(setup);
         if (relics.Count == 0)
         {
@@ -2112,35 +2121,8 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         HashSet<string> selectedIds = selection.FixedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        HBoxContainer characters = CreateNativeCharacterButtonRow();
-        PackedScene? buttonScene = ResourceLoader.Exists(CharacterSelectButtonScenePath)
-            ? GD.Load<PackedScene>(CharacterSelectButtonScenePath)
-            : null;
-        if (buttonScene is null)
-        {
-            GD.PushWarning("Loadout Custom Run: native character-select button scene was unavailable.");
-            return;
-        }
-
-        bool initializingButtons = true;
-        HashSet<NCharacterSelectButton> selectedFromFocus = [];
-        List<NCharacterSelectButton> nativeButtons = [];
-        CharacterRestrictionButtonDelegate buttonDelegate = new(
-            _lobby,
-            (button, character) =>
-            {
-                if (initializingButtons || _loadingFields || !IsSetupOwnerValid(ownerId, setup))
-                    return;
-                selectedFromFocus.Add(button);
-                ApplyNativeCharacterSelection(
-                    selection,
-                    button,
-                    character,
-                    nativeButtons,
-                    ownerId,
-                    setup);
-            });
-
+        HBoxContainer characters = CreateCharacterButtonRow();
+        List<NCustomRunCharacterFilterButton> characterButtons = [];
         List<CharacterModel> displayedCharacters = ModelDb.AllCharacters.ToList();
         displayedCharacters.Add(ModelDb.Character<RandomCharacter>());
         foreach (CharacterModel character in displayedCharacters)
@@ -2151,44 +2133,23 @@ public partial class NCustomRunEditorScreen : Control
                 ? selection.Mode == SelectionMode.Random
                 : selection.Mode == SelectionMode.Fixed
                   && (selectedIds.Contains(modelId) || selectedIds.Contains(character.Id.Entry));
-            NCharacterSelectButton characterButton = buttonScene.Instantiate<NCharacterSelectButton>();
-            characterButton.Name = $"CharacterRestriction_{character.Id.Entry}";
+            NCustomRunCharacterFilterButton characterButton = new();
+            characterButton.Init(
+                character,
+                selected,
+                pressed => ToggleCharacterRestriction(
+                    selection,
+                    pressed,
+                    characterButtons,
+                    ownerId,
+                    setup));
+            characterButtons.Add(characterButton);
             characters.AddChild(characterButton);
-            characterButton.Init(character, buttonDelegate);
-            characterButton.GetNodeOrNull<Control>("%PlayerIconContainer")?.Hide();
-            nativeButtons.Add(characterButton);
-            if (selected)
-                characterButton.Select();
-            CommonHelpers.AttachHoverTips(
-                characterButton,
-                [new HoverTip(
-                    new LocString("characters", character.CharacterSelectTitle),
-                    new LocString("characters", character.CharacterSelectDesc))]);
-            characterButton.Connect(
-                NClickableControl.SignalName.Released,
-                Callable.From<NClickableControl>(_ =>
-                {
-                    if (_loadingFields || !IsSetupOwnerValid(ownerId, setup))
-                        return;
-                    if (selectedFromFocus.Remove(characterButton))
-                        return;
-                    if (characterButton.IsSelected)
-                    {
-                        characterButton.Deselect();
-                        RemoveNativeCharacterSelection(selection, character);
-                        MarkDirty();
-                        return;
-                    }
-
-                    characterButton.Select();
-                    selectedFromFocus.Remove(characterButton);
-                }));
         }
-        initializingButtons = false;
         _contentHost.AddChild(characters);
     }
 
-    private HBoxContainer CreateNativeCharacterButtonRow()
+    private static HBoxContainer CreateCharacterButtonRow()
     {
         HBoxContainer row = new()
         {
@@ -2196,93 +2157,52 @@ public partial class NCustomRunEditorScreen : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Pass
         };
-        NCharacterSelectButton? sourceButton = GetTree().Root
-            .FindChildren("*", nameof(NCharacterSelectButton), recursive: true, owned: false)
-            .OfType<NCharacterSelectButton>()
-            .FirstOrDefault(button => !IsAncestorOf(button));
-        if (sourceButton?.GetParent() is HBoxContainer sourceRow)
-            row.AddThemeConstantOverride("separation", sourceRow.GetThemeConstant("separation"));
+        row.AddThemeConstantOverride("separation", 16);
         return row;
     }
 
-    private void ApplyNativeCharacterSelection(
+    private void ToggleCharacterRestriction(
         SelectionSpec selection,
-        NCharacterSelectButton selectedButton,
-        CharacterModel character,
-        IReadOnlyList<NCharacterSelectButton> buttons,
+        NCustomRunCharacterFilterButton pressedButton,
+        IReadOnlyList<NCustomRunCharacterFilterButton> buttons,
         string? ownerId,
         RunSetupDefinition setup)
     {
-        if (!IsSetupOwnerValid(ownerId, setup))
+        if (_loadingFields || !IsSetupOwnerValid(ownerId, setup))
             return;
         selection.Kind = SelectionModelKind.Character;
-        if (IsRandomCharacterModel(character))
+        if (pressedButton.IsRandom)
         {
-            selection.Mode = SelectionMode.Random;
+            bool selectRandom = !pressedButton.IsSelected;
             selection.FixedModelIds.Clear();
-            foreach (NCharacterSelectButton button in buttons)
-            {
-                if (button != selectedButton && button.IsSelected)
-                    button.Deselect();
-            }
+            selection.Mode = selectRandom ? SelectionMode.Random : SelectionMode.Fixed;
+            foreach (NCustomRunCharacterFilterButton button in buttons)
+                button.SetSelected(selectRandom && button == pressedButton);
         }
         else
         {
             if (selection.Mode == SelectionMode.Random)
             {
-                foreach (NCharacterSelectButton button in buttons)
-                {
-                    if (button.IsRandom && button.IsSelected)
-                        button.Deselect();
-                }
+                selection.FixedModelIds.Clear();
+                foreach (NCustomRunCharacterFilterButton button in buttons)
+                    button.SetSelected(false);
             }
             selection.Mode = SelectionMode.Fixed;
             selection.FixedModelIds.RemoveAll(id =>
-                string.Equals(id, character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
-                || string.Equals(id, character.Id.Entry, StringComparison.OrdinalIgnoreCase));
-            selection.FixedModelIds.Add(character.Id.ToString());
+                string.Equals(id, pressedButton.Character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(id, pressedButton.Character.Id.Entry, StringComparison.OrdinalIgnoreCase));
+            bool selectCharacter = !pressedButton.IsSelected;
+            pressedButton.SetSelected(selectCharacter);
+            if (selectCharacter)
+                selection.FixedModelIds.Add(pressedButton.Character.Id.ToString());
         }
         MarkDirty();
-    }
-
-    private static void RemoveNativeCharacterSelection(SelectionSpec selection, CharacterModel character)
-    {
-        if (IsRandomCharacterModel(character))
-        {
-            if (selection.Mode == SelectionMode.Random)
-                selection.Mode = SelectionMode.Fixed;
-            return;
-        }
-        selection.Mode = SelectionMode.Fixed;
-        selection.FixedModelIds.RemoveAll(id =>
-            string.Equals(id, character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
-            || string.Equals(id, character.Id.Entry, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsRandomCharacterModel(CharacterModel character)
     {
         return character.GetType().Name.Contains("Random", StringComparison.OrdinalIgnoreCase)
                || character.Id.Entry.Contains("RANDOM", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private sealed class CharacterRestrictionButtonDelegate : ICharacterSelectButtonDelegate
-    {
-        private readonly Action<NCharacterSelectButton, CharacterModel> _selectionChanged;
-
-        public CharacterRestrictionButtonDelegate(
-            StartRunLobby lobby,
-            Action<NCharacterSelectButton, CharacterModel> selectionChanged)
-        {
-            Lobby = lobby;
-            _selectionChanged = selectionChanged;
-        }
-
-        public StartRunLobby Lobby { get; }
-
-        public void SelectCharacter(NCharacterSelectButton charSelectButton, CharacterModel characterModel)
-        {
-            _selectionChanged(charSelectButton, characterModel);
-        }
     }
 
     private void NewDefinition()

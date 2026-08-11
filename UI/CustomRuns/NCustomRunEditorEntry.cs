@@ -483,8 +483,10 @@ public static class NCustomRunEditorEntry
         {
             Name = name,
             CustomMinimumSize = new Vector2(360f, 54f),
+            Size = new Vector2(360f, 54f),
             DropdownWidth = 360f,
             MaxVisibleItems = 6,
+            ExpandToAvailableWidth = false,
             ZIndex = 24
         };
     }
@@ -506,17 +508,19 @@ public static class NCustomRunEditorEntry
         const float width = 360f;
         const float height = 54f;
         const float gap = 10f;
-        dropdown.AnchorLeft = confirm.AnchorLeft;
+        const float rightMargin = 40f;
+        dropdown.AnchorLeft = 1f;
         dropdown.AnchorTop = confirm.AnchorTop;
-        dropdown.AnchorRight = confirm.AnchorRight;
+        dropdown.AnchorRight = 1f;
         dropdown.AnchorBottom = confirm.AnchorBottom;
-        dropdown.OffsetRight = confirm.OffsetRight;
+        dropdown.OffsetRight = -rightMargin;
         dropdown.OffsetLeft = dropdown.OffsetRight - width;
         dropdown.OffsetBottom = confirm.OffsetTop - gap - rowAboveConfirm * (height + gap);
         dropdown.OffsetTop = dropdown.OffsetBottom - height;
+        dropdown.CustomMinimumSize = new Vector2(width, height);
         dropdown.Size = new Vector2(width, height);
         dropdown.PivotOffset = dropdown.Size * 0.5f;
-        dropdown.GrowHorizontal = Control.GrowDirection.Both;
+        dropdown.GrowHorizontal = Control.GrowDirection.Begin;
         dropdown.GrowVertical = Control.GrowDirection.Begin;
     }
 
