@@ -21,6 +21,8 @@ public partial class NCustomRunCharacterFilterButton : Button
     private static readonly StyleBoxEmpty EmptyStyle = new();
     private static readonly StringName SaturationParameter = "s";
     private static readonly StringName ValueParameter = "v";
+    private static readonly Vector2 ButtonSize = new(65f, 96f);
+    private const float HoverScale = 1.08f;
 
     private TextureRect? _icon;
     private TextureRect? _outline;
@@ -42,9 +44,9 @@ public partial class NCustomRunCharacterFilterButton : Button
                    || character.Id.Entry.Contains("RANDOM", StringComparison.OrdinalIgnoreCase);
         _pressedAction = pressedAction;
         Name = $"CharacterRestriction_{character.Id.Entry}";
-        CustomMinimumSize = new Vector2(100f, 148f);
-        Size = CustomMinimumSize;
-        PivotOffset = CustomMinimumSize * 0.5f;
+        CustomMinimumSize = ButtonSize;
+        Size = ButtonSize;
+        PivotOffset = ButtonSize * 0.5f;
         SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
         SizeFlagsVertical = SizeFlags.ShrinkCenter;
         FocusMode = FocusModeEnum.All;
@@ -79,24 +81,24 @@ public partial class NCustomRunCharacterFilterButton : Button
     {
         TextureRect shadow = new()
         {
-            Texture = LoadTexture(MaskPath),
-            Position = new Vector2(12f, 19f),
-            Size = new Vector2(88f, 130f),
-            Modulate = new Color(0f, 0f, 0f, 0.25f),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            Texture = LoadTexture(MaskPath),
+            Position = new Vector2(8f, 12f),
+            Size = new Vector2(57f, 84f),
+            Modulate = new Color(0f, 0f, 0f, 0.25f),
             MouseFilter = MouseFilterEnum.Ignore
         };
         AddChild(shadow);
 
         _outline = new TextureRect
         {
-            Texture = LoadTexture(OutlinePath),
-            Position = Vector2.Zero,
-            Size = new Vector2(100f, 148f),
-            SelfModulate = new Color(StsColors.gold, 0.9f),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            Texture = LoadTexture(OutlinePath),
+            Position = Vector2.Zero,
+            Size = ButtonSize,
+            SelfModulate = new Color(StsColors.gold, 0.9f),
             MouseFilter = MouseFilterEnum.Ignore
         };
         AddChild(_outline);
@@ -113,11 +115,11 @@ public partial class NCustomRunCharacterFilterButton : Button
 
         _icon = new TextureRect
         {
-            Texture = icon,
-            Position = new Vector2(6f, 9f),
-            Size = new Vector2(88f, 130f),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            Texture = icon,
+            Position = new Vector2(4f, 6f),
+            Size = new Vector2(57f, 84f),
             MouseFilter = MouseFilterEnum.Ignore
         };
         if (ResourceLoader.Exists("res://shaders/hsv.gdshader"))
@@ -142,7 +144,7 @@ public partial class NCustomRunCharacterFilterButton : Button
         if (!_hovered && !Disabled)
             SfxCmd.Play(FmodSfx.uiHover);
         _hovered = true;
-        Scale = Vector2.One * 1.08f;
+        Scale = Vector2.One * HoverScale;
         RefreshVisualState();
     }
 
@@ -156,7 +158,7 @@ public partial class NCustomRunCharacterFilterButton : Button
 
     private void OnFocusEntered()
     {
-        Scale = Vector2.One * 1.08f;
+        Scale = Vector2.One * HoverScale;
         RefreshVisualState();
     }
 

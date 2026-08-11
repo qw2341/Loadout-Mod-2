@@ -2338,7 +2338,7 @@ public partial class NCustomRunEditorScreen : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Pass
         };
-        row.AddThemeConstantOverride("separation", 16);
+        row.AddThemeConstantOverride("separation", 28);
         return row;
     }
 

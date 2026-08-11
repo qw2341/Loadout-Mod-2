@@ -16,18 +16,6 @@ public static class CustomRunNormalizationService
     public static CustomRunDefinition Normalize(CustomRunDefinition definition)
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        bool migrateStartingLoadouts = definition.SchemaVersion < 3;
-        if (definition.SchemaVersion < 2)
-        {
-            RoleAssignmentMode[] legacyModes = (definition.Roles ?? [])
-                .Where(role => role?.LegacyAssignmentMode is not null)
-                .Select(role => role.LegacyAssignmentMode!.Value)
-                .Distinct()
-                .ToArray();
-            definition.RoleAssignmentMode = legacyModes.Length == 1
-                ? legacyModes[0]
-                : RoleAssignmentMode.PlayersChoose;
-        }
         definition.SchemaVersion = CustomRunStorageService.CurrentSchemaVersion;
         definition.Id = NormalizeObjectId(definition.Id);
         definition.Name = string.IsNullOrWhiteSpace(definition.Name)
@@ -44,14 +32,12 @@ public static class CustomRunNormalizationService
             ? definition.UpdatedAtUnixSeconds
             : definition.CreatedAtUnixSeconds;
         definition.Setup ??= new RunSetupDefinition();
-        if (migrateStartingLoadouts)
-            InferLegacyStartingLoadoutMode(definition.Setup);
         definition.Setup = NormalizeSetup(definition.Setup);
         if (!Enum.IsDefined(definition.RoleAssignmentMode))
             definition.RoleAssignmentMode = RoleAssignmentMode.PlayersChoose;
         definition.Roles = (definition.Roles ?? [])
             .Where(role => role is not null)
-            .Select(role => NormalizeRole(role, migrateStartingLoadouts))
+            .Select(NormalizeRole)
             .ToList();
         definition.PlayerChoices = (definition.PlayerChoices ?? [])
             .Where(choice => choice is not null)
@@ -238,7 +224,7 @@ public static class CustomRunNormalizationService
         return pool;
     }
 
-    private static RoleDefinition NormalizeRole(RoleDefinition role, bool migrateStartingLoadouts)
+    private static RoleDefinition NormalizeRole(RoleDefinition role)
     {
         role.Id = NormalizeObjectId(role.Id);
         role.Name = string.IsNullOrWhiteSpace(role.Name) ? "New Role" : role.Name.Trim();
@@ -249,23 +235,10 @@ public static class CustomRunNormalizationService
             role.MaximumPlayers == 0 ? 4 : role.MaximumPlayers);
         role.LegacyAssignmentMode = null;
         role.Setup ??= new RunSetupDefinition();
-        if (migrateStartingLoadouts)
-            InferLegacyStartingLoadoutMode(role.Setup);
         role.Setup = NormalizeSetup(role.Setup);
         role.Setup.RunSeed = null;
         role.Setup.StartingAscension = null;
         return role;
-    }
-
-    private static void InferLegacyStartingLoadoutMode(RunSetupDefinition setup)
-    {
-        setup.StartingLoadoutMode = setup.StartingDeck?.Mode != SelectionMode.Default
-                                    || setup.StartingRelics?.Mode != SelectionMode.Default
-                                    || setup.StartingPotions?.Mode != SelectionMode.Default
-                                    || setup.StartingPowers?.Count > 0
-                                    || !string.IsNullOrWhiteSpace(setup.StartingMorphModelId)
-            ? StartingLoadoutMode.Unified
-            : StartingLoadoutMode.PerCharacter;
     }
 
     private static PlayerChoiceDefinition NormalizeChoice(PlayerChoiceDefinition choice)
