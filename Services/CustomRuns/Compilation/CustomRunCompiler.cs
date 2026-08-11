@@ -26,12 +26,23 @@ public sealed class CustomRunCompileResult
 
 public static class CustomRunCompiler
 {
-    public static CustomRunCompileResult Compile(CustomRunDefinition source, StartRunLobby lobby)
+    public static CustomRunValidationResult ValidateForLobbyLoad(CustomRunDefinition source)
     {
         CustomRunDefinition definition = CustomRunNormalizationService.Normalize(
             CustomRunNormalizationService.Clone(source));
-        List<CustomRunValidationIssue> issues = [.. CustomRunValidator.Validate(definition).Issues];
-        ValidateRuntimeSupport(definition, issues);
+        CustomRunValidationResult result = CustomRunValidator.Validate(definition);
+        ValidateRuntimeSupport(definition, result.Issues);
+        return result;
+    }
+
+    public static CustomRunCompileResult Compile(
+        CustomRunDefinition source,
+        StartRunLobby lobby,
+        IReadOnlyDictionary<ulong, string?>? roleAssignments = null)
+    {
+        CustomRunDefinition definition = CustomRunNormalizationService.Normalize(
+            CustomRunNormalizationService.Clone(source));
+        List<CustomRunValidationIssue> issues = [.. ValidateForLobbyLoad(definition).Issues];
 
         List<StartRunLobbyPlayerInfo> players = Sts2Compatibility
             .EnumerateStartRunLobbyPlayers(lobby)
@@ -41,50 +52,22 @@ public static class CustomRunCompiler
         if (players.Count == 0)
             AddError(issues, "Lobby", definition.Id, "The lobby has no players.");
 
-        List<CharacterModel> fixedCharacters = [];
-        if (definition.Setup.Character.Mode == SelectionMode.Fixed)
-        {
-            foreach (string id in definition.Setup.Character.FixedModelIds.Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                CharacterModel? character = ResolveCharacter(id);
-                if (character is null)
-                    AddError(issues, "Run Setup", definition.Id, $"Unknown character '{id}'.");
-                else
-                    fixedCharacters.Add(character);
-            }
-        }
-
         string seed = CanonicalizeSeed(definition.Setup.RunSeed, lobby.Seed, issues, definition.Id);
-        IReadOnlyList<string> deckModelIds = ResolveFixedModelIds(definition.Setup.StartingDeck);
-        IReadOnlyList<string> relicModelIds = ResolveFixedModelIds(definition.Setup.StartingRelics);
-        IReadOnlyList<string> potionModelIds = ResolveFixedModelIds(definition.Setup.StartingPotions);
-        IReadOnlyList<SavedCardLoadoutEntry> deckEntries = definition.Setup.StartingDeck.Mode == SelectionMode.Fixed
-            ? definition.Setup.StartingCardEntries.Select(entry => entry.Clone()).ToList()
-            : [];
-        IReadOnlyList<SavedRelicLoadoutEntry> relicEntries = definition.Setup.StartingRelics.Mode == SelectionMode.Fixed
-            ? definition.Setup.StartingRelicEntries.Select(entry => entry.Clone()).ToList()
-            : [];
-        IReadOnlyList<StartingPowerDefinition> startingPowers = definition.Setup.StartingPowers
-            .Select(power => new StartingPowerDefinition
-            {
-                ModelId = CustomRunCatalogService.CanonicalizeModelId(SelectionModelKind.Power, power.ModelId),
-                Amount = power.Amount
-            })
-            .ToList();
-        string? startingMorphModelId = definition.Setup.StartingMorphModelId;
-        if (startingMorphModelId is not null
-            && CustomRunCatalogService.TryResolveMorph(startingMorphModelId, out AbstractModel morphModel))
+        CustomRunRoleResolutionResult roleResolution = CustomRunRoleAssignmentResolver.Resolve(
+            definition,
+            players.Select(player => player.PlayerId),
+            roleAssignments ?? new Dictionary<ulong, string?>(),
+            seed);
+        if (!roleResolution.IsValid)
+            AddError(issues, "Roles", definition.Id, roleResolution.Error);
+
+        Dictionary<string, ResolvedSetupTemplate> setupTemplates = new(StringComparer.Ordinal)
         {
-            startingMorphModelId = morphModel.Id.ToString();
-        }
-        if (potionModelIds.Count > (definition.Setup.PotionSlots ?? 3))
-        {
-            AddError(
-                issues,
-                "Run Setup",
-                definition.Id,
-                $"Starting potions ({potionModelIds.Count}) exceed the configured potion slots ({definition.Setup.PotionSlots ?? 3}).");
-        }
+            [string.Empty] = ResolveSetupTemplate(definition.Setup, "Run Setup", definition.Id, issues)
+        };
+        foreach (RoleDefinition role in definition.Roles)
+            setupTemplates[role.Id] = ResolveSetupTemplate(role.Setup, "Roles", role.Id, issues);
+
         IReadOnlyList<string> missingMods = GetMissingRequiredMods(definition.RequiredModIds);
         if (missingMods.Count > 0)
         {
@@ -111,35 +94,41 @@ public static class CustomRunCompiler
         List<ResolvedPlayerSetup> resolvedPlayers = [];
         foreach (StartRunLobbyPlayerInfo player in players)
         {
+            roleResolution.Assignments.TryGetValue(player.PlayerId, out string? roleId);
+            ResolvedSetupTemplate template = roleId is not null
+                                             && setupTemplates.TryGetValue(roleId, out ResolvedSetupTemplate? roleTemplate)
+                ? roleTemplate
+                : setupTemplates[string.Empty];
             CharacterModel character = ResolvePlayerCharacter(
                 player,
                 seed,
                 selectableCharacters,
-                fixedCharacters);
+                template.FixedCharacters);
             resolvedPlayers.Add(new ResolvedPlayerSetup
             {
                 PlayerId = player.PlayerId,
                 CharacterModelId = character.Id.ToString(),
-                DeckModelIds = deckModelIds,
-                OverrideDeck = definition.Setup.StartingDeck.Mode == SelectionMode.Fixed,
-                DeckEntries = deckEntries.Select(entry => entry.Clone()).ToList(),
-                RelicModelIds = relicModelIds,
-                OverrideRelics = definition.Setup.StartingRelics.Mode == SelectionMode.Fixed,
-                RelicEntries = relicEntries.Select(entry => entry.Clone()).ToList(),
-                PotionModelIds = potionModelIds,
-                OverridePotions = definition.Setup.StartingPotions.Mode == SelectionMode.Fixed,
-                StartingPowers = startingPowers.Select(power => new StartingPowerDefinition
+                RoleId = roleId,
+                DeckModelIds = template.DeckModelIds,
+                OverrideDeck = template.OverrideDeck,
+                DeckEntries = template.DeckEntries.Select(entry => entry.Clone()).ToList(),
+                RelicModelIds = template.RelicModelIds,
+                OverrideRelics = template.OverrideRelics,
+                RelicEntries = template.RelicEntries.Select(entry => entry.Clone()).ToList(),
+                PotionModelIds = template.PotionModelIds,
+                OverridePotions = template.OverridePotions,
+                StartingPowers = template.StartingPowers.Select(power => new StartingPowerDefinition
                 {
                     ModelId = power.ModelId,
                     Amount = power.Amount
                 }).ToList(),
-                StartingMorphModelId = startingMorphModelId,
-                PotionSlots = definition.Setup.PotionSlots,
-                StartingGold = definition.Setup.StartingGold,
-                StartingCurrentHp = definition.Setup.StartingCurrentHp,
-                StartingMaxHp = definition.Setup.StartingMaxHp,
-                BaseEnergyPerTurn = definition.Setup.BaseEnergyPerTurn,
-                CardsDrawnPerTurn = definition.Setup.CardsDrawnPerTurn
+                StartingMorphModelId = template.StartingMorphModelId,
+                PotionSlots = template.Setup.PotionSlots,
+                StartingGold = template.Setup.StartingGold,
+                StartingCurrentHp = template.Setup.StartingCurrentHp,
+                StartingMaxHp = template.Setup.StartingMaxHp,
+                BaseEnergyPerTurn = template.Setup.BaseEnergyPerTurn,
+                CardsDrawnPerTurn = template.Setup.CardsDrawnPerTurn
             });
         }
 
@@ -195,14 +184,9 @@ public static class CustomRunCompiler
         CustomRunDefinition definition,
         List<CustomRunValidationIssue> issues)
     {
-        if (definition.Setup.Character.Mode is SelectionMode.Random or SelectionMode.PlayerChoice)
-            AddError(issues, "Run Setup", definition.Id, "Character mode must be Default or Fixed before Play.");
-        RejectUnsupportedSelectionMode(definition.Setup.StartingDeck, "starting deck", definition, issues);
-        RejectUnsupportedSelectionMode(definition.Setup.StartingRelics, "starting relics", definition, issues);
-        RejectUnsupportedSelectionMode(definition.Setup.StartingPotions, "starting potions", definition, issues);
-
-        if (definition.Roles.Count > 0)
-            AddError(issues, "Roles", definition.Id, "Roles are not supported by Play yet; remove them or leave this run as a draft.");
+        ValidateSetupRuntimeSupport(definition.Setup, "Run Setup", definition.Id, issues);
+        foreach (RoleDefinition role in definition.Roles)
+            ValidateSetupRuntimeSupport(role.Setup, "Roles", role.Id, issues);
         if (definition.PlayerChoices.Count > 0)
             AddError(issues, "Player Choices", definition.Id, "Player choices are not supported by Play yet.");
         if (definition.Rules.Count > 0)
@@ -211,16 +195,87 @@ public static class CustomRunCompiler
             AddError(issues, "Variables", definition.Id, "Variables are not supported by Play yet.");
     }
 
+    private static void ValidateSetupRuntimeSupport(
+        RunSetupDefinition setup,
+        string section,
+        string objectId,
+        List<CustomRunValidationIssue> issues)
+    {
+        if (setup.Character.Mode is SelectionMode.Random or SelectionMode.PlayerChoice)
+            AddError(issues, section, objectId, "Character mode must be Default or Fixed before Play.");
+        RejectUnsupportedSelectionMode(setup.StartingDeck, "starting deck", section, objectId, issues);
+        RejectUnsupportedSelectionMode(setup.StartingRelics, "starting relics", section, objectId, issues);
+        RejectUnsupportedSelectionMode(setup.StartingPotions, "starting potions", section, objectId, issues);
+    }
+
     private static void RejectUnsupportedSelectionMode(
         SelectionSpec selection,
         string label,
-        CustomRunDefinition definition,
+        string section,
+        string objectId,
         List<CustomRunValidationIssue> issues)
     {
         if (selection.Mode is SelectionMode.Random or SelectionMode.PlayerChoice)
-            AddError(issues, "Run Setup", definition.Id, $"Random and player-choice {label} are not supported by Play yet.");
+            AddError(issues, section, objectId, $"Random and player-choice {label} are not supported by Play yet.");
         if (HasCustomPool(selection.Pool))
-            AddError(issues, "Run Setup", definition.Id, $"Filtered {label} pools are not supported by Play yet.");
+            AddError(issues, section, objectId, $"Filtered {label} pools are not supported by Play yet.");
+    }
+
+    private static ResolvedSetupTemplate ResolveSetupTemplate(
+        RunSetupDefinition setup,
+        string section,
+        string objectId,
+        List<CustomRunValidationIssue> issues)
+    {
+        List<CharacterModel> fixedCharacters = [];
+        if (setup.Character.Mode == SelectionMode.Fixed)
+        {
+            foreach (string id in setup.Character.FixedModelIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                CharacterModel? character = ResolveCharacter(id);
+                if (character is null)
+                    AddError(issues, section, objectId, $"Unknown character '{id}'.");
+                else
+                    fixedCharacters.Add(character);
+            }
+        }
+
+        IReadOnlyList<string> deckModelIds = ResolveFixedModelIds(setup.StartingDeck);
+        IReadOnlyList<string> relicModelIds = ResolveFixedModelIds(setup.StartingRelics);
+        IReadOnlyList<string> potionModelIds = ResolveFixedModelIds(setup.StartingPotions);
+        if (potionModelIds.Count > (setup.PotionSlots ?? 3))
+        {
+            AddError(
+                issues,
+                section,
+                objectId,
+                $"Starting potions ({potionModelIds.Count}) exceed the configured potion slots ({setup.PotionSlots ?? 3}).");
+        }
+
+        string? startingMorphModelId = setup.StartingMorphModelId;
+        if (startingMorphModelId is not null
+            && CustomRunCatalogService.TryResolveMorph(startingMorphModelId, out AbstractModel morphModel))
+        {
+            startingMorphModelId = morphModel.Id.ToString();
+        }
+
+        return new ResolvedSetupTemplate(
+            setup,
+            fixedCharacters,
+            deckModelIds,
+            setup.StartingDeck.Mode == SelectionMode.Fixed,
+            setup.StartingCardEntries.Select(entry => entry.Clone()).ToList(),
+            relicModelIds,
+            setup.StartingRelics.Mode == SelectionMode.Fixed,
+            setup.StartingRelicEntries.Select(entry => entry.Clone()).ToList(),
+            potionModelIds,
+            setup.StartingPotions.Mode == SelectionMode.Fixed,
+            setup.StartingPowers.Select(power => new StartingPowerDefinition
+            {
+                ModelId = CustomRunCatalogService.CanonicalizeModelId(SelectionModelKind.Power, power.ModelId),
+                Amount = power.Amount
+            }).ToList(),
+            startingMorphModelId);
     }
 
     private static IReadOnlyList<string> ResolveFixedModelIds(SelectionSpec selection)
@@ -355,4 +410,18 @@ public static class CustomRunCompiler
             objectId,
             message));
     }
+
+    private sealed record ResolvedSetupTemplate(
+        RunSetupDefinition Setup,
+        IReadOnlyList<CharacterModel> FixedCharacters,
+        IReadOnlyList<string> DeckModelIds,
+        bool OverrideDeck,
+        IReadOnlyList<SavedCardLoadoutEntry> DeckEntries,
+        IReadOnlyList<string> RelicModelIds,
+        bool OverrideRelics,
+        IReadOnlyList<SavedRelicLoadoutEntry> RelicEntries,
+        IReadOnlyList<string> PotionModelIds,
+        bool OverridePotions,
+        IReadOnlyList<StartingPowerDefinition> StartingPowers,
+        string? StartingMorphModelId);
 }

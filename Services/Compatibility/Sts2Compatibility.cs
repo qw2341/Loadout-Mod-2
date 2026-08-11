@@ -29,7 +29,8 @@ using MegaCrit.Sts2.Core.ValueProps;
 internal sealed record StartRunLobbyPlayerInfo(
     ulong PlayerId,
     int SlotId,
-    CharacterModel? Character);
+    CharacterModel? Character,
+    bool IsReady);
 
 /// <summary>
 /// Resolves the two supported STS2 API shapes once: the 0.110 beta API
@@ -87,6 +88,8 @@ internal static class Sts2Compatibility
         CreatePlayerMemberAccessor<CharacterModel>(StartRunLobbyPlayerType, "character", "Character");
     private static readonly Func<object, int> GetStartRunLobbyPlayerSlot =
         CreatePlayerMemberAccessor<int>(StartRunLobbyPlayerType, "slotId", "slot", "SlotId", "Slot");
+    private static readonly Func<object, bool> GetStartRunLobbyPlayerReady =
+        CreatePlayerMemberAccessor<bool>(StartRunLobbyPlayerType, "isReady", "ready", "IsReady", "Ready");
 
     private static readonly EventInfo RunLobbyPlayerRejoinedEvent =
         ResolveEvent(typeof(RunLobby), "PlayerRejoined");
@@ -215,7 +218,8 @@ internal static class Sts2Compatibility
             yield return new StartRunLobbyPlayerInfo(
                 GetStartRunLobbyPlayerId(player),
                 GetStartRunLobbyPlayerSlot(player),
-                GetStartRunLobbyPlayerCharacter(player));
+                GetStartRunLobbyPlayerCharacter(player),
+                GetStartRunLobbyPlayerReady(player));
         }
     }
 

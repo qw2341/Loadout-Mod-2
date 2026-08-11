@@ -722,7 +722,7 @@ public partial class NCustomRunLibraryScreen : Control
         }
 
         CustomRunDefinition imported = CustomRunStorageService.Import(definition);
-        CustomRunCompileResult validation = CustomRunCompiler.Compile(imported, _lobby!);
+        CustomRunValidationResult validation = CustomRunCompiler.ValidateForLobbyLoad(imported);
         _focusDefinitionId = imported.Id;
         SetStatus(
             validation.IsValid
@@ -851,8 +851,8 @@ public partial class NCustomRunLibraryScreen : Control
             ? CustomRunStorageService.Upsert(definition)
             : CustomRunNormalizationService.Normalize(CustomRunNormalizationService.Clone(definition));
         CustomRunDefinition effectiveDefinition = CustomRunDefinitionResolver.WithEnabledPermanentRules(launchDefinition);
-        CustomRunCompileResult compiled = CustomRunCompiler.Compile(effectiveDefinition, _lobby);
-        if (!compiled.IsValid || compiled.Snapshot is null)
+        CustomRunValidationResult compiled = CustomRunCompiler.ValidateForLobbyLoad(effectiveDefinition);
+        if (!compiled.IsValid)
         {
             CustomRunValidationIssue? issue = compiled.Issues
                 .FirstOrDefault(candidate => candidate.Severity == CustomRunValidationSeverity.Error);

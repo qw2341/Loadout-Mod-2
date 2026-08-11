@@ -36,12 +36,16 @@ public partial class NCustomRunCharacterSelectOverlay : Control
         _confirmImage = _sourceScreen?.GetNodeOrNull<TextureRect>("ConfirmButton/Image");
         RememberCharacterVisibility();
         CustomRunLobbyService.LoadedDefinitionChanged += OnLoadedDefinitionChanged;
+        CustomRunRoleAssignmentService.Changed += OnAssignmentsChanged;
+        CustomRunRoleAssignmentService.AssignmentRejected += OnAssignmentRejected;
         RefreshLoadedRun();
     }
 
     public override void _ExitTree()
     {
         CustomRunLobbyService.LoadedDefinitionChanged -= OnLoadedDefinitionChanged;
+        CustomRunRoleAssignmentService.Changed -= OnAssignmentsChanged;
+        CustomRunRoleAssignmentService.AssignmentRejected -= OnAssignmentRejected;
         RestoreCharacterVisibility();
         if (_confirmImage is not null && GodotObject.IsInstanceValid(_confirmImage))
             _confirmImage.SelfModulate = Colors.White;
@@ -76,11 +80,11 @@ public partial class NCustomRunCharacterSelectOverlay : Control
             if (_confirmImage is not null && GodotObject.IsInstanceValid(_confirmImage))
                 _confirmImage.SelfModulate = Colors.White;
             RestoreCharacterVisibility();
-            NCustomRunEditorEntry.RefreshAttachedState(_sourceScreen, null);
+            NCustomRunEditorEntry.RefreshAttachedState(_sourceScreen, _lobby, null);
             return;
         }
 
-        NCustomRunEditorEntry.RefreshAttachedState(_sourceScreen, definition);
+        NCustomRunEditorEntry.RefreshAttachedState(_sourceScreen, _lobby, definition);
         ApplyCharacterRestrictions(definition!);
     }
 
@@ -95,6 +99,18 @@ public partial class NCustomRunCharacterSelectOverlay : Control
             RefreshLoadedRun();
     }
 
+    private void OnAssignmentsChanged(StartRunLobby lobby)
+    {
+        if (ReferenceEquals(lobby, _lobby))
+            RefreshLoadedRun();
+    }
+
+    private void OnAssignmentRejected(StartRunLobby lobby, string error)
+    {
+        if (ReferenceEquals(lobby, _lobby))
+            ShowError(error);
+    }
+
     private void RememberCharacterVisibility()
     {
         Control? container = GetCharacterButtonContainer();
@@ -107,13 +123,20 @@ public partial class NCustomRunCharacterSelectOverlay : Control
     private void ApplyCharacterRestrictions(CustomRunDefinition definition)
     {
         RestoreCharacterVisibility();
-        if (definition.Setup.Character.Mode != SelectionMode.Fixed
-            || definition.Setup.Character.FixedModelIds.Count == 0)
+        RunSetupDefinition setup = definition.Setup;
+        if (_lobby is not null
+            && CustomRunRoleAssignmentService.GetRoleId(_lobby, _lobby.NetService.NetId) is { } roleId)
+        {
+            setup = definition.Roles.FirstOrDefault(role =>
+                string.Equals(role.Id, roleId, StringComparison.Ordinal))?.Setup ?? definition.Setup;
+        }
+        if (setup.Character.Mode != SelectionMode.Fixed
+            || setup.Character.FixedModelIds.Count == 0)
         {
             return;
         }
 
-        HashSet<string> allowed = definition.Setup.Character.FixedModelIds
+        HashSet<string> allowed = setup.Character.FixedModelIds
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         List<NCharacterSelectButton> visibleButtons = [];

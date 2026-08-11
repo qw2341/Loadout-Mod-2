@@ -70,6 +70,8 @@ public static class CustomRunSnapshotSerializationService
                 || decoded.Players.Any(player =>
                     string.IsNullOrWhiteSpace(player.CharacterModelId)
                     || player.CharacterModelId.Length > 256
+                    || player.RoleId is not null
+                       && (player.RoleId.Length > 64 || !Guid.TryParseExact(player.RoleId, "N", out _))
                     || !InRange(player.PotionSlots, 0, 20)
                     || !InRange(player.StartingGold, 0, 999999)
                     || !InRange(player.StartingCurrentHp, 1, 99999)

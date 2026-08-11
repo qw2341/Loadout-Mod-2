@@ -146,7 +146,10 @@ public static class CharacterSelectCustomRunEmbarkPatch
                 return;
 
             CustomRunDefinition effective = CustomRunDefinitionResolver.WithEnabledPermanentRules(loaded);
-            CustomRunCompileResult compiled = CustomRunCompiler.Compile(effective, lobby);
+            CustomRunCompileResult compiled = CustomRunCompiler.Compile(
+                effective,
+                lobby,
+                CustomRunRoleAssignmentService.GetAssignments(lobby));
             if (!compiled.IsValid || compiled.Snapshot is null)
             {
                 CustomRunValidationIssue? issue = compiled.Issues

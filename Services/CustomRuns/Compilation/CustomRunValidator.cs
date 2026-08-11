@@ -117,15 +117,27 @@ public static class CustomRunValidator
 
     private static void ValidateRoles(CustomRunDefinition definition, CustomRunValidationResult result)
     {
+        if (!Enum.IsDefined(definition.RoleAssignmentMode))
+            Error(result, "Roles", definition.Id, "Role assignment mode is invalid.");
         ValidateUniqueIds(definition.Roles.Select(role => role.Id), "Roles", result);
         foreach (RoleDefinition role in definition.Roles)
         {
             if (!IsGuidStyleId(role.Id))
                 Error(result, "Roles", role.Id, $"Role '{role.Name}' has an invalid ID.");
+            if (string.IsNullOrWhiteSpace(role.Name))
+                Error(result, "Roles", role.Id, "Role name is required.");
+            if (role.MinimumPlayers < 0 || role.MinimumPlayers > 4)
+                Error(result, "Roles", role.Id, $"Role '{role.Name}' minimum must be between 0 and 4.");
+            if (role.MaximumPlayers < 1 || role.MaximumPlayers > 4)
+                Error(result, "Roles", role.Id, $"Role '{role.Name}' maximum must be between 1 and 4.");
             if (role.MaximumPlayers < role.MinimumPlayers)
                 Error(result, "Roles", role.Id, $"Role '{role.Name}' maximum is below its minimum.");
             ValidateSetup(role.Setup, result, "Roles", role.Id);
         }
+        if (definition.Roles.Sum(role => role.MinimumPlayers) > 4)
+            Error(result, "Roles", definition.Id, "Role minimums require more than four players.");
+        if (definition.RoleAssignmentMode == RoleAssignmentMode.Random && definition.Roles.Count == 0)
+            Error(result, "Roles", definition.Id, "Random role assignment requires at least one role.");
     }
 
     private static void ValidateChoices(CustomRunDefinition definition, CustomRunValidationResult result)

@@ -80,6 +80,7 @@ public static class CustomRunLobbyService
         lobby.NetService.RegisterMessageHandler<CustomRunDefinitionMessage>(HandleDefinitionMessage);
         lobby.NetService.RegisterMessageHandler<CustomRunSnapshotMessage>(HandleSnapshotMessage);
         lobby.NetService.RegisterMessageHandler<CustomRunSnapshotAckMessage>(HandleSnapshotAckMessage);
+        CustomRunRoleAssignmentService.RegisterLobby(lobby);
 
         ConnectedHandlers[lobby] = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
             lobby,
@@ -95,6 +96,7 @@ public static class CustomRunLobbyService
             return;
 
         CancelPreparation(lobby, "The Custom Run lobby was closed.");
+        CustomRunRoleAssignmentService.UnregisterLobby(lobby);
         lobby.NetService.UnregisterMessageHandler<CustomRunDefinitionMessage>(HandleDefinitionMessage);
         lobby.NetService.UnregisterMessageHandler<CustomRunSnapshotMessage>(HandleSnapshotMessage);
         lobby.NetService.UnregisterMessageHandler<CustomRunSnapshotAckMessage>(HandleSnapshotAckMessage);
@@ -121,9 +123,12 @@ public static class CustomRunLobbyService
 
         CustomRunDefinition normalized = CustomRunNormalizationService.Normalize(
             CustomRunNormalizationService.Clone(definition));
+        bool sameDefinition = HostDefinitions.TryGetValue(lobby, out CustomRunDefinition? previous)
+                              && string.Equals(previous.Id, normalized.Id, StringComparison.Ordinal);
         HostDefinitions[lobby] = normalized;
         if (lobby.NetService.Type == NetGameType.Host)
             BroadcastDefinition(lobby);
+        CustomRunRoleAssignmentService.OnDefinitionApplied(lobby, normalized, sameDefinition);
         LoadedDefinitionChanged?.Invoke(lobby);
         return true;
     }
@@ -141,6 +146,7 @@ public static class CustomRunLobbyService
         HostDefinitions.Remove(lobby);
         if (lobby.NetService.Type == NetGameType.Host)
             BroadcastDefinition(lobby);
+        CustomRunRoleAssignmentService.OnDefinitionCleared(lobby);
         LoadedDefinitionChanged?.Invoke(lobby);
         return true;
     }
@@ -284,11 +290,13 @@ public static class CustomRunLobbyService
     private static void OnPlayerConnected(StartRunLobby lobby, ulong playerId)
     {
         SendDefinitionToPlayer(lobby, playerId);
+        CustomRunRoleAssignmentService.OnPlayerConnected(lobby, playerId);
         CancelPreparation(lobby, "The lobby roster changed; press Play again.");
     }
 
     private static void OnPlayerDisconnected(StartRunLobby lobby, ulong playerId)
     {
+        CustomRunRoleAssignmentService.OnPlayerDisconnected(lobby, playerId);
         CancelPreparation(lobby, $"Player {playerId} disconnected; press Play again.");
     }
 
@@ -324,6 +332,7 @@ public static class CustomRunLobbyService
         if (string.IsNullOrWhiteSpace(message.payload))
         {
             _remoteDefinition = null;
+            CustomRunRoleAssignmentService.OnDefinitionCleared(lobby);
             RemoteDefinitionChanged?.Invoke();
             LoadedDefinitionChanged?.Invoke(lobby);
             return;
@@ -335,7 +344,10 @@ public static class CustomRunLobbyService
             return;
         }
 
+        bool sameDefinition = _remoteDefinition is not null
+                              && string.Equals(_remoteDefinition.Id, definition.Id, StringComparison.Ordinal);
         _remoteDefinition = definition;
+        CustomRunRoleAssignmentService.OnDefinitionApplied(lobby, definition, sameDefinition);
         RemoteDefinitionChanged?.Invoke();
         LoadedDefinitionChanged?.Invoke(lobby);
     }

@@ -52,7 +52,8 @@ public sealed class RoleDefinition
     public int MaximumPlayers { get; set; } = 1;
 
     [JsonPropertyName("assignmentMode")]
-    public RoleAssignmentMode AssignmentMode { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RoleAssignmentMode? LegacyAssignmentMode { get; set; }
 
     [JsonPropertyName("setup")]
     public RunSetupDefinition Setup { get; set; } = new();

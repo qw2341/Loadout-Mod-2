@@ -50,7 +50,7 @@ public partial class NCustomRunEditorScreen : Control
         "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_char_backdrop.tres";
     private static readonly string[] TabNames =
     [
-        "Overview", "Run Setup", "Roles & Choices", "Rules", "Variables"
+        "Overview", "Run Setup", "Player Choices", "Rules", "Variables"
     ];
 
     private StartRunLobby? _lobby;
@@ -79,6 +79,7 @@ public partial class NCustomRunEditorScreen : Control
     private HFlowContainer? _startingDeckPreview;
     private HFlowContainer? _startingRelicPreview;
     private HBoxContainer? _startingPotionHolders;
+    private string? _activeSetupRoleId;
 
     public static void OpenFromLibrary(
         Control libraryScreen,
@@ -145,6 +146,7 @@ public partial class NCustomRunEditorScreen : Control
         _returnRoute = returnRoute;
         _dirty = false;
         _activeTab = TabNames[0];
+        _activeSetupRoleId = null;
 
         if (IsNodeReady())
             RefreshForLobby();
@@ -559,7 +561,8 @@ public partial class NCustomRunEditorScreen : Control
         AddSummaryRow(summary, "Definition ID", _workingDefinition.Id);
         AddSummaryRow(summary, "Schema", _workingDefinition.SchemaVersion.ToString());
         AddSummaryRow(summary, "Rules", _workingDefinition.Rules.Count.ToString());
-        AddSummaryRow(summary, "Roles / Choices", $"{_workingDefinition.Roles.Count} / {_workingDefinition.PlayerChoices.Count}");
+        AddSummaryRow(summary, "Roles", _workingDefinition.Roles.Count.ToString());
+        AddSummaryRow(summary, "Player Choices", _workingDefinition.PlayerChoices.Count.ToString());
         AddSummaryRow(summary, "Variables", _workingDefinition.Variables.Count.ToString());
         _contentHost.AddChild(summary);
     }
@@ -569,35 +572,12 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null || _workingDefinition is null)
             return;
 
-        RunSetupDefinition setup = _workingDefinition.Setup;
+        RunSetupDefinition defaultSetup = _workingDefinition.Setup;
         _contentHost.AddChild(CreateSectionTitle("RUN SETUP"));
-        _contentHost.AddChild(CreateHint(
-            "Unchecked numeric rows use the character or game's normal value. Changing a number enables its override."));
 
-        HBoxContainer characterRow = CreateRow();
-        characterRow.AddChild(CreateRowLabel("Character"));
-        NSelectFilterDropdown character = CreateCharacterSelector(setup.Character);
-        character.SelectedItemChanged += modelId =>
-        {
-            if (_loadingFields || _workingDefinition is null)
-                return;
-            ApplyCharacterSelection(_workingDefinition.Setup.Character, modelId);
-            MarkDirty();
-            RebuildContent();
-        };
-        characterRow.AddChild(character);
-        _contentHost.AddChild(characterRow);
-
-        BuildStartingDeckSection(setup);
-        BuildStartingRelicSection(setup);
-        BuildStartingPotionSection(setup);
-        BuildStartingPowerSection(setup);
-        BuildStartingMorphSection(setup);
-
-        _contentHost.AddChild(CreateSectionDivider());
         HBoxContainer seedRow = CreateRow();
         seedRow.AddChild(CreateRowLabel("Run Seed"));
-        LineEdit seed = CreateLineEdit(setup.RunSeed ?? string.Empty);
+        LineEdit seed = CreateLineEdit(defaultSetup.RunSeed ?? string.Empty);
         seed.PlaceholderText = "Game default / random";
         seed.CustomMinimumSize = new Vector2(360f, 44f);
         seed.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
@@ -610,6 +590,100 @@ public partial class NCustomRunEditorScreen : Control
         };
         seedRow.AddChild(seed);
         _contentHost.AddChild(seedRow);
+        AddNullableNumberRow("Starting Ascension", defaultSetup.StartingAscension, 0, 0, 10,
+            value => defaultSetup.StartingAscension = value);
+
+        HBoxContainer assignmentRow = CreateRow();
+        assignmentRow.AddChild(CreateRowLabel("Role Assignment"));
+        NLoadoutDropdown assignmentMode = new()
+        {
+            CustomMinimumSize = new Vector2(420f, 52f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
+            DropdownWidth = 420f
+        };
+        assignmentMode.SetItems(string.Empty,
+        [
+            new LoadoutDropdownOption(RoleAssignmentMode.PlayersChoose.ToString(), "Players Choose"),
+            new LoadoutDropdownOption(RoleAssignmentMode.HostAssigns.ToString(), "Host Assigns"),
+            new LoadoutDropdownOption(RoleAssignmentMode.Random.ToString(), "Random on Embark")
+        ], _workingDefinition.RoleAssignmentMode.ToString());
+        assignmentMode.SelectedItemChanged += selected =>
+        {
+            if (_loadingFields || _workingDefinition is null
+                || !Enum.TryParse(selected, out RoleAssignmentMode mode))
+                return;
+            _workingDefinition.RoleAssignmentMode = mode;
+            MarkDirty();
+        };
+        assignmentRow.AddChild(assignmentMode);
+        _contentHost.AddChild(assignmentRow);
+        _contentHost.AddChild(CreateSectionDivider());
+
+        HBoxContainer roleActions = CreateRow();
+        Button noRole = CreateCompactButton("NO ROLE", 22, 52f);
+        noRole.CustomMinimumSize = new Vector2(220f, 52f);
+        if (_activeSetupRoleId is null)
+            noRole.AddThemeColorOverride("font_color", StsColors.gold);
+        noRole.Pressed += () =>
+        {
+            _activeSetupRoleId = null;
+            RebuildContent();
+        };
+        roleActions.AddChild(noRole);
+        Button addRole = CreateCompactButton("ADD ROLE", 22, 52f);
+        addRole.CustomMinimumSize = new Vector2(220f, 52f);
+        addRole.Pressed += AddRole;
+        roleActions.AddChild(addRole);
+        _contentHost.AddChild(roleActions);
+
+        foreach (RoleDefinition role in _workingDefinition.Roles)
+        {
+            RoleDefinition capturedRole = role;
+            string required = role.MinimumPlayers > 0 ? "  REQUIRED" : string.Empty;
+            Button row = CreateCompactButton(
+                $"{role.Name}    MIN {role.MinimumPlayers}    MAX {role.MaximumPlayers}{required}",
+                21,
+                52f);
+            row.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            if (string.Equals(_activeSetupRoleId, role.Id, StringComparison.Ordinal))
+                row.AddThemeColorOverride("font_color", StsColors.gold);
+            row.Pressed += () =>
+            {
+                _activeSetupRoleId = capturedRole.Id;
+                RebuildContent();
+            };
+            _contentHost.AddChild(row);
+        }
+
+        RoleDefinition? activeRole = ResolveRole(_activeSetupRoleId);
+        if (_activeSetupRoleId is not null && activeRole is null)
+            _activeSetupRoleId = null;
+        RunSetupDefinition setup = activeRole?.Setup ?? defaultSetup;
+        if (activeRole is not null)
+            BuildRoleDetails(activeRole);
+        _contentHost.AddChild(CreateSectionDivider());
+
+        HBoxContainer characterRow = CreateRow();
+        characterRow.AddChild(CreateRowLabel("Character"));
+        string? setupOwnerId = _activeSetupRoleId;
+        NSelectFilterDropdown character = CreateCharacterSelector(setup.Character);
+        character.SelectedItemChanged += modelId =>
+        {
+            if (_loadingFields || !IsSetupOwnerValid(setupOwnerId, setup))
+                return;
+            ApplyCharacterSelection(setup.Character, modelId);
+            MarkDirty();
+            RebuildContent();
+        };
+        characterRow.AddChild(character);
+        _contentHost.AddChild(characterRow);
+
+        BuildStartingDeckSection(setup);
+        BuildStartingRelicSection(setup);
+        BuildStartingPotionSection(setup);
+        BuildStartingPowerSection(setup);
+        BuildStartingMorphSection(setup);
+
         _contentHost.AddChild(CreateSectionDivider());
 
         AddNullableNumberRow("Starting Gold", setup.StartingGold, 99, 0, 999999,
@@ -629,8 +703,98 @@ public partial class NCustomRunEditorScreen : Control
             value => setup.BaseEnergyPerTurn = value);
         AddNullableNumberRow("Cards Drawn / Turn", setup.CardsDrawnPerTurn, 5, 0, 99,
             value => setup.CardsDrawnPerTurn = value);
-        AddNullableNumberRow("Starting Ascension", setup.StartingAscension, 0, 0, 10,
-            value => setup.StartingAscension = value);
+    }
+
+    private void AddRole()
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+        RoleDefinition role = new();
+        _workingDefinition.Roles.Add(role);
+        _activeSetupRoleId = role.Id;
+        MarkDirty();
+        RebuildContent();
+    }
+
+    private void BuildRoleDetails(RoleDefinition role)
+    {
+        if (_contentHost is null)
+            return;
+        HBoxContainer nameRow = CreateRow();
+        nameRow.AddChild(CreateRowLabel("Role Name"));
+        LineEdit name = CreateLineEdit(role.Name);
+        name.TextChanged += value =>
+        {
+            if (_loadingFields || ResolveRole(role.Id) != role)
+                return;
+            role.Name = value;
+            MarkDirty();
+        };
+        nameRow.AddChild(name);
+        _contentHost.AddChild(nameRow);
+
+        HBoxContainer limits = CreateRow();
+        limits.AddChild(CreateRowLabel("Players"));
+        limits.AddChild(CreateFieldLabel("MIN"));
+        NLoadoutNumberStepper minimum = new();
+        minimum.Init(role.MinimumPlayers, 0, role.MaximumPlayers);
+        minimum.ValueChanged += value =>
+        {
+            if (_loadingFields || ResolveRole(role.Id) != role)
+                return;
+            role.MinimumPlayers = Math.Clamp(value, 0, role.MaximumPlayers);
+            MarkDirty();
+            RebuildContent();
+        };
+        limits.AddChild(minimum);
+        limits.AddChild(CreateFieldLabel("MAX"));
+        NLoadoutNumberStepper maximum = new();
+        maximum.Init(role.MaximumPlayers, 1, 4);
+        maximum.ValueChanged += value =>
+        {
+            if (_loadingFields || ResolveRole(role.Id) != role)
+                return;
+            role.MaximumPlayers = Math.Clamp(value, 1, 4);
+            role.MinimumPlayers = Math.Min(role.MinimumPlayers, role.MaximumPlayers);
+            MarkDirty();
+            RebuildContent();
+        };
+        limits.AddChild(maximum);
+        AddToolSpacer(limits);
+        AddSettingsActionButton(limits, "delete_role", "DELETE ROLE", 190f, () => DeleteRole(role), danger: true);
+        _contentHost.AddChild(limits);
+    }
+
+    private void DeleteRole(RoleDefinition role)
+    {
+        if (_workingDefinition is null || ResolveRole(role.Id) != role)
+            return;
+        _workingDefinition.Roles.Remove(role);
+        _activeSetupRoleId = null;
+        MarkDirty();
+        RebuildContent();
+    }
+
+    private RoleDefinition? ResolveRole(string? roleId)
+    {
+        return roleId is null || _workingDefinition is null
+            ? null
+            : _workingDefinition.Roles.FirstOrDefault(role => string.Equals(role.Id, roleId, StringComparison.Ordinal));
+    }
+
+    private RunSetupDefinition? ResolveSetup(string? roleId)
+    {
+        return roleId is null ? _workingDefinition?.Setup : ResolveRole(roleId)?.Setup;
+    }
+
+    private RunSetupDefinition GetActiveSetup()
+    {
+        return ResolveSetup(_activeSetupRoleId) ?? _workingDefinition?.Setup ?? new RunSetupDefinition();
+    }
+
+    private bool IsSetupOwnerValid(string? roleId, RunSetupDefinition setup)
+    {
+        return ReferenceEquals(ResolveSetup(roleId), setup);
     }
 
     private void BuildStartingDeckSection(RunSetupDefinition setup)
@@ -837,7 +1001,7 @@ public partial class NCustomRunEditorScreen : Control
         ClearChildren(_startingPotionHolders);
         IReadOnlyList<string> potionIds = setup.StartingPotions.Mode == SelectionMode.Fixed
             ? setup.StartingPotions.FixedModelIds
-            : ResolvePreviewCharacter()?.StartingPotions.Select(potion => potion.Id.ToString()).ToList() ?? [];
+            : ResolvePreviewCharacter(setup)?.StartingPotions.Select(potion => potion.Id.ToString()).ToList() ?? [];
         int slotCount = Math.Clamp(setup.PotionSlots ?? 3, 0, 20);
 
         for (int index = 0; index < slotCount; index++)
@@ -977,9 +1141,9 @@ public partial class NCustomRunEditorScreen : Control
         if (_workingDefinition is not null)
         {
             if (selection.Kind == SelectionModelKind.Card)
-                _workingDefinition.Setup.StartingCardEntries.Clear();
+                GetActiveSetup().StartingCardEntries.Clear();
             else if (selection.Kind == SelectionModelKind.Relic)
-                _workingDefinition.Setup.StartingRelicEntries.Clear();
+                GetActiveSetup().StartingRelicEntries.Clear();
         }
         MarkDirty();
         RebuildContent();
@@ -992,7 +1156,7 @@ public partial class NCustomRunEditorScreen : Control
 
         if (selection.Kind == SelectionModelKind.Card)
         {
-            List<SavedCardLoadoutEntry> previous = _workingDefinition.Setup.StartingCardEntries.ToList();
+            List<SavedCardLoadoutEntry> previous = GetActiveSetup().StartingCardEntries.ToList();
             List<SavedCardLoadoutEntry> next = [];
             foreach (string id in selectedIds)
             {
@@ -1007,11 +1171,11 @@ public partial class NCustomRunEditorScreen : Control
                     next.Add(new SavedCardLoadoutEntry { ModelId = id, Count = 1 });
                 }
             }
-            _workingDefinition.Setup.StartingCardEntries = next;
+            GetActiveSetup().StartingCardEntries = next;
         }
         else if (selection.Kind == SelectionModelKind.Relic)
         {
-            List<SavedRelicLoadoutEntry> previous = _workingDefinition.Setup.StartingRelicEntries.ToList();
+            List<SavedRelicLoadoutEntry> previous = GetActiveSetup().StartingRelicEntries.ToList();
             List<SavedRelicLoadoutEntry> next = [];
             foreach (string id in selectedIds)
             {
@@ -1026,7 +1190,7 @@ public partial class NCustomRunEditorScreen : Control
                     next.Add(new SavedRelicLoadoutEntry { ModelId = id, Count = 1 });
                 }
             }
-            _workingDefinition.Setup.StartingRelicEntries = next;
+            GetActiveSetup().StartingRelicEntries = next;
         }
     }
 
@@ -1042,7 +1206,7 @@ public partial class NCustomRunEditorScreen : Control
             int upgradeLevel = screen.IsToggleEnabled("view_upgrades") && card.IsUpgradable ? 1 : 0;
             for (int copy = 0; copy < amount; copy++)
             {
-                _workingDefinition.Setup.StartingCardEntries.Add(new SavedCardLoadoutEntry
+                GetActiveSetup().StartingCardEntries.Add(new SavedCardLoadoutEntry
                 {
                     ModelId = card.Id.ToString(),
                     UpgradeLevel = upgradeLevel,
@@ -1051,7 +1215,7 @@ public partial class NCustomRunEditorScreen : Control
             }
             SynchronizeStartingSelectionIds(SelectionModelKind.Card);
             MarkDirty();
-            RefreshStartingDeckPreview(_workingDefinition.Setup);
+            RefreshStartingDeckPreview(GetActiveSetup());
             CustomRunEditorPreviewService.PreviewCardAdd(
                 card,
                 upgradeLevel,
@@ -1071,7 +1235,7 @@ public partial class NCustomRunEditorScreen : Control
             EnsureDetailedStartingSelection(SelectionModelKind.Relic);
             for (int copy = 0; copy < amount; copy++)
             {
-                _workingDefinition.Setup.StartingRelicEntries.Add(new SavedRelicLoadoutEntry
+                GetActiveSetup().StartingRelicEntries.Add(new SavedRelicLoadoutEntry
                 {
                     ModelId = relic.Id.ToString(),
                     Count = 1
@@ -1079,7 +1243,7 @@ public partial class NCustomRunEditorScreen : Control
             }
             SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
             MarkDirty();
-            RefreshStartingRelicPreview(_workingDefinition.Setup);
+            RefreshStartingRelicPreview(GetActiveSetup());
             CustomRunEditorPreviewService.PreviewRelicAdd(
                 relic,
                 amount,
@@ -1096,13 +1260,13 @@ public partial class NCustomRunEditorScreen : Control
         {
             if (_workingDefinition is null || item.UntypedModel is not PotionModel potion)
                 return;
-            SelectionSpec selection = _workingDefinition.Setup.StartingPotions;
+            SelectionSpec selection = GetActiveSetup().StartingPotions;
             if (selection.Mode == SelectionMode.Default)
             {
                 selection.Mode = SelectionMode.Fixed;
                 selection.FixedModelIds = GetDefaultStartingIds(SelectionModelKind.Potion).ToList();
             }
-            int capacity = Math.Clamp(_workingDefinition.Setup.PotionSlots ?? 3, 0, 20);
+            int capacity = Math.Clamp(GetActiveSetup().PotionSlots ?? 3, 0, 20);
             int copies = Math.Min(amount, Math.Max(0, capacity - selection.FixedModelIds.Count));
             for (int copy = 0; copy < copies; copy++)
                 selection.FixedModelIds.Add(potion.Id.ToString());
@@ -1112,7 +1276,7 @@ public partial class NCustomRunEditorScreen : Control
                 return;
             }
             MarkDirty();
-            RefreshStartingPotionInventory(_workingDefinition.Setup);
+            RefreshStartingPotionInventory(GetActiveSetup());
             CustomRunEditorPreviewService.PreviewPotionAdd(
                 potion,
                 copies,
@@ -1125,18 +1289,20 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
+        string? ownerId = _activeSetupRoleId;
+        RunSetupDefinition setup = GetActiveSetup();
         IReadOnlyList<LoadoutOwnedItem<CardModel>> cards = CustomRunEditorPreviewService.CreateOwnedCards(
-            GetStartingCardEntries(_workingDefinition.Setup));
+            GetStartingCardEntries(setup));
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenOwnedCardAction(
                 "CardShredder",
                 cards,
                 (_, item, amount) =>
                 {
-                    if (_workingDefinition is null)
+                    if (!IsSetupOwnerValid(ownerId, setup))
                         return null;
                     EnsureDetailedStartingSelection(SelectionModelKind.Card);
-                    List<SavedCardLoadoutEntry> entries = _workingDefinition.Setup.StartingCardEntries;
+                    List<SavedCardLoadoutEntry> entries = GetActiveSetup().StartingCardEntries;
                     if (item.Index < 0 || item.Index >= entries.Count)
                         return CustomRunEditorPreviewService.CreateOwnedCards(entries);
                     SavedCardLoadoutEntry selected = entries[item.Index];
@@ -1155,7 +1321,7 @@ public partial class NCustomRunEditorScreen : Control
                     }
                     SynchronizeStartingSelectionIds(SelectionModelKind.Card);
                     MarkDirty();
-                    RefreshStartingDeckPreview(_workingDefinition.Setup);
+                    RefreshStartingDeckPreview(GetActiveSetup());
                     CustomRunEditorPreviewService.PreviewCardRemoval(removedCards);
                     return CustomRunEditorPreviewService.CreateOwnedCards(entries);
                 },
@@ -1172,18 +1338,20 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
+        string? ownerId = _activeSetupRoleId;
+        RunSetupDefinition setup = GetActiveSetup();
         IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics = CustomRunEditorPreviewService.CreateOwnedRelics(
-            GetStartingRelicEntries(_workingDefinition.Setup));
+            GetStartingRelicEntries(setup));
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenOwnedRelicAction(
                 "TrashBin",
                 relics,
                 (_, item, amount) =>
                 {
-                    if (_workingDefinition is null)
+                    if (!IsSetupOwnerValid(ownerId, setup))
                         return null;
                     EnsureDetailedStartingSelection(SelectionModelKind.Relic);
-                    List<SavedRelicLoadoutEntry> entries = _workingDefinition.Setup.StartingRelicEntries;
+                    List<SavedRelicLoadoutEntry> entries = GetActiveSetup().StartingRelicEntries;
                     if (item.Index < 0 || item.Index >= entries.Count)
                         return CustomRunEditorPreviewService.CreateOwnedRelics(entries);
                     SavedRelicLoadoutEntry selected = entries[item.Index];
@@ -1198,7 +1366,7 @@ public partial class NCustomRunEditorScreen : Control
                     }
                     SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
                     MarkDirty();
-                    RefreshStartingRelicPreview(_workingDefinition.Setup);
+                    RefreshStartingRelicPreview(GetActiveSetup());
                     return CustomRunEditorPreviewService.CreateOwnedRelics(entries);
                 },
                 out IDisposable? session,
@@ -1214,7 +1382,9 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
-        IReadOnlyList<SavedCardLoadoutEntry> entries = GetStartingCardEntries(_workingDefinition.Setup);
+        string? ownerId = _activeSetupRoleId;
+        RunSetupDefinition setup = GetActiveSetup();
+        IReadOnlyList<SavedCardLoadoutEntry> entries = GetStartingCardEntries(setup);
         if (entries.Count == 0)
         {
             SetStatus("The starting deck is empty.", success: false);
@@ -1225,21 +1395,23 @@ public partial class NCustomRunEditorScreen : Control
         if (!CustomRunCatalogSelector.TryOpenOwnedCardActions(
                 "CardModifier",
                 cards,
-                (screen, item, amount) => UpgradeStartingCard(screen, item, amount),
+                (screen, item, amount) => UpgradeStartingCard(screen, item, amount, ownerId, setup),
                 (_, item, _) =>
                 {
-                    if (_workingDefinition is null)
+                    if (!IsSetupOwnerValid(ownerId, setup))
                         return null;
                     EnsureDetailedStartingSelection(SelectionModelKind.Card);
                     CloseCatalogSelector();
                     CustomRunEditorPreviewService.OpenCardModifier(
-                        _workingDefinition.Setup.StartingCardEntries,
+                        GetActiveSetup().StartingCardEntries,
                         item.Index,
                         () =>
                         {
+                            if (!IsSetupOwnerValid(ownerId, setup))
+                                return;
                             SynchronizeStartingSelectionIds(SelectionModelKind.Card);
                             MarkDirty();
-                            RefreshStartingDeckPreview(_workingDefinition.Setup);
+                            RefreshStartingDeckPreview(GetActiveSetup());
                         });
                     return null;
                 },
@@ -1256,7 +1428,9 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
-        IReadOnlyList<SavedRelicLoadoutEntry> entries = GetStartingRelicEntries(_workingDefinition.Setup);
+        string? ownerId = _activeSetupRoleId;
+        RunSetupDefinition setup = GetActiveSetup();
+        IReadOnlyList<SavedRelicLoadoutEntry> entries = GetStartingRelicEntries(setup);
         if (entries.Count == 0)
         {
             SetStatus("The starting relic inventory is empty.", success: false);
@@ -1269,18 +1443,20 @@ public partial class NCustomRunEditorScreen : Control
                 relics,
                 (_, item, _) =>
                 {
-                    if (_workingDefinition is null)
+                    if (!IsSetupOwnerValid(ownerId, setup))
                         return null;
                     EnsureDetailedStartingSelection(SelectionModelKind.Relic);
                     CloseCatalogSelector();
                     CustomRunEditorPreviewService.OpenRelicModifier(
-                        _workingDefinition.Setup.StartingRelicEntries,
+                        GetActiveSetup().StartingRelicEntries,
                         item.Index,
                         () =>
                         {
+                            if (!IsSetupOwnerValid(ownerId, setup))
+                                return;
                             SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
                             MarkDirty();
-                            RefreshStartingRelicPreview(_workingDefinition.Setup);
+                            RefreshStartingRelicPreview(GetActiveSetup());
                         });
                     return null;
                 },
@@ -1297,10 +1473,16 @@ public partial class NCustomRunEditorScreen : Control
         SelectionModelKind kind,
         Action<NGenericSelectScreen, IGenericSelectItem, int> activated)
     {
+        string? ownerId = _activeSetupRoleId;
+        RunSetupDefinition setup = GetActiveSetup();
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenCatalogAction(
                 kind,
-                activated,
+                (screen, item, amount) =>
+                {
+                    if (IsSetupOwnerValid(ownerId, setup))
+                        activated(screen, item, amount);
+                },
                 out IDisposable? session,
                 out string error))
         {
@@ -1321,7 +1503,7 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
-        SelectionSpec potions = _workingDefinition.Setup.StartingPotions;
+        SelectionSpec potions = GetActiveSetup().StartingPotions;
         if (potions.Mode == SelectionMode.Default)
         {
             potions.Mode = SelectionMode.Fixed;
@@ -1331,18 +1513,20 @@ public partial class NCustomRunEditorScreen : Control
             return;
         potions.FixedModelIds.RemoveAt(index);
         MarkDirty();
-        RefreshStartingPotionInventory(_workingDefinition.Setup);
+        RefreshStartingPotionInventory(GetActiveSetup());
     }
 
     private IReadOnlyList<LoadoutOwnedItem<CardModel>>? UpgradeStartingCard(
         NGenericSelectScreen screen,
         LoadoutOwnedItem<CardModel> item,
-        int amount)
+        int amount,
+        string? ownerId,
+        RunSetupDefinition setup)
     {
-        if (_workingDefinition is null)
+        if (!IsSetupOwnerValid(ownerId, setup))
             return null;
         EnsureDetailedStartingSelection(SelectionModelKind.Card);
-        List<SavedCardLoadoutEntry> entries = _workingDefinition.Setup.StartingCardEntries;
+        List<SavedCardLoadoutEntry> entries = GetActiveSetup().StartingCardEntries;
         if (item.Index < 0 || item.Index >= entries.Count)
             return CustomRunEditorPreviewService.CreateOwnedCards(entries);
 
@@ -1366,7 +1550,7 @@ public partial class NCustomRunEditorScreen : Control
             CommonHelpers.PlayCardSmithFeedback(view);
         SynchronizeStartingSelectionIds(SelectionModelKind.Card);
         MarkDirty();
-        RefreshStartingDeckPreview(_workingDefinition.Setup);
+        RefreshStartingDeckPreview(GetActiveSetup());
         return CustomRunEditorPreviewService.CreateOwnedCards(entries);
     }
 
@@ -1374,13 +1558,15 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
-        Dictionary<string, int> current = _workingDefinition.Setup.StartingPowers
+        string? ownerId = _activeSetupRoleId;
+        RunSetupDefinition setup = GetActiveSetup();
+        Dictionary<string, int> current = GetActiveSetup().StartingPowers
             .ToDictionary(power => power.ModelId, power => power.Amount, StringComparer.OrdinalIgnoreCase);
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenPowerSelection(current, selected =>
             {
-                if (_workingDefinition is null) return;
-                _workingDefinition.Setup.StartingPowers = selected
+                if (!IsSetupOwnerValid(ownerId, setup)) return;
+                GetActiveSetup().StartingPowers = selected
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                     .Select(pair => new StartingPowerDefinition { ModelId = pair.Key, Amount = pair.Value })
                     .ToList();
@@ -1398,13 +1584,15 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
+        string? ownerId = _activeSetupRoleId;
+        RunSetupDefinition setup = GetActiveSetup();
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenMorphSelection(
-                _workingDefinition.Setup.StartingMorphModelId,
+                GetActiveSetup().StartingMorphModelId,
                 selected =>
                 {
-                    if (_workingDefinition is null) return;
-                    _workingDefinition.Setup.StartingMorphModelId = selected;
+                    if (!IsSetupOwnerValid(ownerId, setup)) return;
+                    GetActiveSetup().StartingMorphModelId = selected;
                     MarkDirty();
                     RebuildContent();
                     _catalogSelectorSession = null;
@@ -1421,7 +1609,7 @@ public partial class NCustomRunEditorScreen : Control
     private IReadOnlyList<SavedCardLoadoutEntry> GetStartingCardEntries(RunSetupDefinition setup)
     {
         if (setup.StartingDeck.Mode != SelectionMode.Fixed)
-            return ResolvePreviewCharacter()?.StartingDeck
+            return ResolvePreviewCharacter(setup)?.StartingDeck
                 .Select(card => new SavedCardLoadoutEntry { ModelId = card.Id.ToString() })
                 .ToList() ?? [];
         return setup.StartingCardEntries.Count > 0
@@ -1432,7 +1620,7 @@ public partial class NCustomRunEditorScreen : Control
     private IReadOnlyList<SavedRelicLoadoutEntry> GetStartingRelicEntries(RunSetupDefinition setup)
     {
         if (setup.StartingRelics.Mode != SelectionMode.Fixed)
-            return ResolvePreviewCharacter()?.StartingRelics
+            return ResolvePreviewCharacter(setup)?.StartingRelics
                 .Select(relic => new SavedRelicLoadoutEntry { ModelId = relic.Id.ToString() })
                 .ToList() ?? [];
         return setup.StartingRelicEntries.Count > 0
@@ -1440,11 +1628,12 @@ public partial class NCustomRunEditorScreen : Control
             : setup.StartingRelics.FixedModelIds.Select(id => new SavedRelicLoadoutEntry { ModelId = id }).ToList();
     }
 
-    private CharacterModel? ResolvePreviewCharacter()
+    private CharacterModel? ResolvePreviewCharacter(RunSetupDefinition? setup = null)
     {
-        if (_workingDefinition?.Setup.Character.Mode == SelectionMode.Fixed)
+        setup ??= GetActiveSetup();
+        if (setup.Character.Mode == SelectionMode.Fixed)
         {
-            foreach (string id in _workingDefinition.Setup.Character.FixedModelIds)
+            foreach (string id in setup.Character.FixedModelIds)
             {
                 if (CustomRunCatalogService.TryResolve(SelectionModelKind.Character, id, out CustomRunCatalogEntry entry)
                     && entry.Model is CharacterModel fixedCharacter
@@ -1481,8 +1670,8 @@ public partial class NCustomRunEditorScreen : Control
         if (_workingDefinition is null)
             return;
         SelectionSpec selection = kind == SelectionModelKind.Card
-            ? _workingDefinition.Setup.StartingDeck
-            : _workingDefinition.Setup.StartingRelics;
+            ? GetActiveSetup().StartingDeck
+            : GetActiveSetup().StartingRelics;
         if (selection.Mode == SelectionMode.Default)
         {
             selection.Mode = SelectionMode.Fixed;
@@ -1498,15 +1687,15 @@ public partial class NCustomRunEditorScreen : Control
             return;
         if (kind == SelectionModelKind.Card)
         {
-            _workingDefinition.Setup.StartingDeck.Mode = SelectionMode.Fixed;
-            _workingDefinition.Setup.StartingDeck.FixedModelIds = _workingDefinition.Setup.StartingCardEntries
+            GetActiveSetup().StartingDeck.Mode = SelectionMode.Fixed;
+            GetActiveSetup().StartingDeck.FixedModelIds = GetActiveSetup().StartingCardEntries
                 .Select(entry => entry.ModelId)
                 .ToList();
         }
         else if (kind == SelectionModelKind.Relic)
         {
-            _workingDefinition.Setup.StartingRelics.Mode = SelectionMode.Fixed;
-            _workingDefinition.Setup.StartingRelics.FixedModelIds = _workingDefinition.Setup.StartingRelicEntries
+            GetActiveSetup().StartingRelics.Mode = SelectionMode.Fixed;
+            GetActiveSetup().StartingRelics.FixedModelIds = GetActiveSetup().StartingRelicEntries
                 .Select(entry => entry.ModelId)
                 .ToList();
         }
@@ -1787,7 +1976,7 @@ public partial class NCustomRunEditorScreen : Control
 
         int count = tabName switch
         {
-            "Roles & Choices" => _workingDefinition.Roles.Count + _workingDefinition.PlayerChoices.Count,
+            "Player Choices" => _workingDefinition.PlayerChoices.Count,
             "Rules" => _workingDefinition.Rules.Count,
             "Variables" => _workingDefinition.Variables.Count,
             _ => 0
@@ -2020,10 +2209,10 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null || _lobby is null)
             return;
-        CustomRunCompileResult result = CustomRunCompiler.Compile(_workingDefinition, _lobby);
+        CustomRunValidationResult result = CustomRunCompiler.ValidateForLobbyLoad(_workingDefinition);
         if (result.IsValid)
         {
-            SetStatus("Validation passed. This definition is ready to Play.", success: true);
+            SetStatus("Validation passed. Role assignments will be checked on embark.", success: true);
             return;
         }
 

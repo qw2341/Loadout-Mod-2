@@ -16,6 +16,17 @@ public static class CustomRunNormalizationService
     public static CustomRunDefinition Normalize(CustomRunDefinition definition)
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (definition.SchemaVersion < 2)
+        {
+            RoleAssignmentMode[] legacyModes = (definition.Roles ?? [])
+                .Where(role => role?.LegacyAssignmentMode is not null)
+                .Select(role => role.LegacyAssignmentMode!.Value)
+                .Distinct()
+                .ToArray();
+            definition.RoleAssignmentMode = legacyModes.Length == 1
+                ? legacyModes[0]
+                : RoleAssignmentMode.PlayersChoose;
+        }
         definition.SchemaVersion = CustomRunStorageService.CurrentSchemaVersion;
         definition.Id = NormalizeObjectId(definition.Id);
         definition.Name = string.IsNullOrWhiteSpace(definition.Name)
@@ -29,6 +40,8 @@ public static class CustomRunNormalizationService
             ? definition.UpdatedAtUnixSeconds
             : definition.CreatedAtUnixSeconds;
         definition.Setup = NormalizeSetup(definition.Setup ?? new RunSetupDefinition());
+        if (!Enum.IsDefined(definition.RoleAssignmentMode))
+            definition.RoleAssignmentMode = RoleAssignmentMode.PlayersChoose;
         definition.Roles = (definition.Roles ?? [])
             .Where(role => role is not null)
             .Select(NormalizeRole)
@@ -201,11 +214,12 @@ public static class CustomRunNormalizationService
     {
         role.Id = NormalizeObjectId(role.Id);
         role.Name = string.IsNullOrWhiteSpace(role.Name) ? "New Role" : role.Name.Trim();
-        role.MinimumPlayers = Math.Max(0, role.MinimumPlayers);
-        role.MaximumPlayers = Math.Max(role.MinimumPlayers, role.MaximumPlayers);
-        if (!Enum.IsDefined(role.AssignmentMode))
-            role.AssignmentMode = RoleAssignmentMode.HostAssigns;
+        role.MaximumPlayers = Math.Clamp(role.MaximumPlayers, 1, 4);
+        role.MinimumPlayers = Math.Clamp(role.MinimumPlayers, 0, role.MaximumPlayers);
+        role.LegacyAssignmentMode = null;
         role.Setup = NormalizeSetup(role.Setup ?? new RunSetupDefinition());
+        role.Setup.RunSeed = null;
+        role.Setup.StartingAscension = null;
         return role;
     }
 
