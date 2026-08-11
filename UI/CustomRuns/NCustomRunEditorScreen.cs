@@ -348,7 +348,7 @@ public partial class NCustomRunEditorScreen : Control
         RefreshRunName();
         RefreshTabVisuals();
 
-        RebuildContent();
+        RebuildContent(scrollToTop: true);
         RefreshEditableState();
     }
 
@@ -425,7 +425,7 @@ public partial class NCustomRunEditorScreen : Control
         _deleteConfirmationId = null;
         ResetDeleteButton();
         RefreshTabVisuals();
-        RebuildContent();
+        RebuildContent(scrollToTop: true);
     }
 
     private void RefreshTabVisuals()
@@ -442,7 +442,7 @@ public partial class NCustomRunEditorScreen : Control
         }
     }
 
-    private void RebuildContent()
+    private void RebuildContent(bool scrollToTop = false)
     {
         if (_contentHost is null)
             return;
@@ -460,7 +460,7 @@ public partial class NCustomRunEditorScreen : Control
                 HorizontalAlignment.Center);
             empty.CustomMinimumSize = new Vector2(0f, 260f);
             _contentHost.AddChild(empty);
-            RefreshContentLayoutDeferred();
+            RefreshContentLayoutDeferred(scrollToTop);
             return;
         }
 
@@ -490,10 +490,10 @@ public partial class NCustomRunEditorScreen : Control
 
         if (_readOnly)
             SetEditableRecursive(_contentHost, editable: false);
-        RefreshContentLayoutDeferred();
+        RefreshContentLayoutDeferred(scrollToTop);
     }
 
-    private void RefreshContentLayoutDeferred()
+    private void RefreshContentLayoutDeferred(bool scrollToTop = false)
     {
         Callable.From(() =>
         {
@@ -502,7 +502,8 @@ public partial class NCustomRunEditorScreen : Control
             {
                 _contentScroll.SetContent(_contentHost);
                 ResizeContentToChildren();
-                _contentScroll.InstantlyScrollToTop();
+                if (scrollToTop)
+                    _contentScroll.InstantlyScrollToTop();
             }
         }).CallDeferred();
     }
@@ -619,9 +620,8 @@ public partial class NCustomRunEditorScreen : Control
         _contentHost.AddChild(assignmentRow);
         _contentHost.AddChild(CreateSectionDivider());
 
-        HBoxContainer roleActions = CreateRow();
-        Button noRole = CreateCompactButton("NO ROLE", 22, 52f);
-        noRole.CustomMinimumSize = new Vector2(220f, 52f);
+        Button noRole = CreateCompactButton(_workingDefinition.DefaultRoleName, 21, 52f);
+        noRole.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         if (_activeSetupRoleId is null)
             noRole.AddThemeColorOverride("font_color", StsColors.gold);
         noRole.Pressed += () =>
@@ -629,24 +629,24 @@ public partial class NCustomRunEditorScreen : Control
             _activeSetupRoleId = null;
             RebuildContent();
         };
-        roleActions.AddChild(noRole);
-        Button addRole = CreateCompactButton("ADD ROLE", 22, 52f);
-        addRole.CustomMinimumSize = new Vector2(220f, 52f);
-        addRole.Pressed += AddRole;
-        roleActions.AddChild(addRole);
-        _contentHost.AddChild(roleActions);
+        _contentHost.AddChild(noRole);
 
+        Button? activeRoleButton = null;
         foreach (RoleDefinition role in _workingDefinition.Roles)
         {
             RoleDefinition capturedRole = role;
-            string required = role.MinimumPlayers > 0 ? "  REQUIRED" : string.Empty;
+            string required = role.MinimumPlayers > 0 ? " *" : string.Empty;
+            string maximum = role.MaximumPlayers > 0 ? $"    MAX {role.MaximumPlayers}" : string.Empty;
             Button row = CreateCompactButton(
-                $"{role.Name}    MIN {role.MinimumPlayers}    MAX {role.MaximumPlayers}{required}",
+                $"{role.Name}{required}    MIN {role.MinimumPlayers}{maximum}",
                 21,
                 52f);
             row.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             if (string.Equals(_activeSetupRoleId, role.Id, StringComparison.Ordinal))
+            {
                 row.AddThemeColorOverride("font_color", StsColors.gold);
+                activeRoleButton = row;
+            }
             row.Pressed += () =>
             {
                 _activeSetupRoleId = capturedRole.Id;
@@ -655,28 +655,24 @@ public partial class NCustomRunEditorScreen : Control
             _contentHost.AddChild(row);
         }
 
+        NLoadoutSettingsActionButton addRole = CreateSettingsActionButton("add_role", "ADD ROLE", 240f);
+        addRole.Connect(
+            NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>(_ => AddRole()));
+        _contentHost.AddChild(addRole);
+
         RoleDefinition? activeRole = ResolveRole(_activeSetupRoleId);
         if (_activeSetupRoleId is not null && activeRole is null)
             _activeSetupRoleId = null;
         RunSetupDefinition setup = activeRole?.Setup ?? defaultSetup;
-        if (activeRole is not null)
-            BuildRoleDetails(activeRole);
         _contentHost.AddChild(CreateSectionDivider());
+        _contentHost.AddChild(CreateSectionTitle("ROLE DETAILS"));
+        if (activeRole is not null)
+            BuildRoleDetails(activeRole, activeRoleButton);
+        else
+            BuildDefaultRoleDetails(noRole);
 
-        HBoxContainer characterRow = CreateRow();
-        characterRow.AddChild(CreateRowLabel("Character"));
-        string? setupOwnerId = _activeSetupRoleId;
-        NSelectFilterDropdown character = CreateCharacterSelector(setup.Character);
-        character.SelectedItemChanged += modelId =>
-        {
-            if (_loadingFields || !IsSetupOwnerValid(setupOwnerId, setup))
-                return;
-            ApplyCharacterSelection(setup.Character, modelId);
-            MarkDirty();
-            RebuildContent();
-        };
-        characterRow.AddChild(character);
-        _contentHost.AddChild(characterRow);
+        BuildCharacterRestrictionEditor(setup);
 
         BuildStartingDeckSection(setup);
         BuildStartingRelicSection(setup);
@@ -716,7 +712,7 @@ public partial class NCustomRunEditorScreen : Control
         RebuildContent();
     }
 
-    private void BuildRoleDetails(RoleDefinition role)
+    private void BuildRoleDetails(RoleDefinition role, Button? roleButton)
     {
         if (_contentHost is null)
             return;
@@ -728,34 +724,41 @@ public partial class NCustomRunEditorScreen : Control
             if (_loadingFields || ResolveRole(role.Id) != role)
                 return;
             role.Name = value;
+            if (roleButton is not null)
+            {
+                string required = role.MinimumPlayers > 0 ? " *" : string.Empty;
+                string maximum = role.MaximumPlayers > 0 ? $"    MAX {role.MaximumPlayers}" : string.Empty;
+                roleButton.Text = $"{value}{required}    MIN {role.MinimumPlayers}{maximum}";
+            }
             MarkDirty();
         };
         nameRow.AddChild(name);
         _contentHost.AddChild(nameRow);
 
         HBoxContainer limits = CreateRow();
-        limits.AddChild(CreateRowLabel("Players"));
+        limits.AddChild(CreateRowLabel("Number of Players for This Role"));
         limits.AddChild(CreateFieldLabel("MIN"));
         NLoadoutNumberStepper minimum = new();
-        minimum.Init(role.MinimumPlayers, 0, role.MaximumPlayers);
+        minimum.Init(role.MinimumPlayers, 0, role.MaximumPlayers == 0 ? 4 : role.MaximumPlayers);
         minimum.ValueChanged += value =>
         {
             if (_loadingFields || ResolveRole(role.Id) != role)
                 return;
-            role.MinimumPlayers = Math.Clamp(value, 0, role.MaximumPlayers);
+            role.MinimumPlayers = Math.Clamp(value, 0, role.MaximumPlayers == 0 ? 4 : role.MaximumPlayers);
             MarkDirty();
             RebuildContent();
         };
         limits.AddChild(minimum);
-        limits.AddChild(CreateFieldLabel("MAX"));
+        limits.AddChild(CreateFieldLabel("MAX (0 = NONE)"));
         NLoadoutNumberStepper maximum = new();
-        maximum.Init(role.MaximumPlayers, 1, 4);
+        maximum.Init(role.MaximumPlayers, 0, 4);
         maximum.ValueChanged += value =>
         {
             if (_loadingFields || ResolveRole(role.Id) != role)
                 return;
-            role.MaximumPlayers = Math.Clamp(value, 1, 4);
-            role.MinimumPlayers = Math.Min(role.MinimumPlayers, role.MaximumPlayers);
+            role.MaximumPlayers = Math.Clamp(value, 0, 4);
+            if (role.MaximumPlayers > 0)
+                role.MinimumPlayers = Math.Min(role.MinimumPlayers, role.MaximumPlayers);
             MarkDirty();
             RebuildContent();
         };
@@ -763,6 +766,25 @@ public partial class NCustomRunEditorScreen : Control
         AddToolSpacer(limits);
         AddSettingsActionButton(limits, "delete_role", "DELETE ROLE", 190f, () => DeleteRole(role), danger: true);
         _contentHost.AddChild(limits);
+    }
+
+    private void BuildDefaultRoleDetails(Button roleButton)
+    {
+        if (_contentHost is null || _workingDefinition is null)
+            return;
+        HBoxContainer nameRow = CreateRow();
+        nameRow.AddChild(CreateRowLabel("Role Name"));
+        LineEdit name = CreateLineEdit(_workingDefinition.DefaultRoleName);
+        name.TextChanged += value =>
+        {
+            if (_loadingFields || _workingDefinition is null || _activeSetupRoleId is not null)
+                return;
+            _workingDefinition.DefaultRoleName = value;
+            roleButton.Text = value;
+            MarkDirty();
+        };
+        nameRow.AddChild(name);
+        _contentHost.AddChild(nameRow);
     }
 
     private void DeleteRole(RoleDefinition role)
@@ -2038,55 +2060,118 @@ public partial class NCustomRunEditorScreen : Control
         _contentHost.AddChild(row);
     }
 
-    private NSelectFilterDropdown CreateCharacterSelector(SelectionSpec selection)
+    private void BuildCharacterRestrictionEditor(RunSetupDefinition setup)
     {
-        string fixedId = selection.FixedModelIds.FirstOrDefault() ?? string.Empty;
-        string selectedId = string.Empty;
+        if (_contentHost is null)
+            return;
+        SelectionSpec selection = setup.Character;
+        string? ownerId = _activeSetupRoleId;
+        HBoxContainer modeRow = CreateRow();
+        modeRow.AddChild(CreateRowLabel("Character Selection"));
         List<LoadoutDropdownOption> options =
         [
-            new LoadoutDropdownOption(string.Empty, "Game Default")
+            new LoadoutDropdownOption(SelectionMode.Default.ToString(), "No Restriction"),
+            new LoadoutDropdownOption(SelectionMode.Fixed.ToString(), "Restricted"),
+            new LoadoutDropdownOption(SelectionMode.Random.ToString(), "Random")
         ];
-        foreach (CharacterModel character in ModelDb.AllCharacters.OrderBy(GetCharacterDisplayName, StringComparer.OrdinalIgnoreCase))
-        {
-            string modelId = character.Id.ToString();
-            options.Add(new LoadoutDropdownOption(modelId, GetCharacterDisplayName(character)));
-            if (selection.Mode == SelectionMode.Fixed
-                && (string.Equals(modelId, fixedId, StringComparison.Ordinal)
-                    || string.Equals(character.Id.Entry, fixedId, StringComparison.OrdinalIgnoreCase)))
-            {
-                selectedId = modelId;
-            }
-        }
-
-        NSelectFilterDropdown dropdown = new()
+        NLoadoutDropdown mode = new()
         {
             CustomMinimumSize = new Vector2(420f, 52f),
             SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
-            MouseFilter = MouseFilterEnum.Stop,
-            FocusMode = FocusModeEnum.All,
             DropdownWidth = 420f,
-            ButtonHeight = 52f,
-            MaxVisibleItems = 7,
-            LabelMinFontSize = 18,
-            LabelMaxFontSize = 24,
-            ItemFontSize = 22,
-            ExpandToAvailableWidth = false
         };
-        dropdown.SetItems(string.Empty, options, selectedId);
-        return dropdown;
+        string selectedMode = selection.Mode is SelectionMode.Fixed or SelectionMode.Random
+            ? selection.Mode.ToString()
+            : SelectionMode.Default.ToString();
+        mode.SetItems(string.Empty, options, selectedMode);
+        mode.SelectedItemChanged += selected =>
+        {
+            if (_loadingFields || !IsSetupOwnerValid(ownerId, setup)
+                || !Enum.TryParse(selected, out SelectionMode selectedSelectionMode))
+                return;
+            selection.Kind = SelectionModelKind.Character;
+            selection.Mode = selectedSelectionMode;
+            if (selectedSelectionMode != SelectionMode.Fixed)
+                selection.FixedModelIds.Clear();
+            else if (selectedSelectionMode == SelectionMode.Fixed && selection.FixedModelIds.Count == 0)
+            {
+                selection.FixedModelIds = ModelDb.AllCharacters
+                    .Where(character => character.IsPlayable && !IsRandomCharacterModel(character))
+                    .Select(character => character.Id.ToString())
+                    .ToList();
+            }
+            MarkDirty();
+            RebuildContent();
+        };
+        modeRow.AddChild(mode);
+        _contentHost.AddChild(modeRow);
+
+        if (selection.Mode != SelectionMode.Fixed)
+            return;
+
+        HashSet<string> selectedIds = selection.FixedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HFlowContainer characters = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        characters.AddThemeConstantOverride("h_separation", 12);
+        characters.AddThemeConstantOverride("v_separation", 12);
+        foreach (CharacterModel character in ModelDb.AllCharacters
+                     .Where(character => character.IsPlayable && !IsRandomCharacterModel(character))
+                     .OrderBy(GetCharacterDisplayName, StringComparer.OrdinalIgnoreCase))
+        {
+            string modelId = character.Id.ToString();
+            bool selected = selectedIds.Contains(modelId) || selectedIds.Contains(character.Id.Entry);
+            Button characterButton = new()
+            {
+                Text = GetCharacterDisplayName(character),
+                Icon = character.CharacterSelectIcon,
+                ExpandIcon = true,
+                ToggleMode = true,
+                ButtonPressed = selected,
+                CustomMinimumSize = new Vector2(250f, 92f),
+                FocusMode = FocusModeEnum.All,
+                MouseFilter = MouseFilterEnum.Stop
+            };
+            ApplyInputFont(characterButton, 20);
+            ApplyCharacterFilterButtonVisual(characterButton, selected);
+            characterButton.Toggled += pressed =>
+            {
+                if (_loadingFields || !IsSetupOwnerValid(ownerId, setup))
+                    return;
+                selection.FixedModelIds.RemoveAll(id =>
+                    string.Equals(id, modelId, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(id, character.Id.Entry, StringComparison.OrdinalIgnoreCase));
+                if (pressed)
+                    selection.FixedModelIds.Add(modelId);
+                ApplyCharacterFilterButtonVisual(characterButton, pressed);
+                MarkDirty();
+            };
+            characters.AddChild(characterButton);
+        }
+        _contentHost.AddChild(characters);
     }
 
-    private static void ApplyCharacterSelection(SelectionSpec selection, string modelId)
+    private static void ApplyCharacterFilterButtonVisual(Button button, bool selected)
     {
-        selection.Kind = SelectionModelKind.Character;
-        selection.FixedModelIds.Clear();
-        if (string.IsNullOrWhiteSpace(modelId))
+        Color border = selected ? StsColors.gold : new Color(0.3f, 0.32f, 0.38f, 0.9f);
+        StyleBoxFlat style = new()
         {
-            selection.Mode = SelectionMode.Default;
-            return;
-        }
-        selection.Mode = SelectionMode.Fixed;
-        selection.FixedModelIds.Add(modelId);
+            BgColor = selected ? new Color(0.19f, 0.17f, 0.08f, 0.94f) : new Color(0.07f, 0.08f, 0.11f, 0.9f),
+            BorderColor = border,
+            BorderWidthLeft = selected ? 4 : 2,
+            BorderWidthTop = selected ? 4 : 2,
+            BorderWidthRight = selected ? 4 : 2,
+            BorderWidthBottom = selected ? 4 : 2,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8
+        };
+        button.AddThemeStyleboxOverride("normal", style);
+        button.AddThemeStyleboxOverride("pressed", style);
+        button.AddThemeStyleboxOverride("hover", style);
+        button.AddThemeColorOverride("font_color", selected ? StsColors.gold : StsColors.cream);
     }
 
     private static string GetCharacterDisplayName(CharacterModel character)
@@ -2099,6 +2184,12 @@ public partial class NCustomRunEditorScreen : Control
         {
             return character.Id.Entry;
         }
+    }
+
+    private static bool IsRandomCharacterModel(CharacterModel character)
+    {
+        return character.GetType().Name.Contains("Random", StringComparison.OrdinalIgnoreCase)
+               || character.Id.Entry.Contains("RANDOM", StringComparison.OrdinalIgnoreCase);
     }
 
     private void NewDefinition()

@@ -128,9 +128,9 @@ public static class CustomRunValidator
                 Error(result, "Roles", role.Id, "Role name is required.");
             if (role.MinimumPlayers < 0 || role.MinimumPlayers > 4)
                 Error(result, "Roles", role.Id, $"Role '{role.Name}' minimum must be between 0 and 4.");
-            if (role.MaximumPlayers < 1 || role.MaximumPlayers > 4)
-                Error(result, "Roles", role.Id, $"Role '{role.Name}' maximum must be between 1 and 4.");
-            if (role.MaximumPlayers < role.MinimumPlayers)
+            if (role.MaximumPlayers < 0 || role.MaximumPlayers > 4)
+                Error(result, "Roles", role.Id, $"Role '{role.Name}' maximum must be between 0 and 4, where 0 is unlimited.");
+            if (role.MaximumPlayers > 0 && role.MaximumPlayers < role.MinimumPlayers)
                 Error(result, "Roles", role.Id, $"Role '{role.Name}' maximum is below its minimum.");
             ValidateSetup(role.Setup, result, "Roles", role.Id);
         }

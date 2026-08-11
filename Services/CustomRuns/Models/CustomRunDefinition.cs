@@ -32,6 +32,9 @@ public sealed class CustomRunDefinition
     [JsonPropertyName("roleAssignmentMode")]
     public RoleAssignmentMode RoleAssignmentMode { get; set; } = RoleAssignmentMode.PlayersChoose;
 
+    [JsonPropertyName("defaultRoleName")]
+    public string DefaultRoleName { get; set; } = "Default Role";
+
     [JsonPropertyName("roles")]
     public List<RoleDefinition> Roles { get; set; } = [];
 

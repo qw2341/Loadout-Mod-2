@@ -117,8 +117,24 @@ public static class CharacterSelectCustomRunEmbarkPatch
         if (Bypass.Remove(lobby))
             return true;
 
-        if (CustomRunLobbyService.GetLoadedDefinition(lobby) is null
-            || lobby.NetService.Type == NetGameType.Client
+        if (CustomRunLobbyService.GetLoadedDefinition(lobby) is null)
+            return true;
+
+        if (!NCustomRunEditorEntry.TryHandleRoleConfirmation(
+                screen,
+                lobby,
+                out bool awaitingHost,
+                out string roleError))
+        {
+            if (!string.IsNullOrWhiteSpace(roleError))
+                ShowError(screen, roleError);
+            if (awaitingHost)
+                screen.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(NCustomRunEditorEntry.OverlayNodeName)
+                    ?.RefreshRoleGate();
+            return false;
+        }
+
+        if (lobby.NetService.Type == NetGameType.Client
             || (honorTutorialPrompt && !SaveManager.Instance.SeenFtue("accept_tutorials_ftue")))
         {
             return true;
@@ -197,6 +213,28 @@ public static class CharacterSelectCustomRunEmbarkPatch
     {
         screen.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(NCustomRunEditorEntry.OverlayNodeName)
             ?.ShowError(error);
+    }
+
+    internal static void ResumeAfterRoleLock(Control screen, StartRunLobby lobby)
+    {
+        if (!GodotObject.IsInstanceValid(screen))
+            return;
+        NConfirmButton? confirm = screen.GetNodeOrNull<NConfirmButton>("ConfirmButton");
+        if (confirm is null || !GodotObject.IsInstanceValid(confirm))
+            return;
+        Bypass.Add(lobby);
+        confirm.Enable();
+        confirm.ForceClick();
+    }
+}
+
+[HarmonyPatch(typeof(StartRunLobby), nameof(StartRunLobby.SetReady))]
+public static class StartRunLobbyCustomRunReadyChangedPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(StartRunLobby __instance)
+    {
+        CustomRunRoleAssignmentService.NotifyLobbyStateChanged(__instance);
     }
 }
 

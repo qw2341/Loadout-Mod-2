@@ -59,7 +59,7 @@ public static class CustomRunRoleAssignmentResolver
         foreach (RoleDefinition role in roles.Values)
         {
             int count = resolved.Values.Count(roleId => string.Equals(roleId, role.Id, StringComparison.Ordinal));
-            if (count > role.MaximumPlayers)
+            if (role.MaximumPlayers > 0 && count > role.MaximumPlayers)
                 return Invalid($"Role '{role.Name}' exceeds its maximum of {role.MaximumPlayers}.");
             if (count < role.MinimumPlayers)
                 return Invalid($"Role '{role.Name}' requires at least {role.MinimumPlayers} player(s).");
@@ -75,7 +75,7 @@ public static class CustomRunRoleAssignmentResolver
     {
         RoleDefinition[] roles = roleValues.OrderBy(role => role.Id, StringComparer.Ordinal).ToArray();
         int minimumSlots = roles.Sum(role => role.MinimumPlayers);
-        int maximumSlots = roles.Sum(role => role.MaximumPlayers);
+        int maximumSlots = roles.Sum(role => role.MaximumPlayers == 0 ? roster.Count : role.MaximumPlayers);
         if (minimumSlots > roster.Count)
             return Invalid($"Role minimums require {minimumSlots} players, but the lobby has {roster.Count}.");
         if (maximumSlots < roster.Count)
@@ -103,7 +103,7 @@ public static class CustomRunRoleAssignmentResolver
         List<(string RoleId, int Slot)> optionalSlots = roles
             .SelectMany(role => Enumerable.Range(
                     role.MinimumPlayers,
-                    role.MaximumPlayers - role.MinimumPlayers)
+                    (role.MaximumPlayers == 0 ? roster.Count : role.MaximumPlayers) - role.MinimumPlayers)
                 .Select(slot => (role.Id, slot)))
             .ToList();
         IReadOnlyList<(string RoleId, int Slot)> orderedOptional = CustomRunRngService.OrderDeterministically(

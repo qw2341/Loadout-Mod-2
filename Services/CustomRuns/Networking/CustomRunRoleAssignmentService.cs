@@ -38,6 +38,7 @@ public static class CustomRunRoleAssignmentService
 
     public static event Action<StartRunLobby>? Changed;
     public static event Action<StartRunLobby, string>? AssignmentRejected;
+    public static event Action<StartRunLobby>? AssignmentAccepted;
 
     public static void RegisterLobby(StartRunLobby lobby)
     {
@@ -105,14 +106,61 @@ public static class CustomRunRoleAssignmentService
     {
         if (!States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state))
             return new Dictionary<ulong, string?>();
-        return state.Assignments.ToDictionary(entry => entry.PlayerId, entry => (string?)entry.RoleId);
+        return state.Assignments.ToDictionary(
+            entry => entry.PlayerId,
+            entry => string.IsNullOrWhiteSpace(entry.RoleId) ? null : (string?)entry.RoleId);
     }
 
     public static string? GetRoleId(StartRunLobby lobby, ulong playerId)
     {
-        return States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state)
+        string? roleId = States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state)
             ? state.Assignments.FirstOrDefault(entry => entry.PlayerId == playerId)?.RoleId
             : null;
+        return string.IsNullOrWhiteSpace(roleId) ? null : roleId;
+    }
+
+    public static bool HasLockedSelection(StartRunLobby lobby, ulong playerId)
+    {
+        return States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state)
+               && state.Assignments.Any(entry => entry.PlayerId == playerId);
+    }
+
+    public static bool AreMinimumsSatisfied(
+        StartRunLobby lobby,
+        CustomRunDefinition definition,
+        ulong? proposedPlayerId = null,
+        string? proposedRoleId = null)
+    {
+        IReadOnlyDictionary<ulong, string?> current = GetAssignments(lobby);
+        return definition.Roles.All(role =>
+        {
+            int count = current.Count(pair =>
+                pair.Key != proposedPlayerId && string.Equals(pair.Value, role.Id, StringComparison.Ordinal));
+            if (proposedPlayerId.HasValue && string.Equals(proposedRoleId, role.Id, StringComparison.Ordinal))
+                count++;
+            return count >= role.MinimumPlayers;
+        });
+    }
+
+    public static bool IsRoleAtCapacity(
+        StartRunLobby lobby,
+        CustomRunDefinition definition,
+        ulong playerId,
+        string? roleId)
+    {
+        if (string.IsNullOrWhiteSpace(roleId))
+            return false;
+        RoleDefinition? role = definition.Roles.FirstOrDefault(candidate => candidate.Id == roleId);
+        if (role is null || role.MaximumPlayers == 0)
+            return false;
+        int occupiedByOthers = GetAssignments(lobby).Count(pair =>
+            pair.Key != playerId && string.Equals(pair.Value, roleId, StringComparison.Ordinal));
+        return occupiedByOthers >= role.MaximumPlayers;
+    }
+
+    public static void NotifyLobbyStateChanged(StartRunLobby lobby)
+    {
+        Changed?.Invoke(lobby);
     }
 
     public static long GetRevision(StartRunLobby lobby)
@@ -201,9 +249,11 @@ public static class CustomRunRoleAssignmentService
             return false;
 
         CustomRunRoleAssignmentSnapshot state = GetOrCreateState(lobby);
-        string? currentRoleId = state.Assignments
-            .FirstOrDefault(entry => entry.PlayerId == playerId)?.RoleId;
-        if (string.Equals(currentRoleId, roleId, StringComparison.Ordinal))
+        CustomRunRoleAssignmentEntry? currentEntry = state.Assignments
+            .FirstOrDefault(entry => entry.PlayerId == playerId);
+        string normalizedRoleId = roleId ?? string.Empty;
+        if (currentEntry is not null
+            && string.Equals(currentEntry.RoleId, normalizedRoleId, StringComparison.Ordinal))
             return true;
 
         if (roleId is not null)
@@ -211,7 +261,7 @@ public static class CustomRunRoleAssignmentService
             RoleDefinition role = definition.Roles.First(candidate => candidate.Id == roleId);
             int occupied = state.Assignments.Count(entry =>
                 entry.PlayerId != playerId && string.Equals(entry.RoleId, roleId, StringComparison.Ordinal));
-            if (occupied >= role.MaximumPlayers)
+            if (role.MaximumPlayers > 0 && occupied >= role.MaximumPlayers)
             {
                 error = $"Role '{role.Name}' is full.";
                 return false;
@@ -220,14 +270,11 @@ public static class CustomRunRoleAssignmentService
 
         state.DefinitionId = definition.Id;
         state.Assignments.RemoveAll(entry => entry.PlayerId == playerId);
-        if (roleId is not null)
+        state.Assignments.Add(new CustomRunRoleAssignmentEntry
         {
-            state.Assignments.Add(new CustomRunRoleAssignmentEntry
-            {
-                PlayerId = playerId,
-                RoleId = roleId
-            });
-        }
+            PlayerId = playerId,
+            RoleId = normalizedRoleId
+        });
         state.Assignments = OrderAssignments(lobby, state.Assignments);
         state.Revision++;
         CustomRunLobbyService.CancelPreparation(lobby, "A role assignment changed; press Play again.");
@@ -261,7 +308,8 @@ public static class CustomRunRoleAssignmentService
             .ToList();
         HashSet<string> validRoleIds = definition.Roles.Select(role => role.Id).ToHashSet(StringComparer.Ordinal);
         List<CustomRunRoleAssignmentEntry> reconciled = players
-            .Where(player => previous.TryGetValue(player.PlayerId, out string? roleId) && validRoleIds.Contains(roleId))
+            .Where(player => previous.TryGetValue(player.PlayerId, out string? roleId)
+                             && (string.IsNullOrWhiteSpace(roleId) || validRoleIds.Contains(roleId)))
             .Select(player => new CustomRunRoleAssignmentEntry
             {
                 PlayerId = player.PlayerId,
@@ -270,6 +318,8 @@ public static class CustomRunRoleAssignmentService
             .ToList();
         foreach (RoleDefinition role in definition.Roles)
         {
+            if (role.MaximumPlayers == 0)
+                continue;
             CustomRunRoleAssignmentEntry[] overflow = reconciled
                 .Where(entry => entry.RoleId == role.Id)
                 .Skip(role.MaximumPlayers)
@@ -379,16 +429,18 @@ public static class CustomRunRoleAssignmentService
             CustomRunDefinition? definition = CustomRunLobbyService.GetRemoteDefinition();
             if (incoming is null
                 || definition is null
+                || incoming.Assignments is null
                 || !string.Equals(incoming.DefinitionId, definition.Id, StringComparison.Ordinal)
                 || incoming.Revision < 0
                 || incoming.Assignments.Count > 4
                 || incoming.Assignments.Select(entry => entry.PlayerId).Distinct().Count() != incoming.Assignments.Count
-                || incoming.Assignments.Any(entry => entry.RoleId.Length > 64)
+                || incoming.Assignments.Any(entry => (entry.RoleId?.Length ?? 0) > 64)
                 || incoming.Assignments.Any(entry => GetPlayer(lobby, entry.PlayerId) is null)
                 || incoming.Assignments.Any(entry =>
-                    !definition.Roles.Any(role => string.Equals(role.Id, entry.RoleId, StringComparison.Ordinal)))
+                    !string.IsNullOrWhiteSpace(entry.RoleId)
+                    && !definition.Roles.Any(role => string.Equals(role.Id, entry.RoleId, StringComparison.Ordinal)))
                 || definition.Roles.Any(role => incoming.Assignments.Count(entry => entry.RoleId == role.Id)
-                                                   > role.MaximumPlayers))
+                                                   > role.MaximumPlayers && role.MaximumPlayers > 0))
             {
                 return;
             }
@@ -411,9 +463,12 @@ public static class CustomRunRoleAssignmentService
         StartRunLobby? lobby = RegisteredLobbies.FirstOrDefault(candidate =>
             candidate.NetService.Type == NetGameType.Client
             && LoadoutNetworkBroadcast.IsExpectedHostSender(senderId, candidate.NetService));
-        if (lobby is null || message.accepted)
+        if (lobby is null)
             return;
-        AssignmentRejected?.Invoke(lobby, message.error);
+        if (message.accepted)
+            AssignmentAccepted?.Invoke(lobby);
+        else
+            AssignmentRejected?.Invoke(lobby, message.error);
     }
 }
 

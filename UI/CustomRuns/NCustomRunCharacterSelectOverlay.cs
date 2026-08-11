@@ -6,11 +6,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Loadout.Patches.CustomRuns;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 
 public partial class NCustomRunCharacterSelectOverlay : Control
@@ -21,6 +23,7 @@ public partial class NCustomRunCharacterSelectOverlay : Control
     private readonly Dictionary<NCharacterSelectButton, bool> _originalVisibility = [];
     private float _rainbowHue;
     private bool _isLoaded;
+    private bool _roleGateDisabledConfirm;
 
     public void Init(Control sourceScreen, StartRunLobby lobby)
     {
@@ -38,6 +41,7 @@ public partial class NCustomRunCharacterSelectOverlay : Control
         CustomRunLobbyService.LoadedDefinitionChanged += OnLoadedDefinitionChanged;
         CustomRunRoleAssignmentService.Changed += OnAssignmentsChanged;
         CustomRunRoleAssignmentService.AssignmentRejected += OnAssignmentRejected;
+        CustomRunRoleAssignmentService.AssignmentAccepted += OnAssignmentAccepted;
         RefreshLoadedRun();
     }
 
@@ -46,6 +50,7 @@ public partial class NCustomRunCharacterSelectOverlay : Control
         CustomRunLobbyService.LoadedDefinitionChanged -= OnLoadedDefinitionChanged;
         CustomRunRoleAssignmentService.Changed -= OnAssignmentsChanged;
         CustomRunRoleAssignmentService.AssignmentRejected -= OnAssignmentRejected;
+        CustomRunRoleAssignmentService.AssignmentAccepted -= OnAssignmentAccepted;
         RestoreCharacterVisibility();
         if (_confirmImage is not null && GodotObject.IsInstanceValid(_confirmImage))
             _confirmImage.SelfModulate = Colors.White;
@@ -81,11 +86,13 @@ public partial class NCustomRunCharacterSelectOverlay : Control
                 _confirmImage.SelfModulate = Colors.White;
             RestoreCharacterVisibility();
             NCustomRunEditorEntry.RefreshAttachedState(_sourceScreen, _lobby, null);
+            ReleaseConfirmRoleGate();
             return;
         }
 
         NCustomRunEditorEntry.RefreshAttachedState(_sourceScreen, _lobby, definition);
         ApplyCharacterRestrictions(definition!);
+        RefreshRoleGate();
     }
 
     public void ShowError(string text)
@@ -108,7 +115,51 @@ public partial class NCustomRunCharacterSelectOverlay : Control
     private void OnAssignmentRejected(StartRunLobby lobby, string error)
     {
         if (ReferenceEquals(lobby, _lobby))
+        {
+            NCustomRunEditorEntry.CompleteLocalRoleLock(_sourceScreen, lobby, accepted: false);
+            RefreshRoleGate();
             ShowError(error);
+        }
+    }
+
+    private void OnAssignmentAccepted(StartRunLobby lobby)
+    {
+        if (!ReferenceEquals(lobby, _lobby) || _sourceScreen is null)
+            return;
+        NCustomRunEditorEntry.CompleteLocalRoleLock(_sourceScreen, lobby, accepted: true);
+        ReleaseConfirmRoleGate();
+        CharacterSelectCustomRunEmbarkPatch.ResumeAfterRoleLock(_sourceScreen, lobby);
+    }
+
+    public void RefreshRoleGate()
+    {
+        if (_sourceScreen is null || _lobby is null)
+            return;
+        CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(_lobby);
+        bool blocked = definition is not null
+                       && NCustomRunEditorEntry.IsRoleConfirmationBlocked(_lobby, definition);
+        NConfirmButton? confirm = _sourceScreen.GetNodeOrNull<NConfirmButton>("ConfirmButton");
+        if (confirm is null)
+            return;
+        if (blocked)
+        {
+            confirm.Disable();
+            _roleGateDisabledConfirm = true;
+        }
+        else
+        {
+            ReleaseConfirmRoleGate();
+        }
+    }
+
+    private void ReleaseConfirmRoleGate()
+    {
+        if (!_roleGateDisabledConfirm)
+            return;
+        NConfirmButton? confirm = _sourceScreen?.GetNodeOrNull<NConfirmButton>("ConfirmButton");
+        if (confirm is not null && GodotObject.IsInstanceValid(confirm))
+            confirm.Enable();
+        _roleGateDisabledConfirm = false;
     }
 
     private void RememberCharacterVisibility()

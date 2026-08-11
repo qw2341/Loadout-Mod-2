@@ -49,7 +49,7 @@ public sealed class RoleDefinition
     public int MinimumPlayers { get; set; }
 
     [JsonPropertyName("maximumPlayers")]
-    public int MaximumPlayers { get; set; } = 1;
+    public int MaximumPlayers { get; set; }
 
     [JsonPropertyName("assignmentMode")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

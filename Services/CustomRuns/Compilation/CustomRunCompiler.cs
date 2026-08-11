@@ -103,7 +103,8 @@ public static class CustomRunCompiler
                 player,
                 seed,
                 selectableCharacters,
-                template.FixedCharacters);
+                template.FixedCharacters,
+                template.RandomCharacter);
             resolvedPlayers.Add(new ResolvedPlayerSetup
             {
                 PlayerId = player.PlayerId,
@@ -201,8 +202,8 @@ public static class CustomRunCompiler
         string objectId,
         List<CustomRunValidationIssue> issues)
     {
-        if (setup.Character.Mode is SelectionMode.Random or SelectionMode.PlayerChoice)
-            AddError(issues, section, objectId, "Character mode must be Default or Fixed before Play.");
+        if (setup.Character.Mode == SelectionMode.PlayerChoice)
+            AddError(issues, section, objectId, "Character mode cannot use a separate player choice before Play.");
         RejectUnsupportedSelectionMode(setup.StartingDeck, "starting deck", section, objectId, issues);
         RejectUnsupportedSelectionMode(setup.StartingRelics, "starting relics", section, objectId, issues);
         RejectUnsupportedSelectionMode(setup.StartingPotions, "starting potions", section, objectId, issues);
@@ -235,6 +236,8 @@ public static class CustomRunCompiler
                 CharacterModel? character = ResolveCharacter(id);
                 if (character is null)
                     AddError(issues, section, objectId, $"Unknown character '{id}'.");
+                else if (IsRandomCharacter(character))
+                    AddError(issues, section, objectId, "Use Random character mode instead of restricting to the random character button.");
                 else
                     fixedCharacters.Add(character);
             }
@@ -262,6 +265,7 @@ public static class CustomRunCompiler
         return new ResolvedSetupTemplate(
             setup,
             fixedCharacters,
+            setup.Character.Mode == SelectionMode.Random,
             deckModelIds,
             setup.StartingDeck.Mode == SelectionMode.Fixed,
             setup.StartingCardEntries.Select(entry => entry.Clone()).ToList(),
@@ -377,8 +381,16 @@ public static class CustomRunCompiler
         StartRunLobbyPlayerInfo player,
         string seed,
         IReadOnlyList<CharacterModel> selectableCharacters,
-        IReadOnlyList<CharacterModel> fixedCharacters)
+        IReadOnlyList<CharacterModel> fixedCharacters,
+        bool randomCharacter)
     {
+        if (randomCharacter)
+        {
+            byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(
+                $"{seed}:random_character:{player.SlotId}:{player.PlayerId}"));
+            int index = (int)(BitConverter.ToUInt32(digest, 0) % (uint)selectableCharacters.Count);
+            return selectableCharacters[index];
+        }
         if (fixedCharacters.Count == 0)
             return ResolveDefaultCharacter(player, seed, selectableCharacters);
 
@@ -414,6 +426,7 @@ public static class CustomRunCompiler
     private sealed record ResolvedSetupTemplate(
         RunSetupDefinition Setup,
         IReadOnlyList<CharacterModel> FixedCharacters,
+        bool RandomCharacter,
         IReadOnlyList<string> DeckModelIds,
         bool OverrideDeck,
         IReadOnlyList<SavedCardLoadoutEntry> DeckEntries,

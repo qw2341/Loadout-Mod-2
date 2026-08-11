@@ -33,6 +33,9 @@ public static class CustomRunNormalizationService
             ? "New Custom Run"
             : definition.Name.Trim();
         definition.Description = (definition.Description ?? string.Empty).Trim();
+        definition.DefaultRoleName = string.IsNullOrWhiteSpace(definition.DefaultRoleName)
+            ? "Default Role"
+            : definition.DefaultRoleName.Trim();
         definition.CreatedAtUnixSeconds = definition.CreatedAtUnixSeconds > 0
             ? definition.CreatedAtUnixSeconds
             : now;
@@ -214,8 +217,11 @@ public static class CustomRunNormalizationService
     {
         role.Id = NormalizeObjectId(role.Id);
         role.Name = string.IsNullOrWhiteSpace(role.Name) ? "New Role" : role.Name.Trim();
-        role.MaximumPlayers = Math.Clamp(role.MaximumPlayers, 1, 4);
-        role.MinimumPlayers = Math.Clamp(role.MinimumPlayers, 0, role.MaximumPlayers);
+        role.MaximumPlayers = Math.Clamp(role.MaximumPlayers, 0, 4);
+        role.MinimumPlayers = Math.Clamp(
+            role.MinimumPlayers,
+            0,
+            role.MaximumPlayers == 0 ? 4 : role.MaximumPlayers);
         role.LegacyAssignmentMode = null;
         role.Setup = NormalizeSetup(role.Setup ?? new RunSetupDefinition());
         role.Setup.RunSeed = null;
