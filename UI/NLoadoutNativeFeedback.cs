@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Godot;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
@@ -75,21 +76,18 @@ public partial class NLoadoutNativeFeedback : Control
         PreviewCardRemoval(cards, requireLocalOwner: true);
     }
 
-    public void PreviewCustomRunCardAdd(IReadOnlyList<CardModel> cards)
+    public void PreviewCustomRunCardAdd(IReadOnlyList<CardModel> cards, Control? destination)
     {
         if (TestMode.IsOn)
             return;
+        Vector2 target = GodotObject.IsInstanceValid(destination)
+            ? destination!.GetGlobalRect().GetCenter()
+            : new Vector2(72f, GetViewportRect().Size.Y - 72f);
         foreach (CardModel card in cards)
         {
             if (GetPreviewCardCount() >= MaxCardPreviews)
                 return;
-            PreviewCardPileAdd(new CardPileAddResult
-            {
-                success = true,
-                cardAdded = card,
-                oldPile = null,
-                modifyingModels = null
-            }, 1.2f, CardPreviewStyle.HorizontalLayout);
+            PreviewCustomRunCardAdd(card, target);
         }
     }
 
@@ -327,6 +325,72 @@ public partial class NLoadoutNativeFeedback : Control
             TaskHelper.RunSafely(FlashRelics(cardNode, result.modifyingModels))));
         tween.TweenCallback(Callable.From(() =>
             FlyCardAway(cardNode, card, originalPileType))).SetDelay(lingerTime);
+    }
+
+    private void PreviewCustomRunCardAdd(CardModel card, Vector2 destination)
+    {
+        if (card.Pile is null)
+            return;
+
+        NCard? cardNode = NCard.Create(card);
+        if (cardNode is null)
+            return;
+
+        ResolveCardContainer(CardPreviewStyle.HorizontalLayout).AddChildSafely(cardNode);
+        cardNode.UpdateVisuals(card.Pile.Type, CardPreviewMode.Normal);
+
+        Tween tween = cardNode.CreateTween();
+        tween.TweenProperty(cardNode, "scale", Vector2.One, 0.25)
+            .From(Vector2.Zero)
+            .SetEase(Tween.EaseType.Out)
+            .SetTrans(Tween.TransitionType.Cubic);
+        tween.TweenCallback(Callable.From(() =>
+            FlyCustomRunCardToBackButton(cardNode, card, destination))).SetDelay(1.0f);
+    }
+
+    private void FlyCustomRunCardToBackButton(NCard cardNode, CardModel card, Vector2 destination)
+    {
+        if (!GodotObject.IsInstanceValid(cardNode))
+            return;
+
+        Vector2 start = cardNode.GlobalPosition;
+        cardNode.GetParent()?.RemoveChild(cardNode);
+        _cardTrails.AddChildSafely(cardNode);
+        cardNode.GlobalPosition = start;
+
+        NCardTrailVfx? trail = NCardTrailVfx.Create(cardNode, card.Owner.Character.TrailPath);
+        if (trail is not null)
+            _cardTrails.AddChildSafely(trail);
+        if (card.Pile is { } pile)
+            SfxCmd.PlayCardSwooshSfx(pile);
+
+        Vector2 control = (start + destination) * 0.5f + Vector2.Up * 260f;
+        Tween tween = cardNode.CreateTween().SetParallel();
+        tween.TweenMethod(
+                Callable.From<float>(progress =>
+                {
+                    if (!GodotObject.IsInstanceValid(cardNode))
+                        return;
+                    float inverse = 1f - progress;
+                    cardNode.GlobalPosition = inverse * inverse * start
+                                              + 2f * inverse * progress * control
+                                              + progress * progress * destination;
+                }),
+                0f,
+                1f,
+                0.78f)
+            .SetEase(Tween.EaseType.In)
+            .SetTrans(Tween.TransitionType.Sine);
+        tween.TweenProperty(cardNode.Body, "modulate", Colors.Black, 0.24f);
+        tween.TweenProperty(cardNode.Body, "scale", Vector2.One * 0.08f, 0.32f)
+            .SetEase(Tween.EaseType.In)
+            .SetTrans(Tween.TransitionType.Cubic);
+        tween.Chain().TweenCallback(Callable.From(() =>
+        {
+            if (trail is not null && GodotObject.IsInstanceValid(trail))
+                TaskHelper.RunSafely(trail.FadeOut());
+            cardNode.QueueFreeSafely();
+        }));
     }
 
     private Control ResolveCardContainer(CardPreviewStyle style)

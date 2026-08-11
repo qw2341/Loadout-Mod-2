@@ -228,9 +228,7 @@ public class PowerGiver
 		bool isFavorite = false,
 		string displayName = null)
 	{
-		Texture2D icon = null;
-		if (ResourceLoader.Exists(model.IconPath))
-			icon = model.Icon;
+		Texture2D icon = GetLivePowerIcon(model);
 
 		Button button = CommonHelpers.CreateModelButton(PowerButtonSize);
 		button.ClipContents = false;
@@ -265,8 +263,24 @@ public class PowerGiver
 		MegaLabel amountLabel = CreatePowerAmountLabel(model, selectedAmount);
 		button.AddChild(amountLabel);
 
-		CommonHelpers.AttachHoverTips(button, CreateSafePowerHoverTips(model, icon));
+		CommonHelpers.AttachHoverTips(
+			button,
+			() => CreateSafePowerHoverTips(model, GetLivePowerIcon(model)).ToList(),
+			cacheResult: false);
 		return button;
+	}
+
+	private static Texture2D GetLivePowerIcon(PowerModel model)
+	{
+		try
+		{
+			Texture2D icon = model.Icon;
+			return GodotObject.IsInstanceValid(icon) ? icon : null;
+		}
+		catch (ObjectDisposedException)
+		{
+			return null;
+		}
 	}
 
 	private static MegaLabel CreatePowerAmountLabel(PowerModel model, int selectedAmount)

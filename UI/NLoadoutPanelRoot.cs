@@ -271,16 +271,27 @@ public partial class NLoadoutPanelRoot : Control
 
 		foreach (Node child in gameHoverTips.GetChildren())
 		{
-			if (child is not NHoverTipSet tipSet || tipSet.GetParent() == _hoverTipLayer)
-				continue;
-
-			Vector2 globalPosition = tipSet.GlobalPosition;
-			child.GetParent()?.RemoveChild(child);
-			_hoverTipLayer.AddChild(child);
-			tipSet.GlobalPosition = globalPosition;
-			tipSet.ZIndex = 0;
+			if (child is NHoverTipSet tipSet)
+				AdoptGameHoverTip(tipSet);
 		}
 
+		_hoverTipLayer.MoveToFront();
+	}
+
+	public void AdoptGameHoverTip(NHoverTipSet tipSet)
+	{
+		if (!IsInstanceValid(_hoverTipLayer)
+		    || !IsInstanceValid(tipSet)
+		    || tipSet.GetParent() == _hoverTipLayer)
+		{
+			return;
+		}
+
+		Vector2 globalPosition = tipSet.GlobalPosition;
+		tipSet.GetParent()?.RemoveChild(tipSet);
+		_hoverTipLayer.AddChild(tipSet);
+		tipSet.GlobalPosition = globalPosition;
+		tipSet.ZIndex = 0;
 		_hoverTipLayer.MoveToFront();
 	}
 
@@ -414,13 +425,15 @@ public partial class NLoadoutPanelRoot : Control
 		}
 	}
 
-	public bool TryPreviewCustomRunCardAdd(IReadOnlyList<MegaCrit.Sts2.Core.Models.CardModel> cards)
+	public bool TryPreviewCustomRunCardAdd(
+		IReadOnlyList<MegaCrit.Sts2.Core.Models.CardModel> cards,
+		Control destination)
 	{
 		if (!IsValid(_nativeFeedbackLayer))
 			return false;
 		try
 		{
-			_nativeFeedbackLayer.PreviewCustomRunCardAdd(cards);
+			_nativeFeedbackLayer.PreviewCustomRunCardAdd(cards, destination);
 			return true;
 		}
 		catch (System.Exception exception)

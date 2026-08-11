@@ -48,7 +48,11 @@ public static class CustomRunEditorPreviewService
         return items;
     }
 
-    public static void PreviewCardAdd(CardModel canonical, int upgradeLevel, int amount)
+    public static void PreviewCardAdd(
+        CardModel canonical,
+        int upgradeLevel,
+        int amount,
+        Control? destination)
     {
         Player owner = CreateAuthoringOwner();
         List<CardModel> cards = [];
@@ -65,7 +69,7 @@ public static class CustomRunEditorPreviewService
             owner.Deck.AddInternal(card, -1, silent: true);
             cards.Add(card);
         }
-        NLoadoutPanelRoot.Instance?.TryPreviewCustomRunCardAdd(cards);
+        NLoadoutPanelRoot.Instance?.TryPreviewCustomRunCardAdd(cards, destination);
     }
 
     public static void PreviewCardRemoval(IReadOnlyList<CardModel> cards)

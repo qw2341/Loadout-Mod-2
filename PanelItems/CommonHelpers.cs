@@ -1115,14 +1115,17 @@ public class CommonHelpers
         owner.TreeExiting += () => NHoverTipSet.Remove(owner);
     }
 
-    public static void AttachHoverTips(Control owner, Func<IReadOnlyList<IHoverTip>> hoverTipProvider)
+    public static void AttachHoverTips(
+        Control owner,
+        Func<IReadOnlyList<IHoverTip>> hoverTipProvider,
+        bool cacheResult = true)
     {
         ArgumentNullException.ThrowIfNull(hoverTipProvider);
         IReadOnlyList<IHoverTip> cachedTips = null;
 
         owner.MouseEntered += () =>
         {
-            if (cachedTips is null)
+            if (cachedTips is null || !cacheResult)
             {
                 try
                 {
@@ -1144,11 +1147,25 @@ public class CommonHelpers
         owner.TreeExiting += () => NHoverTipSet.Remove(owner);
     }
 
-    private static void ShowHoverTips(Control owner, IReadOnlyList<IHoverTip> tips)
+    public static void ShowHoverTips(Control owner, IReadOnlyList<IHoverTip> tips)
     {
         NHoverTipSet.Remove(owner);
-        NHoverTipSet.CreateAndShow(owner, tips, HoverTip.GetHoverTipAlignment(owner))?.SetFollowOwner();
-        NLoadoutPanelRoot.Instance?.AdoptGameHoverTips();
+        try
+        {
+            HoverTipAlignment alignment = HoverTip.GetHoverTipAlignment(owner);
+            NHoverTipSet? tipSet = NHoverTipSet.CreateAndShow(owner, tips, alignment);
+            if (tipSet is null)
+                return;
+
+            NLoadoutPanelRoot.Instance?.AdoptGameHoverTip(tipSet);
+            tipSet.SetAlignment(owner, alignment);
+            tipSet.SetFollowOwner();
+        }
+        catch (Exception exception)
+        {
+            NHoverTipSet.Remove(owner);
+            GD.PushWarning($"LoadoutPanel: could not show hover tips for '{owner.Name}'. {exception.Message}");
+        }
     }
 
     public static Button CreateTextModelGridItem(
