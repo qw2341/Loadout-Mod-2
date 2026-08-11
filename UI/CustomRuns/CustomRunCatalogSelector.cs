@@ -6,221 +6,300 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Loadout.PanelItems;
 using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Models;
+using Loadout.Services.Loadouts;
+using Loadout.Services.Targets;
 using Loadout.UI.Screens;
-using Loadout.PanelItems;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Relics;
 
 public static class CustomRunCatalogSelector
 {
-    public static bool TryOpen(
-        SelectionSpec selection,
-        Action<IReadOnlyList<string>> confirmed,
+    public static bool TryOpenCatalogAction(
+        SelectionModelKind kind,
+        Action<NGenericSelectScreen, IGenericSelectItem, int> activated,
         out IDisposable? session,
-        out string error,
-        bool decrementOnActivate = false)
+        out string error)
     {
         session = null;
-        error = string.Empty;
-        NLoadoutPanelRoot? root = NLoadoutPanelRoot.Instance;
-        NLoadoutPanel? panel = NLoadoutPanel.Instance;
-        if (root is null || panel is null || !panel.LoadoutItemsInitialized)
-        {
-            error = "The shared Loadout catalog screens are not ready yet.";
+        if (!TryFindCatalogScreen(kind, out NGenericSelectScreen screen, out error))
             return false;
-        }
-
-        int catalogCount = CustomRunCatalogService.GetCatalog(selection.Kind).Count;
-        NGenericSelectScreen? screen = panel.GetSelectScreensForPreload()
-            .Select(entry => entry.Screen)
-            .Where(candidate => !candidate.IsScreenActive)
-            .Where(candidate => candidate.Items.Count > 0)
-            .Where(candidate => candidate.Items.All(item =>
-                item.UntypedModel is AbstractModel model
-                && CustomRunCatalogService.IsModelKind(model, selection.Kind)))
-            .OrderByDescending(candidate => candidate.Items.Count == catalogCount)
-            .ThenByDescending(candidate => candidate.Items.Count)
-            .FirstOrDefault();
-        if (screen is null)
-        {
-            error = $"No initialized {selection.Kind.ToString().ToLowerInvariant()} catalog screen is available.";
-            return false;
-        }
-
-        Dictionary<string, int> selectedAmounts = [];
-        foreach (string modelId in selection.FixedModelIds)
-        {
-            IGenericSelectItem? item = screen.Items.FirstOrDefault(candidate =>
-                candidate.UntypedModel is AbstractModel model
-                && (string.Equals(model.Id.ToString(), modelId, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(model.Id.Entry, modelId, StringComparison.OrdinalIgnoreCase)));
-            if (item is not null)
-                selectedAmounts[item.Id] = selectedAmounts.GetValueOrDefault(item.Id) + 1;
-        }
-
-        SelectScreenOptions options = new()
-        {
-            SelectionMode = SelectSelectionMode.Multi,
-            MinSelection = decrementOnActivate ? 0 : 1,
-            MaxTotalSelection = GetMaximumSelection(selection.Kind),
-            MaxCopiesPerItem = GetMaximumCopies(selection.Kind)
-        };
 
         try
         {
-            Action<NGenericSelectScreen, IGenericSelectItem>? activationOverride = decrementOnActivate
-                ? static (target, item) => target.SelectItem(
-                    item.Id,
-                    Math.Max(0, target.SelectedAmounts.GetValueOrDefault(item.Id) - target.GetCurrentActivationMultiplier()))
-                : null;
-            IDisposable selectionLease = screen.BeginReusedSelection(
-                options,
-                selectedAmounts,
-                visibilityPredicateOverride: decrementOnActivate
-                    ? item => selectedAmounts.ContainsKey(item.Id)
-                    : null,
-                activationOverride: activationOverride);
-            session = new SelectorSession(screen, selectionLease, confirmed);
-            root.OpenScreen(screen);
+            IDisposable lease = screen.BeginReusedSelection(
+                new SelectScreenOptions { SelectionMode = SelectSelectionMode.None },
+                activationOverride: (target, item) => activated(
+                    target,
+                    item,
+                    target.GetCurrentActivationMultiplier()),
+                showSelectionChrome: false,
+                useCustomRunBackdrop: true);
+            session = new ActionSession(screen, lease);
+            NLoadoutPanelRoot.Instance!.OpenScreen(screen);
             return true;
         }
         catch (Exception exception)
         {
             session?.Dispose();
             session = null;
-            error = $"Could not open the shared {selection.Kind.ToString().ToLowerInvariant()} selector: {exception.Message}";
+            error = $"Could not open the shared {kind.ToString().ToLowerInvariant()} screen: {exception.Message}";
             return false;
         }
     }
 
-    public static bool TryChooseExisting(
-        SelectionModelKind kind,
-        IReadOnlyCollection<string> allowedModelIds,
-        Action<string> confirmed,
-        out IDisposable? session,
-        out string error)
-    {
-        HashSet<string> allowed = allowedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (!TryFindScreen(kind, out NGenericSelectScreen? screen, out error))
-        {
-            session = null;
-            return false;
-        }
-
-        SelectScreenOptions options = new()
-        {
-            SelectionMode = SelectSelectionMode.Single,
-            MinSelection = 1,
-            MaxTotalSelection = 1,
-            MaxCopiesPerItem = 1
-        };
-        IDisposable lease = screen.BeginReusedSelection(
-            options,
-            visibilityPredicateOverride: item => item.UntypedModel is AbstractModel model
-                && (allowed.Contains(model.Id.ToString()) || allowed.Contains(model.Id.Entry)));
-        session = new SelectorSession(screen, lease, items =>
-        {
-            if (items.Count > 0)
-                confirmed(items[0]);
-        });
-        NLoadoutPanelRoot.Instance!.OpenScreen(screen);
-        return true;
-    }
-
-    public static bool TryOpenPowerSelection(
-        IReadOnlyDictionary<string, int> powers,
-        Action<IReadOnlyDictionary<string, int>> confirmed,
+    public static bool TryOpenOwnedCardAction(
+        string screenNameFragment,
+        IReadOnlyList<LoadoutOwnedItem<CardModel>> cards,
+        Func<NGenericSelectScreen, LoadoutOwnedItem<CardModel>, int, IReadOnlyList<LoadoutOwnedItem<CardModel>>?> activated,
         out IDisposable? session,
         out string error)
     {
         session = null;
-        if (!TryFindScreen(SelectionModelKind.Power, out NGenericSelectScreen? screen, out error))
+        if (!TryFindNamedScreen(screenNameFragment, out NGenericSelectScreen screen, out error))
+            return false;
+
+        SelectItemAdapter<LoadoutOwnedItem<CardModel>> adapter = new()
+        {
+            GetId = CommonHelpers.OwnedSlotItemId,
+            GetName = item => CardPrinter.FormatCardTitle(item.Model),
+            GetSearchText = item => $"{item.Model.Id} {CardPrinter.FormatCardTitle(item.Model)} {item.Model.GetDescriptionForPile(PileType.Deck)}",
+            CapturePreloadResourcePaths = item => item.Model.AllPortraitPaths.ToArray(),
+            CreateView = (item, state) => CardPrinter.CreateCardGridItem(item.Model, state, PileType.Deck),
+            ViewReady = (item, view) => CardPrinter.RefreshCardVisuals(view, item.Model, PileType.Deck),
+            UpdateView = (item, view, state) =>
+            {
+                CardPrinter.ForceRefreshCardVisuals(view, item.Model, PileType.Deck);
+                CardPrinter.UpdateCardGridItem(view, state);
+            },
+            BindActivationWithCleanup = (_, view, activate) => CardPrinter.BindCardActivationWithCleanup(view, activate)
+        };
+
+        try
+        {
+            IDisposable configurationLease = screen.BeginTemporaryConfiguration(
+                cards,
+                adapter,
+                builder =>
+                {
+                    builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+                    builder.Materialization(SelectMaterializationMode.Lazy);
+                    builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingTop: 200f);
+                });
+            IDisposable selectionLease;
+            try
+            {
+                selectionLease = screen.BeginReusedSelection(
+                    new SelectScreenOptions { SelectionMode = SelectSelectionMode.None },
+                    activationOverride: (target, item) =>
+                    {
+                        if (item.UntypedModel is not LoadoutOwnedItem<CardModel> card)
+                            return;
+                        IReadOnlyList<LoadoutOwnedItem<CardModel>>? next = activated(
+                            target,
+                            card,
+                            target.GetCurrentActivationMultiplier());
+                        if (next is not null && target.IsScreenActive)
+                            target.RefreshItemsPreservingViews(next, adapter, animateRelayout: true, updateExistingViews: true);
+                    },
+                    showSelectionChrome: false,
+                    useCustomRunBackdrop: true);
+            }
+            catch
+            {
+                configurationLease.Dispose();
+                throw;
+            }
+
+            session = new ActionSession(screen, selectionLease, configurationLease);
+            NLoadoutPanelRoot.Instance!.OpenScreen(screen);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            session?.Dispose();
+            session = null;
+            error = $"Could not open the Custom Run card inventory: {exception.Message}";
+            return false;
+        }
+    }
+
+    public static bool TryOpenOwnedRelicAction(
+        string screenNameFragment,
+        IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics,
+        Func<NGenericSelectScreen, LoadoutOwnedItem<RelicModel>, int, IReadOnlyList<LoadoutOwnedItem<RelicModel>>?> activated,
+        out IDisposable? session,
+        out string error)
+    {
+        session = null;
+        if (!TryFindNamedScreen(screenNameFragment, out NGenericSelectScreen screen, out error))
+            return false;
+
+        SelectItemAdapter<LoadoutOwnedItem<RelicModel>> adapter = new()
+        {
+            GetId = CommonHelpers.OwnedSlotItemId,
+            GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
+            GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)} {item.Model.DynamicDescription.GetFormattedText()}",
+            CapturePreloadResourcePaths = item => [item.Model.IconPath],
+            CreateView = (item, _) => NLoadoutPanel.CreateOwnedRelicGridItem(item.Model),
+            UpdateView = (item, view, _) => RefreshRelicView(view, item.Model),
+            BindActivationWithCleanup = (_, view, activate) => LoadoutBag.BindRelicActivationWithCleanup(view, activate)
+        };
+
+        try
+        {
+            IDisposable configurationLease = screen.BeginTemporaryConfiguration(
+                relics,
+                adapter,
+                builder =>
+                {
+                    builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+                    builder.Materialization(SelectMaterializationMode.Lazy);
+                    builder.Layout(10, new Vector2(68f, 68f), 32, 32);
+                });
+            IDisposable selectionLease;
+            try
+            {
+                selectionLease = screen.BeginReusedSelection(
+                    new SelectScreenOptions { SelectionMode = SelectSelectionMode.None },
+                    activationOverride: (target, item) =>
+                    {
+                        if (item.UntypedModel is not LoadoutOwnedItem<RelicModel> relic)
+                            return;
+                        IReadOnlyList<LoadoutOwnedItem<RelicModel>>? next = activated(
+                            target,
+                            relic,
+                            target.GetCurrentActivationMultiplier());
+                        if (next is not null && target.IsScreenActive)
+                            target.RefreshItemsPreservingViews(next, adapter, animateRelayout: true, updateExistingViews: true);
+                    },
+                    showSelectionChrome: false,
+                    useCustomRunBackdrop: true);
+            }
+            catch
+            {
+                configurationLease.Dispose();
+                throw;
+            }
+
+            session = new ActionSession(screen, selectionLease, configurationLease);
+            NLoadoutPanelRoot.Instance!.OpenScreen(screen);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            session?.Dispose();
+            session = null;
+            error = $"Could not open the Custom Run relic inventory: {exception.Message}";
+            return false;
+        }
+    }
+
+    public static bool TryOpenPowerSelection(
+        IReadOnlyDictionary<string, int> powers,
+        Action<IReadOnlyDictionary<string, int>> changed,
+        out IDisposable? session,
+        out string error)
+    {
+        session = null;
+        if (!TryFindCatalogScreen(SelectionModelKind.Power, out NGenericSelectScreen screen, out error))
             return false;
 
         Dictionary<string, int> selected = [];
-        foreach ((string modelId, int amount) in powers)
+        Dictionary<string, string> modelIdByItemId = [];
+        foreach (IGenericSelectItem item in screen.Items)
         {
-            IGenericSelectItem? item = FindModelItem(screen, modelId);
-            if (item is not null && amount != 0)
+            if (item.UntypedModel is not PowerModel power)
+                continue;
+            string modelId = power.Id.ToString();
+            modelIdByItemId[item.Id] = modelId;
+            int amount = powers.FirstOrDefault(pair =>
+                string.Equals(pair.Key, modelId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(pair.Key, power.Id.Entry, StringComparison.OrdinalIgnoreCase)).Value;
+            if (amount != 0)
                 selected[item.Id] = amount;
         }
 
-        SelectScreenOptions options = new()
-        {
-            SelectionMode = SelectSelectionMode.Multi,
-            MinSelection = 0,
-            MaxTotalSelection = 9999,
-            MaxCopiesPerItem = 999
-        };
-        IDisposable lease = screen.BeginReusedSelection(options, selected, allowSignedAmounts: true);
-        session = new PowerSelectorSession(screen, lease, confirmed);
+        Dictionary<string, int> current = powers
+            .Where(pair => pair.Value != 0)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        IDisposable lease = screen.BeginReusedSelection(
+            new SelectScreenOptions
+            {
+                SelectionMode = SelectSelectionMode.Multi,
+                MinSelection = 0,
+                MaxTotalSelection = 9999,
+                MaxCopiesPerItem = 999
+            },
+            selected,
+            allowSignedAmounts: true,
+            showSelectionChrome: false,
+            useCustomRunBackdrop: true,
+            selectionAmountChanged: (itemId, amount) =>
+            {
+                if (!modelIdByItemId.TryGetValue(itemId, out string? modelId))
+                    return;
+                if (amount == 0)
+                    current.Remove(modelId);
+                else
+                    current[modelId] = amount;
+                changed(new Dictionary<string, int>(current, StringComparer.OrdinalIgnoreCase));
+            });
+        session = new ActionSession(screen, lease);
         NLoadoutPanelRoot.Instance!.OpenScreen(screen);
         return true;
     }
 
     public static bool TryOpenMorphSelection(
         string? selectedModelId,
-        Action<string?> confirmed,
+        Action<string?> changed,
         out IDisposable? session,
         out string error)
     {
+        _ = selectedModelId;
         session = null;
-        error = string.Empty;
-        NLoadoutPanel? panel = NLoadoutPanel.Instance;
-        NLoadoutPanelRoot? root = NLoadoutPanelRoot.Instance;
-        NGenericSelectScreen? screen = panel?.GetSelectScreensForPreload()
-            .Where(entry => entry.Name.ToString().Contains("BottledMonster_Alternate", StringComparison.OrdinalIgnoreCase))
-            .Select(entry => entry.Screen)
-            .FirstOrDefault(candidate => !candidate.IsScreenActive);
-        if (screen is null || root is null)
+        if (!TryFindNamedScreen("BottledMonster_Alternate", out NGenericSelectScreen screen, out error))
         {
             error = "The initialized Morph Selection screen is not available.";
             return false;
         }
 
-        Dictionary<string, int> selected = [];
-        foreach (IGenericSelectItem item in screen.Items)
-        {
-            if (!BottledMonster.TryGetMorphOptionModel(item.UntypedModel, out AbstractModel? model))
-                continue;
-            if ((selectedModelId is null && model is null)
-                || (model is not null && string.Equals(model.Id.ToString(), selectedModelId, StringComparison.OrdinalIgnoreCase)))
+        NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance!;
+        ActionSession? activeSession = null;
+        IDisposable lease = screen.BeginReusedSelection(
+            new SelectScreenOptions { SelectionMode = SelectSelectionMode.None },
+            activationOverride: (_, item) =>
             {
-                selected[item.Id] = 1;
-                break;
-            }
-        }
-
-        SelectScreenOptions options = new()
-        {
-            SelectionMode = SelectSelectionMode.Single,
-            MinSelection = 1,
-            MaxTotalSelection = 1,
-            MaxCopiesPerItem = 1
-        };
-        IDisposable lease = screen.BeginReusedSelection(options, selected);
-        session = new MorphSelectorSession(screen, lease, confirmed);
+                if (!BottledMonster.TryGetMorphOptionModel(item.UntypedModel, out AbstractModel? model))
+                    return;
+                activeSession?.Dispose();
+                root.CloseTopScreen();
+                changed(model?.Id.ToString());
+            },
+            showSelectionChrome: false,
+            useCustomRunBackdrop: true);
+        activeSession = new ActionSession(screen, lease);
+        session = activeSession;
         root.OpenScreen(screen);
         return true;
     }
 
-    private static bool TryFindScreen(
+    private static bool TryFindCatalogScreen(
         SelectionModelKind kind,
         out NGenericSelectScreen screen,
         out string error)
     {
         screen = null!;
         error = string.Empty;
-        NLoadoutPanel? panel = NLoadoutPanel.Instance;
-        NLoadoutPanelRoot? root = NLoadoutPanelRoot.Instance;
-        if (root is null || panel is null || !panel.LoadoutItemsInitialized)
-        {
-            error = "The shared Loadout catalog screens are not ready yet.";
+        if (!TryGetAvailableScreens(out IReadOnlyList<NLoadoutPanel.SelectScreenPreloadEntry> screens, out error))
             return false;
-        }
 
-        screen = panel.GetSelectScreensForPreload()
+        screen = screens
             .Select(entry => entry.Screen)
             .Where(candidate => !candidate.IsScreenActive && candidate.Items.Count > 0)
             .Where(candidate => candidate.Items.All(item => item.UntypedModel is AbstractModel model
@@ -235,174 +314,75 @@ public static class CustomRunCatalogSelector
         return true;
     }
 
-    private static IGenericSelectItem? FindModelItem(NGenericSelectScreen screen, string modelId)
+    private static bool TryFindNamedScreen(
+        string nameFragment,
+        out NGenericSelectScreen screen,
+        out string error)
     {
-        return screen.Items.FirstOrDefault(item => item.UntypedModel is AbstractModel model
-            && (string.Equals(model.Id.ToString(), modelId, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(model.Id.Entry, modelId, StringComparison.OrdinalIgnoreCase)));
-    }
-
-    private static int GetMaximumSelection(SelectionModelKind kind)
-    {
-        return kind switch
+        screen = null!;
+        if (!TryGetAvailableScreens(out IReadOnlyList<NLoadoutPanel.SelectScreenPreloadEntry> screens, out error))
+            return false;
+        screen = screens
+            .Where(entry => entry.Name.ToString().Contains(nameFragment, StringComparison.OrdinalIgnoreCase))
+            .Select(entry => entry.Screen)
+            .FirstOrDefault(candidate => !candidate.IsScreenActive)!;
+        if (screen is null)
         {
-            SelectionModelKind.Card => 99,
-            SelectionModelKind.Relic => 50,
-            SelectionModelKind.Potion => 20,
-            _ => 1
-        };
+            error = $"The initialized {nameFragment} screen is not available.";
+            return false;
+        }
+        return true;
     }
 
-    private static int GetMaximumCopies(SelectionModelKind kind)
+    private static bool TryGetAvailableScreens(
+        out IReadOnlyList<NLoadoutPanel.SelectScreenPreloadEntry> screens,
+        out string error)
     {
-        return kind switch
+        screens = [];
+        error = string.Empty;
+        NLoadoutPanel? panel = NLoadoutPanel.Instance;
+        if (NLoadoutPanelRoot.Instance is null || panel is null || !panel.LoadoutItemsInitialized)
         {
-            SelectionModelKind.Card => 99,
-            SelectionModelKind.Potion => 20,
-            _ => 1
-        };
+            error = "The shared Loadout screens are not ready yet.";
+            return false;
+        }
+        screens = panel.GetSelectScreensForPreload();
+        return true;
     }
 
-    private sealed class SelectorSession : IDisposable
+    private static void RefreshRelicView(Control view, RelicModel model)
+    {
+        if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelicBasicHolder holder)
+            || holder.Relic is not { } relic)
+            return;
+        relic.Model = model;
+        if (relic.IsNodeReady())
+            model.UpdateTexture(relic.Icon);
+    }
+
+    private sealed class ActionSession : IDisposable
     {
         private readonly NGenericSelectScreen _screen;
-        private readonly IDisposable _selectionLease;
-        private readonly Action<IReadOnlyList<string>> _confirmedAction;
-        private bool _completed;
-
-        public SelectorSession(
-            NGenericSelectScreen screen,
-            IDisposable selectionLease,
-            Action<IReadOnlyList<string>> confirmedAction)
-        {
-            _screen = screen;
-            _selectionLease = selectionLease;
-            _confirmedAction = confirmedAction;
-            _screen.Confirmed += OnConfirmed;
-            _screen.Cancelled += OnCancelled;
-            _screen.ScreenClosed += OnScreenClosed;
-        }
-
-        public void Dispose()
-        {
-            if (_completed)
-                return;
-            _completed = true;
-            _screen.Confirmed -= OnConfirmed;
-            _screen.Cancelled -= OnCancelled;
-            _screen.ScreenClosed -= OnScreenClosed;
-            _selectionLease.Dispose();
-        }
-
-        private void OnConfirmed(IReadOnlyList<IGenericSelectItem> selectedItems)
-        {
-            if (_completed)
-                return;
-
-            List<string> selectedIds = [];
-            foreach (IGenericSelectItem item in selectedItems)
-            {
-                if (item.UntypedModel is not AbstractModel model)
-                    continue;
-                int amount = _screen.SelectedAmounts.GetValueOrDefault(item.Id, 1);
-                for (int copy = 0; copy < amount; copy++)
-                    selectedIds.Add(model.Id.ToString());
-            }
-
-            Dispose();
-            _confirmedAction(selectedIds);
-        }
-
-        private void OnCancelled() => Dispose();
-
-        private void OnScreenClosed()
-        {
-            Callable.From(() =>
-            {
-                if (!_completed)
-                    Dispose();
-            }).CallDeferred();
-        }
-    }
-
-    private sealed class PowerSelectorSession : IDisposable
-    {
-        private readonly NGenericSelectScreen _screen;
-        private readonly IDisposable _lease;
-        private readonly Action<IReadOnlyDictionary<string, int>> _confirmed;
+        private readonly IDisposable[] _leases;
         private bool _done;
 
-        public PowerSelectorSession(NGenericSelectScreen screen, IDisposable lease, Action<IReadOnlyDictionary<string, int>> confirmed)
+        public ActionSession(NGenericSelectScreen screen, params IDisposable[] leases)
         {
             _screen = screen;
-            _lease = lease;
-            _confirmed = confirmed;
-            screen.Confirmed += OnConfirmed;
+            _leases = leases;
             screen.Cancelled += Dispose;
             screen.ScreenClosed += OnClosed;
         }
 
         public void Dispose()
         {
-            if (_done) return;
+            if (_done)
+                return;
             _done = true;
-            _screen.Confirmed -= OnConfirmed;
             _screen.Cancelled -= Dispose;
             _screen.ScreenClosed -= OnClosed;
-            _lease.Dispose();
-        }
-
-        private void OnConfirmed(IReadOnlyList<IGenericSelectItem> _)
-        {
-            Dictionary<string, int> result = [];
-            foreach (IGenericSelectItem item in _screen.Items)
-            {
-                int amount = _screen.SelectedAmounts.GetValueOrDefault(item.Id);
-                if (amount != 0 && item.UntypedModel is AbstractModel model)
-                    result[model.Id.ToString()] = amount;
-            }
-            Dispose();
-            _confirmed(result);
-        }
-
-        private void OnClosed() => Callable.From(Dispose).CallDeferred();
-    }
-
-    private sealed class MorphSelectorSession : IDisposable
-    {
-        private readonly NGenericSelectScreen _screen;
-        private readonly IDisposable _lease;
-        private readonly Action<string?> _confirmed;
-        private bool _done;
-
-        public MorphSelectorSession(NGenericSelectScreen screen, IDisposable lease, Action<string?> confirmed)
-        {
-            _screen = screen;
-            _lease = lease;
-            _confirmed = confirmed;
-            screen.Confirmed += OnConfirmed;
-            screen.Cancelled += Dispose;
-            screen.ScreenClosed += OnClosed;
-        }
-
-        public void Dispose()
-        {
-            if (_done) return;
-            _done = true;
-            _screen.Confirmed -= OnConfirmed;
-            _screen.Cancelled -= Dispose;
-            _screen.ScreenClosed -= OnClosed;
-            _lease.Dispose();
-        }
-
-        private void OnConfirmed(IReadOnlyList<IGenericSelectItem> items)
-        {
-            string? id = null;
-            if (items.Count > 0
-                && BottledMonster.TryGetMorphOptionModel(items[0].UntypedModel, out AbstractModel? model))
-                id = model?.Id.ToString();
-            Dispose();
-            _confirmed(id);
+            foreach (IDisposable lease in _leases)
+                lease.Dispose();
         }
 
         private void OnClosed() => Callable.From(Dispose).CallDeferred();

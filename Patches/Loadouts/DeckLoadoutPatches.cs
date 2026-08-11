@@ -115,8 +115,6 @@ public static class DeckViewScreenLoadoutPanelReadyPatch
     [HarmonyPostfix]
     public static void Postfix(NDeckViewScreen __instance)
     {
-        if (__instance.HasMeta(UI.CustomRuns.CustomRunEditorPreviewService.PreviewMeta))
-            return;
         Player? player = PlayerField?.GetValue(__instance) as Player;
         DeckViewRefreshService.Register(__instance);
         if (LoadoutConfigService.EnableDeckLoadoutScreen && LoadoutPanelAccessService.CanLocalPlayerUsePanel())

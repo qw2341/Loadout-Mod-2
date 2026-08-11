@@ -414,6 +414,38 @@ public partial class NLoadoutPanelRoot : Control
 		}
 	}
 
+	public bool TryPreviewCustomRunCardAdd(IReadOnlyList<MegaCrit.Sts2.Core.Models.CardModel> cards)
+	{
+		if (!IsValid(_nativeFeedbackLayer))
+			return false;
+		try
+		{
+			_nativeFeedbackLayer.PreviewCustomRunCardAdd(cards);
+			return true;
+		}
+		catch (System.Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanelRoot: Custom Run card-add feedback failed. {exception.Message}");
+			return false;
+		}
+	}
+
+	public bool TryPreviewCustomRunCardRemoval(IReadOnlyList<MegaCrit.Sts2.Core.Models.CardModel> cards)
+	{
+		if (!IsValid(_nativeFeedbackLayer))
+			return false;
+		try
+		{
+			_nativeFeedbackLayer.PreviewCustomRunCardRemoval(cards);
+			return true;
+		}
+		catch (System.Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanelRoot: Custom Run card-removal feedback failed. {exception.Message}");
+			return false;
+		}
+	}
+
 	public bool TryPreviewRelicObtained(MegaCrit.Sts2.Core.Models.RelicModel relic)
 	{
 		if (!IsValid(_nativeFeedbackLayer))

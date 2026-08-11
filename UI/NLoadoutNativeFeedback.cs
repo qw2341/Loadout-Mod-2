@@ -72,6 +72,34 @@ public partial class NLoadoutNativeFeedback : Control
 
     public void PreviewCardRemoval(IReadOnlyList<CardModel> cards)
     {
+        PreviewCardRemoval(cards, requireLocalOwner: true);
+    }
+
+    public void PreviewCustomRunCardAdd(IReadOnlyList<CardModel> cards)
+    {
+        if (TestMode.IsOn || CombatManager.Instance.IsEnding)
+            return;
+        foreach (CardModel card in cards)
+        {
+            if (GetPreviewCardCount() >= MaxCardPreviews)
+                return;
+            PreviewCardPileAdd(new CardPileAddResult
+            {
+                success = true,
+                cardAdded = card,
+                oldPile = null,
+                modifyingModels = null
+            }, 1.2f, CardPreviewStyle.HorizontalLayout);
+        }
+    }
+
+    public void PreviewCustomRunCardRemoval(IReadOnlyList<CardModel> cards)
+    {
+        PreviewCardRemoval(cards, requireLocalOwner: false);
+    }
+
+    private void PreviewCardRemoval(IReadOnlyList<CardModel> cards, bool requireLocalOwner)
+    {
         if (TestMode.IsOn)
             return;
 
@@ -80,7 +108,7 @@ public partial class NLoadoutNativeFeedback : Control
             if (GetPreviewCardCount() >= MaxCardPreviews)
                 return;
 
-            if (!LocalContext.IsMine(card))
+            if (requireLocalOwner && !LocalContext.IsMine(card))
                 continue;
 
             NCard? cardNode = NCard.Create(card);

@@ -210,6 +210,9 @@ public partial class NGenericSelectScreen : Control
     private ulong _activeEagerMaterializationGeneration = ulong.MaxValue;
     private bool _isScreenActive;
     private ReusedSelectionSession? _reusedSelectionSession;
+    private TemporaryConfigurationSession? _temporaryConfigurationSession;
+    private Action? _restoreConfiguration;
+    private bool _applyingTemporaryConfiguration;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -254,6 +257,7 @@ public partial class NGenericSelectScreen : Control
     public override void _ExitTree()
     {
         _reusedSelectionSession?.End(restoreState: false);
+        _temporaryConfigurationSession?.End(restoreState: false);
         if (_isScreenActive)
             SetScreenLifecycleActive(false);
         CloseOpenDropdowns();
@@ -346,7 +350,8 @@ public partial class NGenericSelectScreen : Control
             ResetActionButtonVisualState(_cancelClickable);
         }
 
-        bool usesSelection = _options.SelectionMode != SelectSelectionMode.None;
+        bool usesSelection = _options.SelectionMode != SelectSelectionMode.None
+                             && _reusedSelectionSession?.ShowSelectionChrome != false;
 
         if (_confirmButton is not null)
         {
@@ -384,6 +389,10 @@ public partial class NGenericSelectScreen : Control
         SelectItemAdapter<TModel> adapter,
         Action<SelectScreenBuilder<TModel>>? build = null)
     {
+        List<TModel> modelSnapshot = models.ToList();
+        if (!_applyingTemporaryConfiguration && _temporaryConfigurationSession is null)
+            _restoreConfiguration = () => Configure(modelSnapshot, adapter, build);
+
         CancelRelayoutAnimations(applyFinalPositions: true);
         ResetConfiguration();
 
@@ -391,7 +400,7 @@ public partial class NGenericSelectScreen : Control
         build?.Invoke(builder);
 
         int index = 0;
-        foreach (TModel model in models)
+        foreach (TModel model in modelSnapshot)
         {
             _items.Add(new GenericSelectItem<TModel>(model, adapter, index));
             index++;
@@ -409,6 +418,10 @@ public partial class NGenericSelectScreen : Control
         Action<SelectScreenBuilder<TModel>>? build = null,
         bool animateRelayout = false)
     {
+        List<TModel> modelSnapshot = models.ToList();
+        if (!_applyingTemporaryConfiguration && _temporaryConfigurationSession is null)
+            _restoreConfiguration = () => Configure(modelSnapshot, adapter, build);
+
         CancelRelayoutAnimations(applyFinalPositions: false);
         Dictionary<string, Control> reusableViews = CaptureReusableItemViewsById();
         Dictionary<string, Vector2> previousPositions = CaptureItemPositionsById();
@@ -420,7 +433,7 @@ public partial class NGenericSelectScreen : Control
         build?.Invoke(builder);
 
         int index = 0;
-        foreach (TModel model in models)
+        foreach (TModel model in modelSnapshot)
         {
             GenericSelectItem<TModel> item = new(model, adapter, index);
             if (reusableViews.Remove(item.Id, out Control? view) && GodotObject.IsInstanceValid(view))
@@ -1607,7 +1620,10 @@ public partial class NGenericSelectScreen : Control
         IReadOnlyDictionary<string, int>? selectedAmounts = null,
         Func<IGenericSelectItem, bool>? visibilityPredicateOverride = null,
         Action<NGenericSelectScreen, IGenericSelectItem>? activationOverride = null,
-        bool allowSignedAmounts = false)
+        bool allowSignedAmounts = false,
+        bool showSelectionChrome = true,
+        bool useCustomRunBackdrop = false,
+        Action<string, int>? selectionAmountChanged = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (_reusedSelectionSession is not null)
@@ -1619,7 +1635,10 @@ public partial class NGenericSelectScreen : Control
             _selectedAmounts,
             _customVisibilityPredicate,
             activationOverride,
-            allowSignedAmounts);
+            allowSignedAmounts,
+            showSelectionChrome,
+            useCustomRunBackdrop,
+            selectionAmountChanged);
         _reusedSelectionSession = session;
         _options = options;
         _selectedAmounts.Clear();
@@ -1674,6 +1693,7 @@ public partial class NGenericSelectScreen : Control
         _selectedAmounts[itemId] = _reusedSelectionSession?.AllowSignedAmounts == true
             ? Math.Clamp(amount, -_options.MaxCopiesPerItem, _options.MaxCopiesPerItem)
             : Math.Clamp(amount, 1, _options.MaxCopiesPerItem);
+        _reusedSelectionSession?.NotifySelectionAmountChanged(itemId, _selectedAmounts[itemId]);
         RefreshVisibleItemStates();
         UpdateConfirmButtonState();
     }
@@ -1682,9 +1702,39 @@ public partial class NGenericSelectScreen : Control
     {
         if (_selectedAmounts.Remove(itemId))
         {
+            _reusedSelectionSession?.NotifySelectionAmountChanged(itemId, 0);
             RefreshVisibleItemStates();
             UpdateConfirmButtonState();
         }
+    }
+
+    public IDisposable BeginTemporaryConfiguration<TModel>(
+        IEnumerable<TModel> models,
+        SelectItemAdapter<TModel> adapter,
+        Action<SelectScreenBuilder<TModel>>? build = null)
+    {
+        if (_temporaryConfigurationSession is not null)
+            throw new InvalidOperationException($"Select screen '{Name}' already has a temporary configuration.");
+        if (_restoreConfiguration is null)
+            throw new InvalidOperationException($"Select screen '{Name}' has no configured state to restore.");
+
+        TemporaryConfigurationSession session = new(this, _restoreConfiguration);
+        _temporaryConfigurationSession = session;
+        _applyingTemporaryConfiguration = true;
+        try
+        {
+            Configure(models, adapter, build);
+        }
+        catch
+        {
+            _temporaryConfigurationSession = null;
+            throw;
+        }
+        finally
+        {
+            _applyingTemporaryConfiguration = false;
+        }
+        return session;
     }
 
     public void ConfirmSelection()
@@ -3940,7 +3990,9 @@ public partial class NGenericSelectScreen : Control
         private readonly SelectScreenOptions _previousOptions;
         private readonly IReadOnlyDictionary<string, int> _previousSelection;
         private readonly Action<NGenericSelectScreen, IGenericSelectItem>? _activationOverride;
+        private readonly Action<string, int>? _selectionAmountChanged;
         private readonly Dictionary<Control, bool> _sidebarVisibility = [];
+        private ColorRect? _customRunBlurBackdrop;
 
         public ReusedSelectionSession(
             NGenericSelectScreen owner,
@@ -3948,22 +4000,35 @@ public partial class NGenericSelectScreen : Control
             IReadOnlyDictionary<string, int> previousSelection,
             Func<IGenericSelectItem, bool>? previousVisibilityPredicate,
             Action<NGenericSelectScreen, IGenericSelectItem>? activationOverride,
-            bool allowSignedAmounts)
+            bool allowSignedAmounts,
+            bool showSelectionChrome,
+            bool useCustomRunBackdrop,
+            Action<string, int>? selectionAmountChanged)
         {
             _owner = owner;
             _previousOptions = previousOptions;
             _previousSelection = new Dictionary<string, int>(previousSelection, StringComparer.Ordinal);
             PreviousVisibilityPredicate = previousVisibilityPredicate;
             _activationOverride = activationOverride;
+            _selectionAmountChanged = selectionAmountChanged;
             AllowSignedAmounts = allowSignedAmounts;
+            ShowSelectionChrome = showSelectionChrome;
             CaptureVisibility(owner._actionButtonsContainer);
             CaptureVisibility(owner._bottomActionButtonsContainer);
             CaptureVisibility(owner._customControlsContainer);
             CaptureVisibility(owner._bottomCustomControlsContainer);
+            if (useCustomRunBackdrop)
+                AddCustomRunBlurBackdrop(owner);
         }
 
         public Func<IGenericSelectItem, bool>? PreviousVisibilityPredicate { get; }
         public bool AllowSignedAmounts { get; }
+        public bool ShowSelectionChrome { get; }
+
+        public void NotifySelectionAmountChanged(string itemId, int amount)
+        {
+            _selectionAmountChanged?.Invoke(itemId, amount);
+        }
 
         public bool TryActivate(IGenericSelectItem item)
         {
@@ -3979,6 +4044,7 @@ public partial class NGenericSelectScreen : Control
         {
             NGenericSelectScreen? owner = _owner;
             _owner = null;
+            RemoveCustomRunBlurBackdrop();
             owner?.EndReusedSelection(this, _previousOptions, _previousSelection, restoreState);
         }
 
@@ -3995,6 +4061,83 @@ public partial class NGenericSelectScreen : Control
         {
             if (control is not null)
                 _sidebarVisibility[control] = control.Visible;
+        }
+
+        private void AddCustomRunBlurBackdrop(NGenericSelectScreen owner)
+        {
+            const string shaderPath = "res://Loadout/shaders/custom_run_background_blur.gdshader";
+            if (!ResourceLoader.Exists(shaderPath))
+                return;
+
+            ShaderMaterial material = new()
+            {
+                ResourceLocalToScene = true,
+                Shader = GD.Load<Shader>(shaderPath)
+            };
+            material.SetShaderParameter("radius", 3f);
+            ColorRect backdrop = new()
+            {
+                Name = "CustomRunBlurBackdrop",
+                Material = material,
+                Color = Colors.White,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
+            owner.AddChild(backdrop);
+            Control? dimmer = owner.GetNodeOrNull<Control>("Backdrop");
+            if (dimmer is not null)
+                owner.MoveChild(backdrop, dimmer.GetIndex());
+            _customRunBlurBackdrop = backdrop;
+        }
+
+        private void RemoveCustomRunBlurBackdrop()
+        {
+            if (_customRunBlurBackdrop is null || !GodotObject.IsInstanceValid(_customRunBlurBackdrop))
+                return;
+            _customRunBlurBackdrop.GetParent()?.RemoveChild(_customRunBlurBackdrop);
+            _customRunBlurBackdrop.QueueFree();
+            _customRunBlurBackdrop = null;
+        }
+    }
+
+    private void EndTemporaryConfiguration(TemporaryConfigurationSession session, Action restore, bool restoreState)
+    {
+        if (!ReferenceEquals(_temporaryConfigurationSession, session))
+            return;
+
+        _temporaryConfigurationSession = null;
+        if (!restoreState)
+            return;
+
+        _applyingTemporaryConfiguration = true;
+        try
+        {
+            restore();
+        }
+        finally
+        {
+            _applyingTemporaryConfiguration = false;
+        }
+    }
+
+    private sealed class TemporaryConfigurationSession : IDisposable
+    {
+        private NGenericSelectScreen? _owner;
+        private readonly Action _restore;
+
+        public TemporaryConfigurationSession(NGenericSelectScreen owner, Action restore)
+        {
+            _owner = owner;
+            _restore = restore;
+        }
+
+        public void Dispose() => End(restoreState: true);
+
+        public void End(bool restoreState)
+        {
+            NGenericSelectScreen? owner = _owner;
+            _owner = null;
+            owner?.EndTemporaryConfiguration(this, _restore, restoreState);
         }
     }
 
@@ -4844,7 +4987,8 @@ public partial class NGenericSelectScreen : Control
     private void UpdateConfirmButtonState()
     {
         bool isActive = IsVisibleInTree();
-        bool usesSelection = _options.SelectionMode != SelectSelectionMode.None;
+        bool usesSelection = _options.SelectionMode != SelectSelectionMode.None
+                             && _reusedSelectionSession?.ShowSelectionChrome != false;
         int selectedCount = _reusedSelectionSession?.AllowSignedAmounts == true
             ? _selectedAmounts.Values.Sum(Math.Abs)
             : _selectedAmounts.Values.Sum();

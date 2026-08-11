@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
-using HarmonyLib;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.CardModification;
 using Loadout.Services.CustomRuns.Catalog;
@@ -15,60 +14,68 @@ using Loadout.Services.Loadouts;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using Loadout.UI.Screens;
-using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Unlocks;
 
 public static class CustomRunEditorPreviewService
 {
-    public const string PreviewMeta = "LoadoutCustomRunPreview";
-    private static readonly System.Reflection.FieldInfo? DeckPlayerField =
-        AccessTools.Field(typeof(NDeckViewScreen), "_player");
-
-    public static bool TryOpenDeck(
-        RunSetupDefinition setup,
-        CharacterModel? defaultCharacter,
-        out string error)
+    public static IReadOnlyList<LoadoutOwnedItem<CardModel>> CreateOwnedCards(
+        IReadOnlyList<SavedCardLoadoutEntry> entries)
     {
-        error = string.Empty;
-        NLoadoutPanelRoot? root = NLoadoutPanelRoot.Instance;
-        CharacterModel? character = ResolveCharacter(setup, defaultCharacter);
-        if (root is null || character is null || DeckPlayerField is null)
+        Player owner = CreateAuthoringOwner();
+        List<LoadoutOwnedItem<CardModel>> items = [];
+        for (int index = 0; index < entries.Count; index++)
         {
-            error = "The native deck view is not available.";
-            return false;
+            CardModel? card = CreateCard(entries[index]);
+            if (card is not null)
+                items.Add(new LoadoutOwnedItem<CardModel>(owner, index, card));
         }
+        return items;
+    }
 
-        try
+    public static IReadOnlyList<LoadoutOwnedItem<RelicModel>> CreateOwnedRelics(
+        IReadOnlyList<SavedRelicLoadoutEntry> entries)
+    {
+        Player owner = CreateAuthoringOwner();
+        List<LoadoutOwnedItem<RelicModel>> items = [];
+        for (int index = 0; index < entries.Count; index++)
         {
-            Player player = Player.CreateForNewRun(character, UnlockState.all, ulong.MaxValue - 7);
-            player.Deck.Clear(silent: true);
-            foreach (SavedCardLoadoutEntry entry in GetCardEntries(setup, character))
+            RelicModel? relic = CreateRelic(entries[index]);
+            if (relic is not null)
+                items.Add(new LoadoutOwnedItem<RelicModel>(owner, index, relic));
+        }
+        return items;
+    }
+
+    public static void PreviewCardAdd(CardModel canonical, int upgradeLevel, int amount)
+    {
+        Player owner = CreateAuthoringOwner();
+        List<CardModel> cards = [];
+        for (int copy = 0; copy < Math.Max(1, amount); copy++)
+        {
+            CardModel? card = CreateCard(new SavedCardLoadoutEntry
             {
-                CardModel? card = CreateCard(entry);
-                if (card is null)
-                    continue;
-                card.FloorAddedToDeck = 1;
-                player.Deck.AddInternal(card, -1, silent: true);
-            }
+                ModelId = canonical.Id.ToString(),
+                UpgradeLevel = upgradeLevel
+            });
+            if (card is null)
+                continue;
+            card.FloorAddedToDeck = 1;
+            owner.Deck.AddInternal(card, -1, silent: true);
+            cards.Add(card);
+        }
+        NLoadoutPanelRoot.Instance?.TryPreviewCustomRunCardAdd(cards);
+    }
 
-            string scenePath = SceneHelper.GetScenePath("screens/deck_view_screen");
-            PackedScene scene = PreloadManager.Cache.GetScene(scenePath);
-            NDeckViewScreen screen = scene.Instantiate<NDeckViewScreen>(PackedScene.GenEditState.Disabled);
-            screen.Name = "CustomRunDeckView";
-            screen.SetMeta(PreviewMeta, true);
-            DeckPlayerField.SetValue(screen, player);
-            root.OpenScreen(screen);
-            return true;
-        }
-        catch (Exception exception)
-        {
-            error = $"Could not open the native deck view: {exception.Message}";
-            return false;
-        }
+    public static void PreviewCardRemoval(IReadOnlyList<CardModel> cards)
+    {
+        if (cards.Count == 0)
+            return;
+        Player owner = CreateAuthoringOwner();
+        foreach (CardModel card in cards)
+            owner.Deck.AddInternal(card, -1, silent: true);
+        NLoadoutPanelRoot.Instance?.TryPreviewCustomRunCardRemoval(cards);
     }
 
     public static void OpenCardModifier(
@@ -169,40 +176,6 @@ public static class CustomRunEditorPreviewService
     {
         CharacterModel character = ModelDb.AllCharacters.First(candidate => candidate.IsPlayable);
         return Player.CreateForNewRun(character, UnlockState.all, ulong.MaxValue - 8);
-    }
-
-    private static CharacterModel? ResolveCharacter(
-        RunSetupDefinition setup,
-        CharacterModel? defaultCharacter = null)
-    {
-        if (setup.Character.Mode == SelectionMode.Fixed)
-        {
-            foreach (string id in setup.Character.FixedModelIds)
-            {
-                if (CustomRunCatalogService.TryResolve(SelectionModelKind.Character, id, out CustomRunCatalogEntry entry)
-                    && entry.Model is CharacterModel character
-                    && character.IsPlayable)
-                    return character;
-            }
-        }
-        return defaultCharacter is { IsPlayable: true }
-            ? defaultCharacter
-            : ModelDb.AllCharacters.FirstOrDefault(character => character.IsPlayable);
-    }
-
-    private static IReadOnlyList<SavedCardLoadoutEntry> GetCardEntries(
-        RunSetupDefinition setup,
-        CharacterModel defaultCharacter)
-    {
-        if (setup.StartingDeck.Mode != SelectionMode.Fixed)
-        {
-            return defaultCharacter.StartingDeck
-                .Select(card => new SavedCardLoadoutEntry { ModelId = card.Id.ToString() })
-                .ToList();
-        }
-        return setup.StartingCardEntries.Count > 0
-            ? setup.StartingCardEntries
-            : setup.StartingDeck.FixedModelIds.Select(id => new SavedCardLoadoutEntry { ModelId = id }).ToList();
     }
 
     private static CardModel? CreateCard(SavedCardLoadoutEntry entry, bool includeState = true)

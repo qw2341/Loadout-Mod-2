@@ -18,7 +18,9 @@ using Loadout.Services.Compatibility;
 using Loadout.Services.Loadouts;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
+using Loadout.Services.Targets;
 using Loadout.PanelItems;
+using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.UI;
@@ -559,6 +561,7 @@ public partial class NCustomRunEditorScreen : Control
         BuildStartingPowerSection(setup);
         BuildStartingMorphSection(setup);
 
+        _contentHost.AddChild(CreateSectionDivider());
         HBoxContainer seedRow = CreateRow();
         seedRow.AddChild(CreateRowLabel("Run Seed"));
         LineEdit seed = CreateLineEdit(setup.RunSeed ?? string.Empty);
@@ -574,6 +577,7 @@ public partial class NCustomRunEditorScreen : Control
         };
         seedRow.AddChild(seed);
         _contentHost.AddChild(seedRow);
+        _contentHost.AddChild(CreateSectionDivider());
 
         AddNullableNumberRow("Starting Gold", setup.StartingGold, 99, 0, 999999,
             value => setup.StartingGold = value);
@@ -597,10 +601,9 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         HBoxContainer actions = CreateToolRow("Starting Deck");
-        AddSettingsActionButton(actions, "deck_view", "DECK", 128f, OpenStartingDeckView);
-        AddSettingsActionButton(actions, "card_printer", "CARD PRINTER", 184f, () => OpenFixedSelection(setup.StartingDeck));
-        AddSettingsActionButton(actions, "card_shredder", "CARD SHREDDER", 194f, () => OpenFixedSelection(setup.StartingDeck, decrementOnActivate: true));
-        AddSettingsActionButton(actions, "card_modifier", "CARD MODIFIER", 194f, OpenStartingCardModifier);
+        AddSettingsActionButton(actions, "card_printer", "CARD PRINTER", 184f, OpenStartingCardPrinter);
+        AddSettingsActionButton(actions, "card_shredder", "CARD SHREDDER", 194f, OpenStartingCardShredder);
+        AddSettingsActionButton(actions, "card_modifier", "CARD MODIFIER", 194f, OpenStartingCardModifierInventory);
         AddToolSpacer(actions);
         AddSettingsActionButton(actions, "revert_deck", "REVERT", 142f, () => ResetSelection(setup.StartingDeck), danger: true);
         _contentHost.AddChild(actions);
@@ -636,9 +639,9 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         HBoxContainer actions = CreateToolRow("Starting Relics");
-        AddSettingsActionButton(actions, "loadout_bag", "LOADOUT BAG", 184f, () => OpenFixedSelection(setup.StartingRelics));
-        AddSettingsActionButton(actions, "trash_bin", "TRASH BIN", 164f, () => OpenFixedSelection(setup.StartingRelics, decrementOnActivate: true));
-        AddSettingsActionButton(actions, "relic_modifier", "RELIC MODIFIER", 194f, OpenStartingRelicModifier);
+        AddSettingsActionButton(actions, "loadout_bag", "LOADOUT BAG", 184f, OpenStartingLoadoutBag);
+        AddSettingsActionButton(actions, "trash_bin", "TRASH BIN", 164f, OpenStartingTrashBin);
+        AddSettingsActionButton(actions, "relic_modifier", "RELIC MODIFIER", 194f, OpenStartingRelicModifierInventory);
         AddToolSpacer(actions);
         AddSettingsActionButton(actions, "revert_relics", "REVERT", 142f, () => ResetSelection(setup.StartingRelics), danger: true);
         _contentHost.AddChild(actions);
@@ -671,7 +674,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         HBoxContainer actions = CreateToolRow("Starting Potions");
-        AddSettingsActionButton(actions, "potion_cauldron", "SELECT POTIONS", 204f, () => OpenFixedSelection(setup.StartingPotions));
+        AddSettingsActionButton(actions, "potion_cauldron", "POTION CAULDRON", 224f, OpenStartingPotionCauldron);
         AddToolSpacer(actions);
         AddSettingsActionButton(actions, "revert_potions", "REVERT", 142f, () => ResetSelection(setup.StartingPotions), danger: true);
         _contentHost.AddChild(actions);
@@ -679,31 +682,38 @@ public partial class NCustomRunEditorScreen : Control
         IReadOnlyList<string> potionIds = setup.StartingPotions.Mode == SelectionMode.Fixed
             ? setup.StartingPotions.FixedModelIds
             : ResolvePreviewCharacter()?.StartingPotions.Select(potion => potion.Id.ToString()).ToList() ?? [];
-        if (potionIds.Count == 0)
+        HBoxContainer preview = new()
         {
-            _contentHost.AddChild(CreateHint("No starting potions."));
-            return;
-        }
-
-        HFlowContainer preview = CreateInventoryPreview();
-        for (int index = 0; index < potionIds.Count; index++)
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Pass
+        };
+        preview.AddThemeConstantOverride("separation", 18);
+        int slotCount = Math.Clamp(Math.Max(potionIds.Count, setup.PotionSlots ?? 3), 0, 20);
+        for (int index = 0; index < slotCount; index++)
         {
             int capturedIndex = index;
-            if (!CustomRunCatalogService.TryResolve(SelectionModelKind.Potion, potionIds[index], out CustomRunCatalogEntry catalog)
-                || catalog.Model is not PotionModel canonical)
-                continue;
-
-            VBoxContainer slot = new() { MouseFilter = MouseFilterEnum.Pass };
+            VBoxContainer slot = new()
+            {
+                CustomMinimumSize = new Vector2(112f, 126f),
+                MouseFilter = MouseFilterEnum.Pass
+            };
             NPotionHolder holder = NPotionHolder.Create(isUsable: false);
-            NPotion? potion = NPotion.Create(canonical.ToMutable());
-            if (potion is null)
-                continue;
-            holder.AddPotion(potion);
-            potion.Position = Vector2.Zero;
-            NLoadoutSettingsActionButton discard = CreateSettingsActionButton("discard_potion", "DISCARD", 132f, danger: true);
+            NLoadoutSettingsActionButton discard = CreateSettingsActionButton("discard_potion", "DISCARD", 112f, danger: true);
             discard.Visible = false;
-            holder.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => discard.Visible = !discard.Visible));
-            discard.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => DiscardStartingPotion(capturedIndex)));
+            if (index < potionIds.Count
+                && CustomRunCatalogService.TryResolve(SelectionModelKind.Potion, potionIds[index], out CustomRunCatalogEntry catalog)
+                && catalog.Model is PotionModel canonical
+                && NPotion.Create(canonical.ToMutable()) is { } potion)
+            {
+                holder.AddPotion(potion);
+                potion.Position = Vector2.Zero;
+                holder.Connect(
+                    NClickableControl.SignalName.Released,
+                    Callable.From<NButton>(_ => discard.Visible = !discard.Visible));
+                discard.Connect(
+                    NClickableControl.SignalName.Released,
+                    Callable.From<NButton>(_ => DiscardStartingPotion(capturedIndex)));
+            }
             slot.AddChild(holder);
             slot.AddChild(discard);
             preview.AddChild(slot);
@@ -748,40 +758,6 @@ public partial class NCustomRunEditorScreen : Control
         _contentHost.AddChild(CreateHint(setup.StartingMorphModelId is null
             ? "Original character form."
             : $"Starts morphed as {GetMorphName(setup.StartingMorphModelId)}."));
-    }
-
-    private void OpenFixedSelection(SelectionSpec selection, bool decrementOnActivate = false)
-    {
-        _catalogSelectorSession?.Dispose();
-        _catalogSelectorSession = null;
-        SelectionSpec selectorSelection = selection;
-        if (selection.Mode == SelectionMode.Default)
-        {
-            selectorSelection = SelectionSpec.Default(selection.Kind);
-            selectorSelection.Mode = SelectionMode.Fixed;
-            selectorSelection.FixedModelIds.AddRange(GetDefaultStartingIds(selection.Kind));
-        }
-        if (!CustomRunCatalogSelector.TryOpen(
-                selectorSelection,
-                selectedIds =>
-                {
-                    selection.Mode = SelectionMode.Fixed;
-                    selection.FixedModelIds.Clear();
-                    selection.FixedModelIds.AddRange(selectedIds);
-                    SynchronizeDetailedEntries(selection, selectedIds);
-                    MarkDirty();
-                    RebuildContent();
-                    _catalogSelectorSession = null;
-                },
-                out IDisposable? session,
-                out string error,
-                decrementOnActivate))
-        {
-            SetStatus(error, success: false);
-            return;
-        }
-
-        _catalogSelectorSession = session;
     }
 
     private void ResetSelection(SelectionSpec selection)
@@ -844,6 +820,278 @@ public partial class NCustomRunEditorScreen : Control
         }
     }
 
+    private void OpenStartingCardPrinter()
+    {
+        if (_workingDefinition is null)
+            return;
+        OpenCatalogAction(SelectionModelKind.Card, (screen, item, amount) =>
+        {
+            if (_workingDefinition is null || item.UntypedModel is not CardModel card)
+                return;
+            EnsureDetailedStartingSelection(SelectionModelKind.Card);
+            int upgradeLevel = screen.IsToggleEnabled("view_upgrades") && card.IsUpgradable ? 1 : 0;
+            for (int copy = 0; copy < amount; copy++)
+            {
+                _workingDefinition.Setup.StartingCardEntries.Add(new SavedCardLoadoutEntry
+                {
+                    ModelId = card.Id.ToString(),
+                    UpgradeLevel = upgradeLevel,
+                    Count = 1
+                });
+            }
+            SynchronizeStartingSelectionIds(SelectionModelKind.Card);
+            MarkDirty();
+            RebuildContent();
+            CustomRunEditorPreviewService.PreviewCardAdd(card, upgradeLevel, amount);
+        });
+    }
+
+    private void OpenStartingLoadoutBag()
+    {
+        if (_workingDefinition is null)
+            return;
+        OpenCatalogAction(SelectionModelKind.Relic, (_, item, amount) =>
+        {
+            if (_workingDefinition is null || item.UntypedModel is not RelicModel relic)
+                return;
+            EnsureDetailedStartingSelection(SelectionModelKind.Relic);
+            for (int copy = 0; copy < amount; copy++)
+            {
+                _workingDefinition.Setup.StartingRelicEntries.Add(new SavedRelicLoadoutEntry
+                {
+                    ModelId = relic.Id.ToString(),
+                    Count = 1
+                });
+            }
+            SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
+            MarkDirty();
+            RebuildContent();
+        });
+    }
+
+    private void OpenStartingPotionCauldron()
+    {
+        if (_workingDefinition is null)
+            return;
+        OpenCatalogAction(SelectionModelKind.Potion, (_, item, amount) =>
+        {
+            if (_workingDefinition is null || item.UntypedModel is not PotionModel potion)
+                return;
+            SelectionSpec selection = _workingDefinition.Setup.StartingPotions;
+            if (selection.Mode == SelectionMode.Default)
+            {
+                selection.Mode = SelectionMode.Fixed;
+                selection.FixedModelIds = GetDefaultStartingIds(SelectionModelKind.Potion).ToList();
+            }
+            int capacity = Math.Clamp(_workingDefinition.Setup.PotionSlots ?? 3, 0, 20);
+            int copies = Math.Min(amount, Math.Max(0, capacity - selection.FixedModelIds.Count));
+            for (int copy = 0; copy < copies; copy++)
+                selection.FixedModelIds.Add(potion.Id.ToString());
+            if (copies == 0)
+            {
+                SetStatus("The starting potion inventory is full.", success: false);
+                return;
+            }
+            MarkDirty();
+            RebuildContent();
+        });
+    }
+
+    private void OpenStartingCardShredder()
+    {
+        if (_workingDefinition is null)
+            return;
+        IReadOnlyList<LoadoutOwnedItem<CardModel>> cards = CustomRunEditorPreviewService.CreateOwnedCards(
+            GetStartingCardEntries(_workingDefinition.Setup));
+        _catalogSelectorSession?.Dispose();
+        if (!CustomRunCatalogSelector.TryOpenOwnedCardAction(
+                "CardShredder",
+                cards,
+                (_, item, amount) =>
+                {
+                    if (_workingDefinition is null)
+                        return null;
+                    EnsureDetailedStartingSelection(SelectionModelKind.Card);
+                    List<SavedCardLoadoutEntry> entries = _workingDefinition.Setup.StartingCardEntries;
+                    if (item.Index < 0 || item.Index >= entries.Count)
+                        return CustomRunEditorPreviewService.CreateOwnedCards(entries);
+                    SavedCardLoadoutEntry selected = entries[item.Index];
+                    List<CardModel> removedCards = [];
+                    for (int copy = 0; copy < amount; copy++)
+                    {
+                        int index = copy == 0
+                            ? item.Index
+                            : entries.FindIndex(entry => CardEntriesMatch(entry, selected));
+                        if (index < 0 || index >= entries.Count)
+                            break;
+                        CardModel? preview = CreateStartingCardPreview(entries[index]);
+                        if (preview is not null)
+                            removedCards.Add(preview);
+                        entries.RemoveAt(index);
+                    }
+                    SynchronizeStartingSelectionIds(SelectionModelKind.Card);
+                    MarkDirty();
+                    RebuildContent();
+                    CustomRunEditorPreviewService.PreviewCardRemoval(removedCards);
+                    return CustomRunEditorPreviewService.CreateOwnedCards(entries);
+                },
+                out IDisposable? session,
+                out string error))
+        {
+            SetStatus(error, success: false);
+            return;
+        }
+        _catalogSelectorSession = session;
+    }
+
+    private void OpenStartingTrashBin()
+    {
+        if (_workingDefinition is null)
+            return;
+        IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics = CustomRunEditorPreviewService.CreateOwnedRelics(
+            GetStartingRelicEntries(_workingDefinition.Setup));
+        _catalogSelectorSession?.Dispose();
+        if (!CustomRunCatalogSelector.TryOpenOwnedRelicAction(
+                "TrashBin",
+                relics,
+                (_, item, amount) =>
+                {
+                    if (_workingDefinition is null)
+                        return null;
+                    EnsureDetailedStartingSelection(SelectionModelKind.Relic);
+                    List<SavedRelicLoadoutEntry> entries = _workingDefinition.Setup.StartingRelicEntries;
+                    if (item.Index < 0 || item.Index >= entries.Count)
+                        return CustomRunEditorPreviewService.CreateOwnedRelics(entries);
+                    SavedRelicLoadoutEntry selected = entries[item.Index];
+                    for (int copy = 0; copy < amount; copy++)
+                    {
+                        int index = copy == 0
+                            ? item.Index
+                            : entries.FindIndex(entry => RelicEntriesMatch(entry, selected));
+                        if (index < 0 || index >= entries.Count)
+                            break;
+                        entries.RemoveAt(index);
+                    }
+                    SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
+                    MarkDirty();
+                    RebuildContent();
+                    return CustomRunEditorPreviewService.CreateOwnedRelics(entries);
+                },
+                out IDisposable? session,
+                out string error))
+        {
+            SetStatus(error, success: false);
+            return;
+        }
+        _catalogSelectorSession = session;
+    }
+
+    private void OpenStartingCardModifierInventory()
+    {
+        if (_workingDefinition is null)
+            return;
+        IReadOnlyList<SavedCardLoadoutEntry> entries = GetStartingCardEntries(_workingDefinition.Setup);
+        if (entries.Count == 0)
+        {
+            SetStatus("The starting deck is empty.", success: false);
+            return;
+        }
+        IReadOnlyList<LoadoutOwnedItem<CardModel>> cards = CustomRunEditorPreviewService.CreateOwnedCards(entries);
+        _catalogSelectorSession?.Dispose();
+        if (!CustomRunCatalogSelector.TryOpenOwnedCardAction(
+                "CardModifier",
+                cards,
+                (_, item, _) =>
+                {
+                    if (_workingDefinition is null)
+                        return null;
+                    EnsureDetailedStartingSelection(SelectionModelKind.Card);
+                    CloseCatalogSelector();
+                    CustomRunEditorPreviewService.OpenCardModifier(
+                        _workingDefinition.Setup.StartingCardEntries,
+                        item.Index,
+                        () =>
+                        {
+                            SynchronizeStartingSelectionIds(SelectionModelKind.Card);
+                            MarkDirty();
+                            RebuildContent();
+                        });
+                    return null;
+                },
+                out IDisposable? session,
+                out string error))
+        {
+            SetStatus(error, success: false);
+            return;
+        }
+        _catalogSelectorSession = session;
+    }
+
+    private void OpenStartingRelicModifierInventory()
+    {
+        if (_workingDefinition is null)
+            return;
+        IReadOnlyList<SavedRelicLoadoutEntry> entries = GetStartingRelicEntries(_workingDefinition.Setup);
+        if (entries.Count == 0)
+        {
+            SetStatus("The starting relic inventory is empty.", success: false);
+            return;
+        }
+        IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics = CustomRunEditorPreviewService.CreateOwnedRelics(entries);
+        _catalogSelectorSession?.Dispose();
+        if (!CustomRunCatalogSelector.TryOpenOwnedRelicAction(
+                "RelicModifier",
+                relics,
+                (_, item, _) =>
+                {
+                    if (_workingDefinition is null)
+                        return null;
+                    EnsureDetailedStartingSelection(SelectionModelKind.Relic);
+                    CloseCatalogSelector();
+                    CustomRunEditorPreviewService.OpenRelicModifier(
+                        _workingDefinition.Setup.StartingRelicEntries,
+                        item.Index,
+                        () =>
+                        {
+                            SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
+                            MarkDirty();
+                            RebuildContent();
+                        });
+                    return null;
+                },
+                out IDisposable? session,
+                out string error))
+        {
+            SetStatus(error, success: false);
+            return;
+        }
+        _catalogSelectorSession = session;
+    }
+
+    private void OpenCatalogAction(
+        SelectionModelKind kind,
+        Action<NGenericSelectScreen, IGenericSelectItem, int> activated)
+    {
+        _catalogSelectorSession?.Dispose();
+        if (!CustomRunCatalogSelector.TryOpenCatalogAction(
+                kind,
+                activated,
+                out IDisposable? session,
+                out string error))
+        {
+            SetStatus(error, success: false);
+            return;
+        }
+        _catalogSelectorSession = session;
+    }
+
+    private void CloseCatalogSelector()
+    {
+        _catalogSelectorSession?.Dispose();
+        _catalogSelectorSession = null;
+        NLoadoutPanelRoot.Instance?.CloseTopScreen();
+    }
+
     private void DiscardStartingPotion(int index)
     {
         if (_workingDefinition is null)
@@ -877,7 +1125,6 @@ public partial class NCustomRunEditorScreen : Control
                     .ToList();
                 MarkDirty();
                 RebuildContent();
-                _catalogSelectorSession = null;
             }, out IDisposable? session, out string error))
         {
             SetStatus(error, success: false);
@@ -899,95 +1146,6 @@ public partial class NCustomRunEditorScreen : Control
                     _workingDefinition.Setup.StartingMorphModelId = selected;
                     MarkDirty();
                     RebuildContent();
-                    _catalogSelectorSession = null;
-                },
-                out IDisposable? session,
-                out string error))
-        {
-            SetStatus(error, success: false);
-            return;
-        }
-        _catalogSelectorSession = session;
-    }
-
-    private void OpenStartingDeckView()
-    {
-        if (_workingDefinition is null)
-            return;
-        if (!CustomRunEditorPreviewService.TryOpenDeck(
-                _workingDefinition.Setup,
-                ResolvePreviewCharacter(),
-                out string error))
-            SetStatus(error, success: false);
-    }
-
-    private void OpenStartingCardModifier()
-    {
-        if (_workingDefinition is null)
-            return;
-        IReadOnlyList<SavedCardLoadoutEntry> entries = GetStartingCardEntries(_workingDefinition.Setup);
-        if (entries.Count == 0)
-        {
-            SetStatus("Choose a fixed starting deck before modifying cards.", success: false);
-            return;
-        }
-        EnsureDetailedStartingSelection(SelectionModelKind.Card);
-        entries = _workingDefinition.Setup.StartingCardEntries;
-        _catalogSelectorSession?.Dispose();
-        if (!CustomRunCatalogSelector.TryChooseExisting(
-                SelectionModelKind.Card,
-                entries.Select(entry => entry.ModelId).ToList(),
-                id =>
-                {
-                    if (_workingDefinition is null) return;
-                    int index = _workingDefinition.Setup.StartingCardEntries.FindIndex(entry =>
-                        string.Equals(entry.ModelId, id, StringComparison.OrdinalIgnoreCase));
-                    if (index >= 0)
-                    {
-                        CustomRunEditorPreviewService.OpenCardModifier(
-                            _workingDefinition.Setup.StartingCardEntries,
-                            index,
-                            () => { MarkDirty(); RebuildContent(); });
-                    }
-                    _catalogSelectorSession = null;
-                },
-                out IDisposable? session,
-                out string error))
-        {
-            SetStatus(error, success: false);
-            return;
-        }
-        _catalogSelectorSession = session;
-    }
-
-    private void OpenStartingRelicModifier()
-    {
-        if (_workingDefinition is null)
-            return;
-        IReadOnlyList<SavedRelicLoadoutEntry> entries = GetStartingRelicEntries(_workingDefinition.Setup);
-        if (entries.Count == 0)
-        {
-            SetStatus("Choose fixed starting relics before modifying relics.", success: false);
-            return;
-        }
-        EnsureDetailedStartingSelection(SelectionModelKind.Relic);
-        entries = _workingDefinition.Setup.StartingRelicEntries;
-        _catalogSelectorSession?.Dispose();
-        if (!CustomRunCatalogSelector.TryChooseExisting(
-                SelectionModelKind.Relic,
-                entries.Select(entry => entry.ModelId).ToList(),
-                id =>
-                {
-                    if (_workingDefinition is null) return;
-                    int index = _workingDefinition.Setup.StartingRelicEntries.FindIndex(entry =>
-                        string.Equals(entry.ModelId, id, StringComparison.OrdinalIgnoreCase));
-                    if (index >= 0)
-                    {
-                        CustomRunEditorPreviewService.OpenRelicModifier(
-                            _workingDefinition.Setup.StartingRelicEntries,
-                            index,
-                            () => { MarkDirty(); RebuildContent(); });
-                    }
                     _catalogSelectorSession = null;
                 },
                 out IDisposable? session,
@@ -1071,6 +1229,39 @@ public partial class NCustomRunEditorScreen : Control
         }
         SynchronizeDetailedEntries(selection, selection.FixedModelIds.ToList());
         MarkDirty();
+    }
+
+    private void SynchronizeStartingSelectionIds(SelectionModelKind kind)
+    {
+        if (_workingDefinition is null)
+            return;
+        if (kind == SelectionModelKind.Card)
+        {
+            _workingDefinition.Setup.StartingDeck.Mode = SelectionMode.Fixed;
+            _workingDefinition.Setup.StartingDeck.FixedModelIds = _workingDefinition.Setup.StartingCardEntries
+                .Select(entry => entry.ModelId)
+                .ToList();
+        }
+        else if (kind == SelectionModelKind.Relic)
+        {
+            _workingDefinition.Setup.StartingRelics.Mode = SelectionMode.Fixed;
+            _workingDefinition.Setup.StartingRelics.FixedModelIds = _workingDefinition.Setup.StartingRelicEntries
+                .Select(entry => entry.ModelId)
+                .ToList();
+        }
+    }
+
+    private static bool CardEntriesMatch(SavedCardLoadoutEntry left, SavedCardLoadoutEntry right)
+    {
+        return string.Equals(left.ModelId, right.ModelId, StringComparison.OrdinalIgnoreCase)
+               && left.UpgradeLevel == right.UpgradeLevel
+               && JsonSerializer.Serialize(left.ModificationState) == JsonSerializer.Serialize(right.ModificationState);
+    }
+
+    private static bool RelicEntriesMatch(SavedRelicLoadoutEntry left, SavedRelicLoadoutEntry right)
+    {
+        return string.Equals(left.ModelId, right.ModelId, StringComparison.OrdinalIgnoreCase)
+               && JsonSerializer.Serialize(left.ModificationState) == JsonSerializer.Serialize(right.ModificationState);
     }
 
     private static CardModel? CreateStartingCardPreview(SavedCardLoadoutEntry entry)
@@ -1610,6 +1801,17 @@ public partial class NCustomRunEditorScreen : Control
         preview.AddThemeConstantOverride("h_separation", 18);
         preview.AddThemeConstantOverride("v_separation", 14);
         return preview;
+    }
+
+    private static ColorRect CreateSectionDivider()
+    {
+        return new ColorRect
+        {
+            CustomMinimumSize = new Vector2(0f, 2f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Color = new Color(StsColors.gold, 0.42f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
     }
 
     private static void AddToolSpacer(Control row)
