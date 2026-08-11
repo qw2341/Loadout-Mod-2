@@ -15,14 +15,15 @@ public enum ConditionGroupOperator
 
 public enum RuleLimitKind
 {
-    Unlimited,
-    OncePerEventChain,
-    OncePerTurn,
-    TimesPerTurn,
-    OncePerCombat,
-    TimesPerCombat,
-    OncePerRun,
-    TimesPerRun
+    Unlimited = 0,
+    OncePerEventChain = 1,
+    OncePerTurn = 2,
+    TimesPerTurn = 3,
+    OncePerCombat = 4,
+    TimesPerCombat = 5,
+    OncePerRun = 6,
+    TimesPerRun = 7,
+    UntilCondition = 8
 }
 
 public enum NumericValueSourceKind
@@ -32,9 +33,15 @@ public enum NumericValueSourceKind
     EventContext
 }
 
-public enum CardMatchKind
+public enum NumericConstantKind
 {
-    SpecificCards,
+    Integer,
+    Double
+}
+
+public enum ModelMatchKind
+{
+    SpecificModels,
     Pool,
     Type,
     Rarity,
@@ -42,7 +49,9 @@ public enum CardMatchKind
     Tag,
     EnergyCost,
     TextContains,
-    Mod
+    Mod,
+    Act,
+    MonsterCategory
 }
 
 public sealed class RuleDefinition
@@ -58,6 +67,9 @@ public sealed class RuleDefinition
 
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;
+
+    [JsonPropertyName("contentHash")]
+    public string ContentHash { get; set; } = string.Empty;
 
     [JsonPropertyName("trigger")]
     public RuleComponentSpec Trigger { get; set; } = new();
@@ -104,6 +116,9 @@ public sealed class RuleLimitDefinition
 
     [JsonPropertyName("count")]
     public int Count { get; set; } = 1;
+
+    [JsonPropertyName("untilConditions")]
+    public ConditionGroupDefinition UntilConditions { get; set; } = new();
 }
 
 public sealed class NumericValueSpec
@@ -112,7 +127,10 @@ public sealed class NumericValueSpec
     public NumericValueSourceKind Source { get; set; }
 
     [JsonPropertyName("constant")]
-    public decimal Constant { get; set; }
+    public double Constant { get; set; }
+
+    [JsonPropertyName("constantKind")]
+    public NumericConstantKind ConstantKind { get; set; }
 
     [JsonPropertyName("referenceId")]
     public string? ReferenceId { get; set; }
@@ -127,13 +145,28 @@ public sealed class RuleTargetSpec
     public SortedDictionary<string, JsonElement> Parameters { get; set; } = new(StringComparer.Ordinal);
 }
 
-public sealed class CardMatchSpec
+public sealed class ModelMatchSpec
 {
     [JsonPropertyName("kind")]
-    public CardMatchKind Kind { get; set; }
+    public ModelMatchKind Kind { get; set; }
+
+    [JsonPropertyName("modelKind")]
+    public SelectionModelKind ModelKind { get; set; }
+
+    [JsonPropertyName("modelIds")]
+    public List<string> ModelIds { get; set; } = [];
 
     [JsonPropertyName("cardIds")]
-    public List<string> CardIds { get; set; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? LegacyCardIds
+    {
+        get => null;
+        set
+        {
+            if (value is { Count: > 0 } && ModelIds.Count == 0)
+                ModelIds = value;
+        }
+    }
 
     [JsonPropertyName("value")]
     public string Value { get; set; } = string.Empty;

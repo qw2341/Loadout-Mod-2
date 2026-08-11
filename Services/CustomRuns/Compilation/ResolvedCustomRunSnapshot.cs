@@ -133,7 +133,7 @@ public sealed class ResolvedVariableDefinition
     public VariableScope Scope { get; init; }
 
     [JsonPropertyName("defaultNumber")]
-    public decimal DefaultNumber { get; init; }
+    public double DefaultNumber { get; init; }
 
     [JsonPropertyName("defaultBoolean")]
     public bool DefaultBoolean { get; init; }

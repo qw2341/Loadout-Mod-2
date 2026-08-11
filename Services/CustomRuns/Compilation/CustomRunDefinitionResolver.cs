@@ -14,14 +14,17 @@ public static class CustomRunDefinitionResolver
     public static CustomRunDefinition WithEnabledPermanentRules(CustomRunDefinition source)
     {
         CustomRunDefinition effective = CustomRunNormalizationService.Clone(source);
-        HashSet<string> customRunRuleIds = effective.Rules
-            .Select(rule => rule.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        List<RuleDefinition> rules = PermanentRuleStorageService.GetRules()
-            .Where(rule => rule.Enabled && !customRunRuleIds.Contains(rule.Id))
+        List<RuleDefinition> permanentRules = PermanentRuleStorageService.GetRules()
+            .Where(rule => rule.Enabled)
+            .GroupBy(RuleBehaviorHashService.Compute, StringComparer.Ordinal)
+            .Select(group => group.First())
             .Select(CustomRunNormalizationService.CloneRule)
             .ToList();
-        rules.AddRange(effective.Rules);
+        HashSet<string> permanentHashes = permanentRules
+            .Select(RuleBehaviorHashService.Compute)
+            .ToHashSet(StringComparer.Ordinal);
+        List<RuleDefinition> rules = permanentRules;
+        rules.AddRange(effective.Rules.Where(rule => !permanentHashes.Contains(RuleBehaviorHashService.Compute(rule))));
         effective.Rules = rules;
         return effective;
     }

@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Loadout.Services.CustomRuns.Models;
+using Loadout.Services.CustomRuns.Compilation;
+using Loadout.Services.CustomRuns.Registry;
 using Loadout.Services.Loadouts;
 
 public static class CustomRunNormalizationService
@@ -253,10 +255,24 @@ public static class CustomRunNormalizationService
             .Where(action => action is not null)
             .Select(NormalizeComponent)
             .ToList();
+        NormalizeKnownParameters(rule.Trigger, RuleComponentKind.Trigger);
+        NormalizeKnownConditionParameters(rule.Conditions);
+        foreach (RuleComponentSpec action in rule.Actions)
+            NormalizeKnownParameters(action, RuleComponentKind.Action);
         rule.Limit ??= new RuleLimitDefinition();
         if (!Enum.IsDefined(rule.Limit.Kind))
             rule.Limit.Kind = RuleLimitKind.Unlimited;
-        rule.Limit.Count = Math.Max(1, rule.Limit.Count);
+        rule.Limit.Kind = rule.Limit.Kind switch
+        {
+            RuleLimitKind.OncePerTurn => RuleLimitKind.TimesPerTurn,
+            RuleLimitKind.OncePerCombat => RuleLimitKind.TimesPerCombat,
+            RuleLimitKind.OncePerRun => RuleLimitKind.TimesPerRun,
+            _ => rule.Limit.Kind
+        };
+        rule.Limit.UntilConditions = NormalizeConditionGroup(
+            rule.Limit.UntilConditions ?? new ConditionGroupDefinition());
+        NormalizeKnownConditionParameters(rule.Limit.UntilConditions);
+        rule.ContentHash = RuleBehaviorHashService.Compute(rule);
         return rule;
     }
 
@@ -295,6 +311,48 @@ public static class CustomRunNormalizationService
             .Select(NormalizeConditionGroup)
             .ToList();
         return group;
+    }
+
+    private static void NormalizeKnownConditionParameters(ConditionGroupDefinition group)
+    {
+        foreach (RuleComponentSpec condition in group.Conditions)
+            NormalizeKnownParameters(condition, RuleComponentKind.Condition);
+        foreach (ConditionGroupDefinition child in group.Groups)
+            NormalizeKnownConditionParameters(child);
+    }
+
+    private static void NormalizeKnownParameters(RuleComponentSpec component, RuleComponentKind kind)
+    {
+        RuleComponentDescriptor? descriptor = CustomRunRegistry.GetDescriptors(kind)
+            .FirstOrDefault(candidate => string.Equals(candidate.StableId, component.TypeId, StringComparison.Ordinal));
+        if (descriptor is null)
+            return;
+        RuleComponentParameterService.ApplyDefaults(component, descriptor);
+        foreach (RuleParameterDescriptor parameter in descriptor.Parameters)
+        {
+            if (parameter.Kind == RuleParameterKind.ModelFilter
+                && RuleComponentParameterService.TryGet(component, parameter.Key, out ModelMatchSpec matcher))
+            {
+                matcher.ModelKind = parameter.ModelKind;
+                matcher.Value = (matcher.Value ?? string.Empty).Trim();
+                matcher.ModelIds = NormalizeStrings(matcher.ModelIds);
+                if (matcher.Kind == ModelMatchKind.SpecificModels)
+                    matcher.Value = string.Empty;
+                else
+                    matcher.ModelIds.Clear();
+                RuleComponentParameterService.Set(component, parameter.Key, matcher);
+            }
+            else if (parameter.Kind == RuleParameterKind.NumericSource
+                     && RuleComponentParameterService.TryGet(component, parameter.Key, out NumericValueSpec numeric))
+            {
+                if (!parameter.AllowDouble)
+                {
+                    numeric.ConstantKind = NumericConstantKind.Integer;
+                    numeric.Constant = Math.Truncate(Math.Clamp(numeric.Constant, int.MinValue, int.MaxValue));
+                }
+                RuleComponentParameterService.Set(component, parameter.Key, numeric);
+            }
+        }
     }
 
     private static string NormalizeObjectId(string? id)

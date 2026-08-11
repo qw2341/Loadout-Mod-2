@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
 using Loadout.Services.CustomRuns.Models;
+using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Persistence;
 using Loadout.Services.Saving;
 using MegaCrit.Sts2.Core.Saves;
@@ -49,10 +50,23 @@ public static class PermanentRuleStorageService
         {
             int index = _profile.Rules.FindIndex(existing =>
                 string.Equals(existing.Id, normalized.Id, StringComparison.Ordinal));
+            if (index < 0)
+            {
+                string hash = RuleBehaviorHashService.Compute(normalized);
+                index = _profile.Rules.FindIndex(existing =>
+                    string.Equals(RuleBehaviorHashService.Compute(existing), hash, StringComparison.Ordinal));
+            }
             if (index >= 0)
+            {
+                normalized.Id = _profile.Rules[index].Id;
                 _profile.Rules[index] = normalized;
+            }
             else
                 _profile.Rules.Add(normalized);
+            string normalizedHash = RuleBehaviorHashService.Compute(normalized);
+            _profile.Rules.RemoveAll(existing =>
+                !string.Equals(existing.Id, normalized.Id, StringComparison.Ordinal)
+                && string.Equals(RuleBehaviorHashService.Compute(existing), normalizedHash, StringComparison.Ordinal));
             SaveLocked();
         }
         Changed?.Invoke();
@@ -148,6 +162,8 @@ public static class PermanentRuleStorageService
             .Where(rule => rule is not null)
             .Select(CustomRunNormalizationService.NormalizeRule)
             .GroupBy(rule => rule.Id, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .GroupBy(RuleBehaviorHashService.Compute, StringComparer.Ordinal)
             .Select(group => group.Last())
             .ToList();
         return profile;

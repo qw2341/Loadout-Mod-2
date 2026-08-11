@@ -89,7 +89,7 @@ public static class CustomRunCatalogSelector
                 {
                     SelectionMode = SelectSelectionMode.Multi,
                     MinSelection = 0,
-                    MaxTotalSelection = 9999,
+                    MaxTotalSelection = int.MaxValue,
                     MaxCopiesPerItem = 1
                 },
                 selectedAmounts,
@@ -117,6 +117,64 @@ public static class CustomRunCatalogSelector
                     changed(current.OrderBy(id => id, StringComparer.Ordinal).ToList());
                 });
             session = new ActionSession(screen, lease);
+            NLoadoutPanelRoot.Instance!.OpenScreen(screen);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            session?.Dispose();
+            session = null;
+            error = $"Could not open the shared {kind.ToString().ToLowerInvariant()} screen: {exception.Message}";
+            return false;
+        }
+    }
+
+    public static bool TryOpenCatalogSingleSelection(
+        SelectionModelKind kind,
+        string? selectedModelId,
+        Action<AbstractModel> confirmed,
+        out IDisposable? session,
+        out string error)
+    {
+        session = null;
+        if (!TryFindCatalogScreen(kind, out NGenericSelectScreen screen, out error))
+            return false;
+
+        Dictionary<string, int> selectedAmounts = new(StringComparer.Ordinal);
+        foreach (IGenericSelectItem item in screen.Items)
+        {
+            if (item.UntypedModel is AbstractModel model
+                && (string.Equals(model.Id.ToString(), selectedModelId, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(model.Id.Entry, selectedModelId, StringComparison.OrdinalIgnoreCase)))
+            {
+                selectedAmounts[item.Id] = 1;
+                break;
+            }
+        }
+
+        try
+        {
+            IDisposable lease = screen.BeginReusedSelection(
+                new SelectScreenOptions
+                {
+                    SelectionMode = SelectSelectionMode.Single,
+                    MinSelection = 1,
+                    MaxTotalSelection = 1,
+                    MaxCopiesPerItem = 1
+                },
+                selectedAmounts,
+                showSelectionChrome: true,
+                useCustomRunBackdrop: true);
+            ConfirmSession? activeSession = null;
+            activeSession = new ConfirmSession(screen, lease, selected =>
+            {
+                if (selected.FirstOrDefault()?.UntypedModel is not AbstractModel model)
+                    return;
+                confirmed(model);
+                activeSession?.Dispose();
+                NLoadoutPanelRoot.Instance?.CloseTopScreen();
+            });
+            session = activeSession;
             NLoadoutPanelRoot.Instance!.OpenScreen(screen);
             return true;
         }
@@ -375,8 +433,8 @@ public static class CustomRunCatalogSelector
             {
                 SelectionMode = SelectSelectionMode.Multi,
                 MinSelection = 0,
-                MaxTotalSelection = 9999,
-                MaxCopiesPerItem = 999
+                MaxTotalSelection = int.MaxValue,
+                MaxCopiesPerItem = int.MaxValue
             },
             selected,
             allowSignedAmounts: true,
@@ -567,6 +625,40 @@ public static class CustomRunCatalogSelector
             _screen.ScreenClosed -= OnClosed;
             foreach (IDisposable lease in _leases)
                 lease.Dispose();
+        }
+
+        private void OnClosed() => Callable.From(Dispose).CallDeferred();
+    }
+
+    private sealed class ConfirmSession : IDisposable
+    {
+        private readonly NGenericSelectScreen _screen;
+        private readonly IDisposable _lease;
+        private readonly Action<IReadOnlyList<IGenericSelectItem>> _confirmed;
+        private bool _done;
+
+        public ConfirmSession(
+            NGenericSelectScreen screen,
+            IDisposable lease,
+            Action<IReadOnlyList<IGenericSelectItem>> confirmed)
+        {
+            _screen = screen;
+            _lease = lease;
+            _confirmed = confirmed;
+            screen.Confirmed += confirmed;
+            screen.Cancelled += Dispose;
+            screen.ScreenClosed += OnClosed;
+        }
+
+        public void Dispose()
+        {
+            if (_done)
+                return;
+            _done = true;
+            _screen.Confirmed -= _confirmed;
+            _screen.Cancelled -= Dispose;
+            _screen.ScreenClosed -= OnClosed;
+            _lease.Dispose();
         }
 
         private void OnClosed() => Callable.From(Dispose).CallDeferred();

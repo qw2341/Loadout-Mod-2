@@ -62,7 +62,8 @@ public static class BottledMonster
                 GetName = FormatMonsterTitle,
                 GetSearchText = monster => BuildMonsterSearchText(monster, catalog),
                 CapturePreloadResourcePaths = GetCreaturePreviewResourcePaths,
-                CreateView = (monster, _) => CreateMonsterGridItem(monster),
+                CreateView = (monster, state) => CreateMonsterGridItem(monster, state),
+                UpdateView = (_, view, state) => UpdateMonsterGridItem(view, state),
                 BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
             },
             builder =>
@@ -517,7 +518,7 @@ public static class BottledMonster
         }
     }
 
-    private static Control CreateMonsterGridItem(MonsterModel model)
+    public static Control CreateMonsterGridItem(MonsterModel model, SelectItemState? state = null)
     {
         Button button = CommonHelpers.CreateModelButton(MonsterButtonSize);
         button.ClipContents = true;
@@ -556,7 +557,29 @@ public static class BottledMonster
             StsColors.gray);
         button.AddChild(modLabel);
 
+        UpdateMonsterGridItem(button, state ?? new SelectItemState(0, 0, 0, false, true));
         return button;
+    }
+
+    public static void UpdateMonsterGridItem(Control view, SelectItemState state)
+    {
+        const string outlineName = "LoadoutSelectionOutline";
+        ReferenceRect? outline = view.GetNodeOrNull<ReferenceRect>(outlineName);
+        if (outline is null)
+        {
+            outline = new ReferenceRect
+            {
+                Name = outlineName,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                BorderColor = new Color(1f, 0.82f, 0.08f, 0.98f),
+                BorderWidth = 7f,
+                EditorOnly = false,
+                ZIndex = 50
+            };
+            outline.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            view.AddChild(outline);
+        }
+        outline.Visible = state.IsSelected;
     }
 
     private static Control CreatePreviewContainer()

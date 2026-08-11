@@ -177,6 +177,8 @@ public static class CustomRunValidator
                 else
                     ValidateComponentParameters(definition, rule, action, actionDescriptor, result);
             }
+            if (rule.Limit.Kind == RuleLimitKind.UntilCondition)
+                ValidateConditions(definition, rule.Limit.UntilConditions, rule, result);
         }
     }
 
@@ -190,6 +192,8 @@ public static class CustomRunValidator
         {
             if (!CustomRunRegistry.TryGetCondition(condition.TypeId, out RuleComponentDescriptor descriptor))
                 Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' uses unknown condition '{condition.TypeId}'.");
+            else if (!CustomRunRegistry.IsCompatibleWithTrigger(descriptor, rule.Trigger.TypeId))
+                Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' cannot use '{descriptor.DisplayName}' with its selected trigger.");
             else
                 ValidateComponentParameters(definition, rule, condition, descriptor, result);
         }
@@ -244,6 +248,9 @@ public static class CustomRunValidator
                 case RuleParameterKind.Power:
                     ValidateModelParameter(definition, component, rule, descriptor, parameter, SelectionModelKind.Power, result);
                     break;
+                case RuleParameterKind.Monster:
+                    ValidateModelParameter(definition, component, rule, descriptor, parameter, SelectionModelKind.Monster, result);
+                    break;
                 case RuleParameterKind.Role:
                     ValidateReferenceParameter(
                         component,
@@ -270,8 +277,8 @@ public static class CustomRunValidator
                 case RuleParameterKind.NumericSource:
                     ValidateNumericSourceParameter(definition, component, rule, descriptor, parameter, result);
                     break;
-                case RuleParameterKind.CardFilter:
-                    ValidateCardFilterParameter(component, rule, descriptor, parameter, result);
+                case RuleParameterKind.ModelFilter:
+                    ValidateModelFilterParameter(component, rule, descriptor, parameter, result);
                     break;
             }
         }
@@ -384,56 +391,40 @@ public static class CustomRunValidator
             result);
     }
 
-    private static void ValidateCardFilterParameter(
+    private static void ValidateModelFilterParameter(
         RuleComponentSpec component,
         RuleDefinition rule,
         RuleComponentDescriptor descriptor,
         RuleParameterDescriptor parameter,
         CustomRunValidationResult result)
     {
-        if (!RuleComponentParameterService.TryGet(component, parameter.Key, out CardMatchSpec filter))
+        if (!RuleComponentParameterService.TryGet(component, parameter.Key, out ModelMatchSpec filter))
         {
             RuleParameterError(result, rule, descriptor, parameter, "is invalid");
             return;
         }
 
-        filter.CardIds ??= [];
+        filter.ModelIds ??= [];
+        filter.ModelKind = parameter.ModelKind;
         string value = (filter.Value ?? string.Empty).Trim();
-        IReadOnlyList<CustomRunCatalogEntry> catalog = CustomRunCatalogService.GetCatalog(SelectionModelKind.Card);
-        IEnumerable<CardModel> cards = catalog.Select(entry => entry.Model).OfType<CardModel>();
         bool valid = filter.Kind switch
         {
-            CardMatchKind.SpecificCards => filter.CardIds.Count > 0
-                                           && filter.CardIds.All(id => CustomRunCatalogService.TryResolve(SelectionModelKind.Card, id, out _)),
-            CardMatchKind.Pool => !string.IsNullOrWhiteSpace(value) && cards.Any(card =>
-                string.Equals(card.Pool.Id.ToString(), value, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(card.Pool.Id.Entry, value, StringComparison.OrdinalIgnoreCase)),
-            CardMatchKind.Type => !string.IsNullOrWhiteSpace(value)
-                                  && cards.Any(card => string.Equals(card.Type.ToString(), value, StringComparison.OrdinalIgnoreCase)),
-            CardMatchKind.Rarity => !string.IsNullOrWhiteSpace(value)
-                                    && cards.Any(card => string.Equals(card.Rarity.ToString(), value, StringComparison.OrdinalIgnoreCase)),
-            CardMatchKind.Keyword => !string.IsNullOrWhiteSpace(value) && cards.Any(card =>
-                card.GetKeywordsWithSources(KeywordSources.Local)
-                    .Any(keyword => string.Equals(keyword.ToString(), value, StringComparison.OrdinalIgnoreCase))),
-            CardMatchKind.Tag => !string.IsNullOrWhiteSpace(value) && cards.Any(card =>
-                card.Tags.Any(tag => string.Equals(tag.ToString(), value, StringComparison.OrdinalIgnoreCase))),
-            CardMatchKind.EnergyCost => value is "0" or "1" or "2" or "3+" or "X" or "unplayable",
-            CardMatchKind.TextContains => !string.IsNullOrWhiteSpace(value),
-            CardMatchKind.Mod => !string.IsNullOrWhiteSpace(value)
-                                 && catalog.Any(entry => string.Equals(entry.ModId, value, StringComparison.OrdinalIgnoreCase)),
-            _ => false
+            ModelMatchKind.SpecificModels => filter.ModelIds.Count > 0
+                                             && filter.ModelIds.All(id => CustomRunCatalogService.TryResolve(filter.ModelKind, id, out _)),
+            ModelMatchKind.TextContains => !string.IsNullOrWhiteSpace(value),
+            _ => !string.IsNullOrWhiteSpace(value) && RuleModelMatcher.Resolve(filter).Count > 0
         };
         if (!valid)
-            RuleParameterError(result, rule, descriptor, parameter, $"has an invalid {FormatCardMatchKind(filter.Kind)} selection");
+            RuleParameterError(result, rule, descriptor, parameter, $"has an invalid {FormatModelMatchKind(filter.Kind)} selection");
     }
 
-    private static string FormatCardMatchKind(CardMatchKind kind)
+    private static string FormatModelMatchKind(ModelMatchKind kind)
     {
         return kind switch
         {
-            CardMatchKind.SpecificCards => "specific-card",
-            CardMatchKind.EnergyCost => "energy-cost",
-            CardMatchKind.TextContains => "text",
+            ModelMatchKind.SpecificModels => "specific-model",
+            ModelMatchKind.EnergyCost => "energy-cost",
+            ModelMatchKind.TextContains => "text",
             _ => kind.ToString().ToLowerInvariant()
         };
     }
@@ -447,7 +438,9 @@ public static class CustomRunValidator
         CustomRunValidationResult result)
     {
         if (!RuleComponentParameterService.TryGet(component, parameter.Key, out NumericValueSpec value)
-            || !Enum.IsDefined(value.Source))
+            || !Enum.IsDefined(value.Source)
+            || !Enum.IsDefined(value.ConstantKind)
+            || (!parameter.AllowDouble && value.ConstantKind == NumericConstantKind.Double))
         {
             RuleParameterError(result, rule, descriptor, parameter, "has an invalid numeric source");
             return;

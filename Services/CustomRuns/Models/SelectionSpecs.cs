@@ -19,7 +19,8 @@ public enum SelectionModelKind
     Relic,
     Potion,
     Character,
-    Power
+    Power,
+    Monster
 }
 
 public sealed class SelectionSpec

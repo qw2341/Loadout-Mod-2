@@ -4,7 +4,6 @@ namespace Loadout.UI.Screens.Controls;
 
 using System;
 using System.Globalization;
-using System.Linq;
 using Godot;
 using MegaCrit.Sts2.Core.Helpers;
 
@@ -18,7 +17,6 @@ public partial class NLoadoutDecimalStepper : HBoxContainer
     private Button? _upButton;
     private LineEdit? _entry;
     private double _value;
-    private int _doublePlaces;
     private bool _isSyncing;
     private bool _suppressNextFocusCommit;
 
@@ -71,18 +69,15 @@ public partial class NLoadoutDecimalStepper : HBoxContainer
         double step = 1d)
     {
         Minimum = minimum;
-        Maximum = Math.Max(minimum, maximum);
-        
+        Maximum = maximum;
         Step = step == 0 ? 1d : Math.Abs(step);
-        
-        _doublePlaces = GetDecimalPlaces(Step);
         BuildControlTree();
         SetValue(value, emit: false);
     }
 
     public void SetValue(double value, bool emit = true)
     {
-        double next = QuantizeAndClamp(value);
+        double next = Math.Clamp(value, Minimum, Maximum);
         if (_value == next && _entry is not null && _entry.Text == FormatValue(next))
             return;
 
@@ -164,67 +159,22 @@ public partial class NLoadoutDecimalStepper : HBoxContainer
     {
         value = _value;
         string trimmed = (text ?? string.Empty).Trim();
-        if (double.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out double parsed))
+        if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
+            && !double.IsNaN(parsed))
         {
             value = parsed;
-            return true;
-        }
-
-        if (LooksLikeDecimalOverflow(trimmed, out bool isNegative))
-        {
-            value = isNegative ? Minimum : Maximum;
             return true;
         }
 
         return false;
     }
 
-    private double QuantizeAndClamp(double value)
+    private string FormatValue(double value)
     {
-        double clamped = Math.Clamp(value, Minimum, Maximum);
-        double stepped = Math.Round(clamped / Step, 0, MidpointRounding.AwayFromZero) * Step;
-        return Math.Clamp(double.Round(stepped, _doublePlaces), Minimum, Maximum);
-    }
-
-    
-
-    private static int GetDecimalPlaces(double value)
-    {
-        int flags = double.GetBits(value)[3];
-        return (flags >> 16) & 0xFF;
-    }
-
-    private static bool LooksLikeDecimalOverflow(string text, out bool isNegative)
-    {
-        isNegative = false;
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
-
-        int index = 0;
-        if (text[0] is '+' or '-')
-        {
-            isNegative = text[0] == '-';
-            index = 1;
-        }
-
-        bool sawDigit = false;
-        bool sawDecimalPoint = false;
-        for (; index < text.Length; index++)
-        {
-            char character = text[index];
-            if (char.IsDigit(character))
-            {
-                sawDigit = true;
-                continue;
-            }
-            if (character == '.' && !sawDecimalPoint)
-            {
-                sawDecimalPoint = true;
-                continue;
-            }
-            return false;
-        }
-        return sawDigit;
+        double magnitude = Math.Abs(value);
+        return magnitude is > 0d and < 0.00000000000000001d || magnitude >= 100000000000000000d
+            ? value.ToString("G17", CultureInfo.InvariantCulture)
+            : value.ToString("0.#################", CultureInfo.InvariantCulture);
     }
 
     private void BuildControlTree()

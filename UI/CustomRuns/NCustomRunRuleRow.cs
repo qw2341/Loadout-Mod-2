@@ -21,7 +21,8 @@ public sealed record CustomRunRuleRowOptions(
     Action PermanentAction,
     Action DeleteAction,
     Action<string, string?, bool> ReorderAction,
-    bool ReadOnly = false);
+    bool ReadOnly = false,
+    bool SuppressedByPermanent = false);
 
 public partial class NCustomRunRuleRow : NButton
 {
@@ -145,9 +146,11 @@ public partial class NCustomRunRuleRow : NButton
             Name = "EnabledToggle",
             CustomMinimumSize = new Vector2(70f, 64f),
             SizeFlagsVertical = SizeFlags.ShrinkCenter,
-            TooltipText = _options.Rule.Enabled ? "Disable rule" : "Enable rule"
+            TooltipText = _options.SuppressedByPermanent
+                ? "Disabled here because an enabled Permanent Rule has identical behavior"
+                : _options.Rule.Enabled ? "Disable rule" : "Enable rule"
         };
-        enabled.Init(_options.Rule.Id, string.Empty, _options.Rule.Enabled);
+        enabled.Init(_options.Rule.Id, string.Empty, _options.Rule.Enabled && !_options.SuppressedByPermanent);
         enabled.Connect(
             NLoadoutToggle.SignalName.Toggled,
             Callable.From<NLoadoutToggle>(toggle => _options.ToggleAction(toggle.IsChecked)));
@@ -162,7 +165,10 @@ public partial class NCustomRunRuleRow : NButton
         text.AddThemeConstantOverride("separation", -2);
         row.AddChild(text);
         text.AddChild(CreateLabel(_options.Rule.Name, 27, StsColors.gold, bold: true, 42f));
-        MegaLabel summary = CreateLabel(DescribeRule(_options.Rule), 19, StsColors.cream, bold: false, 42f);
+        string summaryText = _options.SuppressedByPermanent
+            ? $"PERMANENT COPY ACTIVE  •  {DescribeRule(_options.Rule)}"
+            : DescribeRule(_options.Rule);
+        MegaLabel summary = CreateLabel(summaryText, 19, _options.SuppressedByPermanent ? StsColors.gray : StsColors.cream, bold: false, 42f);
         summary.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         summary.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
         summary.TooltipText = summary.Text;
@@ -183,10 +189,13 @@ public partial class NCustomRunRuleRow : NButton
         row.AddChild(delete);
         _actions.Add(delete);
 
-        if (_options.ReadOnly)
+        if (_options.ReadOnly || _options.SuppressedByPermanent)
         {
             enabled.MouseFilter = MouseFilterEnum.Ignore;
             enabled.FocusMode = FocusModeEnum.None;
+        }
+        if (_options.ReadOnly)
+        {
             duplicate.Disable();
             permanent.Disable();
             delete.Disable();
@@ -246,12 +255,10 @@ public partial class NCustomRunRuleRow : NButton
         {
             RuleLimitKind.Unlimited => "unlimited",
             RuleLimitKind.OncePerEventChain => "once per event chain",
-            RuleLimitKind.OncePerTurn => "once per turn",
-            RuleLimitKind.OncePerCombat => "once per combat",
-            RuleLimitKind.OncePerRun => "once per run",
             RuleLimitKind.TimesPerTurn => $"{rule.Limit.Count} per turn",
             RuleLimitKind.TimesPerCombat => $"{rule.Limit.Count} per combat",
             RuleLimitKind.TimesPerRun => $"{rule.Limit.Count} per run",
+            RuleLimitKind.UntilCondition => "until condition",
             _ => rule.Limit.Kind.ToString()
         };
         return $"WHEN {trigger}  •  {conditions}  •  {actions}  •  {limit}";

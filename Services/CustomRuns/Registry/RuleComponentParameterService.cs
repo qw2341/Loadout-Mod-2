@@ -22,7 +22,7 @@ public static class RuleComponentParameterService
             switch (parameter.Kind)
             {
                 case RuleParameterKind.Integer:
-                    Set(component, parameter.Key, Math.Clamp(1, parameter.Minimum, parameter.Maximum));
+                    Set(component, parameter.Key, parameter.DefaultInteger);
                     break;
                 case RuleParameterKind.Boolean:
                     Set(component, parameter.Key, false);
@@ -37,14 +37,22 @@ public static class RuleComponentParameterService
                     Set(component, parameter.Key, new NumericValueSpec
                     {
                         Source = NumericValueSourceKind.Constant,
-                        Constant = 1m
+                        Constant = 1d,
+                        ConstantKind = parameter.DefaultConstantKind
                     });
                     break;
-                case RuleParameterKind.CardFilter:
-                    string legacyCardId = GetString(component, "cardId");
-                    Set(component, parameter.Key, new CardMatchSpec
+                case RuleParameterKind.ModelFilter:
+                    if (component.Parameters.TryGetValue("filter", out JsonElement legacyFilter))
                     {
-                        CardIds = string.IsNullOrWhiteSpace(legacyCardId) ? [] : [legacyCardId]
+                        component.Parameters.Remove("filter");
+                        component.Parameters[parameter.Key] = legacyFilter;
+                        break;
+                    }
+                    string legacyCardId = GetString(component, "cardId");
+                    Set(component, parameter.Key, new ModelMatchSpec
+                    {
+                        ModelKind = parameter.ModelKind,
+                        ModelIds = string.IsNullOrWhiteSpace(legacyCardId) ? [] : [legacyCardId]
                     });
                     component.Parameters.Remove("cardId");
                     break;

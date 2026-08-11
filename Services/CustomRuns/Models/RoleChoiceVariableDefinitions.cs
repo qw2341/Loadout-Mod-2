@@ -124,7 +124,7 @@ public sealed class VariableDefinition
     public VariableScope Scope { get; set; }
 
     [JsonPropertyName("defaultNumber")]
-    public decimal DefaultNumber { get; set; }
+    public double DefaultNumber { get; set; }
 
     [JsonPropertyName("defaultBoolean")]
     public bool DefaultBoolean { get; set; }

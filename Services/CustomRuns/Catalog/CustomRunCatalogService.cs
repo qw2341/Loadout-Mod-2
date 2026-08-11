@@ -8,6 +8,7 @@ using System.Linq;
 using Loadout.PanelItems;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.Morphing;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Models;
 
 public sealed record CustomRunCatalogEntry(
@@ -76,6 +77,7 @@ public static class CustomRunCatalogService
             SelectionModelKind.Potion => model is PotionModel,
             SelectionModelKind.Character => model is CharacterModel,
             SelectionModelKind.Power => model is PowerModel,
+            SelectionModelKind.Monster => model is MonsterModel,
             _ => false
         };
     }
@@ -92,6 +94,7 @@ public static class CustomRunCatalogService
             SelectionModelKind.Potion => Build(kind, ModelDb.AllPotions),
             SelectionModelKind.Character => Build(kind, ModelDb.AllCharacters),
             SelectionModelKind.Power => Build(kind, ModelDb.AllPowers),
+            SelectionModelKind.Monster => BuildMonsters(),
             _ => []
         };
         Dictionary<string, CustomRunCatalogEntry> lookup = new(StringComparer.OrdinalIgnoreCase);
@@ -113,6 +116,53 @@ public static class CustomRunCatalogService
         return models
             .GroupBy(model => model.Id.ToString(), StringComparer.Ordinal)
             .Select(group => CreateEntry(kind, group.First()))
+            .OrderBy(entry => entry.ModelId, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static IReadOnlyList<CustomRunCatalogEntry> BuildMonsters()
+    {
+        Dictionary<string, HashSet<string>> actsByMonster = new(StringComparer.Ordinal);
+        Dictionary<string, HashSet<string>> typesByMonster = new(StringComparer.Ordinal);
+        foreach (ActModel act in ModelDb.Acts.Where(act => act.Index >= 0))
+        {
+            foreach (EncounterModel encounter in act.AllEncounters)
+            {
+                foreach (MonsterModel monster in encounter.AllPossibleMonsters)
+                {
+                    string id = monster.Id.ToString();
+                    if (!actsByMonster.TryGetValue(id, out HashSet<string>? acts))
+                        actsByMonster[id] = acts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    Add(acts, act.Id.ToString(), act.Id.Entry, $"Act {act.Index + 1}");
+                    if (!typesByMonster.TryGetValue(id, out HashSet<string>? types))
+                        typesByMonster[id] = types = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    Add(types, encounter.RoomType.ToString());
+                }
+            }
+        }
+        foreach (EncounterModel encounter in Sts2Compatibility.EnumerateEncounters())
+        {
+            foreach (MonsterModel monster in encounter.AllPossibleMonsters)
+            {
+                string id = monster.Id.ToString();
+                if (!typesByMonster.TryGetValue(id, out HashSet<string>? types))
+                    typesByMonster[id] = types = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                Add(types, encounter.RoomType.ToString());
+            }
+        }
+
+        return BottledMonsterMorphService.GetMonsterModels()
+            .GroupBy(monster => monster.Id.ToString(), StringComparer.Ordinal)
+            .Select(group => group.First())
+            .Select(monster => new CustomRunCatalogEntry(
+                SelectionModelKind.Monster,
+                monster.Id.ToString(),
+                monster,
+                CommonHelpers.GetModelModId(monster),
+                actsByMonster.GetValueOrDefault(monster.Id.ToString())
+                    ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                typesByMonster.GetValueOrDefault(monster.Id.ToString())
+                    ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase)))
             .OrderBy(entry => entry.ModelId, StringComparer.Ordinal)
             .ToList();
     }

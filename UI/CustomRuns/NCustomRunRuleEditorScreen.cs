@@ -30,6 +30,8 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
+using MegaCrit.Sts2.Core.Nodes.Potions;
+using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.RunHistoryScreen;
 
 public partial class NCustomRunRuleEditorScreen : Control
@@ -515,8 +517,17 @@ public partial class NCustomRunRuleEditorScreen : Control
             return;
         _contentHost.AddChild(CreateSectionTitle("LIMIT"));
         HBoxContainer row = CreateFieldRow("Frequency");
+        RuleLimitKind[] authoringKinds =
+        [
+            RuleLimitKind.Unlimited,
+            RuleLimitKind.OncePerEventChain,
+            RuleLimitKind.TimesPerTurn,
+            RuleLimitKind.TimesPerCombat,
+            RuleLimitKind.TimesPerRun,
+            RuleLimitKind.UntilCondition
+        ];
         NSelectFilterDropdown dropdown = CreateDropdown(
-            Enum.GetValues<RuleLimitKind>().Select(value => new LoadoutDropdownOption(value.ToString(), FormatLimit(value))),
+            authoringKinds.Select(value => new LoadoutDropdownOption(value.ToString(), FormatLimit(value))),
             _workingRule.Limit.Kind.ToString(),
             440f);
         dropdown.SelectedItemChanged += value =>
@@ -524,6 +535,13 @@ public partial class NCustomRunRuleEditorScreen : Control
             if (_workingRule is null || !Enum.TryParse(value, out RuleLimitKind parsed))
                 return;
             _workingRule.Limit.Kind = parsed;
+            if (parsed == RuleLimitKind.UntilCondition
+                && _workingRule.Limit.UntilConditions.Conditions.Count == 0
+                && _workingRule.Limit.UntilConditions.Groups.Count == 0)
+            {
+                _workingRule.Limit.UntilConditions.Conditions.Add(
+                    CreateDefaultComponent(RuleComponentKind.Condition, "Loadout2:Always"));
+            }
             MarkDirty();
             RebuildContentDeferred();
         };
@@ -534,7 +552,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         {
             HBoxContainer countRow = CreateFieldRow("Maximum executions");
             NLoadoutNumberStepper count = new();
-            count.Init(_workingRule.Limit.Count, 1, 999);
+            count.Init(_workingRule.Limit.Count);
             count.ValueChanged += value =>
             {
                 if (_workingRule is null)
@@ -544,6 +562,14 @@ public partial class NCustomRunRuleEditorScreen : Control
             };
             countRow.AddChild(count);
             _contentHost.AddChild(countRow);
+        }
+        if (_workingRule.Limit.Kind == RuleLimitKind.UntilCondition)
+        {
+            _contentHost.AddChild(CreateSectionTitle("UNTIL IF"));
+            _contentHost.AddChild(BuildConditionGroup(
+                _workingRule.Limit.UntilConditions,
+                depth: 0,
+                deleteAction: null));
         }
     }
 
@@ -555,10 +581,17 @@ public partial class NCustomRunRuleEditorScreen : Control
         Action? moveDownAction)
     {
         VBoxContainer panel = CreateInsetPanel(0);
-        IReadOnlyList<RuleComponentDescriptor> descriptors = CustomRunRegistry.GetDescriptors(kind);
+        IReadOnlyList<RuleComponentDescriptor> allDescriptors = CustomRunRegistry.GetDescriptors(kind);
+        IReadOnlyList<RuleComponentDescriptor> descriptors = kind == RuleComponentKind.Condition && _workingRule is not null
+            ? CustomRunRegistry.GetDescriptors(kind, _workingRule.Trigger.TypeId)
+            : allDescriptors;
+        RuleComponentDescriptor? currentDescriptor = allDescriptors.FirstOrDefault(candidate =>
+            string.Equals(candidate.StableId, component.TypeId, StringComparison.Ordinal));
+        if (currentDescriptor is not null && descriptors.All(candidate => candidate.StableId != currentDescriptor.StableId))
+            descriptors = [currentDescriptor, .. descriptors];
         if (string.IsNullOrWhiteSpace(component.TypeId) && descriptors.Count > 0)
             component.TypeId = descriptors[0].StableId;
-        RuleComponentDescriptor? descriptor = descriptors.FirstOrDefault(candidate =>
+        RuleComponentDescriptor? descriptor = allDescriptors.FirstOrDefault(candidate =>
             string.Equals(candidate.StableId, component.TypeId, StringComparison.Ordinal));
         if (descriptor is not null)
             RuleComponentParameterService.ApplyDefaults(component, descriptor);
@@ -570,7 +603,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         List<LoadoutDropdownOption> options = descriptors
             .Select(candidate => new LoadoutDropdownOption(
                 candidate.StableId,
-                $"{candidate.Category}  •  {candidate.DisplayName}"))
+                $"{candidate.Category}  •  {candidate.DisplayName}{(CustomRunRegistry.IsCompatibleWithTrigger(candidate, _workingRule?.Trigger.TypeId ?? string.Empty) ? string.Empty : "  (not available for this trigger)")}"))
             .ToList();
         if (descriptor is null && !string.IsNullOrWhiteSpace(component.TypeId))
             options.Insert(0, new LoadoutDropdownOption(component.TypeId, $"Missing: {component.TypeId}"));
@@ -622,7 +655,19 @@ public partial class NCustomRunRuleEditorScreen : Control
             return panel;
         }
         foreach (RuleParameterDescriptor parameter in descriptor.Parameters)
-            BuildParameterEditor(panel, component, parameter);
+        {
+            if (parameter.VisibleWhenParameterKey is not null
+                && !string.Equals(
+                    RuleComponentParameterService.GetString(component, parameter.VisibleWhenParameterKey),
+                    parameter.VisibleWhenParameterValue,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+            bool controlsVisibility = descriptor.Parameters.Any(candidate =>
+                string.Equals(candidate.VisibleWhenParameterKey, parameter.Key, StringComparison.Ordinal));
+            BuildParameterEditor(panel, component, parameter, controlsVisibility ? RebuildContentDeferred : null);
+        }
         if (descriptor.Parameters.Count == 0)
             panel.AddChild(CreateHint("This component has no parameters."));
         return panel;
@@ -660,6 +705,9 @@ public partial class NCustomRunRuleEditorScreen : Control
             case RuleParameterKind.Power:
                 BuildModelParameter(parent, component, parameter, SelectionModelKind.Power, afterChanged);
                 break;
+            case RuleParameterKind.Monster:
+                BuildModelParameter(parent, component, parameter, SelectionModelKind.Monster, afterChanged);
+                break;
             case RuleParameterKind.Role:
                 BuildReferenceParameter(parent, component, parameter, isRole: true, afterChanged);
                 break;
@@ -672,8 +720,8 @@ public partial class NCustomRunRuleEditorScreen : Control
             case RuleParameterKind.NumericSource:
                 BuildNumericSourceParameter(parent, component, parameter, afterChanged);
                 break;
-            case RuleParameterKind.CardFilter:
-                BuildCardFilterParameter(parent, component, parameter, afterChanged);
+            case RuleParameterKind.ModelFilter:
+                BuildModelFilterParameter(parent, component, parameter, afterChanged);
                 break;
             default:
                 parent.AddChild(CreateHint($"{parameter.DisplayName}: this parameter editor is not available yet."));
@@ -690,7 +738,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         HBoxContainer row = CreateFieldRow(parameter.DisplayName);
         NLoadoutNumberStepper stepper = new();
         stepper.Init(
-            RuleComponentParameterService.GetInt32(component, parameter.Key, Math.Clamp(1, parameter.Minimum, parameter.Maximum)),
+            RuleComponentParameterService.GetInt32(component, parameter.Key, parameter.DefaultInteger),
             parameter.Minimum,
             parameter.Maximum);
         stepper.ValueChanged += value =>
@@ -804,13 +852,31 @@ public partial class NCustomRunRuleEditorScreen : Control
                 });
         }
         parent.AddChild(row);
+        if (!string.IsNullOrWhiteSpace(id)
+            && CustomRunCatalogService.TryResolve(kind, id, out CustomRunCatalogEntry selectedEntry))
+        {
+            MarginContainer previewIndent = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+            previewIndent.AddThemeConstantOverride("margin_left", 274);
+            Control preview = CreateSpecificModelPreview(selectedEntry.Model, kind);
+            preview.TooltipText = "Click to clear this selection.";
+            BindSpecificModelRemoval(preview, () =>
+            {
+                RuleComponentParameterService.Set(component, parameter.Key, string.Empty);
+                afterChanged?.Invoke();
+                MarkDirty();
+                RebuildContentDeferred();
+            });
+            previewIndent.AddChild(preview);
+            parent.AddChild(previewIndent);
+        }
     }
 
-    private void BuildSpecificCardsPreview(
+    private void BuildSpecificModelsPreview(
         VBoxContainer parent,
         RuleComponentSpec component,
         string key,
-        CardMatchSpec filter,
+        ModelMatchSpec filter,
+        SelectionModelKind kind,
         Action? afterChanged)
     {
         MarginContainer indent = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -825,8 +891,29 @@ public partial class NCustomRunRuleEditorScreen : Control
         indent.AddChild(preview);
         parent.AddChild(indent);
 
+        if (kind != SelectionModelKind.Card)
+        {
+            foreach (string modelId in filter.ModelIds.ToList())
+            {
+                if (!CustomRunCatalogService.TryResolve(kind, modelId, out CustomRunCatalogEntry entry))
+                    continue;
+                Control view = CreateSpecificModelPreview(entry.Model, kind);
+                view.TooltipText = "Click to remove this selection.";
+                BindSpecificModelRemoval(view, () =>
+                {
+                    filter.ModelIds.RemoveAll(id => ModelIdsMatch(kind, id, entry.ModelId));
+                    RuleComponentParameterService.Set(component, key, filter);
+                    afterChanged?.Invoke();
+                    MarkDirty();
+                    RebuildContentDeferred();
+                });
+                preview.AddChild(view);
+            }
+            return;
+        }
+
         IReadOnlyList<LoadoutOwnedItem<CardModel>> cards =
-            CustomRunEditorPreviewService.CreateOwnedCards(filter.CardIds
+            CustomRunEditorPreviewService.CreateOwnedCards(filter.ModelIds
                 .Select(id => new SavedCardLoadoutEntry { ModelId = id })
                 .ToList());
         foreach (LoadoutOwnedItem<CardModel> item in cards)
@@ -841,7 +928,7 @@ public partial class NCustomRunRuleEditorScreen : Control
                 NDeckHistoryEntry.SignalName.Clicked,
                 Callable.From<NDeckHistoryEntry>(_ =>
                 {
-                    int removed = filter.CardIds.RemoveAll(id => CardIdsMatch(id, modelId));
+                    int removed = filter.ModelIds.RemoveAll(id => ModelIdsMatch(kind, id, modelId));
                     if (removed == 0)
                         return;
                     RuleComponentParameterService.Set(component, key, filter);
@@ -851,6 +938,79 @@ public partial class NCustomRunRuleEditorScreen : Control
                 }));
             preview.AddChild(view);
         }
+    }
+
+    private Control CreateSpecificModelPreview(AbstractModel model, SelectionModelKind kind)
+    {
+        switch (kind)
+        {
+            case SelectionModelKind.Card when model is CardModel card:
+            {
+                NDeckHistoryEntry? view = NDeckHistoryEntry.Create(card, 1);
+                if (view is null)
+                    return CommonHelpers.CreateModelButton(new Vector2(238f, 58f));
+                AttachSpecificCardHover(view, card);
+                return view;
+            }
+            case SelectionModelKind.Relic when model is RelicModel relic:
+                return (Control?)NRelicBasicHolder.Create(relic)
+                       ?? CommonHelpers.CreateModelButton(new Vector2(72f, 72f));
+            case SelectionModelKind.Potion when model is PotionModel potion:
+            {
+                NPotionHolder holder = NPotionHolder.Create(isUsable: false);
+                if (NPotion.Create(potion.ToMutable()) is { } potionNode)
+                    holder.AddPotion(potionNode);
+                return holder;
+            }
+            case SelectionModelKind.Monster when model is MonsterModel monster:
+                return BottledMonster.CreateMonsterGridItem(monster);
+            default:
+            {
+                Button button = CommonHelpers.CreateModelButton(new Vector2(238f, 58f));
+                if (model is PowerModel power)
+                {
+                    TextureRect icon = new()
+                    {
+                        Texture = power.Icon,
+                        Position = new Vector2(8f, 7f),
+                        Size = new Vector2(44f, 44f),
+                        ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                        StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                        MouseFilter = MouseFilterEnum.Ignore
+                    };
+                    button.AddChild(icon);
+                }
+                button.AddChild(CommonHelpers.CreateButtonLabel(
+                    "ModelTitle",
+                    GetModelDisplayName(kind, model.Id.ToString()),
+                    new Vector2(58f, 0f),
+                    new Vector2(172f, 58f),
+                    19,
+                    HorizontalAlignment.Left,
+                    StsColors.cream));
+                return button;
+            }
+        }
+    }
+
+    private static void BindSpecificModelRemoval(Control view, Action remove)
+    {
+        if (view is NDeckHistoryEntry card)
+        {
+            card.Connect(
+                NDeckHistoryEntry.SignalName.Clicked,
+                Callable.From<NDeckHistoryEntry>(_ => remove()));
+            return;
+        }
+        if (view is NClickableControl clickable)
+        {
+            clickable.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => remove()));
+            return;
+        }
+        if (view is BaseButton button)
+            button.Pressed += remove;
     }
 
     private void AttachSpecificCardHover(Control view, CardModel card)
@@ -886,49 +1046,44 @@ public partial class NCustomRunRuleEditorScreen : Control
             return;
 
         List<IHoverTip> tips = [HoverTipFactory.FromCard(card)];
-        try
-        {
-            tips.AddRange(card.HoverTips);
-        }
-        catch
-        {
-        }
+        tips.AddRange(card.HoverTips);
         CommonHelpers.ShowHoverTips(view, tips);
     }
 
-    private static bool CardIdsMatch(string candidate, string canonicalId)
+    private static bool ModelIdsMatch(SelectionModelKind kind, string candidate, string canonicalId)
     {
         if (string.Equals(candidate, canonicalId, StringComparison.OrdinalIgnoreCase))
             return true;
-        return CustomRunCatalogService.TryResolve(SelectionModelKind.Card, candidate, out CustomRunCatalogEntry entry)
-               && entry.Model is CardModel card
-               && string.Equals(card.Id.ToString(), canonicalId, StringComparison.OrdinalIgnoreCase);
+        return CustomRunCatalogService.TryResolve(kind, candidate, out CustomRunCatalogEntry entry)
+               && string.Equals(entry.ModelId, canonicalId, StringComparison.OrdinalIgnoreCase);
     }
 
-    private void BuildCardFilterParameter(
+    private void BuildModelFilterParameter(
         VBoxContainer parent,
         RuleComponentSpec component,
         RuleParameterDescriptor parameter,
         Action? afterChanged)
     {
-        if (!RuleComponentParameterService.TryGet(component, parameter.Key, out CardMatchSpec filter))
-            filter = new CardMatchSpec();
-        filter.CardIds ??= [];
+        if (!RuleComponentParameterService.TryGet(component, parameter.Key, out ModelMatchSpec filter))
+            filter = new ModelMatchSpec { ModelKind = parameter.ModelKind };
+        filter.ModelKind = parameter.ModelKind;
+        filter.ModelIds ??= [];
         filter.Value ??= string.Empty;
-        CardMatchSpec captured = filter;
+        ModelMatchSpec captured = filter;
 
-        HBoxContainer modeRow = CreateFieldRow("Match cards by");
+        HBoxContainer modeRow = CreateFieldRow($"Match {FormatModelKind(parameter.ModelKind).ToLowerInvariant()} by");
         NSelectFilterDropdown mode = CreateDropdown(
-            Enum.GetValues<CardMatchKind>()
-                .Select(kind => new LoadoutDropdownOption(kind.ToString(), FormatCardMatchKind(kind))),
+            GetMatchKinds(parameter.ModelKind)
+                .Select(kind => new LoadoutDropdownOption(kind.ToString(), FormatModelMatchKind(kind, parameter.ModelKind))),
             captured.Kind.ToString(),
             420f);
         mode.SelectedItemChanged += value =>
         {
-            if (!Enum.TryParse(value, out CardMatchKind kind) || captured.Kind == kind)
+            if (!Enum.TryParse(value, out ModelMatchKind kind) || captured.Kind == kind)
                 return;
             captured.Kind = kind;
             captured.Value = string.Empty;
+            captured.ModelIds.Clear();
             RuleComponentParameterService.Set(component, parameter.Key, captured);
             afterChanged?.Invoke();
             MarkDirty();
@@ -937,13 +1092,13 @@ public partial class NCustomRunRuleEditorScreen : Control
         modeRow.AddChild(mode);
         parent.AddChild(modeRow);
 
-        if (captured.Kind == CardMatchKind.SpecificCards)
+        if (captured.Kind == ModelMatchKind.SpecificModels)
         {
-            BuildSpecificCardsFilter(parent, component, parameter, captured, afterChanged);
+            BuildSpecificModelsFilter(parent, component, parameter, captured, afterChanged);
             return;
         }
 
-        if (captured.Kind == CardMatchKind.TextContains)
+        if (captured.Kind == ModelMatchKind.TextContains)
         {
             HBoxContainer textRow = CreateFieldRow("Title or text contains");
             LineEdit text = CreateLineEdit(captured.Value);
@@ -960,10 +1115,10 @@ public partial class NCustomRunRuleEditorScreen : Control
             return;
         }
 
-        List<LoadoutDropdownOption> options = GetCardFilterOptions(captured.Kind);
+        List<LoadoutDropdownOption> options = GetModelFilterOptions(parameter.ModelKind, captured.Kind);
         if (options.Count == 0)
         {
-            parent.AddChild(CreateHint($"No {FormatCardMatchKind(captured.Kind).ToLowerInvariant()} values are available."));
+            parent.AddChild(CreateHint($"No {FormatModelMatchKind(captured.Kind, parameter.ModelKind).ToLowerInvariant()} values are available."));
             return;
         }
         if (options.All(option => !string.Equals(option.Id, captured.Value, StringComparison.Ordinal)))
@@ -972,7 +1127,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             RuleComponentParameterService.Set(component, parameter.Key, captured);
         }
 
-        HBoxContainer valueRow = CreateFieldRow(GetCardMatchValueLabel(captured.Kind));
+        HBoxContainer valueRow = CreateFieldRow(GetModelMatchValueLabel(captured.Kind));
         NSelectFilterDropdown valueDropdown = CreateDropdown(options, captured.Value, 420f);
         valueDropdown.SelectedItemChanged += value =>
         {
@@ -985,18 +1140,18 @@ public partial class NCustomRunRuleEditorScreen : Control
         parent.AddChild(valueRow);
     }
 
-    private void BuildSpecificCardsFilter(
+    private void BuildSpecificModelsFilter(
         VBoxContainer parent,
         RuleComponentSpec component,
         RuleParameterDescriptor parameter,
-        CardMatchSpec filter,
+        ModelMatchSpec filter,
         Action? afterChanged)
     {
-        HBoxContainer row = CreateFieldRow("Specific cards");
+        HBoxContainer row = CreateFieldRow($"Specific {FormatModelKind(parameter.ModelKind).ToLowerInvariant()}");
         MegaLabel selected = CreateLabel(
-            FormatSpecificCards(filter.CardIds),
+            FormatSpecificModels(parameter.ModelKind, filter.ModelIds),
             20,
-            filter.CardIds.Count == 0 ? new Color(1f, 0.58f, 0.46f) : StsColors.cream,
+            filter.ModelIds.Count == 0 ? new Color(1f, 0.58f, 0.46f) : StsColors.cream,
             HorizontalAlignment.Left);
         selected.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         selected.AutowrapMode = TextServer.AutowrapMode.WordSmart;
@@ -1005,10 +1160,10 @@ public partial class NCustomRunRuleEditorScreen : Control
         AddSettingsActionButton(
             row,
             $"select_{parameter.Key}",
-            filter.CardIds.Count == 0 ? "SELECT" : "EDIT",
+            filter.ModelIds.Count == 0 ? "SELECT" : "EDIT",
             132f,
             () => OpenCardMatchSelector(component, parameter.Key, filter, afterChanged));
-        if (filter.CardIds.Count > 0)
+        if (filter.ModelIds.Count > 0)
         {
             AddSettingsActionButton(
                 row,
@@ -1017,7 +1172,7 @@ public partial class NCustomRunRuleEditorScreen : Control
                 116f,
                 () =>
                 {
-                    filter.CardIds.Clear();
+                    filter.ModelIds.Clear();
                     RuleComponentParameterService.Set(component, parameter.Key, filter);
                     afterChanged?.Invoke();
                     MarkDirty();
@@ -1025,30 +1180,30 @@ public partial class NCustomRunRuleEditorScreen : Control
                 });
         }
         parent.AddChild(row);
-        if (filter.CardIds.Count > 0)
-            BuildSpecificCardsPreview(parent, component, parameter.Key, filter, afterChanged);
+        if (filter.ModelIds.Count > 0)
+            BuildSpecificModelsPreview(parent, component, parameter.Key, filter, parameter.ModelKind, afterChanged);
     }
 
     private void OpenCardMatchSelector(
         RuleComponentSpec component,
         string key,
-        CardMatchSpec filter,
+        ModelMatchSpec filter,
         Action? afterChanged)
     {
         _catalogSelectorSession?.Dispose();
         if (!CustomRunCatalogSelector.TryOpenCatalogSelection(
-                SelectionModelKind.Card,
-                filter.CardIds,
+                filter.ModelKind,
+                filter.ModelIds,
                 ids =>
                 {
-                    filter.CardIds = ids.ToList();
+                    filter.ModelIds = ids.ToList();
                     RuleComponentParameterService.Set(component, key, filter);
                     afterChanged?.Invoke();
                     MarkDirty();
                 },
                 (screen, item, added) =>
                 {
-                    if (!added || item.UntypedModel is not CardModel card)
+                    if (!added || filter.ModelKind != SelectionModelKind.Card || item.UntypedModel is not CardModel card)
                         return;
                     CustomRunEditorPreviewService.PreviewCardAdd(
                         card,
@@ -1065,54 +1220,132 @@ public partial class NCustomRunRuleEditorScreen : Control
         _catalogSelectorSession = session;
     }
 
-    private static string FormatSpecificCards(IReadOnlyList<string> cardIds)
+    private static string FormatSpecificModels(SelectionModelKind kind, IReadOnlyList<string> modelIds)
     {
-        if (cardIds.Count == 0)
-            return "No cards selected";
-        string[] names = cardIds
+        if (modelIds.Count == 0)
+            return $"No {FormatModelKind(kind).ToLowerInvariant()} selected";
+        string[] names = modelIds
             .Take(3)
-            .Select(id => GetModelDisplayName(SelectionModelKind.Card, id))
+            .Select(id => GetModelDisplayName(kind, id))
             .ToArray();
         string summary = string.Join(", ", names);
-        return cardIds.Count > names.Length ? $"{summary}  +{cardIds.Count - names.Length} more" : summary;
+        return modelIds.Count > names.Length ? $"{summary}  +{modelIds.Count - names.Length} more" : summary;
     }
 
-    private static List<LoadoutDropdownOption> GetCardFilterOptions(CardMatchKind kind)
+    private static IReadOnlyList<ModelMatchKind> GetMatchKinds(SelectionModelKind kind)
     {
-        IReadOnlyList<CardModel> cards = ModelDb.AllCards.ToList();
         return kind switch
         {
-            CardMatchKind.Pool => CardPrinter.BuildOrderedCardPools()
+            SelectionModelKind.Card =>
+            [
+                ModelMatchKind.SpecificModels, ModelMatchKind.Pool, ModelMatchKind.Type,
+                ModelMatchKind.Rarity, ModelMatchKind.Keyword, ModelMatchKind.Tag,
+                ModelMatchKind.EnergyCost, ModelMatchKind.TextContains, ModelMatchKind.Mod
+            ],
+            SelectionModelKind.Relic or SelectionModelKind.Potion =>
+            [
+                ModelMatchKind.SpecificModels, ModelMatchKind.Pool, ModelMatchKind.Rarity,
+                ModelMatchKind.TextContains, ModelMatchKind.Mod
+            ],
+            SelectionModelKind.Monster =>
+            [
+                ModelMatchKind.SpecificModels, ModelMatchKind.Act, ModelMatchKind.MonsterCategory,
+                ModelMatchKind.TextContains, ModelMatchKind.Mod
+            ],
+            _ => [ModelMatchKind.SpecificModels, ModelMatchKind.TextContains, ModelMatchKind.Mod]
+        };
+    }
+
+    private static List<LoadoutDropdownOption> GetModelFilterOptions(
+        SelectionModelKind modelKind,
+        ModelMatchKind matchKind)
+    {
+        IReadOnlyList<CardModel> cards = ModelDb.AllCards.ToList();
+        if (matchKind == ModelMatchKind.Mod)
+        {
+            return CustomRunCatalogService.GetCatalog(modelKind)
+                .Select(entry => entry.ModId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(CommonHelpers.GetModName, StringComparer.OrdinalIgnoreCase)
+                .Select(id => new LoadoutDropdownOption(id, CommonHelpers.GetModName(id)))
+                .ToList();
+        }
+        if (matchKind == ModelMatchKind.Act)
+        {
+            return ModelDb.Acts
+                .Where(act => act.Index >= 0)
+                .OrderBy(act => act.Index)
+                .ThenBy(act => act.Id.ToString(), StringComparer.Ordinal)
+                .Select(act => new LoadoutDropdownOption(act.Id.ToString(), $"Act {act.Index + 1}: {act.Id.Entry}"))
+                .ToList();
+        }
+        if (matchKind == ModelMatchKind.MonsterCategory)
+        {
+            return CustomRunCatalogService.GetCatalog(SelectionModelKind.Monster)
+                .SelectMany(entry => entry.Types)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .Select(value => new LoadoutDropdownOption(value, value))
+                .ToList();
+        }
+
+        return (modelKind, matchKind) switch
+        {
+            (SelectionModelKind.Card, ModelMatchKind.Pool) => CardPrinter.BuildOrderedCardPools()
                 .Select(pool => new LoadoutDropdownOption(pool.Id.ToString(), CommonHelpers.GetPoolLabel(pool)))
                 .ToList(),
-            CardMatchKind.Type => cards
+            (SelectionModelKind.Potion, ModelMatchKind.Pool) => ModelDb.AllPotions
+                .Select(potion => potion.Pool)
+                .DistinctBy(pool => pool.Id.ToString())
+                .Select(pool => new LoadoutDropdownOption(pool.Id.ToString(), CommonHelpers.GetPoolLabel(pool)))
+                .ToList(),
+            (SelectionModelKind.Relic, ModelMatchKind.Pool) => ModelDb.AllRelics
+                .Select(relic => LoadoutBag.TryGetRelicPool(relic, out var pool) ? pool : null)
+                .Where(pool => pool is not null)
+                .DistinctBy(pool => pool!.Id.ToString())
+                .Select(pool => new LoadoutDropdownOption(pool!.Id.ToString(), CommonHelpers.GetPoolLabel(pool)))
+                .ToList(),
+            (SelectionModelKind.Card, ModelMatchKind.Type) => cards
                 .Select(card => card.Type)
                 .Distinct()
                 .OrderBy(value => Convert.ToInt32(value))
                 .Select(value => new LoadoutDropdownOption(value.ToString(), CardPrinter.GetCardTypeLabel(value)))
                 .ToList(),
-            CardMatchKind.Rarity => cards
+            (SelectionModelKind.Card, ModelMatchKind.Rarity) => cards
                 .Select(card => card.Rarity)
                 .Where(value => value != CardRarity.None)
                 .Distinct()
                 .OrderBy(value => Convert.ToInt32(value))
                 .Select(value => new LoadoutDropdownOption(value.ToString(), CardPrinter.GetCardRarityLabel(value)))
                 .ToList(),
-            CardMatchKind.Keyword => cards
+            (SelectionModelKind.Relic, ModelMatchKind.Rarity) => ModelDb.AllRelics
+                .Select(relic => relic.Rarity.ToString())
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .Select(value => new LoadoutDropdownOption(value, value))
+                .ToList(),
+            (SelectionModelKind.Potion, ModelMatchKind.Rarity) => ModelDb.AllPotions
+                .Select(potion => potion.Rarity.ToString())
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .Select(value => new LoadoutDropdownOption(value, value))
+                .ToList(),
+            (SelectionModelKind.Card, ModelMatchKind.Keyword) => cards
                 .SelectMany(card => card.GetKeywordsWithSources(KeywordSources.Local))
                 .Where(value => value != CardKeyword.None)
                 .Distinct()
                 .OrderBy(value => Convert.ToInt32(value))
                 .Select(value => new LoadoutDropdownOption(value.ToString(), CardPrinter.GetCardKeywordLabel(value)))
                 .ToList(),
-            CardMatchKind.Tag => cards
+            (SelectionModelKind.Card, ModelMatchKind.Tag) => cards
                 .SelectMany(card => card.Tags)
                 .Where(value => value != CardTag.None)
                 .Distinct()
                 .OrderBy(value => Convert.ToInt32(value))
                 .Select(value => new LoadoutDropdownOption(value.ToString(), CardPrinter.GetCardTagLabel(value)))
                 .ToList(),
-            CardMatchKind.EnergyCost =>
+            (SelectionModelKind.Card, ModelMatchKind.EnergyCost) =>
             [
                 new LoadoutDropdownOption("0", "0"),
                 new LoadoutDropdownOption("1", "1"),
@@ -1121,46 +1354,56 @@ public partial class NCustomRunRuleEditorScreen : Control
                 new LoadoutDropdownOption("X", "X"),
                 new LoadoutDropdownOption("unplayable", "Unplayable")
             ],
-            CardMatchKind.Mod => CustomRunCatalogService.GetCatalog(SelectionModelKind.Card)
-                .Select(entry => entry.ModId)
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(CommonHelpers.GetModName, StringComparer.OrdinalIgnoreCase)
-                .Select(id => new LoadoutDropdownOption(id, CommonHelpers.GetModName(id)))
-                .ToList(),
             _ => []
         };
     }
 
-    private static string FormatCardMatchKind(CardMatchKind kind)
+    private static string FormatModelMatchKind(ModelMatchKind kind, SelectionModelKind modelKind)
     {
         return kind switch
         {
-            CardMatchKind.SpecificCards => "Specific cards",
-            CardMatchKind.Pool => "Card pool",
-            CardMatchKind.Type => "Card type",
-            CardMatchKind.Rarity => "Card rarity",
-            CardMatchKind.Keyword => "Keyword",
-            CardMatchKind.Tag => "Tag",
-            CardMatchKind.EnergyCost => "Energy cost",
-            CardMatchKind.TextContains => "Text contains",
-            CardMatchKind.Mod => "Mod",
+            ModelMatchKind.SpecificModels => $"Specific {FormatModelKind(modelKind).ToLowerInvariant()}",
+            ModelMatchKind.Pool => $"{FormatModelKind(modelKind)} pool",
+            ModelMatchKind.Type => "Card type",
+            ModelMatchKind.Rarity => "Rarity",
+            ModelMatchKind.Keyword => "Keyword",
+            ModelMatchKind.Tag => "Tag",
+            ModelMatchKind.EnergyCost => "Energy cost",
+            ModelMatchKind.TextContains => "Title or text contains",
+            ModelMatchKind.Mod => "Mod",
+            ModelMatchKind.Act => "Act",
+            ModelMatchKind.MonsterCategory => "Monster category",
             _ => kind.ToString()
         };
     }
 
-    private static string GetCardMatchValueLabel(CardMatchKind kind)
+    private static string GetModelMatchValueLabel(ModelMatchKind kind)
     {
         return kind switch
         {
-            CardMatchKind.Pool => "Pool",
-            CardMatchKind.Type => "Type",
-            CardMatchKind.Rarity => "Rarity",
-            CardMatchKind.Keyword => "Keyword",
-            CardMatchKind.Tag => "Tag",
-            CardMatchKind.EnergyCost => "Cost",
-            CardMatchKind.Mod => "Mod",
+            ModelMatchKind.Pool => "Pool",
+            ModelMatchKind.Type => "Type",
+            ModelMatchKind.Rarity => "Rarity",
+            ModelMatchKind.Keyword => "Keyword",
+            ModelMatchKind.Tag => "Tag",
+            ModelMatchKind.EnergyCost => "Cost",
+            ModelMatchKind.Mod => "Mod",
+            ModelMatchKind.Act => "Act",
+            ModelMatchKind.MonsterCategory => "Category",
             _ => "Value"
+        };
+    }
+
+    private static string FormatModelKind(SelectionModelKind kind)
+    {
+        return kind switch
+        {
+            SelectionModelKind.Card => "Cards",
+            SelectionModelKind.Relic => "Relics",
+            SelectionModelKind.Potion => "Potions",
+            SelectionModelKind.Power => "Powers",
+            SelectionModelKind.Monster => "Monsters",
+            _ => kind.ToString()
         };
     }
 
@@ -1268,7 +1511,8 @@ public partial class NCustomRunRuleEditorScreen : Control
             value = new NumericValueSpec
             {
                 Source = NumericValueSourceKind.Constant,
-                Constant = 1m
+                Constant = 1d,
+                ConstantKind = parameter.DefaultConstantKind
             };
         }
         NumericValueSpec captured = value;
@@ -1305,16 +1549,58 @@ public partial class NCustomRunRuleEditorScreen : Control
         {
             case NumericValueSourceKind.Constant:
             {
-                NLoadoutDecimalStepper constant = new();
-                constant.Init(captured.Constant, -999999m, 999999m, 0.01m);
-                constant.ValueChanged += value =>
+                if (!parameter.AllowDouble)
+                    captured.ConstantKind = NumericConstantKind.Integer;
+                if (parameter.AllowDouble)
                 {
-                    captured.Constant = value;
-                    RuleComponentParameterService.Set(component, parameter.Key, captured);
-                    afterChanged?.Invoke();
-                    MarkDirty();
-                };
-                sourceRow.AddChild(constant);
+                    NSelectFilterDropdown numberType = CreateDropdown(
+                        new[]
+                        {
+                            new LoadoutDropdownOption(NumericConstantKind.Integer.ToString(), "Integer"),
+                            new LoadoutDropdownOption(NumericConstantKind.Double.ToString(), "Double")
+                        },
+                        captured.ConstantKind.ToString(),
+                        190f);
+                    numberType.SelectedItemChanged += selected =>
+                    {
+                        if (!Enum.TryParse(selected, out NumericConstantKind parsed))
+                            return;
+                        captured.ConstantKind = parsed;
+                        if (parsed == NumericConstantKind.Integer)
+                            captured.Constant = Math.Truncate(captured.Constant);
+                        RuleComponentParameterService.Set(component, parameter.Key, captured);
+                        afterChanged?.Invoke();
+                        MarkDirty();
+                        RebuildContentDeferred();
+                    };
+                    sourceRow.AddChild(numberType);
+                }
+                if (captured.ConstantKind == NumericConstantKind.Double)
+                {
+                    NLoadoutDecimalStepper constant = new();
+                    constant.Init(captured.Constant, double.MinValue, double.MaxValue, 0.01d);
+                    constant.ValueChanged += changedValue =>
+                    {
+                        captured.Constant = changedValue;
+                        RuleComponentParameterService.Set(component, parameter.Key, captured);
+                        afterChanged?.Invoke();
+                        MarkDirty();
+                    };
+                    sourceRow.AddChild(constant);
+                }
+                else
+                {
+                    NLoadoutNumberStepper constant = new();
+                    constant.Init((int)Math.Clamp(captured.Constant, int.MinValue, int.MaxValue));
+                    constant.ValueChanged += changedValue =>
+                    {
+                        captured.Constant = changedValue;
+                        RuleComponentParameterService.Set(component, parameter.Key, captured);
+                        afterChanged?.Invoke();
+                        MarkDirty();
+                    };
+                    sourceRow.AddChild(constant);
+                }
                 break;
             }
             case NumericValueSourceKind.Variable:
@@ -1382,16 +1668,15 @@ public partial class NCustomRunRuleEditorScreen : Control
         Action? afterChanged)
     {
         _catalogSelectorSession?.Dispose();
-        if (!CustomRunCatalogSelector.TryOpenCatalogAction(
+        string currentId = RuleComponentParameterService.GetString(component, key);
+        if (!CustomRunCatalogSelector.TryOpenCatalogSingleSelection(
                 kind,
-                (_, item, _) =>
+                currentId,
+                model =>
                 {
-                    if (item.UntypedModel is not AbstractModel model)
-                        return;
                     RuleComponentParameterService.Set(component, key, model.Id.ToString());
                     afterChanged?.Invoke();
                     MarkDirty();
-                    CloseCatalogSelector();
                     RebuildContentDeferred();
                 },
                 out IDisposable? session,
@@ -1808,6 +2093,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             RelicModel relic => CommonHelpers.FormatRelicTitle(relic),
             PotionModel potion => CommonHelpers.FormatPotionTitle(potion),
             PowerModel power => CommonHelpers.FormatPowerTitle(power),
+            MonsterModel monster => monster.Id.Entry,
             _ => entry.Model.Id.Entry
         };
     }
@@ -1824,6 +2110,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             RuleLimitKind.TimesPerCombat => "N times per combat",
             RuleLimitKind.OncePerRun => "Once per run",
             RuleLimitKind.TimesPerRun => "N times per run",
+            RuleLimitKind.UntilCondition => "Until condition",
             _ => kind.ToString()
         };
     }

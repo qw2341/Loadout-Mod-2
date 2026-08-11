@@ -159,6 +159,7 @@ public partial class NCustomRunEditorScreen : Control
         PermanentRuleStorageService.Register();
         CustomRunRegistry.EnsureBuiltInsRegistered();
         CustomRunStorageService.Changed += OnStoredDefinitionsChanged;
+        PermanentRuleStorageService.Changed += OnPermanentRulesChanged;
         CustomRunLobbyService.RemoteDefinitionChanged += OnRemoteDefinitionChanged;
         BindSceneNodes();
         BuildStaticUi();
@@ -200,6 +201,7 @@ public partial class NCustomRunEditorScreen : Control
         _catalogSelectorSession?.Dispose();
         _catalogSelectorSession = null;
         CustomRunStorageService.Changed -= OnStoredDefinitionsChanged;
+        PermanentRuleStorageService.Changed -= OnPermanentRulesChanged;
         CustomRunLobbyService.RemoteDefinitionChanged -= OnRemoteDefinitionChanged;
     }
 
@@ -1582,12 +1584,20 @@ public partial class NCustomRunEditorScreen : Control
             "Rules execute from top to bottom when they respond to the same event. Drag a rule to change its priority, or click it to open the full rule editor."));
 
         HBoxContainer summary = CreateRow();
-        int permanentCount = PermanentRuleStorageService.GetRules().Count(rule =>
-            rule.Enabled
-            && _workingDefinition.Rules.All(scenario => !string.Equals(scenario.Id, rule.Id, StringComparison.Ordinal)));
-        int effectiveCount = _workingDefinition.Rules.Count + permanentCount;
+        List<RuleDefinition> enabledPermanentRules = PermanentRuleStorageService.GetRules()
+            .Where(rule => rule.Enabled)
+            .GroupBy(RuleBehaviorHashService.Compute, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToList();
+        HashSet<string> permanentHashes = enabledPermanentRules
+            .Select(RuleBehaviorHashService.Compute)
+            .ToHashSet(StringComparer.Ordinal);
+        int permanentCount = enabledPermanentRules.Count;
+        int suppressedCount = _workingDefinition.Rules.Count(rule =>
+            permanentHashes.Contains(RuleBehaviorHashService.Compute(rule)));
+        int effectiveCount = _workingDefinition.Rules.Count - suppressedCount + permanentCount;
         MegaLabel count = CreateLabel(
-            $"SCENARIO  {_workingDefinition.Rules.Count}    •    PERMANENT  {permanentCount}    •    EFFECTIVE  {effectiveCount}",
+            $"SCENARIO  {_workingDefinition.Rules.Count}    •    PERMANENT  {permanentCount}    •    SUPPRESSED  {suppressedCount}    •    EFFECTIVE  {effectiveCount}",
             24,
             StsColors.cream,
             HorizontalAlignment.Left);
@@ -1622,7 +1632,8 @@ public partial class NCustomRunEditorScreen : Control
                 () => SaveRuleAsPermanent(captured),
                 () => DeleteRule(captured),
                 ReorderRule,
-                _readOnly));
+                _readOnly,
+                permanentHashes.Contains(RuleBehaviorHashService.Compute(captured))));
             _contentHost.AddChild(row);
         }
     }
@@ -2171,6 +2182,12 @@ public partial class NCustomRunEditorScreen : Control
         _workingDefinition = remote;
         _dirty = false;
         RebuildContent();
+    }
+
+    private void OnPermanentRulesChanged()
+    {
+        if (IsNodeReady() && _activeTab == "Rules")
+            RebuildContent();
     }
 
     private void MarkDirty()

@@ -25,12 +25,13 @@ public enum RuleParameterKind
     Relic,
     Potion,
     Power,
+    Monster,
     Role,
     PlayerTarget,
     FilteredPool,
     Variable,
     NumericSource,
-    CardFilter
+    ModelFilter
 }
 
 public sealed record RuleParameterDescriptor(
@@ -39,8 +40,14 @@ public sealed record RuleParameterDescriptor(
     RuleParameterKind Kind,
     bool Required = true)
 {
-    public int Minimum { get; init; } = -999999;
-    public int Maximum { get; init; } = 999999;
+    public int Minimum { get; init; } = int.MinValue;
+    public int Maximum { get; init; } = int.MaxValue;
+    public int DefaultInteger { get; init; } = 1;
+    public bool AllowDouble { get; init; }
+    public NumericConstantKind DefaultConstantKind { get; init; } = NumericConstantKind.Integer;
+    public SelectionModelKind ModelKind { get; init; } = SelectionModelKind.Card;
+    public string? VisibleWhenParameterKey { get; init; }
+    public string? VisibleWhenParameterValue { get; init; }
     public IReadOnlyList<RuleParameterOption> Options { get; init; } = [];
 }
 
@@ -53,6 +60,7 @@ public sealed class RuleComponentDescriptor
     public required string Category { get; init; }
     public required RuleComponentKind Kind { get; init; }
     public IReadOnlyList<RuleParameterDescriptor> Parameters { get; init; } = [];
+    public IReadOnlySet<string> CompatibleTriggerIds { get; init; } = new HashSet<string>(StringComparer.Ordinal);
     public Func<RuleComponentSpec, IReadOnlyList<string>>? Validate { get; init; }
     public object? CompilationHandler { get; init; }
     public object? RuntimeHandler { get; init; }
@@ -85,10 +93,15 @@ public static class CustomRunRegistry
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardDiscarded", "Card Discarded", "Cards");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardExhausted", "Card Exhausted", "Cards");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardGenerated", "Card Generated", "Cards");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardObtained", "Card Obtained", "Cards");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PlayerTakesDamage", "Player Takes Damage", "Players");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PlayerGainsBlock", "Player Gains Block", "Players");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PowerReceived", "Power Received", "Powers");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PotionUsed", "Potion Used", "Potions");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PotionObtained", "Potion Obtained", "Potions");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:RelicObtained", "Relic Obtained", "Relics");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:MonsterSpawned", "Monster Spawned", "Monsters");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:MonsterMoveStarted", "Monster Move Started", "Monsters");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:EnergySpent", "Energy Spent", "Players");
 
             RuleParameterDescriptor playerTarget = new("target", "Target", RuleParameterKind.PlayerTarget);
@@ -98,6 +111,41 @@ public static class CustomRunRegistry
             RuleParameterDescriptor potion = new("potionId", "Potion", RuleParameterKind.Potion);
             RuleParameterDescriptor power = new("powerId", "Power", RuleParameterKind.Power);
             RuleParameterDescriptor variable = new("variableId", "Variable", RuleParameterKind.Variable);
+            RuleParameterDescriptor cardMatcher = new("matcher", "Card matcher", RuleParameterKind.ModelFilter)
+            {
+                ModelKind = SelectionModelKind.Card
+            };
+            RuleParameterDescriptor relicMatcher = new("matcher", "Relic matcher", RuleParameterKind.ModelFilter)
+            {
+                ModelKind = SelectionModelKind.Relic
+            };
+            RuleParameterDescriptor potionMatcher = new("matcher", "Potion matcher", RuleParameterKind.ModelFilter)
+            {
+                ModelKind = SelectionModelKind.Potion
+            };
+            RuleParameterDescriptor powerMatcher = new("matcher", "Power matcher", RuleParameterKind.ModelFilter)
+            {
+                ModelKind = SelectionModelKind.Power
+            };
+            RuleParameterDescriptor monsterMatcher = new("matcher", "Monster matcher", RuleParameterKind.ModelFilter)
+            {
+                ModelKind = SelectionModelKind.Monster
+            };
+            RuleParameterDescriptor selectionMode = new("selectionMode", "Selection", RuleParameterKind.Enum)
+            {
+                Options =
+                [
+                    new("Random", "Random matches"),
+                    new("Choose", "Player chooses")
+                ]
+            };
+            RuleParameterDescriptor count = new("count", "Number", RuleParameterKind.Integer);
+            RuleParameterDescriptor minimumMatches = new("minimumMatches", "At least this many", RuleParameterKind.Integer);
+            RuleParameterDescriptor canSkip = new("canSkip", "Choice can be skipped", RuleParameterKind.Boolean)
+            {
+                VisibleWhenParameterKey = "selectionMode",
+                VisibleWhenParameterValue = "Choose"
+            };
             RuleParameterDescriptor numericOperator = new("operator", "Comparison", RuleParameterKind.Enum)
             {
                 Options =
@@ -127,13 +175,41 @@ public static class CustomRunRegistry
                 "Players",
                 new RuleParameterDescriptor("roleId", "Role", RuleParameterKind.Role),
                 playerTarget);
-            RegisterBuiltIn(
+            RegisterBuiltInScopedCondition(
                 Conditions,
-                RuleComponentKind.Condition,
                 "Loadout2:CardMatches",
                 "Card Matches",
                 "Cards",
-                new RuleParameterDescriptor("filter", "Cards", RuleParameterKind.CardFilter));
+                new HashSet<string>(["Loadout2:CardPlayed", "Loadout2:CardDrawn", "Loadout2:CardDiscarded", "Loadout2:CardExhausted", "Loadout2:CardGenerated", "Loadout2:CardObtained"], StringComparer.Ordinal),
+                cardMatcher);
+            RegisterBuiltInScopedCondition(
+                Conditions,
+                "Loadout2:RelicMatches",
+                "Relic Matches",
+                "Relics",
+                new HashSet<string>(["Loadout2:RelicObtained"], StringComparer.Ordinal),
+                relicMatcher);
+            RegisterBuiltInScopedCondition(
+                Conditions,
+                "Loadout2:PotionMatches",
+                "Potion Matches",
+                "Potions",
+                new HashSet<string>(["Loadout2:PotionUsed", "Loadout2:PotionObtained"], StringComparer.Ordinal),
+                potionMatcher);
+            RegisterBuiltInScopedCondition(
+                Conditions,
+                "Loadout2:PowerMatches",
+                "Power Matches",
+                "Powers",
+                new HashSet<string>(["Loadout2:PowerReceived"], StringComparer.Ordinal),
+                powerMatcher);
+            RegisterBuiltInScopedCondition(
+                Conditions,
+                "Loadout2:MonsterMatches",
+                "Monster Matches",
+                "Monsters",
+                new HashSet<string>(["Loadout2:MonsterSpawned", "Loadout2:MonsterMoveStarted"], StringComparer.Ordinal),
+                monsterMatcher);
             RegisterBuiltIn(
                 Conditions,
                 RuleComponentKind.Condition,
@@ -158,15 +234,19 @@ public static class CustomRunRegistry
                 "Powers",
                 power,
                 playerTarget);
+            RegisterBuiltIn(Conditions, RuleComponentKind.Condition, "Loadout2:PlayerHasCardsMatching", "Player Has Matching Cards", "Cards", cardMatcher, minimumMatches, playerTarget);
+            RegisterBuiltIn(Conditions, RuleComponentKind.Condition, "Loadout2:PlayerHasRelicsMatching", "Player Has Matching Relics", "Relics", relicMatcher, minimumMatches, playerTarget);
+            RegisterBuiltIn(Conditions, RuleComponentKind.Condition, "Loadout2:PlayerHasPotionsMatching", "Player Has Matching Potions", "Potions", potionMatcher, minimumMatches, playerTarget);
+            RegisterBuiltIn(Conditions, RuleComponentKind.Condition, "Loadout2:PlayerHasPowersMatching", "Player Has Matching Powers", "Powers", powerMatcher, minimumMatches, playerTarget);
             RegisterBuiltIn(
                 Conditions,
                 RuleComponentKind.Condition,
                 "Loadout2:NumericComparison",
                 "Numeric Comparison",
                 "Values",
-                new RuleParameterDescriptor("left", "Left Value", RuleParameterKind.NumericSource),
+                new RuleParameterDescriptor("left", "Left Value", RuleParameterKind.NumericSource) { AllowDouble = true, DefaultConstantKind = NumericConstantKind.Double },
                 numericOperator,
-                new RuleParameterDescriptor("right", "Right Value", RuleParameterKind.NumericSource));
+                new RuleParameterDescriptor("right", "Right Value", RuleParameterKind.NumericSource) { AllowDouble = true, DefaultConstantKind = NumericConstantKind.Double });
             RegisterBuiltIn(
                 Conditions,
                 RuleComponentKind.Condition,
@@ -175,17 +255,17 @@ public static class CustomRunRegistry
                 "Variables",
                 variable,
                 numericOperator,
-                new RuleParameterDescriptor("value", "Value", RuleParameterKind.NumericSource));
+                new RuleParameterDescriptor("value", "Value", RuleParameterKind.NumericSource) { AllowDouble = true, DefaultConstantKind = NumericConstantKind.Double });
             RegisterBuiltIn(
                 Conditions,
                 RuleComponentKind.Condition,
                 "Loadout2:Chance",
                 "Chance",
                 "Values",
-                new RuleParameterDescriptor("percent", "Percent", RuleParameterKind.Integer)
+                new RuleParameterDescriptor("percent", "Percent", RuleParameterKind.NumericSource)
                 {
-                    Minimum = 0,
-                    Maximum = 100
+                    AllowDouble = true,
+                    DefaultConstantKind = NumericConstantKind.Double
                 });
 
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainPower", "Gain Power", "Powers", power, amount, playerTarget);
@@ -197,6 +277,11 @@ public static class CustomRunRegistry
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainCard", "Obtain Card", "Cards", card, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainRelic", "Obtain Relic", "Relics", relic, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainPotion", "Obtain Potion", "Potions", potion, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainCards", "Obtain Cards From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainRelics", "Obtain Relics From Matcher", "Relics", relicMatcher, selectionMode, count, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainPotions", "Obtain Potions From Matcher", "Potions", potionMatcher, selectionMode, count, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainPowers", "Gain Powers From Matcher", "Powers", powerMatcher, selectionMode, count, canSkip, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SpawnMonsters", "Spawn Monsters From Matcher", "Monsters", monsterMatcher, selectionMode, count, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToHand", "Add Card To Hand", "Cards", card, amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToDrawPile", "Add Card To Draw Pile", "Cards", card, amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToDiscardPile", "Add Card To Discard Pile", "Cards", card, amount, playerTarget);
@@ -259,6 +344,24 @@ public static class CustomRunRegistry
         }
     }
 
+    public static IReadOnlyList<RuleComponentDescriptor> GetDescriptors(RuleComponentKind kind, string triggerId)
+    {
+        IReadOnlyList<RuleComponentDescriptor> descriptors = GetDescriptors(kind);
+        if (kind != RuleComponentKind.Condition)
+            return descriptors;
+        return descriptors
+            .Where(descriptor => descriptor.CompatibleTriggerIds.Count == 0
+                                 || descriptor.CompatibleTriggerIds.Contains(triggerId))
+            .ToList();
+    }
+
+    public static bool IsCompatibleWithTrigger(RuleComponentDescriptor descriptor, string triggerId)
+    {
+        return descriptor.Kind != RuleComponentKind.Condition
+               || descriptor.CompatibleTriggerIds.Count == 0
+               || descriptor.CompatibleTriggerIds.Contains(triggerId);
+    }
+
     private static void Register(
         Dictionary<string, RuleComponentDescriptor> dictionary,
         RuleComponentDescriptor descriptor,
@@ -310,6 +413,25 @@ public static class CustomRunRegistry
             DisplayName = displayName,
             Category = category,
             Kind = kind,
+            Parameters = parameters
+        };
+    }
+
+    private static void RegisterBuiltInScopedCondition(
+        Dictionary<string, RuleComponentDescriptor> dictionary,
+        string id,
+        string displayName,
+        string category,
+        IReadOnlySet<string> compatibleTriggerIds,
+        params RuleParameterDescriptor[] parameters)
+    {
+        dictionary[id] = new RuleComponentDescriptor
+        {
+            StableId = id,
+            DisplayName = displayName,
+            Category = category,
+            Kind = RuleComponentKind.Condition,
+            CompatibleTriggerIds = compatibleTriggerIds,
             Parameters = parameters
         };
     }
