@@ -172,7 +172,6 @@ public static class NCustomRunEditorEntry
         if (screen.GetNodeOrNull<NLoadoutDropdown>(PlayerDropdownNodeName) is null)
         {
             NLoadoutDropdown players = CreateRoleDropdown(PlayerDropdownNodeName);
-            PositionRoleDropdown(players, -324f);
             players.SelectedItemChanged += selected =>
             {
                 if (ulong.TryParse(selected, out ulong playerId))
@@ -185,7 +184,6 @@ public static class NCustomRunEditorEntry
         if (screen.GetNodeOrNull<NLoadoutDropdown>(RoleDropdownNodeName) is null)
         {
             NLoadoutDropdown roles = CreateRoleDropdown(RoleDropdownNodeName);
-            PositionRoleDropdown(roles, -260f);
             roles.SelectedItemChanged += selected =>
             {
                 string? roleId = string.IsNullOrWhiteSpace(selected) ? null : selected;
@@ -212,6 +210,7 @@ public static class NCustomRunEditorEntry
             };
             screen.AddChild(roles);
         }
+        PositionRoleControls(screen);
     }
 
     private static void RefreshRoleControls(
@@ -223,6 +222,7 @@ public static class NCustomRunEditorEntry
         NLoadoutDropdown? roleDropdown = screen.GetNodeOrNull<NLoadoutDropdown>(RoleDropdownNodeName);
         if (playerDropdown is null || roleDropdown is null)
             return;
+        PositionRoleControls(screen);
 
         bool visible = definition is { Roles.Count: > 0 };
         bool hostCanAssign = visible
@@ -489,16 +489,33 @@ public static class NCustomRunEditorEntry
         };
     }
 
-    private static void PositionRoleDropdown(Control dropdown, float top)
+    private static void PositionRoleControls(Control screen)
     {
-        dropdown.AnchorLeft = 0.5f;
-        dropdown.AnchorTop = 1f;
-        dropdown.AnchorRight = 0.5f;
-        dropdown.AnchorBottom = 1f;
-        dropdown.OffsetLeft = -180f;
-        dropdown.OffsetTop = top;
-        dropdown.OffsetRight = 180f;
-        dropdown.OffsetBottom = top + 54f;
+        Control? confirm = screen.GetNodeOrNull<Control>("ConfirmButton")
+            ?? screen.GetNodeOrNull<Control>("%ConfirmButton");
+        NLoadoutDropdown? roles = screen.GetNodeOrNull<NLoadoutDropdown>(RoleDropdownNodeName);
+        if (confirm is null || roles is null)
+            return;
+        PositionRoleDropdown(confirm, roles, 0);
+        if (screen.GetNodeOrNull<NLoadoutDropdown>(PlayerDropdownNodeName) is { } players)
+            PositionRoleDropdown(confirm, players, 1);
+    }
+
+    private static void PositionRoleDropdown(Control confirm, Control dropdown, int rowAboveConfirm)
+    {
+        const float width = 360f;
+        const float height = 54f;
+        const float gap = 10f;
+        dropdown.AnchorLeft = confirm.AnchorLeft;
+        dropdown.AnchorTop = confirm.AnchorTop;
+        dropdown.AnchorRight = confirm.AnchorRight;
+        dropdown.AnchorBottom = confirm.AnchorBottom;
+        dropdown.OffsetRight = confirm.OffsetRight;
+        dropdown.OffsetLeft = dropdown.OffsetRight - width;
+        dropdown.OffsetBottom = confirm.OffsetTop - gap - rowAboveConfirm * (height + gap);
+        dropdown.OffsetTop = dropdown.OffsetBottom - height;
+        dropdown.Size = new Vector2(width, height);
+        dropdown.PivotOffset = dropdown.Size * 0.5f;
         dropdown.GrowHorizontal = Control.GrowDirection.Both;
         dropdown.GrowVertical = Control.GrowDirection.Begin;
     }

@@ -33,6 +33,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Potions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.RunHistoryScreen;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -40,10 +41,13 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Multiplayer;
+using MegaCrit.Sts2.Core.Models.Characters;
 
 public partial class NCustomRunEditorScreen : Control
 {
     private const string ScenePath = "res://UI/CustomRuns/CustomRunEditorScreen.tscn";
+    private const string CharacterSelectButtonScenePath =
+        "res://scenes/screens/char_select/char_select_button.tscn";
     private const float RunSetupToolButtonWidth = 224f;
     private const double StartingCardHoverDelaySeconds = 0.2d;
     private const string PotionInventoryBackdropPath =
@@ -655,11 +659,10 @@ public partial class NCustomRunEditorScreen : Control
             _contentHost.AddChild(row);
         }
 
-        NLoadoutSettingsActionButton addRole = CreateSettingsActionButton("add_role", "ADD ROLE", 240f);
-        addRole.Connect(
-            NClickableControl.SignalName.Released,
-            Callable.From<NClickableControl>(_ => AddRole()));
-        _contentHost.AddChild(addRole);
+        HBoxContainer addRoleRow = CreateRow();
+        AddSettingsActionButton(addRoleRow, "add_role", "ADD ROLE", 240f, AddRole);
+        AddToolSpacer(addRoleRow);
+        _contentHost.AddChild(addRoleRow);
 
         RoleDefinition? activeRole = ResolveRole(_activeSetupRoleId);
         if (_activeSetupRoleId is not null && activeRole is null)
@@ -2062,7 +2065,7 @@ public partial class NCustomRunEditorScreen : Control
 
     private void BuildCharacterRestrictionEditor(RunSetupDefinition setup)
     {
-        if (_contentHost is null)
+        if (_contentHost is null || _lobby is null)
             return;
         SelectionSpec selection = setup.Character;
         string? ownerId = _activeSetupRoleId;
@@ -2071,8 +2074,7 @@ public partial class NCustomRunEditorScreen : Control
         List<LoadoutDropdownOption> options =
         [
             new LoadoutDropdownOption(SelectionMode.Default.ToString(), "No Restriction"),
-            new LoadoutDropdownOption(SelectionMode.Fixed.ToString(), "Restricted"),
-            new LoadoutDropdownOption(SelectionMode.Random.ToString(), "Random")
+            new LoadoutDropdownOption(SelectionMode.Fixed.ToString(), "Restricted")
         ];
         NLoadoutDropdown mode = new()
         {
@@ -2081,7 +2083,7 @@ public partial class NCustomRunEditorScreen : Control
             DropdownWidth = 420f,
         };
         string selectedMode = selection.Mode is SelectionMode.Fixed or SelectionMode.Random
-            ? selection.Mode.ToString()
+            ? SelectionMode.Fixed.ToString()
             : SelectionMode.Default.ToString();
         mode.SetItems(string.Empty, options, selectedMode);
         mode.SelectedItemChanged += selected =>
@@ -2093,7 +2095,7 @@ public partial class NCustomRunEditorScreen : Control
             selection.Mode = selectedSelectionMode;
             if (selectedSelectionMode != SelectionMode.Fixed)
                 selection.FixedModelIds.Clear();
-            else if (selectedSelectionMode == SelectionMode.Fixed && selection.FixedModelIds.Count == 0)
+            else if (selection.FixedModelIds.Count == 0)
             {
                 selection.FixedModelIds = ModelDb.AllCharacters
                     .Where(character => character.IsPlayable && !IsRandomCharacterModel(character))
@@ -2106,90 +2108,181 @@ public partial class NCustomRunEditorScreen : Control
         modeRow.AddChild(mode);
         _contentHost.AddChild(modeRow);
 
-        if (selection.Mode != SelectionMode.Fixed)
+        if (selection.Mode is not (SelectionMode.Fixed or SelectionMode.Random))
             return;
 
         HashSet<string> selectedIds = selection.FixedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        HFlowContainer characters = new()
+        HBoxContainer characters = CreateNativeCharacterButtonRow();
+        PackedScene? buttonScene = ResourceLoader.Exists(CharacterSelectButtonScenePath)
+            ? GD.Load<PackedScene>(CharacterSelectButtonScenePath)
+            : null;
+        if (buttonScene is null)
         {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill
-        };
-        characters.AddThemeConstantOverride("h_separation", 12);
-        characters.AddThemeConstantOverride("v_separation", 12);
-        foreach (CharacterModel character in ModelDb.AllCharacters
-                     .Where(character => character.IsPlayable && !IsRandomCharacterModel(character))
-                     .OrderBy(GetCharacterDisplayName, StringComparer.OrdinalIgnoreCase))
+            GD.PushWarning("Loadout Custom Run: native character-select button scene was unavailable.");
+            return;
+        }
+
+        bool initializingButtons = true;
+        HashSet<NCharacterSelectButton> selectedFromFocus = [];
+        List<NCharacterSelectButton> nativeButtons = [];
+        CharacterRestrictionButtonDelegate buttonDelegate = new(
+            _lobby,
+            (button, character) =>
+            {
+                if (initializingButtons || _loadingFields || !IsSetupOwnerValid(ownerId, setup))
+                    return;
+                selectedFromFocus.Add(button);
+                ApplyNativeCharacterSelection(
+                    selection,
+                    button,
+                    character,
+                    nativeButtons,
+                    ownerId,
+                    setup);
+            });
+
+        List<CharacterModel> displayedCharacters = ModelDb.AllCharacters.ToList();
+        displayedCharacters.Add(ModelDb.Character<RandomCharacter>());
+        foreach (CharacterModel character in displayedCharacters)
         {
             string modelId = character.Id.ToString();
-            bool selected = selectedIds.Contains(modelId) || selectedIds.Contains(character.Id.Entry);
-            Button characterButton = new()
-            {
-                Text = GetCharacterDisplayName(character),
-                Icon = character.CharacterSelectIcon,
-                ExpandIcon = true,
-                ToggleMode = true,
-                ButtonPressed = selected,
-                CustomMinimumSize = new Vector2(250f, 92f),
-                FocusMode = FocusModeEnum.All,
-                MouseFilter = MouseFilterEnum.Stop
-            };
-            ApplyInputFont(characterButton, 20);
-            ApplyCharacterFilterButtonVisual(characterButton, selected);
-            characterButton.Toggled += pressed =>
-            {
-                if (_loadingFields || !IsSetupOwnerValid(ownerId, setup))
-                    return;
-                selection.FixedModelIds.RemoveAll(id =>
-                    string.Equals(id, modelId, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(id, character.Id.Entry, StringComparison.OrdinalIgnoreCase));
-                if (pressed)
-                    selection.FixedModelIds.Add(modelId);
-                ApplyCharacterFilterButtonVisual(characterButton, pressed);
-                MarkDirty();
-            };
+            bool isRandom = IsRandomCharacterModel(character);
+            bool selected = isRandom
+                ? selection.Mode == SelectionMode.Random
+                : selection.Mode == SelectionMode.Fixed
+                  && (selectedIds.Contains(modelId) || selectedIds.Contains(character.Id.Entry));
+            NCharacterSelectButton characterButton = buttonScene.Instantiate<NCharacterSelectButton>();
+            characterButton.Name = $"CharacterRestriction_{character.Id.Entry}";
             characters.AddChild(characterButton);
+            characterButton.Init(character, buttonDelegate);
+            characterButton.GetNodeOrNull<Control>("%PlayerIconContainer")?.Hide();
+            nativeButtons.Add(characterButton);
+            if (selected)
+                characterButton.Select();
+            CommonHelpers.AttachHoverTips(
+                characterButton,
+                [new HoverTip(
+                    new LocString("characters", character.CharacterSelectTitle),
+                    new LocString("characters", character.CharacterSelectDesc))]);
+            characterButton.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ =>
+                {
+                    if (_loadingFields || !IsSetupOwnerValid(ownerId, setup))
+                        return;
+                    if (selectedFromFocus.Remove(characterButton))
+                        return;
+                    if (characterButton.IsSelected)
+                    {
+                        characterButton.Deselect();
+                        RemoveNativeCharacterSelection(selection, character);
+                        MarkDirty();
+                        return;
+                    }
+
+                    characterButton.Select();
+                    selectedFromFocus.Remove(characterButton);
+                }));
         }
+        initializingButtons = false;
         _contentHost.AddChild(characters);
     }
 
-    private static void ApplyCharacterFilterButtonVisual(Button button, bool selected)
+    private HBoxContainer CreateNativeCharacterButtonRow()
     {
-        Color border = selected ? StsColors.gold : new Color(0.3f, 0.32f, 0.38f, 0.9f);
-        StyleBoxFlat style = new()
+        HBoxContainer row = new()
         {
-            BgColor = selected ? new Color(0.19f, 0.17f, 0.08f, 0.94f) : new Color(0.07f, 0.08f, 0.11f, 0.9f),
-            BorderColor = border,
-            BorderWidthLeft = selected ? 4 : 2,
-            BorderWidthTop = selected ? 4 : 2,
-            BorderWidthRight = selected ? 4 : 2,
-            BorderWidthBottom = selected ? 4 : 2,
-            CornerRadiusTopLeft = 8,
-            CornerRadiusTopRight = 8,
-            CornerRadiusBottomLeft = 8,
-            CornerRadiusBottomRight = 8
+            Alignment = BoxContainer.AlignmentMode.Center,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Pass
         };
-        button.AddThemeStyleboxOverride("normal", style);
-        button.AddThemeStyleboxOverride("pressed", style);
-        button.AddThemeStyleboxOverride("hover", style);
-        button.AddThemeColorOverride("font_color", selected ? StsColors.gold : StsColors.cream);
+        NCharacterSelectButton? sourceButton = GetTree().Root
+            .FindChildren("*", nameof(NCharacterSelectButton), recursive: true, owned: false)
+            .OfType<NCharacterSelectButton>()
+            .FirstOrDefault(button => !IsAncestorOf(button));
+        if (sourceButton?.GetParent() is HBoxContainer sourceRow)
+            row.AddThemeConstantOverride("separation", sourceRow.GetThemeConstant("separation"));
+        return row;
     }
 
-    private static string GetCharacterDisplayName(CharacterModel character)
+    private void ApplyNativeCharacterSelection(
+        SelectionSpec selection,
+        NCharacterSelectButton selectedButton,
+        CharacterModel character,
+        IReadOnlyList<NCharacterSelectButton> buttons,
+        string? ownerId,
+        RunSetupDefinition setup)
     {
-        try
+        if (!IsSetupOwnerValid(ownerId, setup))
+            return;
+        selection.Kind = SelectionModelKind.Character;
+        if (IsRandomCharacterModel(character))
         {
-            return new LocString("characters", character.CharacterSelectTitle).GetFormattedText();
+            selection.Mode = SelectionMode.Random;
+            selection.FixedModelIds.Clear();
+            foreach (NCharacterSelectButton button in buttons)
+            {
+                if (button != selectedButton && button.IsSelected)
+                    button.Deselect();
+            }
         }
-        catch
+        else
         {
-            return character.Id.Entry;
+            if (selection.Mode == SelectionMode.Random)
+            {
+                foreach (NCharacterSelectButton button in buttons)
+                {
+                    if (button.IsRandom && button.IsSelected)
+                        button.Deselect();
+                }
+            }
+            selection.Mode = SelectionMode.Fixed;
+            selection.FixedModelIds.RemoveAll(id =>
+                string.Equals(id, character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(id, character.Id.Entry, StringComparison.OrdinalIgnoreCase));
+            selection.FixedModelIds.Add(character.Id.ToString());
         }
+        MarkDirty();
+    }
+
+    private static void RemoveNativeCharacterSelection(SelectionSpec selection, CharacterModel character)
+    {
+        if (IsRandomCharacterModel(character))
+        {
+            if (selection.Mode == SelectionMode.Random)
+                selection.Mode = SelectionMode.Fixed;
+            return;
+        }
+        selection.Mode = SelectionMode.Fixed;
+        selection.FixedModelIds.RemoveAll(id =>
+            string.Equals(id, character.Id.ToString(), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(id, character.Id.Entry, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsRandomCharacterModel(CharacterModel character)
     {
         return character.GetType().Name.Contains("Random", StringComparison.OrdinalIgnoreCase)
                || character.Id.Entry.Contains("RANDOM", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class CharacterRestrictionButtonDelegate : ICharacterSelectButtonDelegate
+    {
+        private readonly Action<NCharacterSelectButton, CharacterModel> _selectionChanged;
+
+        public CharacterRestrictionButtonDelegate(
+            StartRunLobby lobby,
+            Action<NCharacterSelectButton, CharacterModel> selectionChanged)
+        {
+            Lobby = lobby;
+            _selectionChanged = selectionChanged;
+        }
+
+        public StartRunLobby Lobby { get; }
+
+        public void SelectCharacter(NCharacterSelectButton charSelectButton, CharacterModel characterModel)
+        {
+            _selectionChanged(charSelectButton, characterModel);
+        }
     }
 
     private void NewDefinition()
