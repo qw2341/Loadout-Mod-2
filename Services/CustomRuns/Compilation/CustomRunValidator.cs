@@ -160,32 +160,265 @@ public static class CustomRunValidator
                 Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' has an invalid ID.");
             if (string.IsNullOrWhiteSpace(rule.Trigger.TypeId))
                 Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' has no trigger.");
-            else if (!CustomRunRegistry.TryGetTrigger(rule.Trigger.TypeId, out _))
+            else if (!CustomRunRegistry.TryGetTrigger(rule.Trigger.TypeId, out RuleComponentDescriptor triggerDescriptor))
                 Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' uses unknown trigger '{rule.Trigger.TypeId}'.");
+            else
+                ValidateComponentParameters(definition, rule, rule.Trigger, triggerDescriptor, result);
 
-            ValidateConditions(rule.Conditions, rule, result);
+            ValidateConditions(definition, rule.Conditions, rule, result);
             if (rule.Actions.Count == 0)
                 Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' has no actions.");
             foreach (RuleComponentSpec action in rule.Actions)
             {
-                if (!CustomRunRegistry.TryGetAction(action.TypeId, out _))
+                if (!CustomRunRegistry.TryGetAction(action.TypeId, out RuleComponentDescriptor actionDescriptor))
                     Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' uses unknown action '{action.TypeId}'.");
+                else
+                    ValidateComponentParameters(definition, rule, action, actionDescriptor, result);
             }
         }
     }
 
     private static void ValidateConditions(
+        CustomRunDefinition definition,
         ConditionGroupDefinition group,
         RuleDefinition rule,
         CustomRunValidationResult result)
     {
         foreach (RuleComponentSpec condition in group.Conditions)
         {
-            if (!CustomRunRegistry.TryGetCondition(condition.TypeId, out _))
+            if (!CustomRunRegistry.TryGetCondition(condition.TypeId, out RuleComponentDescriptor descriptor))
                 Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' uses unknown condition '{condition.TypeId}'.");
+            else
+                ValidateComponentParameters(definition, rule, condition, descriptor, result);
         }
         foreach (ConditionGroupDefinition child in group.Groups)
-            ValidateConditions(child, rule, result);
+            ValidateConditions(definition, child, rule, result);
+    }
+
+    private static void ValidateComponentParameters(
+        CustomRunDefinition definition,
+        RuleDefinition rule,
+        RuleComponentSpec component,
+        RuleComponentDescriptor descriptor,
+        CustomRunValidationResult result)
+    {
+        foreach (RuleParameterDescriptor parameter in descriptor.Parameters)
+        {
+            if (!component.Parameters.TryGetValue(parameter.Key, out System.Text.Json.JsonElement element)
+                || element.ValueKind is System.Text.Json.JsonValueKind.Null or System.Text.Json.JsonValueKind.Undefined)
+            {
+                if (parameter.Required)
+                    RuleParameterError(result, rule, descriptor, parameter, "is required");
+                continue;
+            }
+
+            switch (parameter.Kind)
+            {
+                case RuleParameterKind.Integer:
+                    if (!RuleComponentParameterService.TryGet(component, parameter.Key, out int integer))
+                        RuleParameterError(result, rule, descriptor, parameter, "must be an integer");
+                    else if (integer < parameter.Minimum || integer > parameter.Maximum)
+                        RuleParameterError(result, rule, descriptor, parameter, $"must be between {parameter.Minimum} and {parameter.Maximum}");
+                    break;
+                case RuleParameterKind.Boolean:
+                    if (!RuleComponentParameterService.TryGet(component, parameter.Key, out bool _))
+                        RuleParameterError(result, rule, descriptor, parameter, "must be true or false");
+                    break;
+                case RuleParameterKind.Enum:
+                    ValidateEnumParameter(component, rule, descriptor, parameter, result);
+                    break;
+                case RuleParameterKind.Text:
+                    ValidateRequiredString(component, rule, descriptor, parameter, result);
+                    break;
+                case RuleParameterKind.Card:
+                    ValidateModelParameter(definition, component, rule, descriptor, parameter, SelectionModelKind.Card, result);
+                    break;
+                case RuleParameterKind.Relic:
+                    ValidateModelParameter(definition, component, rule, descriptor, parameter, SelectionModelKind.Relic, result);
+                    break;
+                case RuleParameterKind.Potion:
+                    ValidateModelParameter(definition, component, rule, descriptor, parameter, SelectionModelKind.Potion, result);
+                    break;
+                case RuleParameterKind.Power:
+                    ValidateModelParameter(definition, component, rule, descriptor, parameter, SelectionModelKind.Power, result);
+                    break;
+                case RuleParameterKind.Role:
+                    ValidateReferenceParameter(
+                        component,
+                        rule,
+                        descriptor,
+                        parameter,
+                        definition.Roles.Select(role => role.Id),
+                        "role",
+                        result);
+                    break;
+                case RuleParameterKind.Variable:
+                    ValidateReferenceParameter(
+                        component,
+                        rule,
+                        descriptor,
+                        parameter,
+                        definition.Variables.Select(variable => variable.Id),
+                        "variable",
+                        result);
+                    break;
+                case RuleParameterKind.PlayerTarget:
+                    ValidateTargetParameter(definition, component, rule, descriptor, parameter, result);
+                    break;
+                case RuleParameterKind.NumericSource:
+                    ValidateNumericSourceParameter(definition, component, rule, descriptor, parameter, result);
+                    break;
+            }
+        }
+
+        if (descriptor.Validate is null)
+            return;
+        try
+        {
+            foreach (string message in descriptor.Validate(component))
+                Error(result, "Rules", rule.Id, $"Rule '{rule.Name}', {descriptor.DisplayName}: {message}");
+        }
+        catch (Exception exception)
+        {
+            Error(result, "Rules", rule.Id, $"Rule '{rule.Name}', {descriptor.DisplayName}: validation failed ({exception.Message}).");
+        }
+    }
+
+    private static void ValidateEnumParameter(
+        RuleComponentSpec component,
+        RuleDefinition rule,
+        RuleComponentDescriptor descriptor,
+        RuleParameterDescriptor parameter,
+        CustomRunValidationResult result)
+    {
+        string value = RuleComponentParameterService.GetString(component, parameter.Key);
+        if (parameter.Required && string.IsNullOrWhiteSpace(value))
+            RuleParameterError(result, rule, descriptor, parameter, "is required");
+        else if (parameter.Options.Count > 0
+                 && !parameter.Options.Any(option => string.Equals(option.Id, value, StringComparison.Ordinal)))
+            RuleParameterError(result, rule, descriptor, parameter, $"has unknown value '{value}'");
+    }
+
+    private static void ValidateRequiredString(
+        RuleComponentSpec component,
+        RuleDefinition rule,
+        RuleComponentDescriptor descriptor,
+        RuleParameterDescriptor parameter,
+        CustomRunValidationResult result)
+    {
+        if (parameter.Required && string.IsNullOrWhiteSpace(RuleComponentParameterService.GetString(component, parameter.Key)))
+            RuleParameterError(result, rule, descriptor, parameter, "is required");
+    }
+
+    private static void ValidateModelParameter(
+        CustomRunDefinition definition,
+        RuleComponentSpec component,
+        RuleDefinition rule,
+        RuleComponentDescriptor descriptor,
+        RuleParameterDescriptor parameter,
+        SelectionModelKind kind,
+        CustomRunValidationResult result)
+    {
+        _ = definition;
+        string id = RuleComponentParameterService.GetString(component, parameter.Key);
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            if (parameter.Required)
+                RuleParameterError(result, rule, descriptor, parameter, "is required");
+            return;
+        }
+        if (!CustomRunCatalogService.TryResolve(kind, id, out _))
+            RuleParameterError(result, rule, descriptor, parameter, $"references unknown {kind.ToString().ToLowerInvariant()} '{id}'");
+    }
+
+    private static void ValidateReferenceParameter(
+        RuleComponentSpec component,
+        RuleDefinition rule,
+        RuleComponentDescriptor descriptor,
+        RuleParameterDescriptor parameter,
+        IEnumerable<string> validIds,
+        string referenceKind,
+        CustomRunValidationResult result)
+    {
+        string id = RuleComponentParameterService.GetString(component, parameter.Key);
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            if (parameter.Required)
+                RuleParameterError(result, rule, descriptor, parameter, "is required");
+            return;
+        }
+        if (!validIds.Contains(id, StringComparer.Ordinal))
+            RuleParameterError(result, rule, descriptor, parameter, $"references a missing {referenceKind}");
+    }
+
+    private static void ValidateTargetParameter(
+        CustomRunDefinition definition,
+        RuleComponentSpec component,
+        RuleDefinition rule,
+        RuleComponentDescriptor descriptor,
+        RuleParameterDescriptor parameter,
+        CustomRunValidationResult result)
+    {
+        if (!RuleComponentParameterService.TryGet(component, parameter.Key, out RuleTargetSpec target)
+            || string.IsNullOrWhiteSpace(target.TypeId))
+        {
+            RuleParameterError(result, rule, descriptor, parameter, "is required");
+            return;
+        }
+        target.Parameters ??= new System.Collections.Generic.SortedDictionary<string, System.Text.Json.JsonElement>(StringComparer.Ordinal);
+        if (!CustomRunRegistry.TryGetTarget(target.TypeId, out RuleComponentDescriptor targetDescriptor))
+        {
+            RuleParameterError(result, rule, descriptor, parameter, $"uses unknown target '{target.TypeId}'");
+            return;
+        }
+        ValidateComponentParameters(
+            definition,
+            rule,
+            new RuleComponentSpec { TypeId = target.TypeId, Parameters = target.Parameters },
+            targetDescriptor,
+            result);
+    }
+
+    private static void ValidateNumericSourceParameter(
+        CustomRunDefinition definition,
+        RuleComponentSpec component,
+        RuleDefinition rule,
+        RuleComponentDescriptor descriptor,
+        RuleParameterDescriptor parameter,
+        CustomRunValidationResult result)
+    {
+        if (!RuleComponentParameterService.TryGet(component, parameter.Key, out NumericValueSpec value)
+            || !Enum.IsDefined(value.Source))
+        {
+            RuleParameterError(result, rule, descriptor, parameter, "has an invalid numeric source");
+            return;
+        }
+
+        if (value.Source == NumericValueSourceKind.Variable
+            && (string.IsNullOrWhiteSpace(value.ReferenceId)
+                || !definition.Variables.Any(variable => string.Equals(variable.Id, value.ReferenceId, StringComparison.Ordinal))))
+        {
+            RuleParameterError(result, rule, descriptor, parameter, "references a missing variable");
+        }
+        if (value.Source == NumericValueSourceKind.EventContext
+            && value.ReferenceId is not ("CurrentHp" or "MaxHp" or "Gold" or "Energy" or "TurnNumber" or "PlayerCount"))
+        {
+            RuleParameterError(result, rule, descriptor, parameter, "has an unknown event value");
+        }
+    }
+
+    private static void RuleParameterError(
+        CustomRunValidationResult result,
+        RuleDefinition rule,
+        RuleComponentDescriptor descriptor,
+        RuleParameterDescriptor parameter,
+        string problem)
+    {
+        Error(
+            result,
+            "Rules",
+            rule.Id,
+            $"Rule '{rule.Name}', {descriptor.DisplayName}: {parameter.DisplayName} {problem}.");
     }
 
     private static void ValidateUniqueIds(IEnumerable<string> ids, string section, CustomRunValidationResult result)

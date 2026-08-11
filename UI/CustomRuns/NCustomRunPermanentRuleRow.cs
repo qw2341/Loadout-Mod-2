@@ -17,6 +17,8 @@ public partial class NCustomRunPermanentRuleRow : Control
 
     private RuleDefinition? _rule;
     private Action<string, bool>? _toggleAction;
+    private Action<RuleDefinition>? _editAction;
+    private Action<RuleDefinition>? _duplicateAction;
     private Action<RuleDefinition>? _deleteAction;
     private Action<string, string?, bool>? _reorderAction;
     private ColorRect? _topDropIndicator;
@@ -29,11 +31,15 @@ public partial class NCustomRunPermanentRuleRow : Control
     public void Init(
         RuleDefinition rule,
         Action<string, bool> toggleAction,
+        Action<RuleDefinition> editAction,
+        Action<RuleDefinition> duplicateAction,
         Action<RuleDefinition> deleteAction,
         Action<string, string?, bool> reorderAction)
     {
         _rule = rule;
         _toggleAction = toggleAction;
+        _editAction = editAction;
+        _duplicateAction = duplicateAction;
         _deleteAction = deleteAction;
         _reorderAction = reorderAction;
     }
@@ -120,6 +126,18 @@ public partial class NCustomRunPermanentRuleRow : Control
         description.TooltipText = descriptionText;
         text.AddChild(description);
 
+        NLoadoutSettingsActionButton edit = AddActionButton(row, "edit", "EDIT", 118f, () =>
+        {
+            _editAction?.Invoke(_rule);
+        });
+        edit.TooltipText = $"Edit {_rule.Name}";
+
+        NLoadoutSettingsActionButton duplicate = AddActionButton(row, "duplicate", "DUPLICATE", 158f, () =>
+        {
+            _duplicateAction?.Invoke(_rule);
+        });
+        duplicate.TooltipText = $"Duplicate {_rule.Name}";
+
         NLoadoutToggle toggle = new()
         {
             Name = "EnabledToggle",
@@ -171,6 +189,28 @@ public partial class NCustomRunPermanentRuleRow : Control
         _bottomDropIndicator.SetAnchorsPreset(LayoutPreset.BottomWide);
         _bottomDropIndicator.OffsetTop = -5f;
         AddChild(_bottomDropIndicator);
+    }
+
+    private NLoadoutSettingsActionButton AddActionButton(
+        Control parent,
+        string id,
+        string label,
+        float width,
+        Action action)
+    {
+        NLoadoutSettingsActionButton button = new()
+        {
+            Name = id,
+            CustomMinimumSize = new Vector2(width, 64f),
+            SizeFlagsVertical = SizeFlags.ShrinkCenter
+        };
+        button.Init(id, label);
+        button.Connect(
+            NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>(_ => action()));
+        parent.AddChild(button);
+        _actions.Add(button);
+        return button;
     }
 
     private static string DescribeRule(RuleDefinition rule)

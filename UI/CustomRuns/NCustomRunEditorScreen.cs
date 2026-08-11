@@ -13,6 +13,7 @@ using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
 using Loadout.Services.CustomRuns.Persistence;
+using Loadout.Services.CustomRuns.PermanentRules;
 using Loadout.Services.CustomRuns.Registry;
 using Loadout.Services.Compatibility;
 using Loadout.Services.Loadouts;
@@ -155,6 +156,7 @@ public partial class NCustomRunEditorScreen : Control
         MouseFilter = MouseFilterEnum.Stop;
         ZIndex = 120;
         CustomRunStorageService.Register();
+        PermanentRuleStorageService.Register();
         CustomRunRegistry.EnsureBuiltInsRegistered();
         CustomRunStorageService.Changed += OnStoredDefinitionsChanged;
         CustomRunLobbyService.RemoteDefinitionChanged += OnRemoteDefinitionChanged;
@@ -466,6 +468,9 @@ public partial class NCustomRunEditorScreen : Control
                     break;
                 case "Run Setup":
                     BuildRunSetupPanel();
+                    break;
+                case "Rules":
+                    BuildRulesPanel();
                     break;
                 default:
                     BuildFoundationPanel(_activeTab);
@@ -1563,6 +1568,203 @@ public partial class NCustomRunEditorScreen : Control
         return CustomRunCatalogService.TryResolveMorph(id, out AbstractModel model)
             ? model.Id.Entry
             : id;
+    }
+
+    private void BuildRulesPanel()
+    {
+        if (_contentHost is null || _workingDefinition is null)
+            return;
+
+        _contentHost.AddChild(CreateSectionTitle("RULES"));
+        _contentHost.AddChild(CreateHint(
+            "Rules execute from top to bottom when they respond to the same event. Drag a rule to change its priority, or click it to open the full rule editor."));
+
+        HBoxContainer summary = CreateRow();
+        int permanentCount = PermanentRuleStorageService.GetRules().Count(rule =>
+            rule.Enabled
+            && _workingDefinition.Rules.All(scenario => !string.Equals(scenario.Id, rule.Id, StringComparison.Ordinal)));
+        int effectiveCount = _workingDefinition.Rules.Count + permanentCount;
+        MegaLabel count = CreateLabel(
+            $"SCENARIO  {_workingDefinition.Rules.Count}    •    PERMANENT  {permanentCount}    •    EFFECTIVE  {effectiveCount}",
+            24,
+            StsColors.cream,
+            HorizontalAlignment.Left);
+        count.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        summary.AddChild(count);
+        AddSettingsActionButton(summary, "new_rule", "+  NEW RULE", 220f, CreateRule);
+        _contentHost.AddChild(summary);
+        _contentHost.AddChild(CreateSectionDivider());
+
+        if (_workingDefinition.Rules.Count == 0)
+        {
+            MegaLabel empty = CreateLabel(
+                "No rules yet. Create one to define a WHEN / IF / THEN / LIMIT flow.",
+                25,
+                StsColors.cream,
+                HorizontalAlignment.Center);
+            empty.CustomMinimumSize = new Vector2(0f, 180f);
+            empty.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            _contentHost.AddChild(empty);
+            return;
+        }
+
+        foreach (RuleDefinition rule in _workingDefinition.Rules)
+        {
+            RuleDefinition captured = rule;
+            NCustomRunRuleRow row = new();
+            row.Init(new CustomRunRuleRowOptions(
+                captured,
+                () => OpenRuleEditor(captured),
+                enabled => ToggleRule(captured.Id, enabled),
+                () => DuplicateRule(captured),
+                () => SaveRuleAsPermanent(captured),
+                () => DeleteRule(captured),
+                ReorderRule,
+                _readOnly));
+            _contentHost.AddChild(row);
+        }
+    }
+
+    private void CreateRule()
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+
+        RuleDefinition rule = new()
+        {
+            Name = $"Rule {_workingDefinition.Rules.Count + 1}",
+            Trigger = new RuleComponentSpec { TypeId = "Loadout2:CardPlayed" },
+            Conditions = new ConditionGroupDefinition
+            {
+                Operator = ConditionGroupOperator.And,
+                Conditions = [new RuleComponentSpec { TypeId = "Loadout2:Always" }]
+            },
+            Actions = [new RuleComponentSpec { TypeId = "Loadout2:GainGold" }]
+        };
+        ApplyRuleComponentDefaults(rule.Trigger, RuleComponentKind.Trigger);
+        foreach (RuleComponentSpec condition in rule.Conditions.Conditions)
+            ApplyRuleComponentDefaults(condition, RuleComponentKind.Condition);
+        foreach (RuleComponentSpec action in rule.Actions)
+            ApplyRuleComponentDefaults(action, RuleComponentKind.Action);
+
+        OpenRuleEditor(rule, isNew: true);
+    }
+
+    private static void ApplyRuleComponentDefaults(RuleComponentSpec component, RuleComponentKind kind)
+    {
+        RuleComponentDescriptor? descriptor = CustomRunRegistry.GetDescriptors(kind)
+            .FirstOrDefault(candidate => string.Equals(candidate.StableId, component.TypeId, StringComparison.Ordinal));
+        if (descriptor is not null)
+            RuleComponentParameterService.ApplyDefaults(component, descriptor);
+    }
+
+    private void OpenRuleEditor(RuleDefinition rule, bool isNew = false)
+    {
+        if (_workingDefinition is null)
+            return;
+        NCustomRunRuleEditorScreen.OpenScenario(
+            this,
+            _workingDefinition,
+            rule,
+            _readOnly,
+            saved => ApplyEditedRule(saved, isNew));
+    }
+
+    private void ApplyEditedRule(RuleDefinition saved, bool isNew)
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+
+        RuleDefinition normalized = CustomRunNormalizationService.NormalizeRule(
+            CustomRunNormalizationService.CloneRule(saved));
+        int index = _workingDefinition.Rules.FindIndex(rule => string.Equals(rule.Id, normalized.Id, StringComparison.Ordinal));
+        if (index >= 0)
+            _workingDefinition.Rules[index] = normalized;
+        else if (isNew)
+            _workingDefinition.Rules.Add(normalized);
+        else
+            return;
+        MarkDirty();
+    }
+
+    private void ToggleRule(string ruleId, bool enabled)
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+        RuleDefinition? rule = _workingDefinition.Rules.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, ruleId, StringComparison.Ordinal));
+        if (rule is null || rule.Enabled == enabled)
+            return;
+        rule.Enabled = enabled;
+        MarkDirty();
+        SetStatus($"Rule '{rule.Name}' {(enabled ? "enabled" : "disabled")}.", success: true);
+    }
+
+    private void DuplicateRule(RuleDefinition source)
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+        RuleDefinition copy = CustomRunNormalizationService.CloneRule(source);
+        copy.Id = Guid.NewGuid().ToString("N");
+        copy.Name = $"{source.Name} Copy";
+        int index = _workingDefinition.Rules.FindIndex(rule => string.Equals(rule.Id, source.Id, StringComparison.Ordinal));
+        _workingDefinition.Rules.Insert(Math.Max(0, index + 1), copy);
+        MarkDirty();
+        RebuildContent();
+        SetStatus($"Duplicated rule '{source.Name}'.", success: true);
+    }
+
+    private void SaveRuleAsPermanent(RuleDefinition source)
+    {
+        if (_readOnly)
+            return;
+        RuleDefinition saved = PermanentRuleStorageService.Upsert(source);
+        SetStatus($"Saved '{saved.Name}' to Permanent Rules.", success: true);
+    }
+
+    private void DeleteRule(RuleDefinition rule)
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+        if (!string.Equals(_deleteConfirmationId, rule.Id, StringComparison.Ordinal))
+        {
+            _deleteConfirmationId = rule.Id;
+            SetStatus($"Press delete again to remove rule '{rule.Name}'.", success: false);
+            return;
+        }
+
+        _deleteConfirmationId = null;
+        if (_workingDefinition.Rules.RemoveAll(candidate =>
+                string.Equals(candidate.Id, rule.Id, StringComparison.Ordinal)) == 0)
+        {
+            return;
+        }
+        MarkDirty();
+        RebuildContent();
+        SetStatus($"Deleted rule '{rule.Name}'.", success: true);
+    }
+
+    private void ReorderRule(string sourceId, string? targetId, bool placeAfter)
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+        int sourceIndex = _workingDefinition.Rules.FindIndex(rule => string.Equals(rule.Id, sourceId, StringComparison.Ordinal));
+        if (sourceIndex < 0)
+            return;
+
+        RuleDefinition source = _workingDefinition.Rules[sourceIndex];
+        _workingDefinition.Rules.RemoveAt(sourceIndex);
+        int targetIndex = targetId is null
+            ? _workingDefinition.Rules.Count
+            : _workingDefinition.Rules.FindIndex(rule => string.Equals(rule.Id, targetId, StringComparison.Ordinal));
+        if (targetIndex < 0)
+            targetIndex = _workingDefinition.Rules.Count;
+        else if (placeAfter)
+            targetIndex++;
+        _workingDefinition.Rules.Insert(Math.Clamp(targetIndex, 0, _workingDefinition.Rules.Count), source);
+        MarkDirty();
+        RebuildContent();
+        SetStatus($"Moved rule '{source.Name}'.", success: true);
     }
 
     private void BuildFoundationPanel(string tabName)

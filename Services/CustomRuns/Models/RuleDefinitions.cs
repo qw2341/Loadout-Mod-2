@@ -100,3 +100,12 @@ public sealed class NumericValueSpec
     [JsonPropertyName("referenceId")]
     public string? ReferenceId { get; set; }
 }
+
+public sealed class RuleTargetSpec
+{
+    [JsonPropertyName("typeId")]
+    public string TypeId { get; set; } = "Loadout2:TriggeringPlayer";
+
+    [JsonPropertyName("parameters")]
+    public SortedDictionary<string, JsonElement> Parameters { get; set; } = new(StringComparer.Ordinal);
+}

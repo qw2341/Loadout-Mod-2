@@ -412,6 +412,8 @@ public partial class NCustomRunLibraryScreen : Control
             row.Init(
                 captured,
                 TogglePermanentRule,
+                OpenPermanentRule,
+                DuplicatePermanentRule,
                 selected =>
                 {
                     TaskHelper.RunSafely(DeletePermanentRuleAsync(selected));
@@ -513,6 +515,29 @@ public partial class NCustomRunLibraryScreen : Control
     {
         _focusPermanentRuleId = sourceId;
         PermanentRuleStorageService.Move(sourceId, targetId, placeAfter);
+    }
+
+    private void OpenPermanentRule(RuleDefinition rule)
+    {
+        _focusPermanentRuleId = rule.Id;
+        NCustomRunRuleEditorScreen.OpenPermanent(
+            this,
+            rule,
+            saved =>
+            {
+                _focusPermanentRuleId = saved.Id;
+                SetStatus($"Saved permanent rule '{saved.Name}'.", success: true);
+            });
+    }
+
+    private void DuplicatePermanentRule(RuleDefinition rule)
+    {
+        RuleDefinition copy = CustomRunNormalizationService.CloneRule(rule);
+        copy.Id = Guid.NewGuid().ToString("N");
+        copy.Name = $"{rule.Name} Copy";
+        RuleDefinition saved = PermanentRuleStorageService.Upsert(copy);
+        _focusPermanentRuleId = saved.Id;
+        SetStatus($"Duplicated permanent rule '{rule.Name}'.", success: true);
     }
 
     private void FinalizeRebuild()
