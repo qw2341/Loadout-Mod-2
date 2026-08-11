@@ -64,6 +64,16 @@ public partial class NLoadoutDropdown : NDropdown
 
     public event Action<string>? SelectedItemChanged;
 
+    public static bool IsOpenDropdownAt(Vector2 globalPosition)
+    {
+        Control? layer = NLoadoutPanelRoot.Instance?.DropdownLayer;
+        return layer is not null
+               && GodotObject.IsInstanceValid(layer)
+               && layer.GetChildren()
+                   .OfType<NLoadoutDropdownContainer>()
+                   .Any(container => container.IsVisibleInTree() && container.GetGlobalRect().HasPoint(globalPosition));
+    }
+
     public override void _Ready()
     {
         BuildControlTree();

@@ -29,7 +29,8 @@ public enum RuleParameterKind
     PlayerTarget,
     FilteredPool,
     Variable,
-    NumericSource
+    NumericSource,
+    CardFilter
 }
 
 public sealed record RuleParameterDescriptor(
@@ -123,7 +124,7 @@ public static class CustomRunRegistry
                 "Loadout2:CardMatches",
                 "Card Matches",
                 "Cards",
-                card);
+                new RuleParameterDescriptor("filter", "Cards", RuleParameterKind.CardFilter));
             RegisterBuiltIn(
                 Conditions,
                 RuleComponentKind.Condition,

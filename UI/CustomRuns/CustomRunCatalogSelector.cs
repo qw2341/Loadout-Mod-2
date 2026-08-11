@@ -53,6 +53,77 @@ public static class CustomRunCatalogSelector
         }
     }
 
+    public static bool TryOpenCatalogSelection(
+        SelectionModelKind kind,
+        IReadOnlyCollection<string> selectedModelIds,
+        Action<IReadOnlyList<string>> changed,
+        out IDisposable? session,
+        out string error)
+    {
+        session = null;
+        if (!TryFindCatalogScreen(kind, out NGenericSelectScreen screen, out error))
+            return false;
+
+        Dictionary<string, string> modelIdByItemId = new(StringComparer.Ordinal);
+        Dictionary<string, int> selectedAmounts = new(StringComparer.Ordinal);
+        HashSet<string> selectedIds = new(selectedModelIds, StringComparer.OrdinalIgnoreCase);
+        foreach (IGenericSelectItem item in screen.Items)
+        {
+            if (item.UntypedModel is not AbstractModel model)
+                continue;
+            string modelId = model.Id.ToString();
+            modelIdByItemId[item.Id] = modelId;
+            if (selectedIds.Contains(modelId) || selectedIds.Contains(model.Id.Entry))
+                selectedAmounts[item.Id] = 1;
+        }
+
+        HashSet<string> current = modelIdByItemId
+            .Where(pair => selectedAmounts.ContainsKey(pair.Key))
+            .Select(pair => pair.Value)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            IDisposable lease = screen.BeginReusedSelection(
+                new SelectScreenOptions
+                {
+                    SelectionMode = SelectSelectionMode.Multi,
+                    MinSelection = 0,
+                    MaxTotalSelection = 9999,
+                    MaxCopiesPerItem = 1
+                },
+                selectedAmounts,
+                activationOverride: (target, item) =>
+                {
+                    if (target.SelectedAmounts.ContainsKey(item.Id))
+                        target.DeselectItem(item.Id);
+                    else
+                        target.SelectItem(item.Id);
+                },
+                showSelectionChrome: false,
+                useCustomRunBackdrop: true,
+                selectionAmountChanged: (itemId, amount) =>
+                {
+                    if (!modelIdByItemId.TryGetValue(itemId, out string? modelId))
+                        return;
+                    if (amount == 0)
+                        current.Remove(modelId);
+                    else
+                        current.Add(modelId);
+                    changed(current.OrderBy(id => id, StringComparer.Ordinal).ToList());
+                });
+            session = new ActionSession(screen, lease);
+            NLoadoutPanelRoot.Instance!.OpenScreen(screen);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            session?.Dispose();
+            session = null;
+            error = $"Could not open the shared {kind.ToString().ToLowerInvariant()} screen: {exception.Message}";
+            return false;
+        }
+    }
+
     public static bool TryOpenOwnedCardAction(
         string screenNameFragment,
         IReadOnlyList<LoadoutOwnedItem<CardModel>> cards,

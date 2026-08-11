@@ -32,6 +32,19 @@ public enum NumericValueSourceKind
     EventContext
 }
 
+public enum CardMatchKind
+{
+    SpecificCards,
+    Pool,
+    Type,
+    Rarity,
+    Keyword,
+    Tag,
+    EnergyCost,
+    TextContains,
+    Mod
+}
+
 public sealed class RuleDefinition
 {
     [JsonPropertyName("id")]
@@ -66,6 +79,10 @@ public sealed class RuleComponentSpec
 
     [JsonPropertyName("parameters")]
     public SortedDictionary<string, JsonElement> Parameters { get; set; } = new(StringComparer.Ordinal);
+
+    [JsonPropertyName("negated")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Negated { get; set; }
 }
 
 public sealed class ConditionGroupDefinition
@@ -108,4 +125,16 @@ public sealed class RuleTargetSpec
 
     [JsonPropertyName("parameters")]
     public SortedDictionary<string, JsonElement> Parameters { get; set; } = new(StringComparer.Ordinal);
+}
+
+public sealed class CardMatchSpec
+{
+    [JsonPropertyName("kind")]
+    public CardMatchKind Kind { get; set; }
+
+    [JsonPropertyName("cardIds")]
+    public List<string> CardIds { get; set; } = [];
+
+    [JsonPropertyName("value")]
+    public string Value { get; set; } = string.Empty;
 }

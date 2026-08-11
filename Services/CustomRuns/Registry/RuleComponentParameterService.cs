@@ -40,6 +40,14 @@ public static class RuleComponentParameterService
                         Constant = 1m
                     });
                     break;
+                case RuleParameterKind.CardFilter:
+                    string legacyCardId = GetString(component, "cardId");
+                    Set(component, parameter.Key, new CardMatchSpec
+                    {
+                        CardIds = string.IsNullOrWhiteSpace(legacyCardId) ? [] : [legacyCardId]
+                    });
+                    component.Parameters.Remove("cardId");
+                    break;
                 default:
                     Set(component, parameter.Key, string.Empty);
                     break;

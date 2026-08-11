@@ -18,6 +18,7 @@ using Loadout.Services.CustomRuns.Registry;
 using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
@@ -165,6 +166,8 @@ public partial class NCustomRunRuleEditorScreen : Control
         Vector2 pointer = inputEvent is InputEventMouse mouse
             ? mouse.GlobalPosition
             : GetViewport().GetMousePosition();
+        if (NLoadoutDropdown.IsOpenDropdownAt(pointer))
+            return;
         if (!_contentScroll.GetGlobalRect().HasPoint(pointer))
             return;
         _contentScroll._GuiInput(inputEvent);
@@ -317,21 +320,6 @@ public partial class NCustomRunRuleEditorScreen : Control
             return;
         _contentHost.AddChild(CreateSectionTitle("RULE"));
 
-        HBoxContainer enabledRow = CreateFieldRow("Enabled");
-        NLoadoutToggle enabled = new() { CustomMinimumSize = new Vector2(320f, 50f) };
-        enabled.Init("enabled", _workingRule.Enabled ? "ON" : "OFF", _workingRule.Enabled);
-        enabled.Connect(
-            NLoadoutToggle.SignalName.Toggled,
-            Callable.From<NLoadoutToggle>(toggle =>
-            {
-                if (_loadingFields || _workingRule is null)
-                    return;
-                _workingRule.Enabled = toggle.IsChecked;
-                MarkDirty();
-            }));
-        enabledRow.AddChild(enabled);
-        _contentHost.AddChild(enabledRow);
-
         _contentHost.AddChild(CreateFieldLabel("Name"));
         LineEdit name = CreateLineEdit(_workingRule.Name);
         name.TextChanged += value =>
@@ -344,24 +332,6 @@ public partial class NCustomRunRuleEditorScreen : Control
             MarkDirty();
         };
         _contentHost.AddChild(name);
-
-        _contentHost.AddChild(CreateFieldLabel("Description"));
-        TextEdit description = new()
-        {
-            Text = _workingRule.Description,
-            CustomMinimumSize = new Vector2(0f, 92f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            WrapMode = TextEdit.LineWrappingMode.Boundary
-        };
-        StyleTextEdit(description);
-        description.TextChanged += () =>
-        {
-            if (_loadingFields || _workingRule is null)
-                return;
-            _workingRule.Description = description.Text;
-            MarkDirty();
-        };
-        _contentHost.AddChild(description);
     }
 
     private void BuildTriggerSection()
@@ -369,7 +339,6 @@ public partial class NCustomRunRuleEditorScreen : Control
         if (_contentHost is null || _workingRule is null)
             return;
         _contentHost.AddChild(CreateSectionTitle("WHEN"));
-        _contentHost.AddChild(CreateHint("The trigger supplies the event context used by conditions and actions."));
         _contentHost.AddChild(BuildComponentEditor(
             _workingRule.Trigger,
             RuleComponentKind.Trigger,
@@ -383,7 +352,6 @@ public partial class NCustomRunRuleEditorScreen : Control
         if (_contentHost is null || _workingRule is null)
             return;
         _contentHost.AddChild(CreateSectionTitle("IF"));
-        _contentHost.AddChild(CreateHint("Condition groups support nested ALL (AND) and ANY (OR) logic."));
         _contentHost.AddChild(BuildConditionGroup(_workingRule.Conditions, depth: 0, deleteAction: null));
     }
 
@@ -491,7 +459,6 @@ public partial class NCustomRunRuleEditorScreen : Control
         heading.AddChild(title);
         AddSettingsActionButton(heading, "add_action", "+ ACTION", 180f, AddAction);
         _contentHost.AddChild(heading);
-        _contentHost.AddChild(CreateHint("Actions execute in the order shown. Use the arrows to change their order."));
 
         if (_workingRule.Actions.Count == 0)
         {
@@ -621,6 +588,24 @@ public partial class NCustomRunRuleEditorScreen : Control
             RebuildContentDeferred();
         };
         typeRow.AddChild(typeDropdown);
+        if (kind == RuleComponentKind.Condition)
+        {
+            NLoadoutToggle notToggle = new()
+            {
+                Name = "NotToggle",
+                CustomMinimumSize = new Vector2(150f, 50f),
+                TooltipText = "Invert this condition"
+            };
+            notToggle.Init("not", "NOT", component.Negated);
+            notToggle.Connect(
+                NLoadoutToggle.SignalName.Toggled,
+                Callable.From<NLoadoutToggle>(toggle =>
+                {
+                    component.Negated = toggle.IsChecked;
+                    MarkDirty();
+                }));
+            typeRow.AddChild(notToggle);
+        }
         typeRow.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         if (moveUpAction is not null)
             AddSettingsActionButton(typeRow, "up", "↑", 62f, moveUpAction);
@@ -685,6 +670,9 @@ public partial class NCustomRunRuleEditorScreen : Control
                 break;
             case RuleParameterKind.NumericSource:
                 BuildNumericSourceParameter(parent, component, parameter, afterChanged);
+                break;
+            case RuleParameterKind.CardFilter:
+                BuildCardFilterParameter(parent, component, parameter, afterChanged);
                 break;
             default:
                 parent.AddChild(CreateHint($"{parameter.DisplayName}: this parameter editor is not available yet."));
@@ -815,6 +803,253 @@ public partial class NCustomRunRuleEditorScreen : Control
                 });
         }
         parent.AddChild(row);
+    }
+
+    private void BuildCardFilterParameter(
+        VBoxContainer parent,
+        RuleComponentSpec component,
+        RuleParameterDescriptor parameter,
+        Action? afterChanged)
+    {
+        if (!RuleComponentParameterService.TryGet(component, parameter.Key, out CardMatchSpec filter))
+            filter = new CardMatchSpec();
+        filter.CardIds ??= [];
+        filter.Value ??= string.Empty;
+        CardMatchSpec captured = filter;
+
+        HBoxContainer modeRow = CreateFieldRow("Match cards by");
+        NSelectFilterDropdown mode = CreateDropdown(
+            Enum.GetValues<CardMatchKind>()
+                .Select(kind => new LoadoutDropdownOption(kind.ToString(), FormatCardMatchKind(kind))),
+            captured.Kind.ToString(),
+            420f);
+        mode.SelectedItemChanged += value =>
+        {
+            if (!Enum.TryParse(value, out CardMatchKind kind) || captured.Kind == kind)
+                return;
+            captured.Kind = kind;
+            captured.Value = string.Empty;
+            RuleComponentParameterService.Set(component, parameter.Key, captured);
+            afterChanged?.Invoke();
+            MarkDirty();
+            RebuildContentDeferred();
+        };
+        modeRow.AddChild(mode);
+        parent.AddChild(modeRow);
+
+        if (captured.Kind == CardMatchKind.SpecificCards)
+        {
+            BuildSpecificCardsFilter(parent, component, parameter, captured, afterChanged);
+            return;
+        }
+
+        if (captured.Kind == CardMatchKind.TextContains)
+        {
+            HBoxContainer textRow = CreateFieldRow("Title or text contains");
+            LineEdit text = CreateLineEdit(captured.Value);
+            text.PlaceholderText = "Text to find";
+            text.TextChanged += value =>
+            {
+                captured.Value = value;
+                RuleComponentParameterService.Set(component, parameter.Key, captured);
+                afterChanged?.Invoke();
+                MarkDirty();
+            };
+            textRow.AddChild(text);
+            parent.AddChild(textRow);
+            return;
+        }
+
+        List<LoadoutDropdownOption> options = GetCardFilterOptions(captured.Kind);
+        if (options.Count == 0)
+        {
+            parent.AddChild(CreateHint($"No {FormatCardMatchKind(captured.Kind).ToLowerInvariant()} values are available."));
+            return;
+        }
+        if (options.All(option => !string.Equals(option.Id, captured.Value, StringComparison.Ordinal)))
+        {
+            captured.Value = options[0].Id;
+            RuleComponentParameterService.Set(component, parameter.Key, captured);
+        }
+
+        HBoxContainer valueRow = CreateFieldRow(GetCardMatchValueLabel(captured.Kind));
+        NSelectFilterDropdown valueDropdown = CreateDropdown(options, captured.Value, 420f);
+        valueDropdown.SelectedItemChanged += value =>
+        {
+            captured.Value = value;
+            RuleComponentParameterService.Set(component, parameter.Key, captured);
+            afterChanged?.Invoke();
+            MarkDirty();
+        };
+        valueRow.AddChild(valueDropdown);
+        parent.AddChild(valueRow);
+    }
+
+    private void BuildSpecificCardsFilter(
+        VBoxContainer parent,
+        RuleComponentSpec component,
+        RuleParameterDescriptor parameter,
+        CardMatchSpec filter,
+        Action? afterChanged)
+    {
+        HBoxContainer row = CreateFieldRow("Specific cards");
+        MegaLabel selected = CreateLabel(
+            FormatSpecificCards(filter.CardIds),
+            20,
+            filter.CardIds.Count == 0 ? new Color(1f, 0.58f, 0.46f) : StsColors.cream,
+            HorizontalAlignment.Left);
+        selected.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        selected.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        selected.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        row.AddChild(selected);
+        AddSettingsActionButton(
+            row,
+            $"select_{parameter.Key}",
+            filter.CardIds.Count == 0 ? "SELECT" : "EDIT",
+            132f,
+            () => OpenCardMatchSelector(component, parameter.Key, filter, afterChanged));
+        if (filter.CardIds.Count > 0)
+        {
+            AddSettingsActionButton(
+                row,
+                $"clear_{parameter.Key}",
+                "CLEAR",
+                116f,
+                () =>
+                {
+                    filter.CardIds.Clear();
+                    RuleComponentParameterService.Set(component, parameter.Key, filter);
+                    afterChanged?.Invoke();
+                    MarkDirty();
+                    RebuildContentDeferred();
+                });
+        }
+        parent.AddChild(row);
+    }
+
+    private void OpenCardMatchSelector(
+        RuleComponentSpec component,
+        string key,
+        CardMatchSpec filter,
+        Action? afterChanged)
+    {
+        _catalogSelectorSession?.Dispose();
+        if (!CustomRunCatalogSelector.TryOpenCatalogSelection(
+                SelectionModelKind.Card,
+                filter.CardIds,
+                ids =>
+                {
+                    filter.CardIds = ids.ToList();
+                    RuleComponentParameterService.Set(component, key, filter);
+                    afterChanged?.Invoke();
+                    MarkDirty();
+                },
+                out IDisposable? session,
+                out string error))
+        {
+            SetStatus(error, success: false);
+            return;
+        }
+        _catalogSelectorSession = session;
+    }
+
+    private static string FormatSpecificCards(IReadOnlyList<string> cardIds)
+    {
+        if (cardIds.Count == 0)
+            return "No cards selected";
+        string[] names = cardIds
+            .Take(3)
+            .Select(id => GetModelDisplayName(SelectionModelKind.Card, id))
+            .ToArray();
+        string summary = string.Join(", ", names);
+        return cardIds.Count > names.Length ? $"{summary}  +{cardIds.Count - names.Length} more" : summary;
+    }
+
+    private static List<LoadoutDropdownOption> GetCardFilterOptions(CardMatchKind kind)
+    {
+        IReadOnlyList<CardModel> cards = ModelDb.AllCards.ToList();
+        return kind switch
+        {
+            CardMatchKind.Pool => CardPrinter.BuildOrderedCardPools()
+                .Select(pool => new LoadoutDropdownOption(pool.Id.ToString(), CommonHelpers.GetPoolLabel(pool)))
+                .ToList(),
+            CardMatchKind.Type => cards
+                .Select(card => card.Type)
+                .Distinct()
+                .OrderBy(value => Convert.ToInt32(value))
+                .Select(value => new LoadoutDropdownOption(value.ToString(), CardPrinter.GetCardTypeLabel(value)))
+                .ToList(),
+            CardMatchKind.Rarity => cards
+                .Select(card => card.Rarity)
+                .Where(value => value != CardRarity.None)
+                .Distinct()
+                .OrderBy(value => Convert.ToInt32(value))
+                .Select(value => new LoadoutDropdownOption(value.ToString(), CardPrinter.GetCardRarityLabel(value)))
+                .ToList(),
+            CardMatchKind.Keyword => cards
+                .SelectMany(card => card.GetKeywordsWithSources(KeywordSources.Local))
+                .Where(value => value != CardKeyword.None)
+                .Distinct()
+                .OrderBy(value => Convert.ToInt32(value))
+                .Select(value => new LoadoutDropdownOption(value.ToString(), CardPrinter.GetCardKeywordLabel(value)))
+                .ToList(),
+            CardMatchKind.Tag => cards
+                .SelectMany(card => card.Tags)
+                .Where(value => value != CardTag.None)
+                .Distinct()
+                .OrderBy(value => Convert.ToInt32(value))
+                .Select(value => new LoadoutDropdownOption(value.ToString(), CardPrinter.GetCardTagLabel(value)))
+                .ToList(),
+            CardMatchKind.EnergyCost =>
+            [
+                new LoadoutDropdownOption("0", "0"),
+                new LoadoutDropdownOption("1", "1"),
+                new LoadoutDropdownOption("2", "2"),
+                new LoadoutDropdownOption("3+", "3+"),
+                new LoadoutDropdownOption("X", "X"),
+                new LoadoutDropdownOption("unplayable", "Unplayable")
+            ],
+            CardMatchKind.Mod => CustomRunCatalogService.GetCatalog(SelectionModelKind.Card)
+                .Select(entry => entry.ModId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(CommonHelpers.GetModName, StringComparer.OrdinalIgnoreCase)
+                .Select(id => new LoadoutDropdownOption(id, CommonHelpers.GetModName(id)))
+                .ToList(),
+            _ => []
+        };
+    }
+
+    private static string FormatCardMatchKind(CardMatchKind kind)
+    {
+        return kind switch
+        {
+            CardMatchKind.SpecificCards => "Specific cards",
+            CardMatchKind.Pool => "Card pool",
+            CardMatchKind.Type => "Card type",
+            CardMatchKind.Rarity => "Card rarity",
+            CardMatchKind.Keyword => "Keyword",
+            CardMatchKind.Tag => "Tag",
+            CardMatchKind.EnergyCost => "Energy cost",
+            CardMatchKind.TextContains => "Text contains",
+            CardMatchKind.Mod => "Mod",
+            _ => kind.ToString()
+        };
+    }
+
+    private static string GetCardMatchValueLabel(CardMatchKind kind)
+    {
+        return kind switch
+        {
+            CardMatchKind.Pool => "Pool",
+            CardMatchKind.Type => "Type",
+            CardMatchKind.Rarity => "Rarity",
+            CardMatchKind.Keyword => "Keyword",
+            CardMatchKind.Tag => "Tag",
+            CardMatchKind.EnergyCost => "Cost",
+            CardMatchKind.Mod => "Mod",
+            _ => "Value"
+        };
     }
 
     private void BuildReferenceParameter(
@@ -1451,13 +1686,6 @@ public partial class NCustomRunRuleEditorScreen : Control
         edit.AddThemeColorOverride("font_color", StsColors.cream);
         edit.AddThemeColorOverride("font_focus_color", StsColors.gold);
         return edit;
-    }
-
-    private static void StyleTextEdit(TextEdit edit)
-    {
-        ApplyInputFont(edit, 21);
-        edit.AddThemeColorOverride("font_color", StsColors.cream);
-        edit.AddThemeColorOverride("font_focus_color", StsColors.gold);
     }
 
     private static void ApplyInputFont(Control control, int size)

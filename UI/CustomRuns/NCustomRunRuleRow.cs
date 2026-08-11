@@ -51,6 +51,7 @@ public partial class NCustomRunRuleRow : NButton
         MouseFilter = MouseFilterEnum.Stop;
         _ignoreDragThreshold = 8f;
         Build();
+        ConnectSignals();
         Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => _options?.OpenAction()));
     }
 

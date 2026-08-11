@@ -186,6 +186,8 @@ public partial class NCustomRunEditorScreen : Control
         Vector2 pointer = inputEvent is InputEventMouse mouse
             ? mouse.GlobalPosition
             : GetViewport().GetMousePosition();
+        if (NLoadoutDropdown.IsOpenDropdownAt(pointer))
+            return;
         if (!_contentScroll.GetGlobalRect().HasPoint(pointer))
             return;
 

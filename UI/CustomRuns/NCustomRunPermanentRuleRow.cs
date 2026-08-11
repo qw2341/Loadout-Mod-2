@@ -117,9 +117,7 @@ public partial class NCustomRunPermanentRuleRow : Control
         text.AddThemeConstantOverride("separation", -4);
         row.AddChild(text);
         text.AddChild(CreateLabel(_rule.Name, 26, StsColors.gold, true, 38f));
-        string descriptionText = string.IsNullOrWhiteSpace(_rule.Description)
-            ? DescribeRule(_rule)
-            : _rule.Description;
+        string descriptionText = DescribeRule(_rule);
         MegaLabel description = CreateLabel(descriptionText, 18, StsColors.cream, false, 40f);
         description.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         description.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
