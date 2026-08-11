@@ -27,7 +27,7 @@ public static class CustomRunEditorPreviewService
         List<LoadoutOwnedItem<CardModel>> items = [];
         for (int index = 0; index < entries.Count; index++)
         {
-            CardModel? card = CreateCard(entries[index]);
+            CardModel? card = CreateCard(entries[index], owner: owner);
             if (card is not null)
                 items.Add(new LoadoutOwnedItem<CardModel>(owner, index, card));
         }
@@ -62,7 +62,7 @@ public static class CustomRunEditorPreviewService
             {
                 ModelId = canonical.Id.ToString(),
                 UpgradeLevel = upgradeLevel
-            });
+            }, owner: owner);
             if (card is null)
                 continue;
             card.FloorAddedToDeck = 1;
@@ -82,6 +82,24 @@ public static class CustomRunEditorPreviewService
         NLoadoutPanelRoot.Instance?.TryPreviewCustomRunCardRemoval(cards);
     }
 
+    public static void PreviewRelicAdd(
+        RelicModel relic,
+        int amount,
+        Control? source,
+        Control? destination)
+    {
+        NLoadoutPanelRoot.Instance?.TryPreviewCustomRunRelicAdd(relic, amount, source, destination);
+    }
+
+    public static void PreviewPotionAdd(
+        PotionModel potion,
+        int amount,
+        Control? source,
+        Control? destination)
+    {
+        NLoadoutPanelRoot.Instance?.TryPreviewCustomRunPotionAdd(potion, amount, source, destination);
+    }
+
     public static void OpenCardModifier(
         List<SavedCardLoadoutEntry> entries,
         int selectedIndex,
@@ -95,7 +113,7 @@ public static class CustomRunEditorPreviewService
         Dictionary<CardModel, SavedCardLoadoutEntry> entryByCard = new(ReferenceEqualityComparer.Instance);
         for (int index = 0; index < entries.Count; index++)
         {
-            CardModel? card = CreateCard(entries[index], includeState: false);
+            CardModel? card = CreateCard(entries[index], includeState: false, owner: owner);
             if (card is null)
                 continue;
             LoadoutOwnedItem<CardModel> item = new(owner, index, card);
@@ -182,7 +200,10 @@ public static class CustomRunEditorPreviewService
         return Player.CreateForNewRun(character, UnlockState.all, ulong.MaxValue - 8);
     }
 
-    private static CardModel? CreateCard(SavedCardLoadoutEntry entry, bool includeState = true)
+    private static CardModel? CreateCard(
+        SavedCardLoadoutEntry entry,
+        bool includeState = true,
+        Player? owner = null)
     {
         if (!CustomRunCatalogService.TryResolve(SelectionModelKind.Card, entry.ModelId, out CustomRunCatalogEntry catalog)
             || catalog.Model is not CardModel canonical)
@@ -193,9 +214,12 @@ public static class CustomRunEditorPreviewService
             card.UpgradeInternal();
             card.FinalizeUpgradeInternal();
         }
-        return !includeState || entry.ModificationState is null
+        CardModel result = !includeState || entry.ModificationState is null
             ? card
             : CardModificationRuntime.CreatePreviewCard(card, entry.ModificationState);
+        if (owner is not null)
+            result.Owner = owner;
+        return result;
     }
 
     private static RelicModel? CreateRelic(SavedRelicLoadoutEntry entry, bool includeState = true)

@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
@@ -18,12 +19,14 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.Screens.PotionLab;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.TestSupport;
 
 public partial class NLoadoutNativeFeedback : Control
 {
     private const int MaxCardPreviews = 50;
+    private const int MaxCustomRunFeedbackCopies = 100;
     private const int MaxPendingRelicSources = 50;
     private const ulong RelicSourceLifetimeMsec = 15000;
     private const float RelicPopDistance = 40f;
@@ -83,17 +86,45 @@ public partial class NLoadoutNativeFeedback : Control
         Vector2 target = GodotObject.IsInstanceValid(destination)
             ? destination!.GetGlobalRect().GetCenter()
             : new Vector2(72f, GetViewportRect().Size.Y - 72f);
+        int shown = 0;
         foreach (CardModel card in cards)
         {
-            if (GetPreviewCardCount() >= MaxCardPreviews)
+            if (shown >= MaxCustomRunFeedbackCopies || GetPreviewCardCount() >= MaxCardPreviews)
                 return;
             PreviewCustomRunCardAdd(card, target);
+            shown++;
         }
     }
 
     public void PreviewCustomRunCardRemoval(IReadOnlyList<CardModel> cards)
     {
         PreviewCardRemoval(cards, requireLocalOwner: false);
+    }
+
+    public void PreviewCustomRunRelicAdd(
+        RelicModel relic,
+        int amount,
+        Control? source,
+        Control? destination)
+    {
+        PreviewCustomRunPickup(
+            amount,
+            source,
+            destination,
+            () => NRelicBasicHolder.Create(relic.ToMutable()));
+    }
+
+    public void PreviewCustomRunPotionAdd(
+        PotionModel potion,
+        int amount,
+        Control? source,
+        Control? destination)
+    {
+        PreviewCustomRunPickup(
+            amount,
+            source,
+            destination,
+            () => NLabPotionHolder.Create(potion.ToMutable(), ModelVisibility.Visible));
     }
 
     private void PreviewCardRemoval(IReadOnlyList<CardModel> cards, bool requireLocalOwner)
@@ -358,9 +389,17 @@ public partial class NLoadoutNativeFeedback : Control
         _cardTrails.AddChildSafely(cardNode);
         cardNode.GlobalPosition = start;
 
-        NCardTrailVfx? trail = NCardTrailVfx.Create(cardNode, card.Owner.Character.TrailPath);
-        if (trail is not null)
-            _cardTrails.AddChildSafely(trail);
+        NCardTrailVfx? trail = null;
+        try
+        {
+            trail = NCardTrailVfx.Create(cardNode, card.Owner.Character.TrailPath);
+            if (trail is not null)
+                _cardTrails.AddChildSafely(trail);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutNativeFeedback: Custom Run card trail failed. {exception.Message}");
+        }
         if (card.Pile is { } pile)
             SfxCmd.PlayCardSwooshSfx(pile);
 
@@ -402,6 +441,80 @@ public partial class NLoadoutNativeFeedback : Control
             CardPreviewStyle.HorizontalLayout when _horizontalCards.GetChildCount() > 5 => _messyCards,
             _ => _horizontalCards
         };
+    }
+
+    private void PreviewCustomRunPickup(
+        int amount,
+        Control? source,
+        Control? destination,
+        Func<Control?> createVisual)
+    {
+        if (TestMode.IsOn || !GodotObject.IsInstanceValid(_relics))
+            return;
+
+        Rect2 sourceRect = GodotObject.IsInstanceValid(source)
+            ? GetRectRelativeTo(source!, _relics)
+            : new Rect2(GetViewportRect().Size * 0.5f - new Vector2(42f, 42f), new Vector2(84f, 84f));
+        Rect2 destinationRect = GodotObject.IsInstanceValid(destination)
+            ? GetRectRelativeTo(destination!, _relics)
+            : new Rect2(new Vector2(30f, GetViewportRect().Size.Y - 114f), new Vector2(84f, 84f));
+        Vector2 startCenter = sourceRect.GetCenter();
+        Vector2 destinationCenter = destinationRect.GetCenter();
+        int visualCount = Math.Min(Math.Max(1, amount), MaxCustomRunFeedbackCopies);
+
+        for (int index = 0; index < visualCount; index++)
+        {
+            Control? visual = createVisual();
+            if (visual is null)
+                continue;
+
+            Vector2 visualSize = visual.CustomMinimumSize;
+            if (visualSize.X <= 0f || visualSize.Y <= 0f)
+                visualSize = new Vector2(84f, 84f);
+            visual.Size = visualSize;
+            visual.PivotOffset = visualSize * 0.5f;
+            visual.MouseFilter = MouseFilterEnum.Ignore;
+            visual.MouseBehaviorRecursive = MouseBehaviorRecursiveEnum.Disabled;
+            visual.FocusBehaviorRecursive = FocusBehaviorRecursiveEnum.Disabled;
+            _relics.AddChildSafely(visual);
+
+            Vector2 start = startCenter - visualSize * 0.5f;
+            Vector2 finish = destinationCenter - visualSize * 0.5f;
+            Vector2 control = (start + finish) * 0.5f + Vector2.Up * (170f + index * 12f);
+            visual.Position = start;
+            visual.Modulate = new Color(1f, 1f, 1f, 0f);
+
+            Tween tween = visual.CreateTween();
+            if (index > 0)
+                tween.TweenInterval(index * 0.035f);
+            tween.TweenProperty(visual, "modulate:a", 1f, 0.08f);
+            tween.Parallel().TweenProperty(visual, "scale", Vector2.One, 0.12f)
+                .From(Vector2.One * 0.65f)
+                .SetEase(Tween.EaseType.Out)
+                .SetTrans(Tween.TransitionType.Back);
+            tween.TweenMethod(
+                    Callable.From<float>(progress =>
+                    {
+                        if (!GodotObject.IsInstanceValid(visual))
+                            return;
+                        float inverse = 1f - progress;
+                        visual.Position = inverse * inverse * start
+                                          + 2f * inverse * progress * control
+                                          + progress * progress * finish;
+                    }),
+                    0f,
+                    1f,
+                    0.62f)
+                .SetEase(Tween.EaseType.In)
+                .SetTrans(Tween.TransitionType.Sine);
+            tween.Parallel().TweenProperty(visual, "scale", Vector2.One * 0.08f, 0.4f)
+                .SetDelay(0.22f)
+                .SetEase(Tween.EaseType.In)
+                .SetTrans(Tween.TransitionType.Cubic);
+            tween.Parallel().TweenProperty(visual, "modulate", Colors.Black, 0.28f)
+                .SetDelay(0.16f);
+            tween.TweenCallback(Callable.From(visual.QueueFreeSafely));
+        }
     }
 
     private void FlyCardAway(NCard cardNode, CardModel card, PileType originalPileType)

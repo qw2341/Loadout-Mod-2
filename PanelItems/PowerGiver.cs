@@ -274,6 +274,8 @@ public class PowerGiver
 	{
 		try
 		{
+			if (string.IsNullOrWhiteSpace(model.IconPath) || !ResourceLoader.Exists(model.IconPath))
+				return null;
 			Texture2D icon = model.Icon;
 			return GodotObject.IsInstanceValid(icon) ? icon : null;
 		}

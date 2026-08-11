@@ -459,6 +459,46 @@ public partial class NLoadoutPanelRoot : Control
 		}
 	}
 
+	public bool TryPreviewCustomRunRelicAdd(
+		MegaCrit.Sts2.Core.Models.RelicModel relic,
+		int amount,
+		Control source,
+		Control destination)
+	{
+		if (!IsValid(_nativeFeedbackLayer))
+			return false;
+		try
+		{
+			_nativeFeedbackLayer.PreviewCustomRunRelicAdd(relic, amount, source, destination);
+			return true;
+		}
+		catch (System.Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanelRoot: Custom Run relic-add feedback failed. {exception.Message}");
+			return false;
+		}
+	}
+
+	public bool TryPreviewCustomRunPotionAdd(
+		MegaCrit.Sts2.Core.Models.PotionModel potion,
+		int amount,
+		Control source,
+		Control destination)
+	{
+		if (!IsValid(_nativeFeedbackLayer))
+			return false;
+		try
+		{
+			_nativeFeedbackLayer.PreviewCustomRunPotionAdd(potion, amount, source, destination);
+			return true;
+		}
+		catch (System.Exception exception)
+		{
+			GD.PushWarning($"LoadoutPanelRoot: Custom Run potion-add feedback failed. {exception.Message}");
+			return false;
+		}
+	}
+
 	public bool TryPreviewRelicObtained(MegaCrit.Sts2.Core.Models.RelicModel relic)
 	{
 		if (!IsValid(_nativeFeedbackLayer))

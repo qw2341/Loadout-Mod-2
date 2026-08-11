@@ -835,30 +835,24 @@ public partial class NCustomRunEditorScreen : Control
         {
             int capturedIndex = index;
             NPotionHolder holder = NPotionHolder.Create(isUsable: false);
-            holder.MouseFilter = MouseFilterEnum.Ignore;
-            holder.FocusMode = FocusModeEnum.None;
-            holder.FocusBehaviorRecursive = FocusBehaviorRecursiveEnum.Disabled;
             _startingPotionHolders.AddChild(holder);
             if (index >= potionIds.Count
                 || !CustomRunCatalogService.TryResolve(SelectionModelKind.Potion, potionIds[index], out CustomRunCatalogEntry catalog)
                 || catalog.Model is not PotionModel canonical
                 || NPotion.Create(canonical.ToMutable()) is not { } potion)
             {
+                holder.MouseFilter = MouseFilterEnum.Ignore;
+                holder.MouseBehaviorRecursive = MouseBehaviorRecursiveEnum.Disabled;
+                holder.FocusMode = FocusModeEnum.None;
+                holder.FocusBehaviorRecursive = FocusBehaviorRecursiveEnum.Disabled;
                 continue;
             }
 
             holder.AddPotion(potion);
             potion.Position = Vector2.Zero;
-            Button discard = new()
-            {
-                Flat = true,
-                FocusMode = FocusModeEnum.None,
-                MouseFilter = MouseFilterEnum.Stop,
-                MouseDefaultCursorShape = CursorShape.Arrow
-            };
-            discard.SetAnchorsPreset(LayoutPreset.FullRect);
-            discard.Pressed += () => DiscardStartingPotion(capturedIndex);
-            holder.AddChild(discard);
+            holder.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => DiscardStartingPotion(capturedIndex)));
         }
 
         RefreshContentSizeDeferred();
@@ -1061,7 +1055,7 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
-        OpenCatalogAction(SelectionModelKind.Relic, (_, item, amount) =>
+        OpenCatalogAction(SelectionModelKind.Relic, (screen, item, amount) =>
         {
             if (_workingDefinition is null || item.UntypedModel is not RelicModel relic)
                 return;
@@ -1077,6 +1071,11 @@ public partial class NCustomRunEditorScreen : Control
             SynchronizeStartingSelectionIds(SelectionModelKind.Relic);
             MarkDirty();
             RefreshStartingRelicPreview(_workingDefinition.Setup);
+            CustomRunEditorPreviewService.PreviewRelicAdd(
+                relic,
+                amount,
+                item.View,
+                screen.GetNodeOrNull<Control>(screen.CancelButtonPath));
         });
     }
 
@@ -1084,7 +1083,7 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_workingDefinition is null)
             return;
-        OpenCatalogAction(SelectionModelKind.Potion, (_, item, amount) =>
+        OpenCatalogAction(SelectionModelKind.Potion, (screen, item, amount) =>
         {
             if (_workingDefinition is null || item.UntypedModel is not PotionModel potion)
                 return;
@@ -1105,6 +1104,11 @@ public partial class NCustomRunEditorScreen : Control
             }
             MarkDirty();
             RefreshStartingPotionInventory(_workingDefinition.Setup);
+            CustomRunEditorPreviewService.PreviewPotionAdd(
+                potion,
+                copies,
+                item.View,
+                screen.GetNodeOrNull<Control>(screen.CancelButtonPath));
         });
     }
 
