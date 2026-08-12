@@ -773,6 +773,17 @@ public partial class NCustomRunEditorScreen : Control
         modifierList.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         modifierList.SizeFlagsVertical = SizeFlags.ExpandFill;
         modifierHost.AddChild(modifierList);
+        Control? modifierScrollbar = modifierList.GetNodeOrNull<Control>("ScrollContainer/Scrollbar");
+        if (modifierScrollbar is not null)
+        {
+            modifierScrollbar.OffsetLeft = -60f;
+            modifierScrollbar.OffsetRight = -12f;
+        }
+        modifierList.GuiInput += inputEvent =>
+        {
+            if (ScrollHelper.GetDragForScrollEvent(inputEvent) != 0f)
+                modifierList.AcceptEvent();
+        };
         IReadOnlyList<ModifierModel> selectedModifiers = CustomRunModifierResolver.ResolveAll(setup.Modifiers);
         if (_readOnly)
         {
