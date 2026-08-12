@@ -20,7 +20,7 @@ public static class CustomRunHashService
             RunSeed = snapshot.RunSeed,
             AscensionLevel = snapshot.AscensionLevel,
             ModifiersEnabled = snapshot.ModifiersEnabled,
-            Modifiers = snapshot.SchemaVersion >= 3
+            Modifiers = snapshot.SchemaVersion >= ResolvedCustomRunSnapshot.ModifiersIntroducedInSchemaVersion
                 ? snapshot.Modifiers
                     .OrderBy(modifier => modifier.ModelId, StringComparer.Ordinal)
                     .ThenBy(modifier => modifier.CharacterModelId, StringComparer.Ordinal)

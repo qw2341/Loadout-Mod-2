@@ -9,8 +9,17 @@ using Loadout.Services.CustomRuns.Models;
 
 public sealed class ResolvedCustomRunSnapshot
 {
+    public const int MinimumSupportedSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
+    public const int ModifiersIntroducedInSchemaVersion = 3;
+
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; init; } = 3;
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
+
+    public static bool IsSchemaVersionSupported(int schemaVersion)
+    {
+        return schemaVersion >= MinimumSupportedSchemaVersion;
+    }
 
     [JsonPropertyName("hostPlayerId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

@@ -175,7 +175,7 @@ public static class CustomRunCompiler
 
         ResolvedCustomRunSnapshot unhashed = new()
         {
-            SchemaVersion = 3,
+            SchemaVersion = ResolvedCustomRunSnapshot.CurrentSchemaVersion,
             HostPlayerId = lobby.NetService.NetId,
             SourceDefinitionId = definition.Id,
             RunSeed = seed,

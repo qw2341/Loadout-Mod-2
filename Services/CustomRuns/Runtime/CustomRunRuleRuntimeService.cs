@@ -52,7 +52,7 @@ public static class CustomRunRuleRuntimeService
     private static bool _captureEnabled;
     private static int _activeActions;
 
-    public static bool IsActive => _initialized && _captureEnabled && _snapshot is { SchemaVersion: 2 };
+    public static bool IsActive => _initialized && _captureEnabled && IsSupportedSnapshot(_snapshot);
     internal static bool IsForRun(RunState runState) => _initialized && ReferenceEquals(_runState, runState);
     internal static RunState RunState => _runState ?? throw new InvalidOperationException("Custom Run runtime is not initialized.");
     internal static ResolvedCustomRunSnapshot Snapshot => _snapshot ?? throw new InvalidOperationException("Custom Run runtime has no snapshot.");
@@ -66,7 +66,7 @@ public static class CustomRunRuleRuntimeService
             RunState? runState = RunManager.Instance.DebugOnlyGetState();
             if (runState is null || !CustomRunRuntimeSnapshotService.TryGetSnapshot(runState, out ResolvedCustomRunSnapshot snapshot))
                 return;
-            if (snapshot.SchemaVersion != 2 || snapshot.Rules.Count == 0 && snapshot.Variables.Count == 0)
+            if (!IsSupportedSnapshot(snapshot) || snapshot.Rules.Count == 0 && snapshot.Variables.Count == 0)
                 return;
             Initialize(runState, snapshot, CustomRunRuntimeSnapshotService.GetRestoredRuntimeState(runState));
         }
@@ -80,7 +80,7 @@ public static class CustomRunRuleRuntimeService
     {
         if (!_initialized)
             PrepareRunLaunch();
-        if (!_initialized || _snapshot is not { SchemaVersion: 2 })
+        if (!_initialized || !IsSupportedSnapshot(_snapshot))
             return;
         _captureEnabled = true;
         if (_state.RunStartEmitted)
@@ -140,6 +140,12 @@ public static class CustomRunRuleRuntimeService
         if (!IsActive)
             return;
         EnqueueEvent(triggerId, triggeringPlayerId, modelKind, modelId, amount);
+    }
+
+    private static bool IsSupportedSnapshot(ResolvedCustomRunSnapshot? snapshot)
+    {
+        return snapshot is not null
+            && ResolvedCustomRunSnapshot.IsSchemaVersionSupported(snapshot.SchemaVersion);
     }
 
     public static async Task ExecuteSynchronizedEventAsync(CustomRunRuntimeEvent runtimeEvent)
