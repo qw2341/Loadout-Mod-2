@@ -130,6 +130,12 @@ public partial class NLoadoutDropdown : NDropdown
 
     public override void _Process(double delta)
     {
+        if (_isOpen && !IsEnabled)
+        {
+            CloseLoadoutDropdown(restoreFocus: false);
+            return;
+        }
+
         if (_isOpen)
             PositionDropdownContainer();
     }
@@ -189,6 +195,12 @@ public partial class NLoadoutDropdown : NDropdown
 
     private void ToggleLoadoutDropdown()
     {
+        if (!IsEnabled)
+        {
+            _containerPressStarted = false;
+            return;
+        }
+
         _lastToggleFrame = Engine.GetProcessFrames();
 
         if (_isOpen)
