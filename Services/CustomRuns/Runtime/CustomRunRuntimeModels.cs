@@ -60,6 +60,9 @@ public sealed class CustomRunResolvedDecision
     [JsonPropertyName("amount")]
     public double Amount { get; set; }
 
+    [JsonPropertyName("numericOperation")]
+    public NumericModificationKind NumericOperation { get; set; }
+
     [JsonPropertyName("variableId")]
     public string VariableId { get; set; } = string.Empty;
 

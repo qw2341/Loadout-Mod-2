@@ -357,6 +357,30 @@ public static class CustomRunValidator
                         "variable",
                         result);
                     break;
+                case RuleParameterKind.NumberVariable:
+                    ValidateReferenceParameter(
+                        component,
+                        rule,
+                        descriptor,
+                        parameter,
+                        definition.Variables
+                            .Where(variable => variable.ValueType == VariableValueType.Number)
+                            .Select(variable => variable.Id),
+                        "Number variable",
+                        result);
+                    break;
+                case RuleParameterKind.BooleanVariable:
+                    ValidateReferenceParameter(
+                        component,
+                        rule,
+                        descriptor,
+                        parameter,
+                        definition.Variables
+                            .Where(variable => variable.ValueType == VariableValueType.Boolean)
+                            .Select(variable => variable.Id),
+                        "Boolean variable",
+                        result);
+                    break;
                 case RuleParameterKind.PlayerTarget:
                     ValidateTargetParameter(definition, component, rule, descriptor, parameter, result);
                     break;
@@ -395,7 +419,7 @@ public static class CustomRunValidator
         CustomRunValidationResult result)
     {
         if (component.TypeId is not ("Loadout2:SetVariable" or "Loadout2:AddToVariable" or
-            "Loadout2:SubtractFromVariable" or "Loadout2:VariableComparison"))
+            "Loadout2:SubtractFromVariable" or "Loadout2:ModifyVariable" or "Loadout2:SetBooleanVariable" or "Loadout2:VariableComparison"))
         {
             return;
         }
@@ -406,13 +430,23 @@ public static class CustomRunValidator
         if (variable is null)
             return;
 
-        if (component.TypeId is "Loadout2:AddToVariable" or "Loadout2:SubtractFromVariable"
+        if (component.TypeId is "Loadout2:AddToVariable" or "Loadout2:SubtractFromVariable" or "Loadout2:ModifyVariable"
             && variable.ValueType != VariableValueType.Number)
         {
             Error(result, "Rules", rule.Id,
                 $"Rule '{rule.Name}', {descriptor.DisplayName}: variable '{variable.Name}' must be a Number variable.");
             return;
         }
+
+        if (component.TypeId == "Loadout2:SetBooleanVariable"
+            && variable.ValueType != VariableValueType.Boolean)
+        {
+            Error(result, "Rules", rule.Id,
+                $"Rule '{rule.Name}', {descriptor.DisplayName}: variable '{variable.Name}' must be a Boolean variable.");
+        }
+
+        if (component.TypeId == "Loadout2:SetBooleanVariable")
+            return;
 
         string valueKey = component.TypeId == "Loadout2:VariableComparison" ? "value" : "amount";
         if (variable.ValueType == VariableValueType.Boolean)

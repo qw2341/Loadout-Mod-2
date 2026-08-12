@@ -39,6 +39,15 @@ public enum NumericConstantKind
     Double
 }
 
+public enum NumericModificationKind
+{
+    Set = 0,
+    Add = 1,
+    Subtract = 2,
+    Multiply = 3,
+    Divide = 4
+}
+
 public enum ModelMatchKind
 {
     SpecificModels,

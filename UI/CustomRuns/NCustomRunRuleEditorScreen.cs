@@ -40,10 +40,12 @@ public partial class NCustomRunRuleEditorScreen : Control
     private const string ScenePath = "res://UI/CustomRuns/CustomRunRuleEditorScreen.tscn";
     private const int MaximumConditionDepth = 5;
     private const double SpecificCardHoverDelaySeconds = 0.2d;
+    private const string CreateVariableOptionId = "__loadout_create_variable__";
 
     private CustomRunDefinition? _definitionContext;
     private RuleDefinition? _workingRule;
     private Action<RuleDefinition>? _saveAction;
+    private Action<VariableDefinition>? _variableCreated;
     private NScrollableContainer? _contentScroll;
     private VBoxContainer? _contentHost;
     private MegaLabel? _statusLabel;
@@ -62,9 +64,10 @@ public partial class NCustomRunRuleEditorScreen : Control
         CustomRunDefinition definition,
         RuleDefinition rule,
         bool readOnly,
-        Action<RuleDefinition> saveAction)
+        Action<RuleDefinition> saveAction,
+        Action<VariableDefinition>? variableCreated = null)
     {
-        Open(source, definition, rule, readOnly, editingPermanent: false, saveAction);
+        Open(source, definition, rule, readOnly, editingPermanent: false, saveAction, variableCreated);
     }
 
     public static void OpenPermanent(
@@ -90,6 +93,11 @@ public partial class NCustomRunRuleEditorScreen : Control
             {
                 RuleDefinition stored = PermanentRuleStorageService.Upsert(updated, context.Variables);
                 saved?.Invoke(stored);
+            },
+            variable =>
+            {
+                if (context.Variables.All(candidate => !string.Equals(candidate.Id, variable.Id, StringComparison.Ordinal)))
+                    context.Variables.Add(CloneVariable(variable));
             });
     }
 
@@ -99,7 +107,8 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleDefinition rule,
         bool readOnly,
         bool editingPermanent,
-        Action<RuleDefinition> saveAction)
+        Action<RuleDefinition> saveAction,
+        Action<VariableDefinition>? variableCreated = null)
     {
         NLoadoutPanelRoot? root = NLoadoutPanelRoot.GetOrAttach(source.GetTree());
         if (root is null)
@@ -112,7 +121,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             screen = Create();
             screen.Name = "CustomRunRuleEditorScreen";
         }
-        screen.Init(definition, rule, readOnly, editingPermanent, saveAction);
+        screen.Init(definition, rule, readOnly, editingPermanent, saveAction, variableCreated);
         root.OpenScreen(screen);
     }
 
@@ -134,13 +143,15 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleDefinition rule,
         bool readOnly,
         bool editingPermanent,
-        Action<RuleDefinition> saveAction)
+        Action<RuleDefinition> saveAction,
+        Action<VariableDefinition>? variableCreated = null)
     {
         _definitionContext = CustomRunNormalizationService.Clone(definition);
         _workingRule = CustomRunNormalizationService.CloneRule(rule);
         _readOnly = readOnly;
         _editingPermanent = editingPermanent;
         _saveAction = saveAction;
+        _variableCreated = variableCreated;
         _dirty = false;
         if (IsNodeReady())
             RefreshScreen();
@@ -738,6 +749,12 @@ public partial class NCustomRunRuleEditorScreen : Control
             case RuleParameterKind.Variable:
                 BuildReferenceParameter(parent, component, parameter, isRole: false, afterChanged);
                 break;
+            case RuleParameterKind.NumberVariable:
+                BuildReferenceParameter(parent, component, parameter, isRole: false, afterChanged, VariableValueType.Number);
+                break;
+            case RuleParameterKind.BooleanVariable:
+                BuildReferenceParameter(parent, component, parameter, isRole: false, afterChanged, VariableValueType.Boolean);
+                break;
             case RuleParameterKind.PlayerTarget:
                 BuildTargetParameter(parent, component, parameter, afterChanged);
                 break;
@@ -990,7 +1007,17 @@ public partial class NCustomRunRuleEditorScreen : Control
             {
                 NPotionHolder holder = NPotionHolder.Create(isUsable: false);
                 if (NPotion.Create(potion.ToMutable()) is { } potionNode)
-                    holder.AddPotion(potionNode);
+                {
+                    Callable.From(() =>
+                    {
+                        if (GodotObject.IsInstanceValid(holder)
+                            && GodotObject.IsInstanceValid(potionNode)
+                            && potionNode.GetParent() is null)
+                        {
+                            holder.AddPotion(potionNode);
+                        }
+                    }).CallDeferred();
+                }
                 return holder;
             }
             case SelectionModelKind.Monster when model is MonsterModel monster:
@@ -1492,25 +1519,45 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleComponentSpec component,
         RuleParameterDescriptor parameter,
         bool isRole,
-        Action? afterChanged)
+        Action? afterChanged,
+        VariableValueType? requiredType = null)
     {
         HBoxContainer row = CreateFieldRow(FormatParameterName(parameter));
         string selected = RuleComponentParameterService.GetString(component, parameter.Key);
         IEnumerable<VariableDefinition> availableVariables = _definitionContext?.Variables ?? [];
-        if (!isRole && component.TypeId is "Loadout2:AddToVariable" or "Loadout2:SubtractFromVariable")
+        if (!isRole && requiredType is not null)
+            availableVariables = availableVariables.Where(variable => variable.ValueType == requiredType.Value);
+        else if (!isRole && component.TypeId is "Loadout2:AddToVariable" or "Loadout2:SubtractFromVariable" or "Loadout2:ModifyVariable")
             availableVariables = availableVariables.Where(variable => variable.ValueType == VariableValueType.Number);
         List<LoadoutDropdownOption> options = isRole
             ? (_definitionContext?.Roles ?? []).Select(role => new LoadoutDropdownOption(role.Id, CustomRunUiText.RoleName(role))).ToList()
             : availableVariables.Select(variable => new LoadoutDropdownOption(variable.Id, variable.Name)).ToList();
         if (!string.IsNullOrWhiteSpace(selected) && options.All(option => option.Id != selected))
             options.Insert(0, new LoadoutDropdownOption(selected, LocMan.Loc("CUSTOM_RUN_MISSING_VALUE", "Missing: {0}", selected)));
-        if (options.Count == 0)
+        if (!isRole)
+        {
+            options.Add(new LoadoutDropdownOption(
+                CreateVariableOptionId,
+                LocMan.Loc("CUSTOM_RUN_CREATE_NEW_VARIABLE", "+ Create new variable...")));
+        }
+        else if (options.Count == 0)
             options.Add(new LoadoutDropdownOption(string.Empty, isRole
                 ? LocMan.Loc("CUSTOM_RUN_NO_ROLES_DEFINED", "No roles defined")
                 : LocMan.Loc("CUSTOM_RUN_NO_VARIABLES_DEFINED", "No variables defined")));
         NSelectFilterDropdown dropdown = CreateDropdown(options, selected, 420f);
         dropdown.SelectedItemChanged += value =>
         {
+            if (!isRole && string.Equals(value, CreateVariableOptionId, StringComparison.Ordinal))
+            {
+                OpenVariableCreator(requiredType, variable =>
+                {
+                    RuleComponentParameterService.Set(component, parameter.Key, variable.Id);
+                    if (parameter.Key == "variableId")
+                        InitializeVariableValueControl(component);
+                    afterChanged?.Invoke();
+                });
+                return;
+            }
             RuleComponentParameterService.Set(component, parameter.Key, value);
             if (!isRole && parameter.Key == "variableId")
                 InitializeVariableValueControl(component);
@@ -1763,10 +1810,23 @@ public partial class NCustomRunRuleEditorScreen : Control
                         LocMan.Loc("CUSTOM_RUN_MISSING_OR_NON_NUMBER", "Missing or non-Number: {0}", captured.ReferenceId)));
                 }
                 if (variables.Count == 0)
-                    variables.Add(new LoadoutDropdownOption(string.Empty, LocMan.Loc("CUSTOM_RUN_NO_NUMBER_VARIABLES", "No number variables")));
+                    captured.ReferenceId = null;
+                variables.Add(new LoadoutDropdownOption(
+                    CreateVariableOptionId,
+                    LocMan.Loc("CUSTOM_RUN_CREATE_NEW_VARIABLE", "+ Create new variable...")));
                 NSelectFilterDropdown variable = CreateDropdown(variables, captured.ReferenceId ?? string.Empty, 350f);
                 variable.SelectedItemChanged += selected =>
                 {
+                    if (string.Equals(selected, CreateVariableOptionId, StringComparison.Ordinal))
+                    {
+                        OpenVariableCreator(VariableValueType.Number, created =>
+                        {
+                            captured.ReferenceId = created.Id;
+                            RuleComponentParameterService.Set(component, parameter.Key, captured);
+                            afterChanged?.Invoke();
+                        });
+                        return;
+                    }
                     captured.ReferenceId = selected;
                     RuleComponentParameterService.Set(component, parameter.Key, captured);
                     afterChanged?.Invoke();
@@ -1839,6 +1899,43 @@ public partial class NCustomRunRuleEditorScreen : Control
             return;
         }
         _catalogSelectorSession = session;
+    }
+
+    private void OpenVariableCreator(VariableValueType? requiredType, Action<VariableDefinition> selected)
+    {
+        int nextNumber = (_definitionContext?.Variables.Count ?? 0) + 1;
+        NCustomRunVariableEditorScreen.Open(
+            this,
+            requiredType,
+            LocMan.Loc("CUSTOM_RUN_DEFAULT_VARIABLE_NAME", "Variable {0}", nextNumber),
+            variable =>
+            {
+                if (_definitionContext is null)
+                    return;
+                VariableDefinition stored = CloneVariable(variable);
+                if (_definitionContext.Variables.All(candidate =>
+                        !string.Equals(candidate.Id, stored.Id, StringComparison.Ordinal)))
+                {
+                    _definitionContext.Variables.Add(stored);
+                    _variableCreated?.Invoke(CloneVariable(stored));
+                }
+                selected(stored);
+                MarkDirty();
+                RebuildContentDeferred();
+            });
+    }
+
+    private static VariableDefinition CloneVariable(VariableDefinition variable)
+    {
+        return new VariableDefinition
+        {
+            Id = variable.Id,
+            Name = variable.Name,
+            ValueType = variable.ValueType,
+            Scope = variable.Scope,
+            DefaultNumber = variable.DefaultNumber,
+            DefaultBoolean = variable.DefaultBoolean
+        };
     }
 
     private void CloseCatalogSelector()

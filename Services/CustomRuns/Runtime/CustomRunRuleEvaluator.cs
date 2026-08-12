@@ -100,7 +100,16 @@ internal static class CustomRunRuleEvaluator
             case "Loadout2:ObtainPotions":
             case "Loadout2:SpawnMonsters":
             case "Loadout2:AddCardsToHand":
+            case "Loadout2:AddCardsToDrawPile":
+            case "Loadout2:AddCardsToDiscardPile":
                 await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision);
+                decision.Pile = action.TypeId switch
+                {
+                    "Loadout2:AddCardsToHand" => PileType.Hand.ToString(),
+                    "Loadout2:AddCardsToDrawPile" => PileType.Draw.ToString(),
+                    "Loadout2:AddCardsToDiscardPile" => PileType.Discard.ToString(),
+                    _ => decision.Pile
+                };
                 break;
             case "Loadout2:GainPowers":
                 await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision);
@@ -133,8 +142,23 @@ internal static class CustomRunRuleEvaluator
                 else
                     decision.Amount = ReadNumber(action, "amount", runtimeEvent, ruleId);
                 break;
+            case "Loadout2:ModifyVariable":
+                decision.VariableId = RuleComponentParameterService.GetString(action, "variableId");
+                decision.NumericOperation = ReadNumericModification(action);
+                decision.Amount = ReadNumber(action, "amount", runtimeEvent, ruleId);
+                break;
+            case "Loadout2:SetBooleanVariable":
+                decision.VariableId = RuleComponentParameterService.GetString(action, "variableId");
+                decision.IsBoolean = true;
+                decision.BooleanValue = RuleComponentParameterService.GetBoolean(action, "value");
+                break;
             case "Loadout2:SetPlayerDamageMultiplier":
             case "Loadout2:SetMonsterDamageMultiplier":
+                decision.Amount = ReadNumber(action, "percent", runtimeEvent, ruleId);
+                break;
+            case "Loadout2:ModifyPlayerDamageMultiplier":
+            case "Loadout2:ModifyMonsterDamageMultiplier":
+                decision.NumericOperation = ReadNumericModification(action);
                 decision.Amount = ReadNumber(action, "percent", runtimeEvent, ruleId);
                 break;
             case "Loadout2:EnterEvent":
@@ -274,8 +298,12 @@ internal static class CustomRunRuleEvaluator
                 }
                 break;
             case "Loadout2:AddCardsToHand":
+            case "Loadout2:AddCardsToDrawPile":
+            case "Loadout2:AddCardsToDiscardPile":
+                if (!Enum.TryParse(decision.Pile, out PileType matcherPile))
+                    break;
                 foreach (Player target in targets)
-                    await AddCombatCardsAsync(target, GetModelsForPlayer(decision, target.NetId), 1, PileType.Hand);
+                    await AddCombatCardsAsync(target, GetModelsForPlayer(decision, target.NetId), 1, matcherPile);
                 break;
             case "Loadout2:SetPlayerDamageMultiplier":
                 TildeKeyStateService.ApplyCustomRunDamageMultiplier(
@@ -287,6 +315,18 @@ internal static class CustomRunRuleEvaluator
                 TildeKeyStateService.ApplyCustomRunDamageMultiplier(
                     TildeKeyStateService.EnemyDamageMultiplierStatId,
                     ToTruncatedInt(decision.Amount, int.MinValue, int.MaxValue),
+                    targets);
+                break;
+            case "Loadout2:ModifyPlayerDamageMultiplier":
+                ApplyDamageMultiplierModification(
+                    TildeKeyStateService.PlayerDamageMultiplierStatId,
+                    decision,
+                    targets);
+                break;
+            case "Loadout2:ModifyMonsterDamageMultiplier":
+                ApplyDamageMultiplierModification(
+                    TildeKeyStateService.EnemyDamageMultiplierStatId,
+                    decision,
                     targets);
                 break;
             case "Loadout2:EnterEvent":
@@ -322,7 +362,55 @@ internal static class CustomRunRuleEvaluator
                     decision.RuleId,
                     -decision.Amount);
                 break;
+            case "Loadout2:ModifyVariable":
+                CustomRunRuleRuntimeService.Variables.Modify(
+                    decision.VariableId,
+                    decision.TargetPlayerIds,
+                    decision.RuleId,
+                    decision.NumericOperation,
+                    decision.Amount);
+                break;
+            case "Loadout2:SetBooleanVariable":
+                CustomRunRuleRuntimeService.Variables.Set(
+                    decision.VariableId,
+                    decision.TargetPlayerIds,
+                    decision.RuleId,
+                    new CustomRunVariableValue { Boolean = decision.BooleanValue });
+                break;
         }
+    }
+
+    private static NumericModificationKind ReadNumericModification(RuleComponentSpec action)
+    {
+        return Enum.TryParse(
+            RuleComponentParameterService.GetString(action, "operation"),
+            ignoreCase: true,
+            out NumericModificationKind operation)
+            ? operation
+            : NumericModificationKind.Set;
+    }
+
+    private static void ApplyDamageMultiplierModification(
+        string statId,
+        CustomRunResolvedDecision decision,
+        IReadOnlyList<Player> targets)
+    {
+        Dictionary<ulong, int> values = [];
+        foreach (Player target in targets)
+        {
+            int current = statId == TildeKeyStateService.PlayerDamageMultiplierStatId
+                && TildeKeyStateService.TryGetPlayerDamageMultiplier(target, out int playerValue)
+                    ? playerValue
+                    : statId == TildeKeyStateService.EnemyDamageMultiplierStatId
+                      && TildeKeyStateService.TryGetEnemyDamageMultiplier(target, out int enemyValue)
+                        ? enemyValue
+                        : 100;
+            values[target.NetId] = ToTruncatedInt(
+                NumericModification.Apply(current, decision.Amount, decision.NumericOperation),
+                int.MinValue,
+                int.MaxValue);
+        }
+        TildeKeyStateService.ApplyCustomRunDamageMultipliers(statId, values, targets);
     }
 
     private static bool EvaluateConditionWithoutNegation(
@@ -706,6 +794,7 @@ internal static class CustomRunRuleEvaluator
             or "Loadout2:ObtainPotion" or "Loadout2:ObtainCards" or "Loadout2:ObtainRelics"
             or "Loadout2:ObtainPotions" or "Loadout2:GainPowers" or "Loadout2:SpawnMonsters"
             or "Loadout2:AddCardToHand" or "Loadout2:AddCardsToHand" or "Loadout2:AddCardToDrawPile" or "Loadout2:AddCardToDiscardPile"
+            or "Loadout2:AddCardsToDrawPile" or "Loadout2:AddCardsToDiscardPile"
             or "Loadout2:EnterEvent" or "Loadout2:SetNextEvent";
     }
 }

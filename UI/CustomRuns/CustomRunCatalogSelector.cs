@@ -173,7 +173,6 @@ public static class CustomRunCatalogSelector
                     return;
                 confirmed(model);
                 activeSession?.Dispose();
-                NLoadoutPanelRoot.Instance?.CloseTopScreen();
             });
             session = activeSession;
             NLoadoutPanelRoot.Instance!.OpenScreen(screen);
@@ -272,7 +271,6 @@ public static class CustomRunCatalogSelector
                         .Select(model => model.Id.ToString())
                         .ToList());
                     active?.Dispose();
-                    NLoadoutPanelRoot.Instance?.CloseTopScreen();
                 },
                 cancelled);
             session = active;
@@ -754,7 +752,6 @@ public static class CustomRunCatalogSelector
         private void OnCancelled()
         {
             Dispose();
-            NLoadoutPanelRoot.Instance?.CloseTopScreen();
         }
 
         private void OnClosed() => Callable.From(Dispose).CallDeferred();
@@ -794,7 +791,6 @@ public static class CustomRunCatalogSelector
         private void OnCancelled()
         {
             Dispose();
-            NLoadoutPanelRoot.Instance?.CloseTopScreen();
         }
 
         private void OnClosed() => Callable.From(Dispose).CallDeferred();
@@ -839,7 +835,6 @@ public static class CustomRunCatalogSelector
         {
             _cancelled();
             Dispose();
-            NLoadoutPanelRoot.Instance?.CloseTopScreen();
         }
 
         private void OnClosed()

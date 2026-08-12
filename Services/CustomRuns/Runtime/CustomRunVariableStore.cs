@@ -63,6 +63,19 @@ public sealed class CustomRunVariableStore
         });
     }
 
+    public void Modify(
+        string variableId,
+        IEnumerable<ulong> targetPlayerIds,
+        string ruleId,
+        NumericModificationKind operation,
+        double operand)
+    {
+        Mutate(variableId, targetPlayerIds, ruleId, current => new CustomRunVariableValue
+        {
+            Number = NumericModification.Apply(current.Number, operand, operation)
+        });
+    }
+
     public void Reset(VariableScope scope)
     {
         string prefix = $"{scope}:";
@@ -142,5 +155,23 @@ public sealed class CustomRunVariableStore
         return definition.ValueType == VariableValueType.Boolean
             ? new CustomRunVariableValue { Boolean = definition.DefaultBoolean }
             : new CustomRunVariableValue { Number = definition.DefaultNumber };
+    }
+}
+
+internal static class NumericModification
+{
+    public static double Apply(double current, double operand, NumericModificationKind operation)
+    {
+        double result = operation switch
+        {
+            NumericModificationKind.Set => operand,
+            NumericModificationKind.Add => current + operand,
+            NumericModificationKind.Subtract => current - operand,
+            NumericModificationKind.Multiply => current * operand,
+            NumericModificationKind.Divide when operand != 0d => current / operand,
+            NumericModificationKind.Divide => current,
+            _ => current
+        };
+        return double.IsFinite(result) ? result : current;
     }
 }

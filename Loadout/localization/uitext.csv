@@ -683,3 +683,21 @@ CUSTOM_RUN_PARAMETER_NUMBER_TO_SELECT,Number to select,选择数量,Nombre à s�
 CUSTOM_RUN_PARAMETER_MAXIMUM_EXECUTIONS,Maximum executions,最大执行次数,Exécutions maximales,最大実行回数,최대 실행 횟수,Ejecuciones máximas
 CUSTOM_RUN_LEGACY_COMPONENT,  (legacy),  （旧版）,  (hérité),  （旧式）,  (레거시),  (heredado)
 CUSTOM_RUN_CHOICE_TIMED_OUT,Loadout Custom Run: choice {0} timed out for player {1}.,Loadout 自定义游戏：玩家 {1} 的选择 {0} 已超时。,Partie personnalisée Loadout : le choix {0} a expiré pour le joueur {1}.,Loadout カスタムラン：プレイヤー {1} の選択 {0} がタイムアウトしました。,Loadout 커스텀 런: 플레이어 {1}의 선택 {0} 시간이 초과되었습니다.,Partida personalizada de Loadout: la elección {0} agotó el tiempo para el jugador {1}.
+CUSTOM_RUN_COMPONENT_ADD_CARDS_TO_DRAW_PILE,Add Cards To Draw Pile From Matcher,从匹配器将卡牌加入抽牌堆,Ajouter à la pioche les cartes correspondantes,一致するカードを山札に加える,일치하는 카드를 뽑기 더미에 추가,Añadir cartas coincidentes a la pila de robo
+CUSTOM_RUN_COMPONENT_ADD_CARDS_TO_DISCARD_PILE,Add Cards To Discard Pile From Matcher,从匹配器将卡牌加入弃牌堆,Ajouter à la défausse les cartes correspondantes,一致するカードを捨て札に加える,일치하는 카드를 버린 카드 더미에 추가,Añadir cartas coincidentes a la pila de descarte
+CUSTOM_RUN_COMPONENT_MODIFY_VARIABLE,Modify Variable,修改变量,Modifier la variable,変数を変更,변수 수정,Modificar variable
+CUSTOM_RUN_COMPONENT_SET_BOOLEAN_VARIABLE,Set Boolean Variable,设置布尔变量,Définir la variable booléenne,真偽変数を設定,불리언 변수 설정,Establecer variable booleana
+CUSTOM_RUN_COMPONENT_MODIFY_PLAYER_DAMAGE_MULTIPLIER,Modify Player Damage Multiplier,修改玩家伤害倍率,Modifier le multiplicateur de dégâts du joueur,プレイヤーのダメージ倍率を変更,플레이어 피해 배율 수정,Modificar multiplicador de daño del jugador
+CUSTOM_RUN_COMPONENT_MODIFY_MONSTER_DAMAGE_MULTIPLIER,Modify Monster Damage Multiplier,修改怪物伤害倍率,Modifier le multiplicateur de dégâts des monstres,モンスターのダメージ倍率を変更,몬스터 피해 배율 수정,Modificar multiplicador de daño de monstruos
+CUSTOM_RUN_PARAMETER_OPERATION,Operation,运算,Opération,演算,연산,Operación
+CUSTOM_RUN_OPTION_SET,Set value to,设为,Définir sur,値を設定,값 설정,Establecer en
+CUSTOM_RUN_OPTION_ADD,Add,加,Ajouter,加算,더하기,Sumar
+CUSTOM_RUN_OPTION_SUBTRACT,Subtract,减,Soustraire,減算,빼기,Restar
+CUSTOM_RUN_OPTION_MULTIPLY,Multiply by,乘以,Multiplier par,乗算,곱하기,Multiplicar por
+CUSTOM_RUN_OPTION_DIVIDE,Divide by,除以,Diviser par,除算,나누기,Dividir por
+CUSTOM_RUN_CREATE_NEW_VARIABLE,+ Create new variable...,+ 新建变量……,+ Créer une variable...,＋ 新しい変数を作成…,+ 새 변수 만들기...,+ Crear una variable...
+CUSTOM_RUN_CREATE_VARIABLE,Create Variable,新建变量,Créer une variable,変数を作成,변수 만들기,Crear variable
+CUSTOM_RUN_VARIABLE_NAME,Variable Name,变量名称,Nom de la variable,変数名,변수 이름,Nombre de variable
+CUSTOM_RUN_SCOPE_TURN,Turn,回合,Tour,ターン,턴,Turno
+CUSTOM_RUN_SCOPE_ROLE,Role,职责,Rôle,ロール,역할,Rol
+CUSTOM_RUN_SCOPE_RULE,Rule,规则,Règle,ルール,규칙,Regla

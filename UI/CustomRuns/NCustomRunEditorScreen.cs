@@ -2430,7 +2430,26 @@ public partial class NCustomRunEditorScreen : Control
             _workingDefinition,
             rule,
             _readOnly,
-            saved => ApplyEditedRule(saved, isNew));
+            saved => ApplyEditedRule(saved, isNew),
+            ApplyCreatedVariable);
+    }
+
+    private void ApplyCreatedVariable(VariableDefinition variable)
+    {
+        if (_workingDefinition is null || _readOnly
+            || _workingDefinition.Variables.Any(candidate =>
+                string.Equals(candidate.Id, variable.Id, StringComparison.Ordinal)))
+            return;
+        _workingDefinition.Variables.Add(new VariableDefinition
+        {
+            Id = variable.Id,
+            Name = variable.Name,
+            ValueType = variable.ValueType,
+            Scope = variable.Scope,
+            DefaultNumber = variable.DefaultNumber,
+            DefaultBoolean = variable.DefaultBoolean
+        });
+        MarkDirty();
     }
 
     private void ApplyEditedRule(RuleDefinition saved, bool isNew)

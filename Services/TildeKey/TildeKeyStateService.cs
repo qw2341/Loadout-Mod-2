@@ -612,6 +612,17 @@ public static class TildeKeyStateService
         int value,
         IReadOnlyList<Player> players)
     {
+        ApplyCustomRunDamageMultipliers(
+            statId,
+            players.DistinctBy(player => player.NetId).ToDictionary(player => player.NetId, _ => value),
+            players);
+    }
+
+    public static void ApplyCustomRunDamageMultipliers(
+        string statId,
+        IReadOnlyDictionary<ulong, int> valuesByPlayer,
+        IReadOnlyList<Player> players)
+    {
         if (statId is not (PlayerDamageMultiplierStatId or EnemyDamageMultiplierStatId)
             || !DefinitionById.TryGetValue(statId, out TildeKeyStatDefinition? definition))
             return;
@@ -623,6 +634,8 @@ public static class TildeKeyStateService
         bool savedValueChanged = false;
         foreach (Player player in distinctPlayers)
         {
+            if (!valuesByPlayer.TryGetValue(player.NetId, out int value))
+                continue;
             savedValueChanged |= UpdateSavedValueAfterSet(player.NetId, definition.Id, value);
             ApplyStat(definition, player, value);
         }

@@ -32,7 +32,9 @@ public enum RuleParameterKind
     Variable = 12,
     NumericSource = 13,
     ModelFilter = 14,
-    Event = 15
+    Event = 15,
+    NumberVariable = 16,
+    BooleanVariable = 17
 }
 
 public sealed record RuleParameterDescriptor(
@@ -314,33 +316,58 @@ public static class CustomRunRegistry
                     DefaultConstantKind = NumericConstantKind.Double
                 });
 
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainPower", "Gain Power", "Powers", power, amount, playerTarget);
+            RuleParameterDescriptor numericModification = new("operation", "Operation", RuleParameterKind.Enum)
+            {
+                Options =
+                [
+                    new RuleParameterOption(NumericModificationKind.Set.ToString(), "Set value to"),
+                    new RuleParameterOption(NumericModificationKind.Add.ToString(), "Add"),
+                    new RuleParameterOption(NumericModificationKind.Subtract.ToString(), "Subtract"),
+                    new RuleParameterOption(NumericModificationKind.Multiply.ToString(), "Multiply by"),
+                    new RuleParameterOption(NumericModificationKind.Divide.ToString(), "Divide by")
+                ]
+            };
+            RuleParameterDescriptor numberVariable = new("variableId", "Variable", RuleParameterKind.NumberVariable);
+            RuleParameterDescriptor booleanVariable = new("variableId", "Variable", RuleParameterKind.BooleanVariable);
+            RuleParameterDescriptor numericOperand = new("amount", "Value", RuleParameterKind.NumericSource)
+            {
+                AllowDouble = true,
+                DefaultConstantKind = NumericConstantKind.Double
+            };
+
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainPower", "Gain Power", "Powers", true, power, amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainEnergy", "Gain Energy", "Player", amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:DrawCards", "Draw Cards", "Cards", amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainGold", "Gain Gold", "Player", amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:Heal", "Heal", "Player", amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:LoseHp", "Lose HP", "Player", amount, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainCard", "Obtain Card", "Cards", card, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainCard", "Obtain Card", "Cards", true, card, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainRelic", "Obtain Relic", "Relics", true, relic, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainPotion", "Obtain Potion", "Potions", potion, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainPotion", "Obtain Potion", "Potions", true, potion, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainCards", "Obtain Cards From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainRelics", "Obtain Relics From Matcher", "Relics", relicMatcher, selectionMode, count, canSkip, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainPotions", "Obtain Potions From Matcher", "Potions", potionMatcher, selectionMode, count, canSkip, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainPowers", "Gain Powers From Matcher", "Powers", powerMatcher, selectionMode, count, canSkip, amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SpawnMonsters", "Spawn Monsters From Matcher", "Monsters", monsterMatcher, selectionMode, count, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToHand", "Add Card To Hand", "Cards", card, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToHand", "Add Card To Hand", "Cards", true, card, amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToHand", "Add Cards To Hand From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToDrawPile", "Add Card To Draw Pile", "Cards", card, amount, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToDiscardPile", "Add Card To Discard Pile", "Cards", card, amount, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetVariable", "Set Variable", "Variables", variable, amount, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddToVariable", "Add To Variable", "Variables", variable, amount, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SubtractFromVariable", "Subtract From Variable", "Variables", variable, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToDrawPile", "Add Card To Draw Pile", "Cards", true, card, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToDiscardPile", "Add Card To Discard Pile", "Cards", true, card, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToDrawPile", "Add Cards To Draw Pile From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToDiscardPile", "Add Cards To Discard Pile From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetVariable", "Set Variable", "Variables", true, variable, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddToVariable", "Add To Variable", "Variables", true, variable, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SubtractFromVariable", "Subtract From Variable", "Variables", true, variable, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ModifyVariable", "Modify Variable", "Variables", numberVariable, numericModification, numericOperand, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetBooleanVariable", "Set Boolean Variable", "Variables", booleanVariable, new RuleParameterDescriptor("value", "Value", RuleParameterKind.Boolean), playerTarget);
             RuleParameterDescriptor multiplier = new("percent", "Percent", RuleParameterKind.NumericSource)
             {
                 DefaultNumeric = 100d
             };
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetPlayerDamageMultiplier", "Set Player Damage Multiplier", "Player", multiplier, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetMonsterDamageMultiplier", "Set Monster Damage Multiplier", "Player", multiplier, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetPlayerDamageMultiplier", "Set Player Damage Multiplier", "Player", true, multiplier, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetMonsterDamageMultiplier", "Set Monster Damage Multiplier", "Player", true, multiplier, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ModifyPlayerDamageMultiplier", "Modify Player Damage Multiplier", "Player", numericModification, multiplier, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ModifyMonsterDamageMultiplier", "Modify Monster Damage Multiplier", "Player", numericModification, multiplier, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:EnterEvent", "Enter Event Now", "Events", eventModel);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetNextEvent", "Set Next Event", "Events", eventModel);
 
