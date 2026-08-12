@@ -285,3 +285,375 @@ CARD_PILE_EXHAUST,Exhaust Pile,消耗堆,Épuisement,廃棄,소멸 더미,Pila d
 FILTER_GROUP_GAME_MODE,Game Mode,游戏模式,Mode de jeu,ゲームモード,게임 모드,Modo de juego
 CARD_MODE_MULTIPLAYER,Multiplayer,多人游戏,Multijoueur,マルチプレイ,멀티플레이,Multijugador
 CARD_MODE_SINGLEPLAYER,Singleplayer,单人游戏,Solo,シングルプレイ,싱글플레이,Un jugador
+CUSTOM_RUNS,Custom Runs,自定义游戏,Parties personnalisées,カスタムラン,커스텀 런,Partidas personalizadas
+CUSTOM_RUN_EDITOR,Custom Run Editor,自定义游戏编辑器,Éditeur de partie personnalisée,カスタムランエディター,커스텀 런 편집기,Editor de partida personalizada
+CUSTOM_RUN_RULE_EDITOR,Rule Editor,规则编辑器,Éditeur de règle,ルールエディター,규칙 편집기,Editor de reglas
+CUSTOM_RUN_OVERVIEW,Overview,概览,Aperçu,概要,개요,Resumen
+CUSTOM_RUN_RUN_SETUP,Run Setup,开局设置,Configuration de la partie,ラン設定,런 설정,Configuración de partida
+CUSTOM_RUN_PLAYER_CHOICES,Player Choices,玩家选择,Choix des joueurs,プレイヤー選択,플레이어 선택,Elecciones de jugadores
+CUSTOM_RUN_RULES,Rules,规则,Règles,ルール,규칙,Reglas
+CUSTOM_RUN_VARIABLES,Variables,变量,Variables,変数,변수,Variables
+CUSTOM_RUN_PERMANENT_RULES,Permanent Rules,永久规则,Règles permanentes,恒久ルール,영구 규칙,Reglas permanentes
+CUSTOM_RUN_CANCEL_RUN,Cancel Run,取消游戏,Annuler la partie,ランをキャンセル,런 취소,Cancelar partida
+CUSTOM_RUN_LOADED,Custom Run loaded  •  {0},已加载自定义游戏  •  {0},Partie personnalisée chargée  •  {0},カスタムラン読込済み  •  {0},커스텀 런 불러옴  •  {0},Partida personalizada cargada  •  {0}
+CUSTOM_RUN_UNTITLED,Untitled Custom Run,未命名自定义游戏,Partie personnalisée sans titre,無題のカスタムラン,제목 없는 커스텀 런,Partida personalizada sin título
+CUSTOM_RUN_UNNAMED,Unnamed Custom Run,未命名自定义游戏,Partie personnalisée sans nom,名前のないカスタムラン,이름 없는 커스텀 런,Partida personalizada sin nombre
+CUSTOM_RUN_READY,Ready.,就绪。,Prêt.,準備完了。,준비 완료.,Listo.
+CUSTOM_RUN_DESCRIPTION,Description,描述,Description,説明,설명,Descripción
+CUSTOM_RUN_DEFINITION_ID,Definition ID,定义 ID,ID de définition,定義ID,정의 ID,ID de definición
+CUSTOM_RUN_SCHEMA,Schema,架构,Schéma,スキーマ,스키마,Esquema
+CUSTOM_RUN_RUN_SEED,Run Seed,游戏种子,Graine de partie,ランシード,런 시드,Semilla de partida
+CUSTOM_RUN_GAME_DEFAULT_RANDOM,Random,随机,Aléatoire,ランダム,무작위,Aleatorio
+CUSTOM_RUN_STARTING_ASCENSION,Starting Ascension,初始进阶,Ascension de départ,開始アセンション,시작 승천,Ascensión inicial
+CUSTOM_RUN_ROLE_ASSIGNMENT,Role Assignment,职责分配,Attribution des rôles,ロール割り当て,역할 배정,Asignación de roles
+CUSTOM_RUN_PLAYERS_CHOOSE,Players Choose,玩家选择,Les joueurs choisissent,プレイヤーが選択,플레이어 선택,Eligen los jugadores
+CUSTOM_RUN_HOST_ASSIGNS,Host Assigns,房主分配,L'hôte attribue,ホストが割り当て,호스트 배정,Asigna el anfitrión
+CUSTOM_RUN_RANDOM_ON_EMBARK,Random on Embark,出发时随机,Aléatoire au départ,出発時にランダム,출발 시 무작위,Aleatorio al partir
+CUSTOM_RUN_ADD_ROLE,Add Role,添加职责,Ajouter un rôle,ロールを追加,역할 추가,Añadir rol
+CUSTOM_RUN_ROLE_DETAILS,Role Details,职责详情,Détails du rôle,ロール詳細,역할 세부 정보,Detalles del rol
+CUSTOM_RUN_ROLE_NAME,Role Name,职责名称,Nom du rôle,ロール名,역할 이름,Nombre del rol
+CUSTOM_RUN_PLAYERS_FOR_ROLE,Number of Players for This Role,此职责的玩家数量,Nombre de joueurs pour ce rôle,このロールのプレイヤー数,이 역할의 플레이어 수,Número de jugadores para este rol
+CUSTOM_RUN_MIN,Min,最小,Min,最小,최소,Mín
+CUSTOM_RUN_MAX_NONE,Max (0 = No Limit),最大（0 = 无限制）,Max (0 = aucun),最大（0 = なし）,최대 (0 = 없음),Máx (0 = ninguno)
+CUSTOM_RUN_DELETE_ROLE,Delete Role,删除职责,Supprimer le rôle,ロールを削除,역할 삭제,Eliminar rol
+CUSTOM_RUN_STARTING_GOLD,Starting Gold,初始金币,Or de départ,開始ゴールド,시작 골드,Oro inicial
+CUSTOM_RUN_STARTING_MAX_HP,Starting Max HP,初始最大生命,PV max de départ,開始最大HP,시작 최대 체력,PV máximos iniciales
+CUSTOM_RUN_STARTING_CURRENT_HP,Starting Current HP,初始当前生命,PV actuels de départ,開始時の現在HP,시작 현재 체력,PV actuales iniciales
+CUSTOM_RUN_POTION_SLOTS,Potion Slots,药水栏位,Emplacements de potion,ポーションスロット,포션 슬롯,Ranuras de poción
+CUSTOM_RUN_BASE_ENERGY_PER_TURN,Base Energy / Turn,每回合基础能量,Énergie de base / tour,基本エナジー / ターン,기본 에너지 / 턴,Energía base / turno
+CUSTOM_RUN_CARDS_DRAWN_PER_TURN,Cards Drawn / Turn,每回合抽牌数,Cartes piochées / tour,ドロー枚数 / ターン,드로우 수 / 턴,Cartas robadas / turno
+CUSTOM_RUN_STARTING_LOADOUT,Starting Loadout,初始配置,Équipement de départ,開始ロードアウト,시작 로드아웃,Equipamiento inicial
+CUSTOM_RUN_PER_CHARACTER,Per Character,按角色,Par personnage,キャラクター別,캐릭터별,Por personaje
+CUSTOM_RUN_UNIFIED,Unified,统一,Unifié,共通,통합,Unificado
+CUSTOM_RUN_SELECT_CHARACTER_HINT,Select at least one character for per-character loadouts.,请至少选择一个角色以使用按角色配置。,Sélectionnez au moins un personnage pour les équipements par personnage.,キャラクター別ロードアウトには1人以上選択してください。,캐릭터별 로드아웃에는 캐릭터를 하나 이상 선택하세요.,Selecciona al menos un personaje para los equipamientos por personaje.
+CUSTOM_RUN_CHARACTER_LOADOUT,Character Loadout,角色配置,Équipement du personnage,キャラクターロードアウト,캐릭터 로드아웃,Equipamiento del personaje
+CUSTOM_RUN_NAMED_LOADOUT,{0} Loadout,{0} 配置,Équipement de {0},{0}のロードアウト,{0} 로드아웃,Equipamiento de {0}
+CUSTOM_RUN_STARTING_DECK,Starting Deck,初始牌组,Deck de départ,開始デッキ,시작 덱,Mazo inicial
+CUSTOM_RUN_STARTING_RELICS,Starting Relics,初始遗物,Reliques de départ,開始レリック,시작 유물,Reliquias iniciales
+CUSTOM_RUN_STARTING_POTIONS,Starting Potions,初始药水,Potions de départ,開始ポーション,시작 포션,Pociones iniciales
+CUSTOM_RUN_STARTING_POWERS,Starting Powers,初始能力,Pouvoirs de départ,開始時のパワー,시작 파워,Poderes iniciales
+CUSTOM_RUN_STARTING_MORPH,Starting Morph,初始变形,Métamorphose de départ,開始時の変身,시작 변신,Transformación inicial
+CUSTOM_RUN_REVERT,Revert,还原,Rétablir,元に戻す,되돌리기,Revertir
+CUSTOM_RUN_CHARACTER_DEFAULT,Character Default,角色默认,Valeur du personnage,キャラクター既定,캐릭터 기본값,Predeterminado del personaje
+CUSTOM_RUN_STARTING_DECK_EMPTY,This starting deck is empty.,此初始牌组为空。,Ce deck de départ est vide.,開始デッキは空です。,시작 덱이 비어 있습니다.,Este mazo inicial está vacío.
+CUSTOM_RUN_STARTING_RELICS_EMPTY,This starting relic collection is empty.,此初始遗物收藏为空。,Cette collection de reliques de départ est vide.,開始レリックは空です。,시작 유물 목록이 비어 있습니다.,Esta colección de reliquias iniciales está vacía.
+CUSTOM_RUN_STARTING_DECK_INVENTORY_EMPTY,The starting deck is empty.,初始牌组为空。,Le deck de départ est vide.,開始デッキは空です。,시작 덱이 비어 있습니다.,El mazo inicial está vacío.
+CUSTOM_RUN_STARTING_RELIC_INVENTORY_EMPTY,The starting relic inventory is empty.,初始遗物栏为空。,L'inventaire de reliques de départ est vide.,開始レリック欄は空です。,시작 유물 보관함이 비어 있습니다.,El inventario de reliquias inicial está vacío.
+CUSTOM_RUN_POTION_INVENTORY_FULL,The starting potion inventory is full.,初始药水栏已满。,L'inventaire de potions de départ est plein.,開始ポーション欄は満杯です。,시작 포션 보관함이 가득 찼습니다.,El inventario de pociones inicial está lleno.
+CUSTOM_RUN_SELECT_POWERS,Select Powers,选择能力,Sélectionner les pouvoirs,パワーを選択,파워 선택,Seleccionar poderes
+CUSTOM_RUN_SELECT_MORPH,Select Morph,选择变形,Sélectionner la métamorphose,変身を選択,변신 선택,Seleccionar transformación
+CUSTOM_RUN_NO_STARTING_POWERS,No starting Power amounts.,没有初始能力数值。,Aucune quantité de pouvoirs au départ.,開始時のパワー量はありません。,시작 파워 수치가 없습니다.,No hay cantidades iniciales de poderes.
+CUSTOM_RUN_ORIGINAL_CHARACTER_FORM,Original character form.,角色原始形态。,Forme originale du personnage.,元のキャラクター形態。,원래 캐릭터 형태.,Forma original del personaje.
+CUSTOM_RUN_STARTS_MORPHED_AS,Starts morphed as {0}.,以 {0} 的变形形态开始。,Commence métamorphosé en {0}.,{0}に変身した状態で開始します。,{0}(으)로 변신한 상태로 시작합니다.,Comienza transformado en {0}.
+CUSTOM_RUN_CHARACTER_SELECTION,Character Selection,角色选择,Sélection des personnages,キャラクター選択,캐릭터 선택,Selección de personajes
+CUSTOM_RUN_NO_RESTRICTION,No Restriction,无限制,Aucune restriction,制限なし,제한 없음,Sin restricción
+CUSTOM_RUN_RESTRICTED,Restricted,受限,Restreint,制限あり,제한됨,Restringido
+CUSTOM_RUN_RANDOM,Random,随机,Aléatoire,ランダム,무작위,Aleatorio
+CUSTOM_RUN_RULE,Rule,规则,Règle,ルール,규칙,Regla
+CUSTOM_RUN_NEW_RULE,New Rule,新建规则,Nouvelle règle,新規ルール,새 규칙,Nueva regla
+CUSTOM_RUN_NO_RULES,No rules yet.,尚无规则。,Aucune règle.,ルールはまだありません。,아직 규칙이 없습니다.,Aún no hay reglas.
+CUSTOM_RUN_NEW_VARIABLE,New Variable,新建变量,Nouvelle variable,新規変数,새 변수,Nueva variable
+CUSTOM_RUN_NO_VARIABLES,No variables yet. Add one then reference it from conditions and actions.,尚无变量。添加后可在条件和操作中引用。,Aucune variable. Ajoutez-en une puis référencez-la dans les conditions et actions.,変数はまだありません。追加後に条件やアクションから参照できます。,아직 변수가 없습니다. 추가한 뒤 조건과 액션에서 참조하세요.,Aún no hay variables. Añade una y úsala en condiciones y acciones.
+CUSTOM_RUN_VALUE_TYPE,Value Type,值类型,Type de valeur,値の種類,값 유형,Tipo de valor
+CUSTOM_RUN_NUMBER,Number,数值,Nombre,数値,숫자,Número
+CUSTOM_RUN_BOOLEAN,Boolean,逻辑值,Booléen,真偽値,불리언,Booleano
+CUSTOM_RUN_DEFAULT_VALUE,Default Value,默认值,Valeur par défaut,既定値,기본값,Valor predeterminado
+CUSTOM_RUN_TRUE,True,真,Vrai,真,참,Verdadero
+CUSTOM_RUN_FALSE,False,假,Faux,偽,거짓,Falso
+CUSTOM_RUN_SCOPE_RUN,Run,本局游戏,Partie,ラン,런,Partida
+CUSTOM_RUN_SCOPE_PLAYER,Player,玩家,Joueur,プレイヤー,플레이어,Jugador
+CUSTOM_RUN_SCOPE_COMBAT,Combat,战斗,Combat,戦闘,전투,Combate
+CUSTOM_RUN_STABLE_ID,Stable ID: {0},稳定 ID：{0},ID stable : {0},固定ID: {0},고정 ID: {0},ID estable: {0}
+CUSTOM_RUN_DEFINED_COUNT,{0} defined,已定义 {0} 个,{0} définies,{0}件を定義済み,{0}개 정의됨,{0} definidas
+CUSTOM_RUN_WHEN,When,何时,Quand,WHEN,WHEN,Cuando
+CUSTOM_RUN_IF,If,如果,Si,IF,IF,Si
+CUSTOM_RUN_THEN,Then,则,Alors,THEN,THEN,Entonces
+CUSTOM_RUN_LIMIT,Limit,限制,Limite,制限,제한,Límite
+CUSTOM_RUN_MATCH,Match,匹配,Correspondance,一致,일치,Coincidencia
+CUSTOM_RUN_GROUP,Group,组,Groupe,グループ,그룹,Grupo
+CUSTOM_RUN_GROUP_NUMBER,Group {0},组 {0},Groupe {0},グループ {0},그룹 {0},Grupo {0}
+CUSTOM_RUN_ALL_AND,All (AND),全部（且）,Tous (ET),すべて（AND）,모두 (AND),Todos (Y)
+CUSTOM_RUN_ANY_OR,Any (OR),任意（或）,Au moins un (OU),いずれか（OR）,하나 이상 (OR),Cualquiera (O)
+CUSTOM_RUN_CONDITION,Condition,条件,Condition,条件,조건,Condición
+CUSTOM_RUN_ACTION,Action,操作,Action,アクション,액션,Acción
+CUSTOM_RUN_DELETE_GROUP,Delete Group,删除组,Supprimer le groupe,グループを削除,그룹 삭제,Eliminar grupo
+CUSTOM_RUN_NO_CONDITIONS,No conditions. This group currently passes automatically.,无条件。此组当前自动通过。,Aucune condition. Ce groupe réussit automatiquement.,条件はありません。このグループは自動的に通過します。,조건이 없습니다. 이 그룹은 자동으로 통과합니다.,Sin condiciones. Este grupo se cumple automáticamente.
+CUSTOM_RUN_NO_ACTIONS,No actions. Add at least one action before saving.,无操作。保存前请至少添加一个操作。,Aucune action. Ajoutez-en au moins une avant d'enregistrer.,アクションがありません。保存前に1つ以上追加してください。,액션이 없습니다. 저장하기 전에 하나 이상 추가하세요.,Sin acciones. Añade al menos una antes de guardar.
+CUSTOM_RUN_FREQUENCY,Frequency,频率,Fréquence,頻度,빈도,Frecuencia
+CUSTOM_RUN_MAXIMUM_EXECUTIONS,Maximum executions,最大执行次数,Exécutions maximales,最大実行回数,최대 실행 횟수,Ejecuciones máximas
+CUSTOM_RUN_UNTIL_IF,Until If,直到满足,Until If,UNTIL IF,UNTIL IF,Hasta que
+CUSTOM_RUN_TRIGGER,Trigger,触发器,Déclencheur,トリガー,트리거,Activador
+CUSTOM_RUN_NOT,Not,非,NON,NOT,NOT,NO
+CUSTOM_RUN_INVERT_CONDITION,Invert this condition,反转此条件,Inverser cette condition,この条件を反転,이 조건 반전,Invertir esta condición
+CUSTOM_RUN_NOT_AVAILABLE_FOR_TRIGGER,  (not available for this trigger),  （不适用于此触发器）,  (indisponible pour ce déclencheur),  （このトリガーでは使用不可）,  (이 트리거에서 사용 불가),  (no disponible para este activador)
+CUSTOM_RUN_COMPONENT_UNAVAILABLE,Component '{0}' is unavailable. Install its defining mod or choose another component.,组件“{0}”不可用。请安装定义它的模组或选择其他组件。,Le composant « {0} » est indisponible. Installez son mod ou choisissez-en un autre.,コンポーネント「{0}」は使用できません。定義元Modを導入するか別のものを選んでください。,구성 요소 '{0}'을(를) 사용할 수 없습니다. 해당 모드를 설치하거나 다른 구성 요소를 선택하세요.,El componente «{0}» no está disponible. Instala su mod o elige otro componente.
+CUSTOM_RUN_NO_PARAMETERS,This component has no parameters.,此组件没有参数。,Ce composant n'a aucun paramètre.,このコンポーネントにパラメーターはありません。,이 구성 요소에는 매개변수가 없습니다.,Este componente no tiene parámetros.
+CUSTOM_RUN_PARAMETER_EDITOR_UNAVAILABLE,{0}: this parameter editor is not available yet.,{0}：此参数编辑器尚不可用。,{0} : cet éditeur de paramètre n'est pas encore disponible.,{0}: このパラメーターエディターはまだ使用できません。,{0}: 이 매개변수 편집기는 아직 사용할 수 없습니다.,{0}: este editor de parámetros aún no está disponible.
+CUSTOM_RUN_NOT_SELECTED,Not selected,未选择,Non sélectionné,未選択,선택 안 함,Sin seleccionar
+CUSTOM_RUN_CLEAR,Clear,清除,Effacer,クリア,지우기,Borrar
+CUSTOM_RUN_CLICK_CLEAR_SELECTION,Click to clear this selection.,点击以清除此选择。,Cliquez pour effacer cette sélection.,クリックして選択を解除します。,클릭하여 선택을 지웁니다.,Haz clic para borrar esta selección.
+CUSTOM_RUN_CLICK_REMOVE_SELECTION,Click to remove this selection.,点击以移除此选择。,Cliquez pour retirer cette sélection.,クリックしてこの選択を削除します。,클릭하여 이 선택을 제거합니다.,Haz clic para quitar esta selección.
+CUSTOM_RUN_CLICK_REMOVE_CARD,Click to remove this card.,点击以移除此牌。,Cliquez pour retirer cette carte.,クリックしてこのカードを削除します。,클릭하여 이 카드를 제거합니다.,Haz clic para quitar esta carta.
+CUSTOM_RUN_MATCH_KIND_BY,Match {0} by,按以下方式匹配{0},Faire correspondre {0} par,{0}の照合方法,{0} 일치 기준,Coincidir {0} por
+CUSTOM_RUN_TITLE_OR_TEXT_CONTAINS,Title or text contains,标题或文本包含,Le titre ou le texte contient,タイトルまたは本文に含む,제목 또는 텍스트에 포함,El título o texto contiene
+CUSTOM_RUN_TEXT_TO_FIND,Text to find,要查找的文本,Texte à rechercher,検索するテキスト,찾을 텍스트,Texto que buscar
+CUSTOM_RUN_NO_MATCH_VALUES,No {0} values are available.,没有可用的{0}值。,Aucune valeur {0} disponible.,使用可能な{0}の値はありません。,사용 가능한 {0} 값이 없습니다.,No hay valores de {0} disponibles.
+CUSTOM_RUN_SPECIFIC_KIND,Specific {0},指定{0},{0} spécifiques,特定の{0},특정 {0},{0} específicos
+CUSTOM_RUN_NO_KIND_SELECTED,No {0} selected,未选择{0},Aucun {0} sélectionné,{0}が選択されていません,{0} 선택 안 됨,No se seleccionó ningún {0}
+CUSTOM_RUN_MORE_SUMMARY,{0}  +{1} more,{0}  +另外 {1} 个,{0}  +{1} autres,{0}  +他{1}件,{0}  +{1}개 더,{0}  +{1} más
+CUSTOM_RUN_CARD_TYPE,Card type,卡牌类型,Type de carte,カードタイプ,카드 유형,Tipo de carta
+CUSTOM_RUN_ENERGY_COST,Energy cost,能量费用,Coût en énergie,エナジーコスト,에너지 비용,Coste de energía
+CUSTOM_RUN_MONSTER_CATEGORY,Monster category,怪物类型,Catégorie de monstre,モンスターカテゴリー,몬스터 분류,Categoría de monstruo
+CUSTOM_RUN_CATEGORY,Category,类别,Catégorie,カテゴリー,분류,Categoría
+CUSTOM_RUN_POOL,Pool,卡池,Réserve,プール,풀,Colección
+CUSTOM_RUN_MOD,Mod,模组,Mod,Mod,모드,Mod
+CUSTOM_RUN_KIND_POOL,{0} pool,{0}池,Réserve de {0},{0}プール,{0} 풀,Colección de {0}
+CUSTOM_RUN_POTIONS,Potions,药水,Potions,ポーション,포션,Pociones
+CUSTOM_RUN_MONSTER,monster,怪物,monstre,モンスター,몬스터,monstruo
+CATEGORY_CARD,card,卡牌,carte,カード,카드,carta
+CUSTOM_RUN_UNPLAYABLE,Unplayable,无法打出,Injouable,プレイ不可,사용 불가,No jugable
+CUSTOM_RUN_MISSING_VALUE,Missing: {0},缺失：{0},Manquant : {0},不足: {0},누락: {0},Falta: {0}
+CUSTOM_RUN_NO_ROLES_DEFINED,No roles defined,未定义职责,Aucun rôle défini,ロール未定義,정의된 역할 없음,No hay roles definidos
+CUSTOM_RUN_NO_VARIABLES_DEFINED,No variables defined,未定义变量,Aucune variable définie,変数未定義,정의된 변수 없음,No hay variables definidas
+CUSTOM_RUN_CONSTANT,Constant,常量,Constante,定数,상수,Constante
+CUSTOM_RUN_VARIABLE,Variable,变量,Variable,変数,변수,Variable
+CUSTOM_RUN_EVENT_VALUE,Event Value,事件值,Valeur d'événement,イベント値,이벤트 값,Valor del evento
+CUSTOM_RUN_INTEGER,Integer,整数,Entier,整数,정수,Entero
+CUSTOM_RUN_DOUBLE,Double,小数,Décimal,小数,실수,Decimal
+CUSTOM_RUN_MISSING_OR_NON_NUMBER,Missing or non-Number: {0},缺失或非数值：{0},Manquant ou non numérique : {0},不足または数値以外: {0},누락 또는 숫자 아님: {0},Falta o no es numérico: {0}
+CUSTOM_RUN_NO_NUMBER_VARIABLES,No number variables,没有数值变量,Aucune variable numérique,数値変数なし,숫자 변수 없음,No hay variables numéricas
+CUSTOM_RUN_GOLD,Gold,金币,Or,ゴールド,골드,Oro
+CUSTOM_RUN_ENERGY,Energy,能量,Énergie,エナジー,에너지,Energía
+CUSTOM_RUN_PLAYER_COUNT,Player Count,玩家数量,Nombre de joueurs,プレイヤー数,플레이어 수,Número de jugadores
+CUSTOM_RUN_LIMIT_UNLIMITED,Unlimited,无限制,Illimité,無制限,무제한,Ilimitado
+CUSTOM_RUN_LIMIT_ONCE_PER_EVENT_CHAIN,Once per event chain,每个事件链一次,Une fois par chaîne d'événements,イベントチェーンごとに1回,이벤트 연쇄당 1회,Una vez por cadena de eventos
+CUSTOM_RUN_LIMIT_ONCE_PER_TURN,Once per turn,每回合一次,Une fois par tour,ターンごとに1回,턴당 1회,Una vez por turno
+CUSTOM_RUN_LIMIT_N_PER_TURN,N times per turn,每回合 N 次,N fois par tour,ターンごとにN回,턴당 N회,N veces por turno
+CUSTOM_RUN_LIMIT_ONCE_PER_COMBAT,Once per combat,每场战斗一次,Une fois par combat,戦闘ごとに1回,전투당 1회,Una vez por combate
+CUSTOM_RUN_LIMIT_N_PER_COMBAT,N times per combat,每场战斗 N 次,N fois par combat,戦闘ごとにN回,전투당 N회,N veces por combate
+CUSTOM_RUN_LIMIT_ONCE_PER_RUN,Once per run,每局一次,Une fois par partie,ランごとに1回,런당 1회,Una vez por partida
+CUSTOM_RUN_LIMIT_N_PER_RUN,N times per run,每局 N 次,N fois par partie,ランごとにN回,런당 N회,N veces por partida
+CUSTOM_RUN_LIMIT_UNTIL_CONDITION,Until condition,直到满足条件,Jusqu'à la condition,条件まで,조건까지,Hasta la condición
+CUSTOM_RUN_LIMIT_UNLIMITED_LOWER,unlimited,无限制,illimité,無制限,무제한,ilimitado
+CUSTOM_RUN_LIMIT_ONCE_PER_EVENT_CHAIN_LOWER,once per event chain,每个事件链一次,une fois par chaîne d'événements,イベントチェーンごとに1回,이벤트 연쇄당 1회,una vez por cadena de eventos
+CUSTOM_RUN_LIMIT_PER_TURN,{0} per turn,每回合 {0} 次,{0} par tour,ターンごとに{0}回,턴당 {0}회,{0} por turno
+CUSTOM_RUN_LIMIT_PER_COMBAT,{0} per combat,每场战斗 {0} 次,{0} par combat,戦闘ごとに{0}回,전투당 {0}회,{0} por combate
+CUSTOM_RUN_LIMIT_PER_RUN,{0} per run,每局 {0} 次,{0} par partie,ランごとに{0}回,런당 {0}회,{0} por partida
+CUSTOM_RUN_LIMIT_UNTIL_CONDITION_LOWER,until condition,直到满足条件,jusqu'à la condition,条件まで,조건까지,hasta la condición
+CUSTOM_RUN_PLAYER,Player,玩家,Joueur,プレイヤー,플레이어,Jugador
+CUSTOM_RUN_PLAYER_YOU,Player {0} (You),玩家 {0}（你）,Joueur {0} (vous),プレイヤー{0}（あなた）,플레이어 {0} (나),Jugador {0} (tú)
+CUSTOM_RUN_ROLE,Role,职责,Rôle,ロール,역할,Rol
+CUSTOM_RUN_ROLES,Roles,职责,Rôles,ロール,역할,Roles
+CUSTOM_RUN_ROLES_RESOLVE_ON_EMBARK,Roles resolve on embark,职责将在出发时确定,Les rôles sont résolus au départ,ロールは出発時に決定,역할은 출발 시 결정됩니다,Los roles se resuelven al partir
+CUSTOM_RUN_MAX_SUFFIX, - MAX {0}, - 最大 {0}, - MAX {0}, - 最大 {0}, - 최대 {0}, - MÁX {0}
+CUSTOM_RUN_MAX_SPACED,    MAX {0},    最大 {0},    MAX {0},    最大 {0},    최대 {0},    MÁX {0}
+CUSTOM_RUN_ROLE_AT_CAPACITY,That role is already at maximum capacity.,该职责已达到人数上限。,Ce rôle a déjà atteint sa capacité maximale.,そのロールは定員に達しています。,해당 역할은 이미 최대 인원입니다.,Ese rol ya alcanzó su capacidad máxima.
+CUSTOM_RUN_WAIT_FOR_ROLE_LOCKS,Wait for every player to lock in a role.,请等待所有玩家锁定职责。,Attendez que chaque joueur verrouille un rôle.,全プレイヤーがロールを確定するまで待ってください。,모든 플레이어가 역할을 확정할 때까지 기다리세요.,Espera a que todos los jugadores confirmen un rol.
+CUSTOM_RUN_ROLE_MINIMUMS_NOT_FILLED,The required role minimums have not been filled.,尚未满足所需职责的最低人数。,Les minimums requis pour les rôles ne sont pas atteints.,必要なロールの最低人数を満たしていません。,필수 역할의 최소 인원이 충족되지 않았습니다.,No se han alcanzado los mínimos de rol requeridos.
+CUSTOM_RUN_RANDOM_ROLE,Random role,随机职责,Rôle aléatoire,ランダムロール,무작위 역할,Rol aleatorio
+CUSTOM_RUN_CHOOSING_ROLE,Choosing role...,正在选择职责……,Choix du rôle...,ロール選択中...,역할 선택 중...,Eligiendo rol...
+CUSTOM_RUN_UNKNOWN_ROLE,Unknown Role,未知职责,Rôle inconnu,不明なロール,알 수 없는 역할,Rol desconocido
+CUSTOM_RUN_NO_DESCRIPTION,No description.,无描述。,Aucune description.,説明なし。,설명 없음.,Sin descripción.
+CUSTOM_RUN_EDIT,Edit,编辑,Modifier,編集,편집,Editar
+CUSTOM_RUN_EDIT_NAMED,Edit {0},编辑 {0},Modifier {0},{0}を編集,{0} 편집,Editar {0}
+CUSTOM_RUN_DUPLICATE_NAMED,Duplicate {0},复制 {0},Dupliquer {0},{0}を複製,{0} 복제,Duplicar {0}
+CUSTOM_RUN_DELETE_NAMED,Delete {0},删除 {0},Supprimer {0},{0}を削除,{0} 삭제,Eliminar {0}
+CUSTOM_RUN_ENABLE_RULE,Enable rule,启用规则,Activer la règle,ルールを有効化,규칙 활성화,Activar regla
+CUSTOM_RUN_DISABLE_RULE,Disable rule,禁用规则,Désactiver la règle,ルールを無効化,규칙 비활성화,Desactivar regla
+CUSTOM_RUN_ENABLE_PERMANENT_RULE,Enable permanent rule,启用永久规则,Activer la règle permanente,恒久ルールを有効化,영구 규칙 활성화,Activar regla permanente
+CUSTOM_RUN_DISABLE_PERMANENT_RULE,Disable permanent rule,禁用永久规则,Désactiver la règle permanente,恒久ルールを無効化,영구 규칙 비활성화,Desactivar regla permanente
+CUSTOM_RUN_PERMANENT,Permanent,永久,Permanent,恒久,영구,Permanente
+CUSTOM_RUN_PERMANENT_COPY_ACTIVE,Permanent copy active  •  {0},永久副本已启用  •  {0},Copie permanente active  •  {0},恒久コピー有効  •  {0},영구 복사본 활성  •  {0},Copia permanente activa  •  {0}
+CUSTOM_RUN_SUPPRESSED_BY_PERMANENT,Disabled here because an enabled Permanent Rule has identical behavior,此处已禁用，因为启用的永久规则具有相同行为,Désactivée ici car une règle permanente active a le même comportement,同じ動作の恒久ルールが有効なためここでは無効です,동일한 동작의 영구 규칙이 활성화되어 여기서는 비활성화됩니다,Desactivada aquí porque una regla permanente activa tiene el mismo comportamiento
+CUSTOM_RUN_CHOOSE_TRIGGER,Choose a trigger,选择触发器,Choisir un déclencheur,トリガーを選択,트리거 선택,Elige un activador
+CUSTOM_RUN_UNCONFIGURED_TRIGGER,Unconfigured trigger,未配置的触发器,Déclencheur non configuré,未設定のトリガー,설정되지 않은 트리거,Activador sin configurar
+CUSTOM_RUN_ONE_CONDITION,1 condition,1 个条件,1 condition,条件1件,조건 1개,1 condición
+CUSTOM_RUN_CONDITION_COUNT,{0} conditions,{0} 个条件,{0} conditions,条件{0}件,조건 {0}개,{0} condiciones
+CUSTOM_RUN_ONE_ACTION,1 action,1 个操作,1 action,アクション1件,액션 1개,1 acción
+CUSTOM_RUN_ACTION_COUNT,{0} actions,{0} 个操作,{0} actions,アクション{0}件,액션 {0}개,{0} acciones
+CUSTOM_RUN_RULE_SHORT_SUMMARY,{0} · {1},{0} · {1},{0} · {1},{0} · {1},{0} · {1},{0} · {1}
+CUSTOM_RUN_RULE_SUMMARY,WHEN {0}  •  {1}  •  {2}  •  {3},何时 {0}  •  {1}  •  {2}  •  {3},QUAND {0}  •  {1}  •  {2}  •  {3},WHEN {0}  •  {1}  •  {2}  •  {3},WHEN {0}  •  {1}  •  {2}  •  {3},CUANDO {0}  •  {1}  •  {2}  •  {3}
+CUSTOM_RUN_RULE_COUNTS,SCENARIO  {0}    •    PERMANENT  {1}    •    SUPPRESSED  {2}    •    EFFECTIVE  {3},场景  {0}    •    永久  {1}    •    已抑制  {2}    •    生效  {3},SCÉNARIO  {0}    •    PERMANENTES  {1}    •    MASQUÉES  {2}    •    EFFECTIVES  {3},シナリオ  {0}    •    恒久  {1}    •    抑制  {2}    •    有効  {3},시나리오  {0}    •    영구  {1}    •    억제  {2}    •    유효  {3},ESCENARIO  {0}    •    PERMANENTES  {1}    •    SUPRIMIDAS  {2}    •    EFECTIVAS  {3}
+CUSTOM_RUN_CREATE_NEW,Create New Custom Run,新建自定义游戏,Créer une partie personnalisée,新しいカスタムランを作成,새 커스텀 런 만들기,Crear partida personalizada
+CUSTOM_RUN_IMPORT,Import,导入,Importer,インポート,가져오기,Importar
+CUSTOM_RUN_EXPORT,Export,导出,Exporter,エクスポート,내보내기,Exportar
+CUSTOM_RUN_IMPORT_AND_PLAY,Import and Play,导入并游玩,Importer et jouer,インポートしてプレイ,가져와서 플레이,Importar y jugar
+CUSTOM_RUN_PLAY,Play,游玩,Jouer,プレイ,플레이,Jugar
+CUSTOM_RUN_LOBBY,Lobby,大厅,Lobby,ロビー,로비,Sala
+CUSTOM_RUN_LOBBY_CUSTOM_RUN,Lobby Custom Run,大厅自定义游戏,Partie personnalisée du lobby,ロビーのカスタムラン,로비 커스텀 런,Partida personalizada de la sala
+CUSTOM_RUN_YOUR_CUSTOM_RUNS,Your Custom Runs,你的自定义游戏,Vos parties personnalisées,自分のカスタムラン,내 커스텀 런,Tus partidas personalizadas
+CUSTOM_RUN_NO_PERMANENT_RULES,No permanent rules have been saved yet.,尚未保存永久规则。,Aucune règle permanente enregistrée.,恒久ルールはまだ保存されていません。,저장된 영구 규칙이 없습니다.,Aún no se han guardado reglas permanentes.
+CUSTOM_RUN_PERMANENT_RULE_ENABLED,Permanent rule enabled.,已启用永久规则。,Règle permanente activée.,恒久ルールを有効にしました。,영구 규칙을 활성화했습니다.,Regla permanente activada.
+CUSTOM_RUN_PERMANENT_RULE_DISABLED,Permanent rule disabled.,已禁用永久规则。,Règle permanente désactivée.,恒久ルールを無効にしました。,영구 규칙을 비활성화했습니다.,Regla permanente desactivada.
+CUSTOM_RUN_SAVE_AS_PERMANENT,Save as Permanent,保存为永久规则,Enregistrer comme permanente,恒久ルールとして保存,영구 규칙으로 저장,Guardar como permanente
+CUSTOM_RUN_SAVED_TO_PERMANENT,Saved '{0}' to Permanent Rules.,已将“{0}”保存到永久规则。,« {0} » enregistré dans les règles permanentes.,「{0}」を恒久ルールに保存しました。,'{0}'을(를) 영구 규칙에 저장했습니다.,Se guardó «{0}» en Reglas permanentes.
+CUSTOM_RUN_SAVED_PERMANENT_RULE,Saved permanent rule '{0}'.,已保存永久规则“{0}”。,Règle permanente « {0} » enregistrée.,恒久ルール「{0}」を保存しました。,영구 규칙 '{0}'을(를) 저장했습니다.,Se guardó la regla permanente «{0}».
+CUSTOM_RUN_DUPLICATED_PERMANENT_RULE,Duplicated permanent rule '{0}'.,已复制永久规则“{0}”。,Règle permanente « {0} » dupliquée.,恒久ルール「{0}」を複製しました。,영구 규칙 '{0}'을(를) 복제했습니다.,Se duplicó la regla permanente «{0}».
+CUSTOM_RUN_DELETED_PERMANENT_RULE,Deleted permanent rule '{0}'.,已删除永久规则“{0}”。,Règle permanente « {0} » supprimée.,恒久ルール「{0}」を削除しました。,영구 규칙 '{0}'을(를) 삭제했습니다.,Se eliminó la regla permanente «{0}».
+CUSTOM_RUN_COULD_NOT_FIND_PERMANENT_RULE,Could not find permanent rule '{0}' to delete.,找不到要删除的永久规则“{0}”。,Règle permanente « {0} » introuvable.,削除する恒久ルール「{0}」が見つかりません。,삭제할 영구 규칙 '{0}'을(를) 찾을 수 없습니다.,No se encontró la regla permanente «{0}» para eliminarla.
+CUSTOM_RUN_NO_SAVED_RUNS,No saved Custom Runs.,没有已保存的自定义游戏。,Aucune partie personnalisée enregistrée.,保存済みのカスタムランはありません。,저장된 커스텀 런이 없습니다.,No hay partidas personalizadas guardadas.
+CUSTOM_RUN_HOST_HAS_NOT_APPLIED,The host has not applied a Custom Run definition.,房主尚未应用自定义游戏定义。,L'hôte n'a pas appliqué de définition de partie personnalisée.,ホストはカスタムラン定義を適用していません。,호스트가 커스텀 런 정의를 적용하지 않았습니다.,El anfitrión no ha aplicado una definición de partida personalizada.
+CUSTOM_RUN_WAITING_FOR_HOST,Waiting for the host's Custom Run setup.,正在等待房主的自定义游戏设置。,En attente de la configuration de l'hôte.,ホストのカスタムラン設定を待っています。,호스트의 커스텀 런 설정을 기다리는 중입니다.,Esperando la configuración del anfitrión.
+CUSTOM_RUN_CREATE_OR_SELECT,Create or select a Custom Run.,创建或选择一个自定义游戏。,Créez ou sélectionnez une partie personnalisée.,カスタムランを作成または選択してください。,커스텀 런을 만들거나 선택하세요.,Crea o selecciona una partida personalizada.
+CUSTOM_RUN_CREATED_NEW,Created a new Custom Run.,已创建新的自定义游戏。,Nouvelle partie personnalisée créée.,新しいカスタムランを作成しました。,새 커스텀 런을 만들었습니다.,Se creó una nueva partida personalizada.
+CUSTOM_RUN_CREATED_VARIABLE,Created variable '{0}'.,已创建变量“{0}”。,Variable « {0} » créée.,変数「{0}」を作成しました。,변수 '{0}'을(를) 만들었습니다.,Se creó la variable «{0}».
+CUSTOM_RUN_DEFAULT_VARIABLE_NAME,Variable {0},变量 {0},Variable {0},変数 {0},변수 {0},Variable {0}
+CUSTOM_RUN_DEFAULT_RULE_NAME,Rule {0},规则 {0},Règle {0},ルール {0},규칙 {0},Regla {0}
+CUSTOM_RUN_COPY_NAME,{0} Copy,{0} 副本,Copie de {0},{0}のコピー,{0} 복사본,Copia de {0}
+CUSTOM_RUN_DUPLICATED_VARIABLE,Duplicated variable '{0}'.,已复制变量“{0}”。,Variable « {0} » dupliquée.,変数「{0}」を複製しました。,변수 '{0}'을(를) 복제했습니다.,Se duplicó la variable «{0}».
+CUSTOM_RUN_DUPLICATED_RULE,Duplicated rule '{0}'.,已复制规则“{0}”。,Règle « {0} » dupliquée.,ルール「{0}」を複製しました。,규칙 '{0}'을(를) 복제했습니다.,Se duplicó la regla «{0}».
+CUSTOM_RUN_CONFIRM_DELETE_VARIABLE,Press delete again to remove variable '{0}'. References will remain as validation errors.,再次按删除以移除变量“{0}”。引用将保留为验证错误。,Appuyez encore sur supprimer pour retirer « {0} ». Les références resteront comme erreurs de validation.,もう一度削除を押すと変数「{0}」を削除します。参照は検証エラーとして残ります。,변수 '{0}'을(를) 제거하려면 삭제를 다시 누르세요. 참조는 검증 오류로 남습니다.,Pulsa eliminar de nuevo para quitar la variable «{0}». Las referencias quedarán como errores de validación.
+CUSTOM_RUN_CONFIRM_DELETE_RULE,Press delete again to remove rule '{0}'.,再次按删除以移除规则“{0}”。,Appuyez encore sur supprimer pour retirer la règle « {0} ».,もう一度削除を押すとルール「{0}」を削除します。,규칙 '{0}'을(를) 제거하려면 삭제를 다시 누르세요.,Pulsa eliminar de nuevo para quitar la regla «{0}».
+CUSTOM_RUN_DELETED_VARIABLE,Deleted variable '{0}'.,已删除变量“{0}”。,Variable « {0} » supprimée.,変数「{0}」を削除しました。,변수 '{0}'을(를) 삭제했습니다.,Se eliminó la variable «{0}».
+CUSTOM_RUN_DELETED_RULE,Deleted rule '{0}'.,已删除规则“{0}”。,Règle « {0} » supprimée.,ルール「{0}」を削除しました。,규칙 '{0}'을(를) 삭제했습니다.,Se eliminó la regla «{0}».
+CUSTOM_RUN_MOVED_RULE,Moved rule '{0}'.,已移动规则“{0}”。,Règle « {0} » déplacée.,ルール「{0}」を移動しました。,규칙 '{0}'을(를) 이동했습니다.,Se movió la regla «{0}».
+CUSTOM_RUN_RULE_ENABLED,Rule '{0}' enabled.,已启用规则“{0}”。,Règle « {0} » activée.,ルール「{0}」を有効にしました。,규칙 '{0}'을(를) 활성화했습니다.,Regla «{0}» activada.
+CUSTOM_RUN_RULE_DISABLED,Rule '{0}' disabled.,已禁用规则“{0}”。,Règle « {0} » désactivée.,ルール「{0}」を無効にしました。,규칙 '{0}'을(를) 비활성화했습니다.,Regla «{0}» desactivada.
+CUSTOM_RUN_UNSAVED_CHANGES,Unsaved changes.,有未保存的更改。,Modifications non enregistrées.,未保存の変更があります。,저장되지 않은 변경 사항이 있습니다.,Cambios sin guardar.
+CUSTOM_RUN_UNSAVED_RULE_CHANGES,Unsaved rule changes.,规则有未保存的更改。,Modifications de règle non enregistrées.,ルールに未保存の変更があります。,규칙에 저장되지 않은 변경 사항이 있습니다.,Cambios de regla sin guardar.
+CUSTOM_RUN_UNSAVED_WARNING_FAILED,Could not open the unsaved-changes warning.,无法打开未保存更改警告。,Impossible d'ouvrir l'avertissement des modifications non enregistrées.,未保存変更の警告を開けませんでした。,저장되지 않은 변경 경고를 열 수 없습니다.,No se pudo abrir el aviso de cambios sin guardar.
+CUSTOM_RUN_CONFIRM_DELETE,Confirm Delete,确认删除,Confirmer la suppression,削除を確認,삭제 확인,Confirmar eliminación
+CUSTOM_RUN_PRESS_CONFIRM_DELETE,Press Confirm Delete to remove '{0}'.,按“确认删除”以移除“{0}”。,Appuyez sur Confirmer la suppression pour retirer « {0} ».,「削除を確認」を押して「{0}」を削除します。,'{0}'을(를) 제거하려면 삭제 확인을 누르세요.,Pulsa Confirmar eliminación para quitar «{0}».
+CUSTOM_RUN_DELETED_NAMED,Deleted '{0}'.,已删除“{0}”。,« {0} » supprimé.,「{0}」を削除しました。,'{0}'을(를) 삭제했습니다.,Se eliminó «{0}».
+CUSTOM_RUN_COULD_NOT_FIND_TO_DELETE,Could not find '{0}' to delete.,找不到要删除的“{0}”。,« {0} » introuvable pour la suppression.,削除する「{0}」が見つかりません。,삭제할 '{0}'을(를) 찾을 수 없습니다.,No se encontró «{0}» para eliminarlo.
+CUSTOM_RUN_EDITING_NAMED,Editing '{0}'.,正在编辑“{0}”。,Modification de « {0} ».,「{0}」を編集中です。,'{0}' 편집 중.,Editando «{0}».
+CUSTOM_RUN_SAVED_NAMED,Saved '{0}'.,已保存“{0}”。,« {0} » enregistré.,「{0}」を保存しました。,'{0}'을(를) 저장했습니다.,Se guardó «{0}».
+CUSTOM_RUN_SAVED_AS,Saved as '{0}'.,已另存为“{0}”。,Enregistré sous « {0} ».,「{0}」として保存しました。,'{0}'(으)로 저장했습니다.,Guardado como «{0}».
+CUSTOM_RUN_IMPORTED_NAMED,Imported '{0}'.,已导入“{0}”。,« {0} » importé.,「{0}」をインポートしました。,'{0}'을(를) 가져왔습니다.,Se importó «{0}».
+CUSTOM_RUN_IMPORTED_WITH_ISSUES,Imported '{0}' with {1} issue(s); it remains editable.,已导入“{0}”，有 {1} 个问题；仍可编辑。,« {0} » importé avec {1} problème(s) ; il reste modifiable.,「{0}」を{1}件の問題付きでインポートしました。引き続き編集できます。,'{0}'을(를) 문제 {1}개와 함께 가져왔습니다. 계속 편집할 수 있습니다.,Se importó «{0}» con {1} problema(s); sigue siendo editable.
+CUSTOM_RUN_IMPORTED_VALIDATED,Imported and validated the Custom Run.,已导入并验证自定义游戏。,Partie personnalisée importée et validée.,カスタムランをインポートして検証しました。,커스텀 런을 가져오고 검증했습니다.,Se importó y validó la partida personalizada.
+CUSTOM_RUN_IMPORTED_VALIDATION_ISSUES,Imported for editing with {0} validation issue(s).,已导入以编辑，有 {0} 个验证问题。,Importée pour modification avec {0} problème(s) de validation.,{0}件の検証問題付きで編集用にインポートしました。,검증 문제 {0}개와 함께 편집용으로 가져왔습니다.,Importada para editar con {0} problema(s) de validación.
+CUSTOM_RUN_COPIED_TO_CLIPBOARD,Copied '{0}' to clipboard.,已将“{0}”复制到剪贴板。,« {0} » copié dans le presse-papiers.,「{0}」をクリップボードにコピーしました。,'{0}'을(를) 클립보드에 복사했습니다.,Se copió «{0}» al portapapeles.
+CUSTOM_RUN_COPIED_SHARE_STRING,Copied an L2CR1 share string to the clipboard.,已将 L2CR1 分享字符串复制到剪贴板。,Chaîne de partage L2CR1 copiée dans le presse-papiers.,L2CR1共有文字列をクリップボードにコピーしました。,L2CR1 공유 문자열을 클립보드에 복사했습니다.,Se copió una cadena L2CR1 al portapapeles.
+CUSTOM_RUN_VALIDATE,Validate,验证,Valider,検証,검증,Validar
+CUSTOM_RUN_VALIDATION_PASSED,Validation passed. Role assignments will be checked on embark.,验证通过。职责分配将在出发时检查。,Validation réussie. Les rôles seront vérifiés au départ.,検証に成功しました。ロール割り当ては出発時に確認されます。,검증을 통과했습니다. 역할 배정은 출발 시 확인됩니다.,Validación superada. Los roles se comprobarán al partir.
+CUSTOM_RUN_CANNOT_APPLY,Cannot apply: {0}: {1},无法应用：{0}：{1},Application impossible : {0} : {1},適用できません: {0}: {1},적용할 수 없음: {0}: {1},No se puede aplicar: {0}: {1}
+CUSTOM_RUN_APPLIED_MULTIPLAYER,Applied and synchronized this editor definition to lobby clients.,已应用此编辑器定义并同步到大厅客户端。,Définition appliquée et synchronisée avec les clients du lobby.,エディター定義を適用してロビーのクライアントと同期しました。,편집기 정의를 적용하고 로비 클라이언트와 동기화했습니다.,Se aplicó y sincronizó esta definición con los clientes de la sala.
+CUSTOM_RUN_APPLIED_SINGLEPLAYER,Applied this editor definition to the singleplayer lobby.,已将此编辑器定义应用到单人大厅。,Définition appliquée au lobby solo.,エディター定義をシングルプレイヤーロビーに適用しました。,편집기 정의를 싱글플레이 로비에 적용했습니다.,Se aplicó esta definición a la sala de un jugador.
+CUSTOM_RUN_HOST_ONLY_PLAY,Only the host can play a local Custom Run in this lobby.,只有房主可在此大厅游玩本地自定义游戏。,Seul l'hôte peut jouer une partie personnalisée locale dans ce lobby.,このロビーでローカルのカスタムランを開始できるのはホストだけです。,이 로비에서는 호스트만 로컬 커스텀 런을 플레이할 수 있습니다.,Solo el anfitrión puede jugar una partida personalizada local en esta sala.
+CUSTOM_RUN_COMPILE_FAILED,This Custom Run could not be compiled.,无法编译此自定义游戏。,Cette partie personnalisée n'a pas pu être compilée.,このカスタムランをコンパイルできませんでした。,이 커스텀 런을 컴파일할 수 없습니다.,No se pudo compilar esta partida personalizada.
+CUSTOM_RUN_DELETE_CONFIRMATION_FAILED,Could not open the delete confirmation.,无法打开删除确认。,Impossible d'ouvrir la confirmation de suppression.,削除確認を開けませんでした。,삭제 확인을 열 수 없습니다.,No se pudo abrir la confirmación de eliminación.
+CUSTOM_RUN_DELETE_CONFIRMATION_BUSY,The delete confirmation is unavailable while another popup is open.,另一个弹窗打开时无法使用删除确认。,La confirmation de suppression est indisponible tant qu'une autre fenêtre est ouverte.,別のポップアップが開いている間は削除確認を使用できません。,다른 팝업이 열려 있는 동안에는 삭제 확인을 사용할 수 없습니다.,La confirmación de eliminación no está disponible mientras haya otra ventana abierta.
+CUSTOM_RUN_OPEN_SHARED_SCREEN_FAILED,Could not open the shared {0} screen: {1},无法打开共享{0}界面：{1},Impossible d'ouvrir l'écran partagé {0} : {1},共有の{0}画面を開けませんでした: {1},공유 {0} 화면을 열 수 없습니다: {1},No se pudo abrir la pantalla compartida de {0}: {1}
+CUSTOM_RUN_OPEN_SHARED_CHOICE_FAILED,Could not open the shared {0} choice: {1},无法打开共享{0}选择：{1},Impossible d'ouvrir le choix partagé {0} : {1},共有の{0}選択を開けませんでした: {1},공유 {0} 선택을 열 수 없습니다: {1},No se pudo abrir la selección compartida de {0}: {1}
+CUSTOM_RUN_TOO_FEW_OPTIONS,The {0} choice has only {1} valid options.,{0}选择只有 {1} 个有效选项。,Le choix {0} ne contient que {1} options valides.,{0}の選択肢には有効な候補が{1}件しかありません。,{0} 선택에 유효한 옵션이 {1}개뿐입니다.,La selección de {0} solo tiene {1} opciones válidas.
+CUSTOM_RUN_OPEN_CARD_INVENTORY_FAILED,Could not open the Custom Run card inventory: {0},无法打开自定义游戏卡牌栏：{0},Impossible d'ouvrir l'inventaire de cartes : {0},カスタムランのカード欄を開けませんでした: {0},커스텀 런 카드 보관함을 열 수 없습니다: {0},No se pudo abrir el inventario de cartas: {0}
+CUSTOM_RUN_OPEN_RELIC_INVENTORY_FAILED,Could not open the Custom Run relic inventory: {0},无法打开自定义游戏遗物栏：{0},Impossible d'ouvrir l'inventaire de reliques : {0},カスタムランのレリック欄を開けませんでした: {0},커스텀 런 유물 보관함을 열 수 없습니다: {0},No se pudo abrir el inventario de reliquias: {0}
+CUSTOM_RUN_MORPH_SCREEN_UNAVAILABLE,The initialized Morph Selection screen is not available.,已初始化的变形选择界面不可用。,L'écran de sélection de métamorphose initialisé est indisponible.,初期化済みの変身選択画面を使用できません。,초기화된 변신 선택 화면을 사용할 수 없습니다.,La pantalla de selección de transformación inicializada no está disponible.
+CUSTOM_RUN_CATALOG_UNAVAILABLE,No initialized {0} catalog screen is available.,没有可用的已初始化{0}目录界面。,Aucun écran de catalogue {0} initialisé n'est disponible.,初期化済みの{0}カタログ画面がありません。,초기화된 {0} 카탈로그 화면이 없습니다.,No hay una pantalla de catálogo de {0} inicializada disponible.
+CUSTOM_RUN_NAMED_SCREEN_UNAVAILABLE,The initialized {0} screen is not available.,已初始化的 {0} 界面不可用。,L'écran {0} initialisé est indisponible.,初期化済みの{0}画面を使用できません。,초기화된 {0} 화면을 사용할 수 없습니다.,La pantalla {0} inicializada no está disponible.
+CUSTOM_RUN_SHARED_SCREENS_NOT_READY,The shared Loadout screens are not ready yet.,共享的 Loadout 界面尚未就绪。,Les écrans Loadout partagés ne sont pas encore prêts.,共有Loadout画面はまだ準備できていません。,공유 Loadout 화면이 아직 준비되지 않았습니다.,Las pantallas compartidas de Loadout aún no están listas.
+CUSTOM_RUN_ACT_OPTION,{0}: {1},{0}：{1},{0} : {1},{0}: {1},{0}: {1},{0}: {1}
+CUSTOM_RUN_DEFINITIONS_STORED,Definitions currently stored here: {0},当前存储的定义：{0},Définitions actuellement stockées ici : {0},現在ここに保存されている定義: {0},현재 저장된 정의: {0},Definiciones almacenadas aquí: {0}
+CUSTOM_RUN_PERMANENT_RULES_NOT_POPULATED,Permanent Rules library: not yet populated,永久规则库：尚未填充,Bibliothèque de règles permanentes : pas encore remplie,恒久ルールライブラリ: 未登録,영구 규칙 라이브러리: 아직 비어 있음,Biblioteca de reglas permanentes: aún sin contenido
+CUSTOM_RUN_CATEGORY_RUN,Run,游戏,Partie,ラン,런,Partida
+CUSTOM_RUN_CATEGORY_COMBAT,Combat,战斗,Combat,戦闘,전투,Combate
+CUSTOM_RUN_CATEGORY_CARDS,Cards,卡牌,Cartes,カード,카드,Cartas
+CUSTOM_RUN_CATEGORY_PLAYERS,Players,玩家,Joueurs,プレイヤー,플레이어,Jugadores
+CUSTOM_RUN_CATEGORY_PLAYER,Player,玩家,Joueur,プレイヤー,플레이어,Jugador
+CUSTOM_RUN_CATEGORY_POWERS,Powers,能力,Pouvoirs,パワー,파워,Poderes
+CUSTOM_RUN_CATEGORY_POTIONS,Potions,药水,Potions,ポーション,포션,Pociones
+CUSTOM_RUN_CATEGORY_RELICS,Relics,遗物,Reliques,レリック,유물,Reliquias
+CUSTOM_RUN_CATEGORY_MONSTERS,Monsters,怪物,Monstres,モンスター,몬스터,Monstruos
+CUSTOM_RUN_CATEGORY_GENERAL,General,通用,Général,一般,일반,General
+CUSTOM_RUN_CATEGORY_VALUES,Values,数值,Valeurs,値,값,Valores
+CUSTOM_RUN_CATEGORY_VARIABLES,Variables,变量,Variables,変数,변수,Variables
+CUSTOM_RUN_COMPONENT_RUN_START,Run Start,游戏开始,Début de partie,ラン開始,런 시작,Inicio de partida
+CUSTOM_RUN_COMPONENT_RUN_END,Run End,游戏结束,Fin de partie,ラン終了,런 종료,Fin de partida
+CUSTOM_RUN_COMPONENT_COMBAT_START,Combat Start,战斗开始,Début du combat,戦闘開始,전투 시작,Inicio del combate
+CUSTOM_RUN_COMPONENT_COMBAT_END,Combat End,战斗结束,Fin du combat,戦闘終了,전투 종료,Fin del combate
+CUSTOM_RUN_COMPONENT_TURN_START,Turn Start,回合开始,Début du tour,ターン開始,턴 시작,Inicio del turno
+CUSTOM_RUN_COMPONENT_TURN_END,Turn End,回合结束,Fin du tour,ターン終了,턴 종료,Fin del turno
+CUSTOM_RUN_COMPONENT_CARD_PLAYED,Card Played,打出卡牌,Carte jouée,カード使用,카드 사용,Carta jugada
+CUSTOM_RUN_COMPONENT_CARD_DRAWN,Card Drawn,抽到卡牌,Carte piochée,カードを引いた,카드 뽑음,Carta robada
+CUSTOM_RUN_COMPONENT_CARD_DISCARDED,Card Discarded,弃置卡牌,Carte défaussée,カードを捨てた,카드 버림,Carta descartada
+CUSTOM_RUN_COMPONENT_CARD_EXHAUSTED,Card Exhausted,消耗卡牌,Carte épuisée,カードを廃棄,카드 소멸,Carta agotada
+CUSTOM_RUN_COMPONENT_CARD_GENERATED,Card Generated,生成卡牌,Carte générée,カード生成,카드 생성,Carta generada
+CUSTOM_RUN_COMPONENT_CARD_OBTAINED,Card Obtained,获得卡牌,Carte obtenue,カード入手,카드 획득,Carta obtenida
+CUSTOM_RUN_COMPONENT_PLAYER_TAKES_DAMAGE,Player Takes Damage,玩家受到伤害,Le joueur subit des dégâts,プレイヤーがダメージを受ける,플레이어 피해,El jugador recibe daño
+CUSTOM_RUN_COMPONENT_PLAYER_GAINS_BLOCK,Player Gains Block,玩家获得格挡,Le joueur gagne du blocage,プレイヤーがブロックを得る,플레이어 방어도 획득,El jugador gana bloqueo
+CUSTOM_RUN_COMPONENT_POWER_RECEIVED,Power Received,获得能力,Pouvoir reçu,パワー獲得,파워 획득,Poder recibido
+CUSTOM_RUN_COMPONENT_POTION_USED,Potion Used,使用药水,Potion utilisée,ポーション使用,포션 사용,Poción usada
+CUSTOM_RUN_COMPONENT_POTION_OBTAINED,Potion Obtained,获得药水,Potion obtenue,ポーション入手,포션 획득,Poción obtenida
+CUSTOM_RUN_COMPONENT_RELIC_OBTAINED,Relic Obtained,获得遗物,Relique obtenue,レリック入手,유물 획득,Reliquia obtenida
+CUSTOM_RUN_COMPONENT_MONSTER_SPAWNED,Monster Spawned,怪物生成,Monstre apparu,モンスター出現,몬스터 생성,Monstruo generado
+CUSTOM_RUN_COMPONENT_MONSTER_MOVE_STARTED,Monster Move Started,怪物行动开始,Action du monstre commencée,モンスター行動開始,몬스터 행동 시작,Movimiento del monstruo iniciado
+CUSTOM_RUN_COMPONENT_ENERGY_SPENT,Energy Spent,消耗能量,Énergie dépensée,エナジー消費,에너지 소모,Energía gastada
+CUSTOM_RUN_COMPONENT_ALWAYS,Always,始终,Toujours,常に,항상,Siempre
+CUSTOM_RUN_COMPONENT_TRIGGERING_PLAYER_IS,Triggering Player Is,触发玩家是,Le joueur déclencheur est,トリガーしたプレイヤー,트리거한 플레이어,El jugador activador es
+CUSTOM_RUN_COMPONENT_PLAYER_HAS_ROLE,Player Has Role,玩家拥有职责,Le joueur a le rôle,プレイヤーのロール,플레이어 역할,El jugador tiene el rol
+CUSTOM_RUN_COMPONENT_CARD_MATCHES,Card Matches,卡牌匹配,La carte correspond,カードが一致,카드 일치,La carta coincide
+CUSTOM_RUN_COMPONENT_RELIC_MATCHES,Relic Matches,遗物匹配,La relique correspond,レリックが一致,유물 일치,La reliquia coincide
+CUSTOM_RUN_COMPONENT_POTION_MATCHES,Potion Matches,药水匹配,La potion correspond,ポーションが一致,포션 일치,La poción coincide
+CUSTOM_RUN_COMPONENT_POWER_MATCHES,Power Matches,能力匹配,Le pouvoir correspond,パワーが一致,파워 일치,El poder coincide
+CUSTOM_RUN_COMPONENT_MONSTER_MATCHES,Monster Matches,怪物匹配,Le monstre correspond,モンスターが一致,몬스터 일치,El monstruo coincide
+CUSTOM_RUN_COMPONENT_PLAYER_HAS_CARD,Player Has Card,玩家拥有卡牌,Le joueur possède la carte,プレイヤーがカードを所持,플레이어가 카드 보유,El jugador tiene la carta
+CUSTOM_RUN_COMPONENT_PLAYER_HAS_RELIC,Player Has Relic,玩家拥有遗物,Le joueur possède la relique,プレイヤーがレリックを所持,플레이어가 유물 보유,El jugador tiene la reliquia
+CUSTOM_RUN_COMPONENT_PLAYER_HAS_POWER,Player Has Power,玩家拥有能力,Le joueur possède le pouvoir,プレイヤーがパワーを所持,플레이어가 파워 보유,El jugador tiene el poder
+CUSTOM_RUN_COMPONENT_PLAYER_HAS_CARDS_MATCHING,Player Has Matching Cards,玩家拥有匹配卡牌,Le joueur possède des cartes correspondantes,プレイヤーが一致するカードを所持,플레이어가 일치하는 카드 보유,El jugador tiene cartas coincidentes
+CUSTOM_RUN_COMPONENT_PLAYER_HAS_RELICS_MATCHING,Player Has Matching Relics,玩家拥有匹配遗物,Le joueur possède des reliques correspondantes,プレイヤーが一致するレリックを所持,플레이어가 일치하는 유물 보유,El jugador tiene reliquias coincidentes
+CUSTOM_RUN_COMPONENT_PLAYER_HAS_POTIONS_MATCHING,Player Has Matching Potions,玩家拥有匹配药水,Le joueur possède des potions correspondantes,プレイヤーが一致するポーションを所持,플레이어가 일치하는 포션 보유,El jugador tiene pociones coincidentes
+CUSTOM_RUN_COMPONENT_PLAYER_HAS_POWERS_MATCHING,Player Has Matching Powers,玩家拥有匹配能力,Le joueur possède des pouvoirs correspondants,プレイヤーが一致するパワーを所持,플레이어가 일치하는 파워 보유,El jugador tiene poderes coincidentes
+CUSTOM_RUN_COMPONENT_NUMERIC_COMPARISON,Numeric Comparison,数值比较,Comparaison numérique,数値比較,숫자 비교,Comparación numérica
+CUSTOM_RUN_COMPONENT_VARIABLE_COMPARISON,Variable Comparison,变量比较,Comparaison de variable,変数比較,변수 비교,Comparación de variable
+CUSTOM_RUN_COMPONENT_CHANCE,Chance,概率,Chance,確率,확률,Probabilidad
+CUSTOM_RUN_COMPONENT_GAIN_POWER,Gain Power,获得能力,Gagner un pouvoir,パワーを得る,파워 획득,Ganar poder
+CUSTOM_RUN_COMPONENT_GAIN_ENERGY,Gain Energy,获得能量,Gagner de l'énergie,エナジーを得る,에너지 획득,Ganar energía
+CUSTOM_RUN_COMPONENT_DRAW_CARDS,Draw Cards,抽牌,Piocher des cartes,カードを引く,카드 뽑기,Robar cartas
+CUSTOM_RUN_COMPONENT_GAIN_GOLD,Gain Gold,获得金币,Gagner de l'or,ゴールドを得る,골드 획득,Ganar oro
+CUSTOM_RUN_COMPONENT_HEAL,Heal,治疗,Soigner,回復,회복,Curar
+CUSTOM_RUN_COMPONENT_LOSE_HP,Lose HP,失去生命,Perdre des PV,HPを失う,체력 잃기,Perder PV
+CUSTOM_RUN_COMPONENT_OBTAIN_CARD,Obtain Card,获得卡牌,Obtenir une carte,カードを入手,카드 획득,Obtener carta
+CUSTOM_RUN_COMPONENT_OBTAIN_RELIC,Obtain Relic,获得遗物,Obtenir une relique,レリックを入手,유물 획득,Obtener reliquia
+CUSTOM_RUN_COMPONENT_OBTAIN_POTION,Obtain Potion,获得药水,Obtenir une potion,ポーションを入手,포션 획득,Obtener poción
+CUSTOM_RUN_COMPONENT_OBTAIN_CARDS,Obtain Cards From Matcher,从匹配器获得卡牌,Obtenir des cartes correspondantes,一致するカードを入手,일치 항목에서 카드 획득,Obtener cartas coincidentes
+CUSTOM_RUN_COMPONENT_OBTAIN_RELICS,Obtain Relics From Matcher,从匹配器获得遗物,Obtenir des reliques correspondantes,一致するレリックを入手,일치 항목에서 유물 획득,Obtener reliquias coincidentes
+CUSTOM_RUN_COMPONENT_OBTAIN_POTIONS,Obtain Potions From Matcher,从匹配器获得药水,Obtenir des potions correspondantes,一致するポーションを入手,일치 항목에서 포션 획득,Obtener pociones coincidentes
+CUSTOM_RUN_COMPONENT_GAIN_POWERS,Gain Powers From Matcher,从匹配器获得能力,Gagner des pouvoirs correspondants,一致するパワーを得る,일치 항목에서 파워 획득,Ganar poderes coincidentes
+CUSTOM_RUN_COMPONENT_SPAWN_MONSTERS,Spawn Monsters From Matcher,从匹配器生成怪物,Invoquer des monstres correspondants,一致するモンスターを出現,일치 항목에서 몬스터 생성,Generar monstruos coincidentes
+CUSTOM_RUN_COMPONENT_ADD_CARD_TO_HAND,Add Card To Hand,将卡牌加入手牌,Ajouter une carte à la main,カードを手札に加える,카드를 손패에 추가,Añadir carta a la mano
+CUSTOM_RUN_COMPONENT_ADD_CARD_TO_DRAW_PILE,Add Card To Draw Pile,将卡牌加入抽牌堆,Ajouter une carte à la pioche,カードを山札に加える,카드를 뽑기 더미에 추가,Añadir carta a la pila de robo
+CUSTOM_RUN_COMPONENT_ADD_CARD_TO_DISCARD_PILE,Add Card To Discard Pile,将卡牌加入弃牌堆,Ajouter une carte à la défausse,カードを捨て札に加える,카드를 버린 카드 더미에 추가,Añadir carta a la pila de descarte
+CUSTOM_RUN_COMPONENT_SET_VARIABLE,Set Variable,设置变量,Définir la variable,変数を設定,변수 설정,Establecer variable
+CUSTOM_RUN_COMPONENT_ADD_TO_VARIABLE,Add To Variable,变量加值,Ajouter à la variable,変数に加算,변수에 더하기,Sumar a variable
+CUSTOM_RUN_COMPONENT_SUBTRACT_FROM_VARIABLE,Subtract From Variable,变量减值,Soustraire de la variable,変数から減算,변수에서 빼기,Restar de variable
+CUSTOM_RUN_COMPONENT_TRIGGERING_PLAYER,Triggering Player,触发玩家,Joueur déclencheur,トリガーしたプレイヤー,트리거한 플레이어,Jugador activador
+CUSTOM_RUN_COMPONENT_HOST,Host,房主,Hôte,ホスト,호스트,Anfitrión
+CUSTOM_RUN_COMPONENT_ALL_PLAYERS,All Players,所有玩家,Tous les joueurs,すべてのプレイヤー,모든 플레이어,Todos los jugadores
+CUSTOM_RUN_COMPONENT_ALL_OTHER_PLAYERS,All Other Players,所有其他玩家,Tous les autres joueurs,他の全プレイヤー,다른 모든 플레이어,Todos los demás jugadores
+CUSTOM_RUN_COMPONENT_RANDOM_PLAYER,Random Player,随机玩家,Joueur aléatoire,ランダムなプレイヤー,무작위 플레이어,Jugador aleatorio
+CUSTOM_RUN_COMPONENT_SPECIFIC_PLAYER_SLOT,Specific Player Slot,指定玩家栏位,Emplacement de joueur précis,特定のプレイヤースロット,특정 플레이어 슬롯,Ranura de jugador específica
+CUSTOM_RUN_COMPONENT_PLAYERS_WITH_ROLE,Players With Role,拥有职责的玩家,Joueurs avec le rôle,ロールを持つプレイヤー,역할이 있는 플레이어,Jugadores con rol
+CUSTOM_RUN_COMPONENT_RANDOM_PLAYER_WITH_ROLE,Random Player With Role,拥有职责的随机玩家,Joueur aléatoire avec le rôle,ロールを持つランダムなプレイヤー,역할이 있는 무작위 플레이어,Jugador aleatorio con rol
+CUSTOM_RUN_PARAMETER_TARGET,Target,目标,Cible,対象,대상,Objetivo
+CUSTOM_RUN_PARAMETER_AMOUNT,Amount,数量,Quantité,量,수량,Cantidad
+CUSTOM_RUN_PARAMETER_CARD,Card,卡牌,Carte,カード,카드,Carta
+CUSTOM_RUN_PARAMETER_RELIC,Relic,遗物,Relique,レリック,유물,Reliquia
+CUSTOM_RUN_PARAMETER_POTION,Potion,药水,Potion,ポーション,포션,Poción
+CUSTOM_RUN_PARAMETER_POWER,Power,能力,Pouvoir,パワー,파워,Poder
+CUSTOM_RUN_PARAMETER_VARIABLE,Variable,变量,Variable,変数,변수,Variable
+CUSTOM_RUN_PARAMETER_CARD_MATCHER,Card matcher,卡牌匹配器,Filtre de cartes,カード照合,카드 일치 조건,Filtro de cartas
+CUSTOM_RUN_PARAMETER_RELIC_MATCHER,Relic matcher,遗物匹配器,Filtre de reliques,レリック照合,유물 일치 조건,Filtro de reliquias
+CUSTOM_RUN_PARAMETER_POTION_MATCHER,Potion matcher,药水匹配器,Filtre de potions,ポーション照合,포션 일치 조건,Filtro de pociones
+CUSTOM_RUN_PARAMETER_POWER_MATCHER,Power matcher,能力匹配器,Filtre de pouvoirs,パワー照合,파워 일치 조건,Filtro de poderes
+CUSTOM_RUN_PARAMETER_MONSTER_MATCHER,Monster matcher,怪物匹配器,Filtre de monstres,モンスター照合,몬스터 일치 조건,Filtro de monstruos
+CUSTOM_RUN_PARAMETER_SELECTION,Selection,选择,Sélection,選択,선택,Selección
+CUSTOM_RUN_PARAMETER_NUMBER,Number,数量,Nombre,数,수,Número
+CUSTOM_RUN_PARAMETER_AT_LEAST_THIS_MANY,At least this many,至少此数量,Au moins ce nombre,最低この数,최소 이 수,Cantidad mínima
+CUSTOM_RUN_PARAMETER_CHOICE_CAN_BE_SKIPPED,Choice can be skipped,可跳过选择,Le choix peut être ignoré,選択をスキップ可能,선택 건너뛰기 가능,La elección se puede omitir
+CUSTOM_RUN_PARAMETER_COMPARISON,Comparison,比较,Comparaison,比較,비교,Comparación
+CUSTOM_RUN_PARAMETER_LEFT_VALUE,Left Value,左值,Valeur gauche,左の値,왼쪽 값,Valor izquierdo
+CUSTOM_RUN_PARAMETER_RIGHT_VALUE,Right Value,右值,Valeur droite,右の値,오른쪽 값,Valor derecho
+CUSTOM_RUN_PARAMETER_VALUE,Value,值,Valeur,値,값,Valor
+CUSTOM_RUN_VALUE,Value,值,Valeur,値,값,Valor
+CUSTOM_RUN_PARAMETER_PERCENT,Percent,百分比,Pourcentage,パーセント,백분율,Porcentaje
+CUSTOM_RUN_PARAMETER_PLAYER_SLOT,Player Slot,玩家栏位,Emplacement du joueur,プレイヤースロット,플레이어 슬롯,Ranura de jugador
+CUSTOM_RUN_PARAMETER_ROLE,Role,职责,Rôle,ロール,역할,Rol
+CUSTOM_RUN_OPTION_RANDOM,Random matches,随机匹配,Correspondances aléatoires,ランダムに一致,무작위 일치,Coincidencias aleatorias
+CUSTOM_RUN_OPTION_CHOOSE,Player chooses,玩家选择,Le joueur choisit,プレイヤーが選択,플레이어 선택,El jugador elige
+CUSTOM_RUN_OPTION_EQUAL,=,=,=,=,=,=
+CUSTOM_RUN_OPTION_NOT_EQUAL,!=,!=,!=,!=,!=,!=
+CUSTOM_RUN_OPTION_LESS,<,<,<,<,<,<
+CUSTOM_RUN_OPTION_LESS_OR_EQUAL,<=,<=,<=,<=,<=,<=
+CUSTOM_RUN_OPTION_GREATER,>,>,>,>,>,>
+CUSTOM_RUN_OPTION_GREATER_OR_EQUAL,>=,>=,>=,>=,>=,>=

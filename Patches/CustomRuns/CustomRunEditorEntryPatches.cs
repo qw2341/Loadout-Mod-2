@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Saves;
 using Loadout.UI.CustomRuns;
+using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 
@@ -171,7 +172,7 @@ public static class CharacterSelectCustomRunEmbarkPatch
                 CustomRunValidationIssue? issue = compiled.Issues
                     .FirstOrDefault(candidate => candidate.Severity == CustomRunValidationSeverity.Error);
                 ShowError(screen, issue is null
-                    ? "This Custom Run could not be compiled."
+                        ? LocMan.Loc("CUSTOM_RUN_COMPILE_FAILED", "This Custom Run could not be compiled.")
                     : $"{issue.Section}: {issue.Message}");
                 return;
             }

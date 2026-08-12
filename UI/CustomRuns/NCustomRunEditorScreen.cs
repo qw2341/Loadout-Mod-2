@@ -23,6 +23,7 @@ using Loadout.Services.Targets;
 using Loadout.PanelItems;
 using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
+using Loadout.UI.Managers;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Helpers;
@@ -232,7 +233,7 @@ public partial class NCustomRunEditorScreen : Control
             };
             titleRow.AddThemeConstantOverride("separation", 22);
             titleRow.SetAnchorsPreset(LayoutPreset.FullRect);
-            MegaLabel title = CreateLabel("CUSTOM RUN EDITOR", 42, StsColors.gold, HorizontalAlignment.Left);
+            MegaLabel title = CreateLabel(LocMan.Loc("CUSTOM_RUN_EDITOR", "Custom Run Editor").ToUpperInvariant(), 42, StsColors.gold, HorizontalAlignment.Left);
             title.CustomMinimumSize = new Vector2(430f, 0f);
             titleRow.AddChild(title);
             _runNameLabel = CreateLabel(string.Empty, 31, StsColors.cream, HorizontalAlignment.Left);
@@ -250,7 +251,7 @@ public partial class NCustomRunEditorScreen : Control
                 Name = "DuplicateButton",
                 CustomMinimumSize = new Vector2(260f, 58f)
             };
-            _duplicateButton.Init("duplicate", "DUPLICATE");
+            _duplicateButton.Init("duplicate", LocMan.Loc("CREATURE_MANIP_DUPLICATE", "Duplicate").ToUpperInvariant());
             _duplicateButton.SetAnchorsPreset(LayoutPreset.CenterRight);
             _duplicateButton.OffsetLeft = -260f;
             _duplicateButton.OffsetTop = -29f;
@@ -269,7 +270,7 @@ public partial class NCustomRunEditorScreen : Control
         Control? statusMount = GetNodeOrNull<Control>("OuterMargin/Root/StatusMount");
         if (statusMount is not null)
         {
-            _statusLabel = CreateLabel("Ready.", 20, StsColors.cream, HorizontalAlignment.Left);
+            _statusLabel = CreateLabel(LocMan.Loc("CUSTOM_RUN_READY", "Ready."), 20, StsColors.cream, HorizontalAlignment.Left);
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             _statusLabel.SetAnchorsPreset(LayoutPreset.FullRect);
             statusMount.AddChild(_statusLabel);
@@ -281,9 +282,9 @@ public partial class NCustomRunEditorScreen : Control
         if (_toolbar is null)
             return;
 
-        AddActionButton(_toolbar, "save", "Save", 118f, () => SaveCurrent(showStatus: true));
-        AddActionButton(_toolbar, "duplicate", "Duplicate", 150f, DuplicateDefinition);
-        AddActionButton(_toolbar, "validate", "Validate", 138f, ValidateDefinition);
+        AddActionButton(_toolbar, "save", LocMan.Loc("SAVE", "Save"), 118f, () => SaveCurrent(showStatus: true));
+        AddActionButton(_toolbar, "duplicate", LocMan.Loc("CREATURE_MANIP_DUPLICATE", "Duplicate"), 150f, DuplicateDefinition);
+        AddActionButton(_toolbar, "validate", LocMan.Loc("CUSTOM_RUN_VALIDATE", "Validate"), 138f, ValidateDefinition);
     }
 
     private void BuildTabs()
@@ -294,7 +295,7 @@ public partial class NCustomRunEditorScreen : Control
         _tabButtons.Clear();
         foreach (string tabName in TabNames)
         {
-            Button button = CreateCompactButton(tabName, 23, 0f);
+            Button button = CreateCompactButton(GetTabLabel(tabName), 23, 0f);
             button.Name = tabName.Replace(" ", string.Empty).Replace("&", "And") + "Tab";
             button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             button.Pressed += () => SelectTab(tabName);
@@ -302,6 +303,20 @@ public partial class NCustomRunEditorScreen : Control
             _tabButtons[tabName] = button;
         }
         RefreshTabVisuals();
+    }
+
+    private static string GetTabLabel(string tabName)
+    {
+        return tabName switch
+        {
+            "Overview" => LocMan.Loc("CUSTOM_RUN_OVERVIEW", "Overview"),
+            "Run Setup" => LocMan.Loc("CUSTOM_RUN_RUN_SETUP", "Run Setup"),
+            "Player Choices" => LocMan.Loc("CUSTOM_RUN_PLAYER_CHOICES", "Player Choices"),
+            "Rules" => LocMan.Loc("CUSTOM_RUN_RULES", "Rules"),
+            "Variables" => LocMan.Loc("CUSTOM_RUN_VARIABLES", "Variables"),
+            "Permanent Rules" => LocMan.Loc("CUSTOM_RUN_PERMANENT_RULES", "Permanent Rules"),
+            _ => tabName
+        };
     }
 
     private void EnsureBackButton()
@@ -360,7 +375,9 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         string name = _workingDefinition?.Name?.Trim() ?? string.Empty;
-        _runNameLabel.Text = string.IsNullOrWhiteSpace(name) ? "UNTITLED CUSTOM RUN" : name;
+        _runNameLabel.Text = string.IsNullOrWhiteSpace(name)
+            ? LocMan.Loc("CUSTOM_RUN_UNTITLED", "Untitled Custom Run").ToUpperInvariant()
+            : name;
         _runNameLabel.TooltipText = _runNameLabel.Text;
     }
 
@@ -374,7 +391,7 @@ public partial class NCustomRunEditorScreen : Control
         {
             if (_workingDefinition is null)
             {
-                AddSidebarMessage("The host has not applied a Custom Run definition.");
+                AddSidebarMessage(LocMan.Loc("CUSTOM_RUN_HOST_HAS_NOT_APPLIED", "The host has not applied a Custom Run definition."));
                 return;
             }
 
@@ -387,7 +404,7 @@ public partial class NCustomRunEditorScreen : Control
         IReadOnlyList<CustomRunDefinition> definitions = CustomRunStorageService.GetDefinitions();
         if (definitions.Count == 0)
         {
-            AddSidebarMessage("No saved Custom Runs.");
+            AddSidebarMessage(LocMan.Loc("CUSTOM_RUN_NO_SAVED_RUNS", "No saved Custom Runs."));
             return;
         }
 
@@ -456,7 +473,9 @@ public partial class NCustomRunEditorScreen : Control
         if (_workingDefinition is null)
         {
             MegaLabel empty = CreateLabel(
-                _readOnly ? "Waiting for the host's Custom Run setup." : "Create or select a Custom Run.",
+                _readOnly
+                    ? LocMan.Loc("CUSTOM_RUN_WAITING_FOR_HOST", "Waiting for the host's Custom Run setup.")
+                    : LocMan.Loc("CUSTOM_RUN_CREATE_OR_SELECT", "Create or select a Custom Run."),
                 28,
                 StsColors.cream,
                 HorizontalAlignment.Center);
@@ -530,8 +549,8 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null || _workingDefinition is null)
             return;
 
-        _contentHost.AddChild(CreateSectionTitle("OVERVIEW"));
-        _contentHost.AddChild(CreateFieldLabel("Name"));
+        _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_OVERVIEW", "Overview").ToUpperInvariant()));
+        _contentHost.AddChild(CreateFieldLabel(LocMan.Loc("SORT_NAME", "Name")));
         LineEdit name = CreateLineEdit(_workingDefinition.Name);
         name.TextChanged += value =>
         {
@@ -543,7 +562,7 @@ public partial class NCustomRunEditorScreen : Control
         };
         _contentHost.AddChild(name);
 
-        _contentHost.AddChild(CreateFieldLabel("Description"));
+        _contentHost.AddChild(CreateFieldLabel(LocMan.Loc("CUSTOM_RUN_DESCRIPTION", "Description")));
         TextEdit description = new()
         {
             Text = _workingDefinition.Description,
@@ -564,12 +583,12 @@ public partial class NCustomRunEditorScreen : Control
 
         VBoxContainer summary = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         summary.AddThemeConstantOverride("separation", 10);
-        AddSummaryRow(summary, "Definition ID", _workingDefinition.Id);
-        AddSummaryRow(summary, "Schema", _workingDefinition.SchemaVersion.ToString());
-        AddSummaryRow(summary, "Rules", _workingDefinition.Rules.Count.ToString());
-        AddSummaryRow(summary, "Roles", _workingDefinition.Roles.Count.ToString());
-        AddSummaryRow(summary, "Player Choices", _workingDefinition.PlayerChoices.Count.ToString());
-        AddSummaryRow(summary, "Variables", _workingDefinition.Variables.Count.ToString());
+        AddSummaryRow(summary, LocMan.Loc("CUSTOM_RUN_DEFINITION_ID", "Definition ID"), _workingDefinition.Id);
+        // AddSummaryRow(summary, LocMan.Loc("CUSTOM_RUN_SCHEMA", "Schema"), _workingDefinition.SchemaVersion.ToString());
+        AddSummaryRow(summary, LocMan.Loc("CUSTOM_RUN_RULES", "Rules"), _workingDefinition.Rules.Count.ToString());
+        AddSummaryRow(summary, LocMan.Loc("CUSTOM_RUN_ROLES", "Roles"), _workingDefinition.Roles.Count.ToString());
+        // AddSummaryRow(summary, LocMan.Loc("CUSTOM_RUN_PLAYER_CHOICES", "Player Choices"), _workingDefinition.PlayerChoices.Count.ToString());
+        AddSummaryRow(summary, LocMan.Loc("CUSTOM_RUN_VARIABLES", "Variables"), _workingDefinition.Variables.Count.ToString());
         _contentHost.AddChild(summary);
     }
 
@@ -579,12 +598,12 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         RunSetupDefinition defaultSetup = _workingDefinition.Setup;
-        _contentHost.AddChild(CreateSectionTitle("RUN SETUP"));
+        _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_RUN_SETUP", "Run Setup").ToUpperInvariant()));
 
         HBoxContainer seedRow = CreateRow();
-        seedRow.AddChild(CreateRowLabel("Run Seed"));
+        seedRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_RUN_SEED", "Run Seed")));
         LineEdit seed = CreateLineEdit(defaultSetup.RunSeed ?? string.Empty);
-        seed.PlaceholderText = "Game default / random";
+        seed.PlaceholderText = LocMan.Loc("CUSTOM_RUN_GAME_DEFAULT_RANDOM", "Game default / random");
         seed.CustomMinimumSize = new Vector2(360f, 44f);
         seed.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
         seed.TextChanged += value =>
@@ -596,11 +615,11 @@ public partial class NCustomRunEditorScreen : Control
         };
         seedRow.AddChild(seed);
         _contentHost.AddChild(seedRow);
-        AddNullableNumberRow("Starting Ascension", defaultSetup.StartingAscension, 0, 0, 10,
+        AddNullableNumberRow(LocMan.Loc("CUSTOM_RUN_STARTING_ASCENSION", "Starting Ascension"), defaultSetup.StartingAscension, 0, 0, 10,
             value => defaultSetup.StartingAscension = value);
 
         HBoxContainer assignmentRow = CreateRow();
-        assignmentRow.AddChild(CreateRowLabel("Role Assignment"));
+        assignmentRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_ROLE_ASSIGNMENT", "Role Assignment")));
         NLoadoutDropdown assignmentMode = new()
         {
             CustomMinimumSize = new Vector2(420f, 52f),
@@ -609,9 +628,9 @@ public partial class NCustomRunEditorScreen : Control
         };
         assignmentMode.SetItems(string.Empty,
         [
-            new LoadoutDropdownOption(RoleAssignmentMode.PlayersChoose.ToString(), "Players Choose"),
-            new LoadoutDropdownOption(RoleAssignmentMode.HostAssigns.ToString(), "Host Assigns"),
-            new LoadoutDropdownOption(RoleAssignmentMode.Random.ToString(), "Random on Embark")
+            new LoadoutDropdownOption(RoleAssignmentMode.PlayersChoose.ToString(), LocMan.Loc("CUSTOM_RUN_PLAYERS_CHOOSE", "Players Choose")),
+            new LoadoutDropdownOption(RoleAssignmentMode.HostAssigns.ToString(), LocMan.Loc("CUSTOM_RUN_HOST_ASSIGNS", "Host Assigns")),
+            new LoadoutDropdownOption(RoleAssignmentMode.Random.ToString(), LocMan.Loc("CUSTOM_RUN_RANDOM_ON_EMBARK", "Random on Embark"))
         ], _workingDefinition.RoleAssignmentMode.ToString());
         assignmentMode.SelectedItemChanged += selected =>
         {
@@ -641,7 +660,9 @@ public partial class NCustomRunEditorScreen : Control
         {
             RoleDefinition capturedRole = role;
             string required = role.MinimumPlayers > 0 ? " *" : string.Empty;
-            string maximum = role.MaximumPlayers > 0 ? $"    MAX {role.MaximumPlayers}" : string.Empty;
+            string maximum = role.MaximumPlayers > 0
+                ? LocMan.Loc("CUSTOM_RUN_MAX_SPACED", "    MAX {0}", role.MaximumPlayers)
+                : string.Empty;
             Button row = CreateCompactButton(
                 $"{role.Name}{required}    MIN {role.MinimumPlayers}{maximum}",
                 21,
@@ -661,7 +682,7 @@ public partial class NCustomRunEditorScreen : Control
         }
 
         HBoxContainer addRoleRow = CreateRow();
-        AddSettingsActionButton(addRoleRow, "add_role", "ADD ROLE", 240f, AddRole);
+        AddSettingsActionButton(addRoleRow, "add_role", LocMan.Loc("CUSTOM_RUN_ADD_ROLE", "Add Role").ToUpperInvariant(), 240f, AddRole);
         AddToolSpacer(addRoleRow);
         _contentHost.AddChild(addRoleRow);
 
@@ -670,7 +691,7 @@ public partial class NCustomRunEditorScreen : Control
             _activeSetupRoleId = null;
         RunSetupDefinition setup = activeRole?.Setup ?? defaultSetup;
         _contentHost.AddChild(CreateSectionDivider());
-        _contentHost.AddChild(CreateSectionTitle("ROLE DETAILS"));
+        _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_ROLE_DETAILS", "Role Details").ToUpperInvariant()));
         if (activeRole is not null)
             BuildRoleDetails(activeRole, activeRoleButton);
         else
@@ -687,13 +708,13 @@ public partial class NCustomRunEditorScreen : Control
 
         _contentHost.AddChild(CreateSectionDivider());
 
-        AddNullableNumberRow("Starting Gold", setup.StartingGold, 99, 0, 999999,
+        AddNullableNumberRow(LocMan.Loc("CUSTOM_RUN_STARTING_GOLD", "Starting Gold"), setup.StartingGold, 99, 0, 999999,
             value => setup.StartingGold = value);
-        AddNullableNumberRow("Starting Max HP", setup.StartingMaxHp, 80, 1, 99999,
+        AddNullableNumberRow(LocMan.Loc("CUSTOM_RUN_STARTING_MAX_HP", "Starting Max HP"), setup.StartingMaxHp, 80, 1, 99999,
             value => setup.StartingMaxHp = value);
-        AddNullableNumberRow("Starting Current HP", setup.StartingCurrentHp, 80, 1, 99999,
+        AddNullableNumberRow(LocMan.Loc("CUSTOM_RUN_STARTING_CURRENT_HP", "Starting Current HP"), setup.StartingCurrentHp, 80, 1, 99999,
             value => setup.StartingCurrentHp = value);
-        AddNullableNumberRow("Potion Slots", setup.PotionSlots, 3, 0, 20,
+        AddNullableNumberRow(LocMan.Loc("CUSTOM_RUN_POTION_SLOTS", "Potion Slots"), setup.PotionSlots, 3, 0, 20,
             value => setup.PotionSlots = value,
             () =>
             {
@@ -701,9 +722,9 @@ public partial class NCustomRunEditorScreen : Control
                 NormalizeStartingPotionCapacity(setup, activeLoadout);
                 RefreshStartingPotionInventory(setup, activeLoadout);
             });
-        AddNullableNumberRow("Base Energy / Turn", setup.BaseEnergyPerTurn, 3, 0, 99,
+        AddNullableNumberRow(LocMan.Loc("CUSTOM_RUN_BASE_ENERGY_PER_TURN", "Base Energy / Turn"), setup.BaseEnergyPerTurn, 3, 0, 99,
             value => setup.BaseEnergyPerTurn = value);
-        AddNullableNumberRow("Cards Drawn / Turn", setup.CardsDrawnPerTurn, 5, 0, 99,
+        AddNullableNumberRow(LocMan.Loc("CUSTOM_RUN_CARDS_DRAWN_PER_TURN", "Cards Drawn / Turn"), setup.CardsDrawnPerTurn, 5, 0, 99,
             value => setup.CardsDrawnPerTurn = value);
     }
 
@@ -723,7 +744,7 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null)
             return;
         HBoxContainer nameRow = CreateRow();
-        nameRow.AddChild(CreateRowLabel("Role Name"));
+        nameRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_ROLE_NAME", "Role Name")));
         LineEdit name = CreateLineEdit(role.Name);
         name.TextChanged += value =>
         {
@@ -733,7 +754,9 @@ public partial class NCustomRunEditorScreen : Control
             if (roleButton is not null)
             {
                 string required = role.MinimumPlayers > 0 ? " *" : string.Empty;
-                string maximum = role.MaximumPlayers > 0 ? $"    MAX {role.MaximumPlayers}" : string.Empty;
+                string maximum = role.MaximumPlayers > 0
+                    ? LocMan.Loc("CUSTOM_RUN_MAX_SPACED", "    MAX {0}", role.MaximumPlayers)
+                    : string.Empty;
                 roleButton.Text = $"{value}{required}    MIN {role.MinimumPlayers}{maximum}";
             }
             MarkDirty();
@@ -742,8 +765,8 @@ public partial class NCustomRunEditorScreen : Control
         _contentHost.AddChild(nameRow);
 
         HBoxContainer limits = CreateRow();
-        limits.AddChild(CreateRowLabel("Number of Players for This Role"));
-        limits.AddChild(CreateFieldLabel("MIN"));
+        limits.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_PLAYERS_FOR_ROLE", "Number of Players for This Role")));
+        limits.AddChild(CreateFieldLabel(LocMan.Loc("CUSTOM_RUN_MIN", "Min").ToUpperInvariant()));
         NLoadoutNumberStepper minimum = new();
         minimum.Init(role.MinimumPlayers, 0, role.MaximumPlayers == 0 ? 4 : role.MaximumPlayers);
         minimum.ValueChanged += value =>
@@ -755,7 +778,7 @@ public partial class NCustomRunEditorScreen : Control
             RebuildContent();
         };
         limits.AddChild(minimum);
-        limits.AddChild(CreateFieldLabel("MAX (0 = NONE)"));
+        limits.AddChild(CreateFieldLabel(LocMan.Loc("CUSTOM_RUN_MAX_NONE", "Max (0 = None)").ToUpperInvariant()));
         NLoadoutNumberStepper maximum = new();
         maximum.Init(role.MaximumPlayers, 0, 4);
         maximum.ValueChanged += value =>
@@ -770,7 +793,7 @@ public partial class NCustomRunEditorScreen : Control
         };
         limits.AddChild(maximum);
         AddToolSpacer(limits);
-        AddSettingsActionButton(limits, "delete_role", "DELETE ROLE", 190f, () => DeleteRole(role), danger: true);
+        AddSettingsActionButton(limits, "delete_role", LocMan.Loc("CUSTOM_RUN_DELETE_ROLE", "Delete Role").ToUpperInvariant(), 190f, () => DeleteRole(role), danger: true);
         _contentHost.AddChild(limits);
     }
 
@@ -779,7 +802,7 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null || _workingDefinition is null)
             return;
         HBoxContainer nameRow = CreateRow();
-        nameRow.AddChild(CreateRowLabel("Role Name"));
+        nameRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_ROLE_NAME", "Role Name")));
         LineEdit name = CreateLineEdit(_workingDefinition.DefaultRoleName);
         name.TextChanged += value =>
         {
@@ -831,7 +854,7 @@ public partial class NCustomRunEditorScreen : Control
             return setup;
 
         HBoxContainer modeRow = CreateRow();
-        modeRow.AddChild(CreateRowLabel("Starting Loadout"));
+        modeRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_STARTING_LOADOUT", "Starting Loadout")));
         NLoadoutDropdown mode = new()
         {
             CustomMinimumSize = new Vector2(420f, 52f),
@@ -840,8 +863,8 @@ public partial class NCustomRunEditorScreen : Control
         };
         mode.SetItems(string.Empty,
         [
-            new LoadoutDropdownOption(StartingLoadoutMode.PerCharacter.ToString(), "Per Character"),
-            new LoadoutDropdownOption(StartingLoadoutMode.Unified.ToString(), "Unified")
+            new LoadoutDropdownOption(StartingLoadoutMode.PerCharacter.ToString(), LocMan.Loc("CUSTOM_RUN_PER_CHARACTER", "Per Character")),
+            new LoadoutDropdownOption(StartingLoadoutMode.Unified.ToString(), LocMan.Loc("CUSTOM_RUN_UNIFIED", "Unified"))
         ], setup.StartingLoadoutMode.ToString());
         string? ownerId = _activeSetupRoleId;
         mode.SelectedItemChanged += selected =>
@@ -866,13 +889,13 @@ public partial class NCustomRunEditorScreen : Control
         IReadOnlyList<CharacterModel> characters = GetLoadoutCharacters(setup);
         if (characters.Count == 0)
         {
-            _contentHost.AddChild(CreateHint("Select at least one character for per-character loadouts."));
+            _contentHost.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_SELECT_CHARACTER_HINT", "Select at least one character for per-character loadouts.")));
             return setup;
         }
 
         CharacterModel activeCharacter = ResolveActiveLoadoutCharacter(characters);
         HBoxContainer categories = CreateRow();
-        categories.AddChild(CreateRowLabel("Character Loadout"));
+        categories.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_CHARACTER_LOADOUT", "Character Loadout")));
         foreach (CharacterModel character in characters)
         {
             Button category = CreateCompactButton(GetCharacterDisplayName(character), 19, 46f);
@@ -890,7 +913,8 @@ public partial class NCustomRunEditorScreen : Control
         }
         AddToolSpacer(categories);
         _contentHost.AddChild(categories);
-        _contentHost.AddChild(CreateSectionTitle($"{GetCharacterDisplayName(activeCharacter).ToUpperInvariant()} LOADOUT"));
+        _contentHost.AddChild(CreateSectionTitle(
+            LocMan.Loc("CUSTOM_RUN_NAMED_LOADOUT", "{0} Loadout", GetCharacterDisplayName(activeCharacter)).ToUpperInvariant()));
         return GetOrCreateCharacterLoadout(setup, activeCharacter);
     }
 
@@ -981,12 +1005,12 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null)
             return;
 
-        HBoxContainer actions = CreateToolRow("Starting Deck");
-        AddSettingsActionButton(actions, "card_printer", "CARD PRINTER", RunSetupToolButtonWidth, OpenStartingCardPrinter);
-        AddSettingsActionButton(actions, "card_shredder", "CARD SHREDDER", RunSetupToolButtonWidth, OpenStartingCardShredder);
-        AddSettingsActionButton(actions, "card_modifier", "CARD MODIFIER", RunSetupToolButtonWidth, OpenStartingCardModifierInventory);
+        HBoxContainer actions = CreateToolRow(LocMan.Loc("CUSTOM_RUN_STARTING_DECK", "Starting Deck"));
+        AddSettingsActionButton(actions, "card_printer", LocMan.Loc("CARDPRINTER_TITLE", "Card Printer").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingCardPrinter);
+        AddSettingsActionButton(actions, "card_shredder", LocMan.Loc("CARDSHREDDER_TITLE", "Card Shredder").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingCardShredder);
+        AddSettingsActionButton(actions, "card_modifier", LocMan.Loc("CARDMODIFIER_TITLE", "Card Modifier").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingCardModifierInventory);
         AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_deck", "REVERT", 142f, () => ResetSelection(loadout.StartingDeck), danger: true);
+        AddSettingsActionButton(actions, "revert_deck", LocMan.Loc("CUSTOM_RUN_REVERT", "Revert").ToUpperInvariant(), 142f, () => ResetSelection(loadout.StartingDeck), danger: true);
         _contentHost.AddChild(actions);
 
         _startingDeckPreview = CreateInventoryPreview();
@@ -999,12 +1023,12 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null)
             return;
 
-        HBoxContainer actions = CreateToolRow("Starting Relics");
-        AddSettingsActionButton(actions, "loadout_bag", "LOADOUT BAG", RunSetupToolButtonWidth, OpenStartingLoadoutBag);
-        AddSettingsActionButton(actions, "trash_bin", "TRASH BIN", RunSetupToolButtonWidth, OpenStartingTrashBin);
-        AddSettingsActionButton(actions, "relic_modifier", "RELIC MODIFIER", RunSetupToolButtonWidth, OpenStartingRelicModifierInventory);
+        HBoxContainer actions = CreateToolRow(LocMan.Loc("CUSTOM_RUN_STARTING_RELICS", "Starting Relics"));
+        AddSettingsActionButton(actions, "loadout_bag", LocMan.Loc("LOADOUTBAG_TITLE", "Loadout Bag").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingLoadoutBag);
+        AddSettingsActionButton(actions, "trash_bin", LocMan.Loc("THEBIN_TITLE", "The Bin").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingTrashBin);
+        AddSettingsActionButton(actions, "relic_modifier", LocMan.Loc("RELICMODIFIER_TITLE", "Relic Modifier").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingRelicModifierInventory);
         AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_relics", "REVERT", 142f, () => ResetSelection(loadout.StartingRelics), danger: true);
+        AddSettingsActionButton(actions, "revert_relics", LocMan.Loc("CUSTOM_RUN_REVERT", "Revert").ToUpperInvariant(), 142f, () => ResetSelection(loadout.StartingRelics), danger: true);
         _contentHost.AddChild(actions);
 
         _startingRelicPreview = CreateInventoryPreview();
@@ -1017,10 +1041,10 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null)
             return;
 
-        HBoxContainer actions = CreateToolRow("Starting Potions");
-        AddSettingsActionButton(actions, "potion_cauldron", "POTION CAULDRON", RunSetupToolButtonWidth, OpenStartingPotionCauldron);
+        HBoxContainer actions = CreateToolRow(LocMan.Loc("CUSTOM_RUN_STARTING_POTIONS", "Starting Potions"));
+        AddSettingsActionButton(actions, "potion_cauldron", LocMan.Loc("LOADOUTCAULDRON_TITLE", "The Cauldron").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingPotionCauldron);
         AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_potions", "REVERT", 142f, () => ResetSelection(loadout.StartingPotions), danger: true);
+        AddSettingsActionButton(actions, "revert_potions", LocMan.Loc("CUSTOM_RUN_REVERT", "Revert").ToUpperInvariant(), 142f, () => ResetSelection(loadout.StartingPotions), danger: true);
         _contentHost.AddChild(actions);
 
         VBoxContainer inventory = new() { SizeFlagsHorizontal = SizeFlags.ShrinkBegin };
@@ -1038,7 +1062,7 @@ public partial class NCustomRunEditorScreen : Control
         ClearChildren(_startingDeckPreview);
         if (loadout.StartingDeck.Mode != SelectionMode.Fixed)
         {
-            _startingDeckPreview.AddChild(CreateHint("Character Default"));
+            _startingDeckPreview.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_CHARACTER_DEFAULT", "Character Default")));
             RefreshContentSizeDeferred();
             return;
         }
@@ -1049,7 +1073,7 @@ public partial class NCustomRunEditorScreen : Control
             .ToList();
         if (cards.Count == 0)
         {
-            _startingDeckPreview.AddChild(CreateHint("This starting deck is empty."));
+            _startingDeckPreview.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_STARTING_DECK_EMPTY", "This starting deck is empty.")));
             RefreshContentSizeDeferred();
             return;
         }
@@ -1120,14 +1144,14 @@ public partial class NCustomRunEditorScreen : Control
         ClearChildren(_startingRelicPreview);
         if (loadout.StartingRelics.Mode != SelectionMode.Fixed)
         {
-            _startingRelicPreview.AddChild(CreateHint("Character Default"));
+            _startingRelicPreview.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_CHARACTER_DEFAULT", "Character Default")));
             RefreshContentSizeDeferred();
             return;
         }
         IReadOnlyList<SavedRelicLoadoutEntry> relics = GetStartingRelicEntries(loadout);
         if (relics.Count == 0)
         {
-            _startingRelicPreview.AddChild(CreateHint("This starting relic collection is empty."));
+            _startingRelicPreview.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_STARTING_RELICS_EMPTY", "This starting relic collection is empty.")));
             RefreshContentSizeDeferred();
             return;
         }
@@ -1140,7 +1164,7 @@ public partial class NCustomRunEditorScreen : Control
             NRelicBasicHolder? holder = NRelicBasicHolder.Create(relic);
             if (holder is null)
                 continue;
-            holder.TooltipText = relic.Id.ToString();
+            holder.TooltipText = CommonHelpers.FormatRelicTitle(relic);
             _startingRelicPreview.AddChild(holder);
         }
         RefreshContentSizeDeferred();
@@ -1242,10 +1266,10 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_contentHost is null)
             return;
-        HBoxContainer actions = CreateToolRow("Starting Powers");
-        AddSettingsActionButton(actions, "starting_powers", "SELECT POWERS", RunSetupToolButtonWidth, OpenStartingPowerSelector);
+        HBoxContainer actions = CreateToolRow(LocMan.Loc("CUSTOM_RUN_STARTING_POWERS", "Starting Powers"));
+        AddSettingsActionButton(actions, "starting_powers", LocMan.Loc("CUSTOM_RUN_SELECT_POWERS", "Select Powers").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingPowerSelector);
         AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_powers", "REVERT", 142f, () =>
+        AddSettingsActionButton(actions, "revert_powers", LocMan.Loc("CUSTOM_RUN_REVERT", "Revert").ToUpperInvariant(), 142f, () =>
         {
             loadout.StartingPowers.Clear();
             MarkDirty();
@@ -1258,7 +1282,7 @@ public partial class NCustomRunEditorScreen : Control
     private static Control CreateStartingPowerPreview(IStartingLoadoutDefinition loadout)
     {
         if (loadout.StartingPowers.Count == 0)
-            return CreateHint("No starting Power Giver amounts.");
+            return CreateHint(LocMan.Loc("CUSTOM_RUN_NO_STARTING_POWERS", "No starting Power Giver amounts."));
 
         VBoxContainer list = new()
         {
@@ -1317,10 +1341,10 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_contentHost is null)
             return;
-        HBoxContainer actions = CreateToolRow("Starting Morph");
-        AddSettingsActionButton(actions, "starting_morph", "SELECT MORPH", RunSetupToolButtonWidth, OpenStartingMorphSelector);
+        HBoxContainer actions = CreateToolRow(LocMan.Loc("CUSTOM_RUN_STARTING_MORPH", "Starting Morph"));
+        AddSettingsActionButton(actions, "starting_morph", LocMan.Loc("CUSTOM_RUN_SELECT_MORPH", "Select Morph").ToUpperInvariant(), RunSetupToolButtonWidth, OpenStartingMorphSelector);
         AddToolSpacer(actions);
-        AddSettingsActionButton(actions, "revert_morph", "REVERT", 142f, () =>
+        AddSettingsActionButton(actions, "revert_morph", LocMan.Loc("CUSTOM_RUN_REVERT", "Revert").ToUpperInvariant(), 142f, () =>
         {
             loadout.StartingMorphModelId = null;
             MarkDirty();
@@ -1328,8 +1352,8 @@ public partial class NCustomRunEditorScreen : Control
         }, danger: true);
         _contentHost.AddChild(actions);
         _contentHost.AddChild(CreateHint(loadout.StartingMorphModelId is null
-            ? "Original character form."
-            : $"Starts morphed as {GetMorphName(loadout.StartingMorphModelId)}."));
+            ? LocMan.Loc("CUSTOM_RUN_ORIGINAL_CHARACTER_FORM", "Original character form.")
+            : LocMan.Loc("CUSTOM_RUN_STARTS_MORPHED_AS", "Starts morphed as {0}.", GetMorphName(loadout.StartingMorphModelId))));
     }
 
     private void ResetSelection(SelectionSpec selection)
@@ -1476,7 +1500,7 @@ public partial class NCustomRunEditorScreen : Control
                 selection.FixedModelIds.Add(potion.Id.ToString());
             if (copies == 0)
             {
-                SetStatus("The starting potion inventory is full.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_POTION_INVENTORY_FULL", "The starting potion inventory is full."), success: false);
                 return;
             }
             MarkDirty();
@@ -1594,7 +1618,7 @@ public partial class NCustomRunEditorScreen : Control
         IReadOnlyList<SavedCardLoadoutEntry> entries = GetStartingCardEntries(loadout);
         if (entries.Count == 0)
         {
-            SetStatus("The starting deck is empty.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_STARTING_DECK_INVENTORY_EMPTY", "The starting deck is empty."), success: false);
             return;
         }
         IReadOnlyList<LoadoutOwnedItem<CardModel>> cards = CustomRunEditorPreviewService.CreateOwnedCards(entries);
@@ -1641,7 +1665,7 @@ public partial class NCustomRunEditorScreen : Control
         IReadOnlyList<SavedRelicLoadoutEntry> entries = GetStartingRelicEntries(loadout);
         if (entries.Count == 0)
         {
-            SetStatus("The starting relic inventory is empty.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_STARTING_RELIC_INVENTORY_EMPTY", "The starting relic inventory is empty."), success: false);
             return;
         }
         IReadOnlyList<LoadoutOwnedItem<RelicModel>> relics = CustomRunEditorPreviewService.CreateOwnedRelics(entries);
@@ -1983,9 +2007,21 @@ public partial class NCustomRunEditorScreen : Control
 
     private static string GetMorphName(string id)
     {
-        return CustomRunCatalogService.TryResolveMorph(id, out AbstractModel model)
-            ? model.Id.Entry
-            : id;
+        if (!CustomRunCatalogService.TryResolveMorph(id, out AbstractModel model))
+            return id;
+        try
+        {
+            return model switch
+            {
+                MonsterModel monster => monster.Title.GetFormattedText(),
+                CharacterModel character => character.Title.GetFormattedText(),
+                _ => model.Id.Entry
+            };
+        }
+        catch
+        {
+            return model.Id.Entry;
+        }
     }
 
     private void BuildRulesPanel()
@@ -1993,7 +2029,7 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null || _workingDefinition is null)
             return;
 
-        _contentHost.AddChild(CreateSectionTitle("RULES"));
+        _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_RULES", "Rules").ToUpperInvariant()));
 
         HBoxContainer summary = CreateRow();
         List<RuleDefinition> enabledPermanentRules = PermanentRuleStorageService.GetRules()
@@ -2006,20 +2042,21 @@ public partial class NCustomRunEditorScreen : Control
         int suppressedCount = _workingDefinition.Rules.Count(rule => permanentIds.Contains(rule.Id));
         int effectiveCount = _workingDefinition.Rules.Count - suppressedCount + permanentCount;
         MegaLabel count = CreateLabel(
-            $"SCENARIO  {_workingDefinition.Rules.Count}    •    PERMANENT  {permanentCount}    •    SUPPRESSED  {suppressedCount}    •    EFFECTIVE  {effectiveCount}",
+            LocMan.Loc("CUSTOM_RUN_RULE_COUNTS", "SCENARIO  {0}    •    PERMANENT  {1}    •    SUPPRESSED  {2}    •    EFFECTIVE  {3}",
+                _workingDefinition.Rules.Count, permanentCount, suppressedCount, effectiveCount),
             24,
             StsColors.cream,
             HorizontalAlignment.Left);
         count.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         summary.AddChild(count);
-        AddSettingsActionButton(summary, "new_rule", "+  NEW RULE", 220f, CreateRule);
+        AddSettingsActionButton(summary, "new_rule", "+  " + LocMan.Loc("CUSTOM_RUN_NEW_RULE", "New Rule").ToUpperInvariant(), 220f, CreateRule);
         _contentHost.AddChild(summary);
         _contentHost.AddChild(CreateSectionDivider());
 
         if (_workingDefinition.Rules.Count == 0)
         {
             MegaLabel empty = CreateLabel(
-                "No rules yet. Create one to define a WHEN / IF / THEN / LIMIT flow.",
+                LocMan.Loc("CUSTOM_RUN_NO_RULES", "No rules yet. Create one to define a WHEN / IF / THEN / LIMIT flow."),
                 25,
                 StsColors.cream,
                 HorizontalAlignment.Center);
@@ -2052,24 +2089,24 @@ public partial class NCustomRunEditorScreen : Control
         if (_contentHost is null || _workingDefinition is null)
             return;
 
-        _contentHost.AddChild(CreateSectionTitle("VARIABLES"));
+        _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_VARIABLES", "Variables").ToUpperInvariant()));
 
         HBoxContainer summary = CreateRow();
         MegaLabel count = CreateLabel(
-            $"{_workingDefinition.Variables.Count} DEFINED",
+            LocMan.Loc("CUSTOM_RUN_DEFINED_COUNT", "{0} defined", _workingDefinition.Variables.Count).ToUpperInvariant(),
             24,
             StsColors.cream,
             HorizontalAlignment.Left);
         count.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         summary.AddChild(count);
-        AddSettingsActionButton(summary, "new_variable", "+  NEW VARIABLE", 260f, CreateVariable);
+        AddSettingsActionButton(summary, "new_variable", "+  " + LocMan.Loc("CUSTOM_RUN_NEW_VARIABLE", "New Variable").ToUpperInvariant(), 260f, CreateVariable);
         _contentHost.AddChild(summary);
         _contentHost.AddChild(CreateSectionDivider());
 
         if (_workingDefinition.Variables.Count == 0)
         {
             MegaLabel empty = CreateLabel(
-                "No variables yet. Add one, then reference it from conditions and actions.",
+                LocMan.Loc("CUSTOM_RUN_NO_VARIABLES", "No variables yet. Add one, then reference it from conditions and actions."),
                 25,
                 StsColors.cream,
                 HorizontalAlignment.Center);
@@ -2107,12 +2144,12 @@ public partial class NCustomRunEditorScreen : Control
         };
         titleRow.AddChild(name);
         titleRow.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        AddSettingsActionButton(titleRow, "duplicate_variable", "DUPLICATE", 170f, () => DuplicateVariable(variable));
-        AddSettingsActionButton(titleRow, "delete_variable", "DELETE", 132f, () => DeleteVariable(variable), danger: true);
+        AddSettingsActionButton(titleRow, "duplicate_variable", LocMan.Loc("CREATURE_MANIP_DUPLICATE", "Duplicate").ToUpperInvariant(), 170f, () => DuplicateVariable(variable));
+        AddSettingsActionButton(titleRow, "delete_variable", LocMan.Loc("DELETE_LOADOUT", "Delete").ToUpperInvariant(), 132f, () => DeleteVariable(variable), danger: true);
         panel.AddChild(titleRow);
 
         HBoxContainer typeRow = CreateRow();
-        typeRow.AddChild(CreateRowLabel("Value Type"));
+        typeRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_VALUE_TYPE", "Value Type")));
         NLoadoutDropdown type = new()
         {
             CustomMinimumSize = new Vector2(420f, 52f),
@@ -2121,8 +2158,8 @@ public partial class NCustomRunEditorScreen : Control
         };
         type.SetItems(string.Empty,
         [
-            new LoadoutDropdownOption(VariableValueType.Number.ToString(), "Number"),
-            new LoadoutDropdownOption(VariableValueType.Boolean.ToString(), "Boolean")
+            new LoadoutDropdownOption(VariableValueType.Number.ToString(), LocMan.Loc("CUSTOM_RUN_NUMBER", "Number")),
+            new LoadoutDropdownOption(VariableValueType.Boolean.ToString(), LocMan.Loc("CUSTOM_RUN_BOOLEAN", "Boolean"))
         ], variable.ValueType.ToString());
         type.SelectedItemChanged += selected =>
         {
@@ -2136,7 +2173,7 @@ public partial class NCustomRunEditorScreen : Control
         panel.AddChild(typeRow);
 
         HBoxContainer scopeRow = CreateRow();
-        scopeRow.AddChild(CreateRowLabel("Scope"));
+        scopeRow.AddChild(CreateRowLabel(LocMan.Loc("FILTER_GROUP_SCOPE", "Scope")));
         NLoadoutDropdown scope = new()
         {
             CustomMinimumSize = new Vector2(420f, 52f),
@@ -2145,7 +2182,7 @@ public partial class NCustomRunEditorScreen : Control
         };
         scope.SetItems(string.Empty,
             Enum.GetValues<VariableScope>()
-                .Select(value => new LoadoutDropdownOption(value.ToString(), value.ToString()))
+                .Select(value => new LoadoutDropdownOption(value.ToString(), FormatVariableScope(value)))
                 .ToList(),
             variable.Scope.ToString());
         scope.SelectedItemChanged += selected =>
@@ -2159,11 +2196,15 @@ public partial class NCustomRunEditorScreen : Control
         panel.AddChild(scopeRow);
 
         HBoxContainer defaultRow = CreateRow();
-        defaultRow.AddChild(CreateRowLabel("Default Value"));
+        defaultRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_DEFAULT_VALUE", "Default Value")));
         if (variable.ValueType == VariableValueType.Boolean)
         {
             NLoadoutToggle toggle = new() { CustomMinimumSize = new Vector2(260f, 50f) };
-            toggle.Init("variable_default", variable.DefaultBoolean ? "TRUE" : "FALSE", variable.DefaultBoolean);
+            toggle.Init("variable_default",
+                variable.DefaultBoolean
+                    ? LocMan.Loc("CUSTOM_RUN_TRUE", "True").ToUpperInvariant()
+                    : LocMan.Loc("CUSTOM_RUN_FALSE", "False").ToUpperInvariant(),
+                variable.DefaultBoolean);
             toggle.Connect(
                 NLoadoutToggle.SignalName.Toggled,
                 Callable.From<NLoadoutToggle>(changed =>
@@ -2190,9 +2231,20 @@ public partial class NCustomRunEditorScreen : Control
             defaultRow.AddChild(stepper);
         }
         panel.AddChild(defaultRow);
-        panel.AddChild(CreateHint($"Stable ID: {variable.Id}"));
+        panel.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_STABLE_ID", "Stable ID: {0}", variable.Id)));
         _contentHost.AddChild(panel);
         _contentHost.AddChild(CreateSectionDivider());
+    }
+
+    private static string FormatVariableScope(VariableScope scope)
+    {
+        return scope switch
+        {
+            VariableScope.Run => LocMan.Loc("CUSTOM_RUN_SCOPE_RUN", "Run"),
+            VariableScope.Player => LocMan.Loc("CUSTOM_RUN_SCOPE_PLAYER", "Player"),
+            VariableScope.Combat => LocMan.Loc("CUSTOM_RUN_SCOPE_COMBAT", "Combat"),
+            _ => scope.ToString()
+        };
     }
 
     private void CreateVariable()
@@ -2201,14 +2253,14 @@ public partial class NCustomRunEditorScreen : Control
             return;
         VariableDefinition variable = new()
         {
-            Name = $"Variable {_workingDefinition.Variables.Count + 1}",
+            Name = LocMan.Loc("CUSTOM_RUN_DEFAULT_VARIABLE_NAME", "Variable {0}", _workingDefinition.Variables.Count + 1),
             ValueType = VariableValueType.Number,
             Scope = VariableScope.Run
         };
         _workingDefinition.Variables.Add(variable);
         MarkDirty();
         RebuildContent();
-        SetStatus($"Created variable '{variable.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_CREATED_VARIABLE", "Created variable '{0}'.", variable.Name), success: true);
     }
 
     private void DuplicateVariable(VariableDefinition source)
@@ -2218,7 +2270,7 @@ public partial class NCustomRunEditorScreen : Control
         VariableDefinition copy = new()
         {
             Id = Guid.NewGuid().ToString("N"),
-            Name = $"{source.Name} Copy",
+            Name = LocMan.Loc("CUSTOM_RUN_COPY_NAME", "{0} Copy", source.Name),
             ValueType = source.ValueType,
             Scope = source.Scope,
             DefaultNumber = source.DefaultNumber,
@@ -2228,7 +2280,7 @@ public partial class NCustomRunEditorScreen : Control
         _workingDefinition.Variables.Insert(Math.Max(0, index + 1), copy);
         MarkDirty();
         RebuildContent();
-        SetStatus($"Duplicated variable '{source.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_DUPLICATED_VARIABLE", "Duplicated variable '{0}'.", source.Name), success: true);
     }
 
     private void DeleteVariable(VariableDefinition variable)
@@ -2238,7 +2290,7 @@ public partial class NCustomRunEditorScreen : Control
         if (!string.Equals(_deleteConfirmationId, variable.Id, StringComparison.Ordinal))
         {
             _deleteConfirmationId = variable.Id;
-            SetStatus($"Press delete again to remove variable '{variable.Name}'. References will remain as validation errors.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_CONFIRM_DELETE_VARIABLE", "Press delete again to remove variable '{0}'. References will remain as validation errors.", variable.Name), success: false);
             return;
         }
         _deleteConfirmationId = null;
@@ -2246,7 +2298,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
         MarkDirty();
         RebuildContent();
-        SetStatus($"Deleted variable '{variable.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_DELETED_VARIABLE", "Deleted variable '{0}'.", variable.Name), success: true);
     }
 
     private void CreateRule()
@@ -2256,7 +2308,7 @@ public partial class NCustomRunEditorScreen : Control
 
         RuleDefinition rule = new()
         {
-            Name = $"Rule {_workingDefinition.Rules.Count + 1}",
+            Name = LocMan.Loc("CUSTOM_RUN_DEFAULT_RULE_NAME", "Rule {0}", _workingDefinition.Rules.Count + 1),
             Trigger = new RuleComponentSpec { TypeId = "Loadout2:CardPlayed" },
             Conditions = new ConditionGroupDefinition
             {
@@ -2321,7 +2373,9 @@ public partial class NCustomRunEditorScreen : Control
             return;
         rule.Enabled = enabled;
         MarkDirty();
-        SetStatus($"Rule '{rule.Name}' {(enabled ? "enabled" : "disabled")}.", success: true);
+        SetStatus(enabled
+            ? LocMan.Loc("CUSTOM_RUN_RULE_ENABLED", "Rule '{0}' enabled.", rule.Name)
+            : LocMan.Loc("CUSTOM_RUN_RULE_DISABLED", "Rule '{0}' disabled.", rule.Name), success: true);
     }
 
     private void DuplicateRule(RuleDefinition source)
@@ -2330,12 +2384,12 @@ public partial class NCustomRunEditorScreen : Control
             return;
         RuleDefinition copy = CustomRunNormalizationService.CloneRule(source);
         copy.Id = Guid.NewGuid().ToString("N");
-        copy.Name = $"{source.Name} Copy";
+        copy.Name = LocMan.Loc("CUSTOM_RUN_COPY_NAME", "{0} Copy", source.Name);
         int index = _workingDefinition.Rules.FindIndex(rule => string.Equals(rule.Id, source.Id, StringComparison.Ordinal));
         _workingDefinition.Rules.Insert(Math.Max(0, index + 1), copy);
         MarkDirty();
         RebuildContent();
-        SetStatus($"Duplicated rule '{source.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_DUPLICATED_RULE", "Duplicated rule '{0}'.", source.Name), success: true);
     }
 
     private void SaveRuleAsPermanent(RuleDefinition source)
@@ -2343,7 +2397,7 @@ public partial class NCustomRunEditorScreen : Control
         if (_readOnly)
             return;
         RuleDefinition saved = PermanentRuleStorageService.Upsert(source, _workingDefinition?.Variables ?? []);
-        SetStatus($"Saved '{saved.Name}' to Permanent Rules.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_TO_PERMANENT", "Saved '{0}' to Permanent Rules.", saved.Name), success: true);
     }
 
     private void DeleteRule(RuleDefinition rule)
@@ -2353,7 +2407,7 @@ public partial class NCustomRunEditorScreen : Control
         if (!string.Equals(_deleteConfirmationId, rule.Id, StringComparison.Ordinal))
         {
             _deleteConfirmationId = rule.Id;
-            SetStatus($"Press delete again to remove rule '{rule.Name}'.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_CONFIRM_DELETE_RULE", "Press delete again to remove rule '{0}'.", rule.Name), success: false);
             return;
         }
 
@@ -2365,7 +2419,7 @@ public partial class NCustomRunEditorScreen : Control
         }
         MarkDirty();
         RebuildContent();
-        SetStatus($"Deleted rule '{rule.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_DELETED_RULE", "Deleted rule '{0}'.", rule.Name), success: true);
     }
 
     private void ReorderRule(string sourceId, string? targetId, bool placeAfter)
@@ -2388,7 +2442,7 @@ public partial class NCustomRunEditorScreen : Control
         _workingDefinition.Rules.Insert(Math.Clamp(targetIndex, 0, _workingDefinition.Rules.Count), source);
         MarkDirty();
         RebuildContent();
-        SetStatus($"Moved rule '{source.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_MOVED_RULE", "Moved rule '{0}'.", source.Name), success: true);
     }
 
     private void BuildFoundationPanel(string tabName)
@@ -2403,11 +2457,11 @@ public partial class NCustomRunEditorScreen : Control
             "Variables" => _workingDefinition.Variables.Count,
             _ => 0
         };
-        _contentHost.AddChild(CreateSectionTitle(tabName.ToUpperInvariant()));
+        _contentHost.AddChild(CreateSectionTitle(GetTabLabel(tabName).ToUpperInvariant()));
         MegaLabel countLabel = CreateLabel(
             tabName == "Permanent Rules"
-                ? "Permanent Rules library: not yet populated"
-                : $"Definitions currently stored here: {count}",
+                ? LocMan.Loc("CUSTOM_RUN_PERMANENT_RULES_NOT_POPULATED", "Permanent Rules library: not yet populated")
+                : LocMan.Loc("CUSTOM_RUN_DEFINITIONS_STORED", "Definitions currently stored here: {0}", count),
             26,
             StsColors.cream,
             HorizontalAlignment.Center);
@@ -2464,12 +2518,12 @@ public partial class NCustomRunEditorScreen : Control
         SelectionSpec selection = setup.Character;
         string? ownerId = _activeSetupRoleId;
         HBoxContainer modeRow = CreateRow();
-        modeRow.AddChild(CreateRowLabel("Character Selection"));
+        modeRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_CHARACTER_SELECTION", "Character Selection")));
         List<LoadoutDropdownOption> options =
         [
-            new LoadoutDropdownOption(SelectionMode.Default.ToString(), "No Restriction"),
-            new LoadoutDropdownOption(SelectionMode.Fixed.ToString(), "Restricted"),
-            new LoadoutDropdownOption(SelectionMode.Random.ToString(), "Random")
+            new LoadoutDropdownOption(SelectionMode.Default.ToString(), LocMan.Loc("CUSTOM_RUN_NO_RESTRICTION", "No Restriction")),
+            new LoadoutDropdownOption(SelectionMode.Fixed.ToString(), LocMan.Loc("CUSTOM_RUN_RESTRICTED", "Restricted")),
+            new LoadoutDropdownOption(SelectionMode.Random.ToString(), LocMan.Loc("CUSTOM_RUN_RANDOM", "Random"))
         ];
         NLoadoutDropdown mode = new()
         {
@@ -2583,7 +2637,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
         SaveCurrent(showStatus: false);
         LoadDefinition(CustomRunStorageService.CreateNew());
-        SetStatus("Created a new Custom Run.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_CREATED_NEW", "Created a new Custom Run."), success: true);
     }
 
     private void DuplicateDefinition()
@@ -2597,7 +2651,7 @@ public partial class NCustomRunEditorScreen : Control
         RefreshRunName();
         RebuildContent();
         RefreshEditableState();
-        SetStatus($"Saved as '{_workingDefinition.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_AS", "Saved as '{0}'.", _workingDefinition.Name), success: true);
     }
 
     private void DeleteDefinition()
@@ -2608,8 +2662,8 @@ public partial class NCustomRunEditorScreen : Control
         if (!string.Equals(_deleteConfirmationId, _workingDefinition.Id, StringComparison.Ordinal))
         {
             _deleteConfirmationId = _workingDefinition.Id;
-            _deleteButton?.Init("delete", "Confirm Delete");
-            SetStatus($"Press Confirm Delete to remove '{_workingDefinition.Name}'.", success: false);
+            _deleteButton?.Init("delete", LocMan.Loc("CUSTOM_RUN_CONFIRM_DELETE", "Confirm Delete"));
+            SetStatus(LocMan.Loc("CUSTOM_RUN_PRESS_CONFIRM_DELETE", "Press Confirm Delete to remove '{0}'.", _workingDefinition.Name), success: false);
             return;
         }
 
@@ -2622,7 +2676,7 @@ public partial class NCustomRunEditorScreen : Control
         _dirty = false;
         RefreshSavedList();
         RebuildContent();
-        SetStatus($"Deleted '{deletedName}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_DELETED_NAMED", "Deleted '{0}'.", deletedName), success: true);
     }
 
     private void LoadDefinition(CustomRunDefinition definition)
@@ -2636,7 +2690,7 @@ public partial class NCustomRunEditorScreen : Control
         ResetDeleteButton();
         RefreshSavedList();
         RebuildContent();
-        SetStatus($"Editing '{_workingDefinition.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_EDITING_NAMED", "Editing '{0}'.", _workingDefinition.Name), success: true);
     }
 
     private void SaveCurrent(bool showStatus)
@@ -2647,7 +2701,7 @@ public partial class NCustomRunEditorScreen : Control
         _dirty = false;
         RefreshRunName();
         if (showStatus)
-            SetStatus($"Saved '{_workingDefinition.Name}'.", success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_NAMED", "Saved '{0}'.", _workingDefinition.Name), success: true);
     }
 
     private void ImportDefinition()
@@ -2664,8 +2718,8 @@ public partial class NCustomRunEditorScreen : Control
         LoadDefinition(CustomRunStorageService.Import(definition));
         SetStatus(
             validation.IsValid
-                ? "Imported and validated the Custom Run."
-                : $"Imported for editing with {validation.Issues.Count} validation issue(s).",
+                ? LocMan.Loc("CUSTOM_RUN_IMPORTED_VALIDATED", "Imported and validated the Custom Run.")
+                : LocMan.Loc("CUSTOM_RUN_IMPORTED_VALIDATION_ISSUES", "Imported for editing with {0} validation issue(s).", validation.Issues.Count),
             validation.IsValid);
     }
 
@@ -2676,7 +2730,7 @@ public partial class NCustomRunEditorScreen : Control
         if (!_readOnly)
             SaveCurrent(showStatus: false);
         if (CustomRunClipboardService.Copy(_workingDefinition, out string error))
-            SetStatus("Copied an L2CR1 share string to the clipboard.", success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_COPIED_SHARE_STRING", "Copied an L2CR1 share string to the clipboard."), success: true);
         else
             SetStatus(error, success: false);
     }
@@ -2688,7 +2742,7 @@ public partial class NCustomRunEditorScreen : Control
         CustomRunValidationResult result = CustomRunCompiler.ValidateForLobbyLoad(_workingDefinition);
         if (result.IsValid)
         {
-            SetStatus("Validation passed. Role assignments will be checked on embark.", success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_VALIDATION_PASSED", "Validation passed. Role assignments will be checked on embark."), success: true);
             return;
         }
 
@@ -2706,7 +2760,7 @@ public partial class NCustomRunEditorScreen : Control
         CustomRunValidationResult result = CustomRunValidator.Validate(_workingDefinition);
         if (!result.IsValid)
         {
-            SetStatus($"Cannot apply: {result.Issues[0].Section}: {result.Issues[0].Message}", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_CANNOT_APPLY", "Cannot apply: {0}: {1}", result.Issues[0].Section, result.Issues[0].Message), success: false);
             return;
         }
 
@@ -2718,8 +2772,8 @@ public partial class NCustomRunEditorScreen : Control
 
         SetStatus(
             _lobby.NetService.Type == NetGameType.Host
-                ? "Applied and synchronized this editor definition to lobby clients."
-                : "Applied this editor definition to the singleplayer lobby.",
+                ? LocMan.Loc("CUSTOM_RUN_APPLIED_MULTIPLAYER", "Applied and synchronized this editor definition to lobby clients.")
+                : LocMan.Loc("CUSTOM_RUN_APPLIED_SINGLEPLAYER", "Applied this editor definition to the singleplayer lobby."),
             success: true);
     }
 
@@ -2768,7 +2822,7 @@ public partial class NCustomRunEditorScreen : Control
         NModalContainer? modalContainer = NModalContainer.Instance;
         if (modalContainer is null || !GodotObject.IsInstanceValid(modalContainer))
         {
-            SetStatus("Could not open the unsaved-changes warning.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_UNSAVED_WARNING_FAILED", "Could not open the unsaved-changes warning."), success: false);
             return false;
         }
 
@@ -2783,7 +2837,7 @@ public partial class NCustomRunEditorScreen : Control
         NGenericPopup? popup = NGenericPopup.Create();
         if (popup is null)
         {
-            SetStatus("Could not open the unsaved-changes warning.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_UNSAVED_WARNING_FAILED", "Could not open the unsaved-changes warning."), success: false);
             return false;
         }
 
@@ -2862,7 +2916,7 @@ public partial class NCustomRunEditorScreen : Control
         _dirty = true;
         _deleteConfirmationId = null;
         ResetDeleteButton();
-        SetStatus("Unsaved changes.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_UNSAVED_CHANGES", "Unsaved changes."), success: true);
     }
 
     private void RefreshEditableState()
@@ -2880,7 +2934,7 @@ public partial class NCustomRunEditorScreen : Control
 
     private void ResetDeleteButton()
     {
-        _deleteButton?.Init("delete", "Delete");
+        _deleteButton?.Init("delete", LocMan.Loc("DELETE_LOADOUT", "Delete"));
     }
 
     private void SetStatus(string text, bool success)

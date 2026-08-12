@@ -12,6 +12,7 @@ using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Targets;
 using Loadout.UI.Screens;
+using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -48,7 +49,7 @@ public static class CustomRunCatalogSelector
         {
             session?.Dispose();
             session = null;
-            error = $"Could not open the shared {kind.ToString().ToLowerInvariant()} screen: {exception.Message}";
+            error = LocMan.Loc("CUSTOM_RUN_OPEN_SHARED_SCREEN_FAILED", "Could not open the shared {0} screen: {1}", FormatKind(kind), exception.Message);
             return false;
         }
     }
@@ -124,7 +125,7 @@ public static class CustomRunCatalogSelector
         {
             session?.Dispose();
             session = null;
-            error = $"Could not open the shared {kind.ToString().ToLowerInvariant()} screen: {exception.Message}";
+            error = LocMan.Loc("CUSTOM_RUN_OPEN_SHARED_SCREEN_FAILED", "Could not open the shared {0} screen: {1}", FormatKind(kind), exception.Message);
             return false;
         }
     }
@@ -182,7 +183,7 @@ public static class CustomRunCatalogSelector
         {
             session?.Dispose();
             session = null;
-            error = $"Could not open the shared {kind.ToString().ToLowerInvariant()} screen: {exception.Message}";
+            error = LocMan.Loc("CUSTOM_RUN_OPEN_SHARED_SCREEN_FAILED", "Could not open the shared {0} screen: {1}", FormatKind(kind), exception.Message);
             return false;
         }
     }
@@ -209,7 +210,7 @@ public static class CustomRunCatalogSelector
             .ToList();
         if (models.Count < minimum)
         {
-            error = $"The {kind.ToString().ToLowerInvariant()} choice has only {models.Count} valid options.";
+            error = LocMan.Loc("CUSTOM_RUN_TOO_FEW_OPTIONS", "The {0} choice has only {1} valid options.", FormatKind(kind), models.Count);
             return false;
         }
 
@@ -280,7 +281,7 @@ public static class CustomRunCatalogSelector
         {
             session?.Dispose();
             session = null;
-            error = $"Could not open the shared {kind.ToString().ToLowerInvariant()} choice: {exception.Message}";
+            error = LocMan.Loc("CUSTOM_RUN_OPEN_SHARED_CHOICE_FAILED", "Could not open the shared {0} choice: {1}", FormatKind(kind), exception.Message);
             return false;
         }
     }
@@ -384,7 +385,7 @@ public static class CustomRunCatalogSelector
         {
             session?.Dispose();
             session = null;
-            error = $"Could not open the Custom Run card inventory: {exception.Message}";
+            error = LocMan.Loc("CUSTOM_RUN_OPEN_CARD_INVENTORY_FAILED", "Could not open the Custom Run card inventory: {0}", exception.Message);
             return false;
         }
     }
@@ -493,7 +494,7 @@ public static class CustomRunCatalogSelector
         {
             session?.Dispose();
             session = null;
-            error = $"Could not open the Custom Run relic inventory: {exception.Message}";
+            error = LocMan.Loc("CUSTOM_RUN_OPEN_RELIC_INVENTORY_FAILED", "Could not open the Custom Run relic inventory: {0}", exception.Message);
             return false;
         }
     }
@@ -563,7 +564,7 @@ public static class CustomRunCatalogSelector
         session = null;
         if (!TryFindNamedScreen("BottledMonster_Alternate", out NGenericSelectScreen screen, out error))
         {
-            error = "The initialized Morph Selection screen is not available.";
+            error = LocMan.Loc("CUSTOM_RUN_MORPH_SCREEN_UNAVAILABLE", "The initialized Morph Selection screen is not available.");
             return false;
         }
 
@@ -648,7 +649,7 @@ public static class CustomRunCatalogSelector
             .FirstOrDefault()!;
         if (screen is null)
         {
-            error = $"No initialized {kind.ToString().ToLowerInvariant()} catalog screen is available.";
+        error = LocMan.Loc("CUSTOM_RUN_CATALOG_UNAVAILABLE", "No initialized {0} catalog screen is available.", FormatKind(kind));
             return false;
         }
         return true;
@@ -668,7 +669,7 @@ public static class CustomRunCatalogSelector
             .FirstOrDefault(candidate => !candidate.IsScreenActive)!;
         if (screen is null)
         {
-            error = $"The initialized {nameFragment} screen is not available.";
+        error = LocMan.Loc("CUSTOM_RUN_NAMED_SCREEN_UNAVAILABLE", "The initialized {0} screen is not available.", nameFragment);
             return false;
         }
         return true;
@@ -683,11 +684,24 @@ public static class CustomRunCatalogSelector
         NLoadoutPanel? panel = NLoadoutPanel.Instance;
         if (NLoadoutPanelRoot.Instance is null || panel is null || !panel.LoadoutItemsInitialized)
         {
-            error = "The shared Loadout screens are not ready yet.";
+            error = LocMan.Loc("CUSTOM_RUN_SHARED_SCREENS_NOT_READY", "The shared Loadout screens are not ready yet.");
             return false;
         }
         screens = panel.GetSelectScreensForPreload();
         return true;
+    }
+
+    private static string FormatKind(SelectionModelKind kind)
+    {
+        return kind switch
+        {
+            SelectionModelKind.Card => LocMan.Loc("CATEGORY_CARD", "card"),
+            SelectionModelKind.Relic => LocMan.Loc("CATEGORY_RELIC", "relic").ToLowerInvariant(),
+            SelectionModelKind.Potion => LocMan.Loc("CATEGORY_POTION", "potion").ToLowerInvariant(),
+            SelectionModelKind.Power => LocMan.Loc("CARD_TYPE_POWER", "power").ToLowerInvariant(),
+            SelectionModelKind.Monster => LocMan.Loc("CUSTOM_RUN_MONSTER", "monster"),
+            _ => kind.ToString().ToLowerInvariant()
+        };
     }
 
     private static void RefreshRelicView(Control view, RelicModel model)

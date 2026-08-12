@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Godot;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Registry;
+using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
@@ -147,8 +148,10 @@ public partial class NCustomRunRuleRow : NButton
             CustomMinimumSize = new Vector2(70f, 64f),
             SizeFlagsVertical = SizeFlags.ShrinkCenter,
             TooltipText = _options.SuppressedByPermanent
-                ? "Disabled here because an enabled Permanent Rule has identical behavior"
-                : _options.Rule.Enabled ? "Disable rule" : "Enable rule"
+                ? LocMan.Loc("CUSTOM_RUN_SUPPRESSED_BY_PERMANENT", "Disabled here because an enabled Permanent Rule has identical behavior")
+                : _options.Rule.Enabled
+                    ? LocMan.Loc("CUSTOM_RUN_DISABLE_RULE", "Disable rule")
+                    : LocMan.Loc("CUSTOM_RUN_ENABLE_RULE", "Enable rule")
         };
         enabled.Init(_options.Rule.Id, string.Empty, _options.Rule.Enabled && !_options.SuppressedByPermanent);
         enabled.Connect(
@@ -166,7 +169,7 @@ public partial class NCustomRunRuleRow : NButton
         row.AddChild(text);
         text.AddChild(CreateLabel(_options.Rule.Name, 27, StsColors.gold, bold: true, 42f));
         string summaryText = _options.SuppressedByPermanent
-            ? $"PERMANENT COPY ACTIVE  •  {DescribeRule(_options.Rule)}"
+            ? LocMan.Loc("CUSTOM_RUN_PERMANENT_COPY_ACTIVE", "Permanent copy active  •  {0}", DescribeRule(_options.Rule)).ToUpperInvariant()
             : DescribeRule(_options.Rule);
         MegaLabel summary = CreateLabel(summaryText, 19, _options.SuppressedByPermanent ? StsColors.gray : StsColors.cream, bold: false, 42f);
         summary.AutowrapMode = TextServer.AutowrapMode.WordSmart;
@@ -174,14 +177,14 @@ public partial class NCustomRunRuleRow : NButton
         summary.TooltipText = summary.Text;
         text.AddChild(summary);
 
-        NLoadoutSettingsActionButton duplicate = AddAction(row, "duplicate", "DUPLICATE", 148f, _options.DuplicateAction);
-        NLoadoutSettingsActionButton permanent = AddAction(row, "permanent", "PERMANENT", 158f, _options.PermanentAction);
+        NLoadoutSettingsActionButton duplicate = AddAction(row, "duplicate", LocMan.Loc("CREATURE_MANIP_DUPLICATE", "Duplicate").ToUpperInvariant(), 148f, _options.DuplicateAction);
+        NLoadoutSettingsActionButton permanent = AddAction(row, "permanent", LocMan.Loc("CUSTOM_RUN_PERMANENT", "Permanent").ToUpperInvariant(), 158f, _options.PermanentAction);
 
         NCustomRunDeleteButton delete = new()
         {
             Name = "Delete",
             CustomMinimumSize = new Vector2(72f, 64f),
-            TooltipText = $"Delete {_options.Rule.Name}"
+            TooltipText = LocMan.Loc("CUSTOM_RUN_DELETE_NAMED", "Delete {0}", _options.Rule.Name)
         };
         delete.Connect(
             NClickableControl.SignalName.Released,
@@ -247,21 +250,27 @@ public partial class NCustomRunRuleRow : NButton
     {
         string trigger = CustomRunRegistry.TryGetTrigger(rule.Trigger.TypeId, out RuleComponentDescriptor descriptor)
             ? descriptor.DisplayName
-            : string.IsNullOrWhiteSpace(rule.Trigger.TypeId) ? "Choose a trigger" : rule.Trigger.TypeId;
+            : string.IsNullOrWhiteSpace(rule.Trigger.TypeId)
+                ? LocMan.Loc("CUSTOM_RUN_CHOOSE_TRIGGER", "Choose a trigger")
+                : rule.Trigger.TypeId;
         int conditionCount = CountConditions(rule.Conditions);
-        string conditions = conditionCount == 1 ? "1 condition" : $"{conditionCount} conditions";
-        string actions = rule.Actions.Count == 1 ? "1 action" : $"{rule.Actions.Count} actions";
+        string conditions = conditionCount == 1
+            ? LocMan.Loc("CUSTOM_RUN_ONE_CONDITION", "1 condition")
+            : LocMan.Loc("CUSTOM_RUN_CONDITION_COUNT", "{0} conditions", conditionCount);
+        string actions = rule.Actions.Count == 1
+            ? LocMan.Loc("CUSTOM_RUN_ONE_ACTION", "1 action")
+            : LocMan.Loc("CUSTOM_RUN_ACTION_COUNT", "{0} actions", rule.Actions.Count);
         string limit = rule.Limit.Kind switch
         {
-            RuleLimitKind.Unlimited => "unlimited",
-            RuleLimitKind.OncePerEventChain => "once per event chain",
-            RuleLimitKind.TimesPerTurn => $"{rule.Limit.Count} per turn",
-            RuleLimitKind.TimesPerCombat => $"{rule.Limit.Count} per combat",
-            RuleLimitKind.TimesPerRun => $"{rule.Limit.Count} per run",
-            RuleLimitKind.UntilCondition => "until condition",
+            RuleLimitKind.Unlimited => LocMan.Loc("CUSTOM_RUN_LIMIT_UNLIMITED_LOWER", "unlimited"),
+            RuleLimitKind.OncePerEventChain => LocMan.Loc("CUSTOM_RUN_LIMIT_ONCE_PER_EVENT_CHAIN_LOWER", "once per event chain"),
+            RuleLimitKind.TimesPerTurn => LocMan.Loc("CUSTOM_RUN_LIMIT_PER_TURN", "{0} per turn", rule.Limit.Count),
+            RuleLimitKind.TimesPerCombat => LocMan.Loc("CUSTOM_RUN_LIMIT_PER_COMBAT", "{0} per combat", rule.Limit.Count),
+            RuleLimitKind.TimesPerRun => LocMan.Loc("CUSTOM_RUN_LIMIT_PER_RUN", "{0} per run", rule.Limit.Count),
+            RuleLimitKind.UntilCondition => LocMan.Loc("CUSTOM_RUN_LIMIT_UNTIL_CONDITION_LOWER", "until condition"),
             _ => rule.Limit.Kind.ToString()
         };
-        return $"WHEN {trigger}  •  {conditions}  •  {actions}  •  {limit}";
+        return LocMan.Loc("CUSTOM_RUN_RULE_SUMMARY", "WHEN {0}  •  {1}  •  {2}  •  {3}", trigger, conditions, actions, limit);
     }
 
     private static int CountConditions(ConditionGroupDefinition group)

@@ -12,6 +12,7 @@ using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
 using Loadout.Services.CustomRuns.PermanentRules;
 using Loadout.Services.CustomRuns.Persistence;
+using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.UI;
@@ -163,7 +164,7 @@ public partial class NCustomRunLibraryScreen : Control
         Control? customHeaderMount = GetNodeOrNull<Control>("%CustomRunsHeaderMount");
         if (customHeaderMount is not null && customHeaderMount.GetChildCount() == 0)
         {
-            _customRunsHeader = CreateSectionHeader("custom_runs", "CUSTOM RUNS");
+            _customRunsHeader = CreateSectionHeader("custom_runs", LocMan.Loc("CUSTOM_RUNS", "Custom Runs").ToUpperInvariant());
             _customRunsHeader.Connect(
                 NClickableControl.SignalName.Released,
                 Callable.From<NClickableControl>(_ => SwitchSection(showPermanentRules: false)));
@@ -174,7 +175,7 @@ public partial class NCustomRunLibraryScreen : Control
                 Name = "ImportAndPlayButton",
                 CustomMinimumSize = new Vector2(300f, 58f)
             };
-            _importAndPlayButton.Init("import_and_play", "IMPORT AND PLAY");
+            _importAndPlayButton.Init("import_and_play", LocMan.Loc("CUSTOM_RUN_IMPORT_AND_PLAY", "Import and Play").ToUpperInvariant());
             _importAndPlayButton.SetAnchorsPreset(LayoutPreset.CenterRight);
             _importAndPlayButton.OffsetLeft = -300f;
             _importAndPlayButton.OffsetTop = -29f;
@@ -189,7 +190,7 @@ public partial class NCustomRunLibraryScreen : Control
         Control? permanentHeaderMount = GetNodeOrNull<Control>("%PermanentRulesHeaderMount");
         if (permanentHeaderMount is not null && permanentHeaderMount.GetChildCount() == 0)
         {
-            _permanentRulesHeader = CreateSectionHeader("permanent_rules", "PERMANENT RULES");
+            _permanentRulesHeader = CreateSectionHeader("permanent_rules", LocMan.Loc("CUSTOM_RUN_PERMANENT_RULES", "Permanent Rules").ToUpperInvariant());
             _permanentRulesHeader.Connect(
                 NClickableControl.SignalName.Released,
                 Callable.From<NClickableControl>(_ => SwitchSection(showPermanentRules: true)));
@@ -311,9 +312,9 @@ public partial class NCustomRunLibraryScreen : Control
         if (_lobby.NetService.Type == NetGameType.Client
             && CustomRunLobbyService.GetRemoteDefinition() is { } remote)
         {
-            _customList.AddChild(CreateSectionLabel("LOBBY CUSTOM RUN"));
+            _customList.AddChild(CreateSectionLabel(LocMan.Loc("CUSTOM_RUN_LOBBY_CUSTOM_RUN", "Lobby Custom Run").ToUpperInvariant()));
             AddDefinitionRow(remote, isLobbyDefinition: true);
-            _customList.AddChild(CreateSectionLabel("YOUR CUSTOM RUNS"));
+            _customList.AddChild(CreateSectionLabel(LocMan.Loc("CUSTOM_RUN_YOUR_CUSTOM_RUNS", "Your Custom Runs").ToUpperInvariant()));
         }
 
         foreach (CustomRunDefinition definition in CustomRunStorageService.GetDefinitions())
@@ -337,7 +338,9 @@ public partial class NCustomRunLibraryScreen : Control
         row.Init(new CustomRunLibraryRowOptions(
             captured.Name,
             captured.Description,
-            isLobbyDefinition ? "LOBBY" : "PLAY",
+            isLobbyDefinition
+                ? LocMan.Loc("CUSTOM_RUN_LOBBY", "Lobby").ToUpperInvariant()
+                : LocMan.Loc("CUSTOM_RUN_PLAY", "Play").ToUpperInvariant(),
             isLobbyDefinition ? null : () =>
             {
                 TaskHelper.RunSafely(PlayAsync(captured));
@@ -348,7 +351,7 @@ public partial class NCustomRunLibraryScreen : Control
             {
                 TaskHelper.RunSafely(DeleteAsync(captured));
             },
-            TrailingLabel: "EXPORT",
+            TrailingLabel: LocMan.Loc("CUSTOM_RUN_EXPORT", "Export").ToUpperInvariant(),
             TrailingAction: () => Export(captured),
             PrimaryEnabled: canPlay,
             ReorderId: isLobbyDefinition ? null : captured.Id,
@@ -366,12 +369,12 @@ public partial class NCustomRunLibraryScreen : Control
         row.Init(new CustomRunLibraryRowOptions(
             string.Empty,
             string.Empty,
-            "+  CREATE NEW CUSTOM RUN",
+            "+  " + LocMan.Loc("CUSTOM_RUN_CREATE_NEW", "Create New Custom Run").ToUpperInvariant(),
             NewRun,
             RowAction: NewRun,
             ShowDelete: false,
             DeleteAction: null,
-            TrailingLabel: "IMPORT",
+            TrailingLabel: LocMan.Loc("CUSTOM_RUN_IMPORT", "Import").ToUpperInvariant(),
             TrailingAction: Import,
             IsCreateRow: true,
             ReorderAction: ReorderCustomRun));
@@ -395,7 +398,7 @@ public partial class NCustomRunLibraryScreen : Control
         if (rules.Count == 0)
         {
             MegaLabel empty = CreateLabel(
-                "No permanent rules have been saved yet.",
+                LocMan.Loc("CUSTOM_RUN_NO_PERMANENT_RULES", "No permanent rules have been saved yet."),
                 24,
                 StsColors.cream,
                 HorizontalAlignment.Center,
@@ -503,7 +506,9 @@ public partial class NCustomRunLibraryScreen : Control
         try
         {
             PermanentRuleStorageService.SetEnabled(id, enabled);
-            SetStatus($"Permanent rule {(enabled ? "enabled" : "disabled")}.", success: true);
+        SetStatus(enabled
+            ? LocMan.Loc("CUSTOM_RUN_PERMANENT_RULE_ENABLED", "Permanent rule enabled.")
+            : LocMan.Loc("CUSTOM_RUN_PERMANENT_RULE_DISABLED", "Permanent rule disabled."), success: true);
         }
         finally
         {
@@ -526,7 +531,7 @@ public partial class NCustomRunLibraryScreen : Control
             saved =>
             {
                 _focusPermanentRuleId = saved.Id;
-                SetStatus($"Saved permanent rule '{saved.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_PERMANENT_RULE", "Saved permanent rule '{0}'.", saved.Name), success: true);
             });
     }
 
@@ -536,7 +541,7 @@ public partial class NCustomRunLibraryScreen : Control
         if (saved is null)
             return;
         _focusPermanentRuleId = saved.Rule.Id;
-        SetStatus($"Duplicated permanent rule '{rule.Name}'.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_DUPLICATED_PERMANENT_RULE", "Duplicated permanent rule '{0}'.", rule.Name), success: true);
     }
 
     private void FinalizeRebuild()
@@ -725,8 +730,8 @@ public partial class NCustomRunLibraryScreen : Control
         _focusDefinitionId = imported.Id;
         SetStatus(
             validation.IsValid
-                ? $"Imported '{imported.Name}'."
-                : $"Imported '{imported.Name}' with {validation.Issues.Count} issue(s); it remains editable.",
+                ? LocMan.Loc("CUSTOM_RUN_IMPORTED_NAMED", "Imported '{0}'.", imported.Name)
+                : LocMan.Loc("CUSTOM_RUN_IMPORTED_WITH_ISSUES", "Imported '{0}' with {1} issue(s); it remains editable.", imported.Name, validation.Issues.Count),
             validation.IsValid);
     }
 
@@ -744,7 +749,7 @@ public partial class NCustomRunLibraryScreen : Control
     private void Export(CustomRunDefinition definition)
     {
         if (CustomRunClipboardService.Copy(definition, out string error))
-            SetStatus($"Copied '{definition.Name}' to clipboard.", success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_COPIED_TO_CLIPBOARD", "Copied '{0}' to clipboard.", definition.Name), success: true);
         else
             SetStatus(error, success: false);
     }
@@ -764,9 +769,9 @@ public partial class NCustomRunLibraryScreen : Control
         int index = _rows.FindIndex(row => string.Equals(row.Id, definition.Id, StringComparison.Ordinal));
         _focusDefinitionId = index >= 0 && index + 1 < _rows.Count ? _rows[index + 1].Id : "new";
         if (CustomRunStorageService.Delete(definition.Id))
-            SetStatus($"Deleted '{definition.Name}'.", success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_DELETED_NAMED", "Deleted '{0}'.", definition.Name), success: true);
         else
-            SetStatus($"Could not find '{definition.Name}' to delete.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_COULD_NOT_FIND_TO_DELETE", "Could not find '{0}' to delete.", definition.Name), success: false);
     }
 
     private async Task DeletePermanentRuleAsync(RuleDefinition rule)
@@ -786,9 +791,9 @@ public partial class NCustomRunLibraryScreen : Control
             ? _permanentRows[index + 1].RuleId
             : _permanentRows.ElementAtOrDefault(Math.Max(0, index - 1))?.RuleId;
         if (PermanentRuleStorageService.Delete(rule.Id))
-            SetStatus($"Deleted permanent rule '{rule.Name}'.", success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_DELETED_PERMANENT_RULE", "Deleted permanent rule '{0}'.", rule.Name), success: true);
         else
-            SetStatus($"Could not find permanent rule '{rule.Name}' to delete.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_COULD_NOT_FIND_PERMANENT_RULE", "Could not find permanent rule '{0}' to delete.", rule.Name), success: false);
     }
 
     private async Task<bool> WaitForConfirmationAboveScreen(
@@ -800,7 +805,7 @@ public partial class NCustomRunLibraryScreen : Control
         NModalContainer? modalContainer = NModalContainer.Instance;
         if (modalContainer is null || !GodotObject.IsInstanceValid(modalContainer))
         {
-            SetStatus("Could not open the delete confirmation.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_DELETE_CONFIRMATION_FAILED", "Could not open the delete confirmation."), success: false);
             return false;
         }
 
@@ -811,14 +816,14 @@ public partial class NCustomRunLibraryScreen : Control
         }
         if (modalContainer.OpenModal is not null)
         {
-            SetStatus("The delete confirmation is unavailable while another popup is open.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_DELETE_CONFIRMATION_BUSY", "The delete confirmation is unavailable while another popup is open."), success: false);
             return false;
         }
 
         NGenericPopup? popup = NGenericPopup.Create();
         if (popup is null)
         {
-            SetStatus("Could not open the delete confirmation.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_DELETE_CONFIRMATION_FAILED", "Could not open the delete confirmation."), success: false);
             return false;
         }
 
@@ -842,7 +847,7 @@ public partial class NCustomRunLibraryScreen : Control
             return;
         if (_lobby.NetService.Type == NetGameType.Client)
         {
-            SetStatus("Only the host can Play a local Custom Run in this lobby.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_HOST_ONLY_PLAY", "Only the host can play a local Custom Run in this lobby."), success: false);
             return;
         }
 
@@ -855,7 +860,9 @@ public partial class NCustomRunLibraryScreen : Control
         {
             CustomRunValidationIssue? issue = compiled.Issues
                 .FirstOrDefault(candidate => candidate.Severity == CustomRunValidationSeverity.Error);
-            SetStatus(issue is null ? "This Custom Run could not be compiled." : $"{issue.Section}: {issue.Message}", success: false);
+            SetStatus(issue is null
+                ? LocMan.Loc("CUSTOM_RUN_COMPILE_FAILED", "This Custom Run could not be compiled.")
+                : $"{issue.Section}: {issue.Message}", success: false);
             return;
         }
 

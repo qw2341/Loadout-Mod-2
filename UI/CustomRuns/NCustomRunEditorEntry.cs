@@ -9,6 +9,7 @@ using Godot;
 using Loadout.Services.Compatibility;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
+using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.UI;
@@ -50,7 +51,7 @@ public static class NCustomRunEditorEntry
                 UseRainbowColor = true,
                 ZIndex = 24
             };
-            button.Init("custom_run_editor", "CUSTOM RUNS");
+            button.Init("custom_run_editor", LocMan.Loc("CUSTOM_RUNS", "Custom Runs").ToUpperInvariant());
             screen.AddChild(button);
             button.Connect(
                 NClickableControl.SignalName.Released,
@@ -152,14 +153,16 @@ public static class NCustomRunEditorEntry
 
         bool loaded = definition is not null;
         screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName)
-            ?.Init("custom_run_editor", loaded ? "CANCEL RUN" : "CUSTOM RUNS");
+            ?.Init("custom_run_editor", loaded
+                ? LocMan.Loc("CUSTOM_RUN_CANCEL_RUN", "Cancel Run").ToUpperInvariant()
+                : LocMan.Loc("CUSTOM_RUNS", "Custom Runs").ToUpperInvariant());
 
         MegaLabel? statusLabel = screen.GetNodeOrNull<MegaLabel>(StatusNodeName);
         if (statusLabel is null)
             return;
         statusLabel.Visible = loaded;
         statusLabel.Text = loaded
-            ? $"CUSTOM RUN LOADED  •  {GetDefinitionName(definition!)}"
+            ? LocMan.Loc("CUSTOM_RUN_LOADED", "Custom Run loaded  •  {0}", GetDefinitionName(definition!)).ToUpperInvariant()
             : string.Empty;
         statusLabel.TooltipText = loaded ? GetDefinitionName(definition!) : string.Empty;
         statusLabel.AddThemeColorOverride("font_color", StsColors.gold);
@@ -247,19 +250,19 @@ public static class NCustomRunEditorEntry
             selectedPlayer = lobby.NetService.NetId;
         SelectedAssignmentPlayers[screen] = selectedPlayer;
 
-        playerDropdown.SetItems("PLAYER  ",
+        playerDropdown.SetItems(LocMan.Loc("CUSTOM_RUN_PLAYER", "Player").ToUpperInvariant() + "  ",
             players.Select(player => new LoadoutDropdownOption(
                 player.PlayerId.ToString(),
                 player.PlayerId == lobby.NetService.NetId
-                    ? $"Player {player.SlotId + 1} (You)"
-                    : $"Player {player.SlotId + 1}")),
+                    ? LocMan.Loc("CUSTOM_RUN_PLAYER_YOU", "Player {0} (You)", player.SlotId + 1)
+                    : LocMan.Loc("LOADOUT_TARGET_PLAYER_FALLBACK", "Player {0}", player.SlotId + 1))),
             selectedPlayer.ToString());
         playerDropdown.SetEnabled(hostCanAssign);
 
         if (definition.RoleAssignmentMode == RoleAssignmentMode.Random)
         {
             roleDropdown.SetItems(string.Empty,
-                [new LoadoutDropdownOption(string.Empty, "Roles resolve on embark")],
+                [new LoadoutDropdownOption(string.Empty, LocMan.Loc("CUSTOM_RUN_ROLES_RESOLVE_ON_EMBARK", "Roles resolve on embark"))],
                 string.Empty);
             roleDropdown.SetEnabled(false);
             RefreshPlayerRoleLabels(screen, lobby, definition);
@@ -287,11 +290,13 @@ public static class NCustomRunEditorEntry
             {
                 string required = role.MinimumPlayers > 0 ? " *" : string.Empty;
                 string progress = role.MinimumPlayers > 0 ? $" ({occupied}/{role.MinimumPlayers})" : string.Empty;
-                string maximum = role.MaximumPlayers > 0 ? $" - MAX {role.MaximumPlayers}" : string.Empty;
+                string maximum = role.MaximumPlayers > 0
+                    ? LocMan.Loc("CUSTOM_RUN_MAX_SUFFIX", " - MAX {0}", role.MaximumPlayers)
+                    : string.Empty;
                 options.Add(new LoadoutDropdownOption(role.Id, $"{role.Name}{required}{progress}{maximum}"));
             }
         }
-        roleDropdown.SetItems("ROLE  ", options, selectedRoleId);
+        roleDropdown.SetItems(LocMan.Loc("CUSTOM_RUN_ROLE", "Role").ToUpperInvariant() + "  ", options, selectedRoleId);
         bool selectedReady = players.FirstOrDefault(player => player.PlayerId == selectedPlayer)?.IsReady == true;
         bool canChoose = definition.RoleAssignmentMode == RoleAssignmentMode.PlayersChoose
             ? selectedPlayer == lobby.NetService.NetId
@@ -328,7 +333,7 @@ public static class NCustomRunEditorEntry
                     lobby.NetService.NetId,
                     selectedRoleId))
             {
-                error = "That role is already at maximum capacity.";
+                error = LocMan.Loc("CUSTOM_RUN_ROLE_AT_CAPACITY", "That role is already at maximum capacity.");
                 return false;
             }
 
@@ -360,13 +365,13 @@ public static class NCustomRunEditorEntry
                 .All(playerId => CustomRunRoleAssignmentService.HasLockedSelection(lobby, playerId));
             if (!everyPlayerLocked)
             {
-                error = "Wait for every player to lock in a role.";
+                error = LocMan.Loc("CUSTOM_RUN_WAIT_FOR_ROLE_LOCKS", "Wait for every player to lock in a role.");
                 return false;
             }
         }
         if (!CustomRunRoleAssignmentService.AreMinimumsSatisfied(lobby, definition))
         {
-            error = "The required role minimums have not been filled.";
+            error = LocMan.Loc("CUSTOM_RUN_ROLE_MINIMUMS_NOT_FILLED", "The required role minimums have not been filled.");
             return false;
         }
         return true;
@@ -452,12 +457,13 @@ public static class NCustomRunEditorEntry
             bool locked = CustomRunRoleAssignmentService.HasLockedSelection(lobby, playerNode.PlayerId);
             assignments.TryGetValue(playerNode.PlayerId, out string? roleId);
             string roleName = definition.RoleAssignmentMode == RoleAssignmentMode.Random
-                ? "Random role"
+                ? LocMan.Loc("CUSTOM_RUN_RANDOM_ROLE", "Random role")
                 : !locked && definition.RoleAssignmentMode == RoleAssignmentMode.PlayersChoose
-                ? "Choosing role..."
+                ? LocMan.Loc("CUSTOM_RUN_CHOOSING_ROLE", "Choosing role...")
                 : roleId is null
                     ? definition.DefaultRoleName
-                    : definition.Roles.FirstOrDefault(role => role.Id == roleId)?.Name ?? "Unknown Role";
+                    : definition.Roles.FirstOrDefault(role => role.Id == roleId)?.Name
+                      ?? LocMan.Loc("CUSTOM_RUN_UNKNOWN_ROLE", "Unknown Role");
             label.Text = roleName;
         }
     }
@@ -603,6 +609,8 @@ public static class NCustomRunEditorEntry
 
     private static string GetDefinitionName(CustomRunDefinition definition)
     {
-        return string.IsNullOrWhiteSpace(definition.Name) ? "Unnamed Custom Run" : definition.Name;
+        return string.IsNullOrWhiteSpace(definition.Name)
+            ? LocMan.Loc("CUSTOM_RUN_UNNAMED", "Unnamed Custom Run")
+            : definition.Name;
     }
 }

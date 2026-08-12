@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using Godot;
 using Loadout.Services.CustomRuns.Models;
+using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
@@ -124,24 +125,26 @@ public partial class NCustomRunPermanentRuleRow : Control
         description.TooltipText = descriptionText;
         text.AddChild(description);
 
-        NLoadoutSettingsActionButton edit = AddActionButton(row, "edit", "EDIT", 118f, () =>
+        NLoadoutSettingsActionButton edit = AddActionButton(row, "edit", LocMan.Loc("CUSTOM_RUN_EDIT", "Edit").ToUpperInvariant(), 118f, () =>
         {
             _editAction?.Invoke(_rule);
         });
-        edit.TooltipText = $"Edit {_rule.Name}";
+        edit.TooltipText = LocMan.Loc("CUSTOM_RUN_EDIT_NAMED", "Edit {0}", _rule.Name);
 
-        NLoadoutSettingsActionButton duplicate = AddActionButton(row, "duplicate", "DUPLICATE", 158f, () =>
+        NLoadoutSettingsActionButton duplicate = AddActionButton(row, "duplicate", LocMan.Loc("CREATURE_MANIP_DUPLICATE", "Duplicate").ToUpperInvariant(), 158f, () =>
         {
             _duplicateAction?.Invoke(_rule);
         });
-        duplicate.TooltipText = $"Duplicate {_rule.Name}";
+        duplicate.TooltipText = LocMan.Loc("CUSTOM_RUN_DUPLICATE_NAMED", "Duplicate {0}", _rule.Name);
 
         NLoadoutToggle toggle = new()
         {
             Name = "EnabledToggle",
             CustomMinimumSize = new Vector2(72f, 64f),
             SizeFlagsVertical = SizeFlags.ShrinkCenter,
-            TooltipText = _rule.Enabled ? "Disable permanent rule" : "Enable permanent rule"
+            TooltipText = _rule.Enabled
+                ? LocMan.Loc("CUSTOM_RUN_DISABLE_PERMANENT_RULE", "Disable permanent rule")
+                : LocMan.Loc("CUSTOM_RUN_ENABLE_PERMANENT_RULE", "Enable permanent rule")
         };
         toggle.Init(_rule.Id, string.Empty, _rule.Enabled);
         toggle.Connect(
@@ -157,7 +160,7 @@ public partial class NCustomRunPermanentRuleRow : Control
         {
             Name = "Delete",
             CustomMinimumSize = new Vector2(72f, 64f),
-            TooltipText = $"Delete {_rule.Name}"
+            TooltipText = LocMan.Loc("CUSTOM_RUN_DELETE_NAMED", "Delete {0}", _rule.Name)
         };
         delete.Connect(
             NClickableControl.SignalName.Released,
@@ -213,9 +216,13 @@ public partial class NCustomRunPermanentRuleRow : Control
 
     private static string DescribeRule(RuleDefinition rule)
     {
-        string trigger = string.IsNullOrWhiteSpace(rule.Trigger.TypeId) ? "Unconfigured trigger" : rule.Trigger.TypeId;
-        string actionCount = rule.Actions.Count == 1 ? "1 action" : $"{rule.Actions.Count} actions";
-        return $"{trigger} · {actionCount}";
+        string trigger = string.IsNullOrWhiteSpace(rule.Trigger.TypeId)
+            ? LocMan.Loc("CUSTOM_RUN_UNCONFIGURED_TRIGGER", "Unconfigured trigger")
+            : rule.Trigger.TypeId;
+        string actionCount = rule.Actions.Count == 1
+            ? LocMan.Loc("CUSTOM_RUN_ONE_ACTION", "1 action")
+            : LocMan.Loc("CUSTOM_RUN_ACTION_COUNT", "{0} actions", rule.Actions.Count);
+        return LocMan.Loc("CUSTOM_RUN_RULE_SHORT_SUMMARY", "{0} · {1}", trigger, actionCount);
     }
 
     private static bool TryGetDragId(Variant data, out string id)

@@ -5,6 +5,7 @@ namespace Loadout.UI.CustomRuns;
 using System;
 using System.Collections.Generic;
 using Godot;
+using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
@@ -205,7 +206,9 @@ public partial class NCustomRunLibraryRow : NButton
         row.AddChild(text);
         text.AddChild(CreateLabel(_options.Name, 27, StsColors.gold, bold: true, 38f));
         MegaLabel description = CreateLabel(
-            string.IsNullOrWhiteSpace(_options.Description) ? "No description." : _options.Description,
+            string.IsNullOrWhiteSpace(_options.Description)
+                ? LocMan.Loc("CUSTOM_RUN_NO_DESCRIPTION", "No description.")
+                : _options.Description,
             18,
             new Color(0.94f, 0.91f, 0.82f),
             bold: false,
@@ -223,7 +226,7 @@ public partial class NCustomRunLibraryRow : NButton
             NCustomRunDeleteButton delete = new()
             {
                 CustomMinimumSize = new Vector2(72f, 64f),
-                TooltipText = $"Delete {_options.Name}"
+                TooltipText = LocMan.Loc("CUSTOM_RUN_DELETE_NAMED", "Delete {0}", _options.Name)
             };
             delete.Connect(
                 NClickableControl.SignalName.Released,

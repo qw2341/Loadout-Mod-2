@@ -4,6 +4,7 @@ namespace Loadout.UI.CustomRuns;
 
 using System;
 using Godot;
+using Loadout.UI.Managers;
 using Loadout.PanelItems;
 using MegaCrit.Sts2.Core.Audio;
 using MegaCrit.Sts2.Core.Commands;
@@ -51,7 +52,9 @@ public partial class NCustomRunCharacterFilterButton : Button
         SizeFlagsVertical = SizeFlags.ShrinkCenter;
         FocusMode = FocusModeEnum.All;
         MouseFilter = MouseFilterEnum.Stop;
-        TooltipText = character.Id.Entry;
+        TooltipText = LocMan.SafeFormatLocString(
+            new LocString("characters", character.CharacterSelectTitle),
+            character.Id.Entry);
         AddThemeStyleboxOverride("normal", EmptyStyle);
         AddThemeStyleboxOverride("hover", EmptyStyle);
         AddThemeStyleboxOverride("pressed", EmptyStyle);

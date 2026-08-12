@@ -18,6 +18,7 @@ using Loadout.Services.Loadouts;
 using Loadout.Services.Targets;
 using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
+using Loadout.UI.Managers;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.UI;
@@ -204,7 +205,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             };
             titleRow.AddThemeConstantOverride("separation", 22);
             titleRow.SetAnchorsPreset(LayoutPreset.FullRect);
-            MegaLabel title = CreateLabel("RULE EDITOR", 42, StsColors.gold, HorizontalAlignment.Left);
+            MegaLabel title = CreateLabel(LocMan.Loc("CUSTOM_RUN_RULE_EDITOR", "Rule Editor").ToUpperInvariant(), 42, StsColors.gold, HorizontalAlignment.Left);
             title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             titleRow.AddChild(title);
             titleMount.AddChild(titleRow);
@@ -218,7 +219,7 @@ public partial class NCustomRunRuleEditorScreen : Control
                 Name = "PermanentButton",
                 CustomMinimumSize = new Vector2(300f, 58f)
             };
-            _permanentButton.Init("permanent", "SAVE AS PERMANENT");
+            _permanentButton.Init("permanent", LocMan.Loc("CUSTOM_RUN_SAVE_AS_PERMANENT", "Save as Permanent").ToUpperInvariant());
             _permanentButton.SetAnchorsPreset(LayoutPreset.CenterRight);
             _permanentButton.OffsetLeft = -300f;
             _permanentButton.OffsetTop = -29f;
@@ -233,7 +234,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         Control? statusMount = GetNodeOrNull<Control>("%StatusMount");
         if (statusMount is not null)
         {
-            _statusLabel = CreateLabel("Ready.", 20, StsColors.cream, HorizontalAlignment.Left);
+            _statusLabel = CreateLabel(LocMan.Loc("CUSTOM_RUN_READY", "Ready."), 20, StsColors.cream, HorizontalAlignment.Left);
             _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             _statusLabel.SetAnchorsPreset(LayoutPreset.FullRect);
             statusMount.AddChild(_statusLabel);
@@ -318,7 +319,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         if (_contentHost is null || _workingRule is null)
             return;
         HBoxContainer row = CreateRow();
-        MegaLabel title = CreateSectionTitle("RULE");
+        MegaLabel title = CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_RULE", "Rule").ToUpperInvariant());
         title.CustomMinimumSize = new Vector2(150f, 52f);
         row.AddChild(title);
         LineEdit name = CreateLineEdit(_workingRule.Name);
@@ -337,7 +338,7 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         if (_contentHost is null || _workingRule is null)
             return;
-        _contentHost.AddChild(CreateSectionTitle("WHEN"));
+        _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_WHEN", "When").ToUpperInvariant()));
         _contentHost.AddChild(BuildComponentEditor(
             _workingRule.Trigger,
             RuleComponentKind.Trigger,
@@ -350,7 +351,7 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         if (_contentHost is null || _workingRule is null)
             return;
-        _contentHost.AddChild(CreateSectionTitle("IF"));
+        _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_IF", "If").ToUpperInvariant()));
         _contentHost.AddChild(BuildConditionGroup(_workingRule.Conditions, depth: 0, deleteAction: null));
     }
 
@@ -362,13 +363,18 @@ public partial class NCustomRunRuleEditorScreen : Control
         VBoxContainer panel = CreateInsetPanel(depth);
 
         HBoxContainer header = CreateRow();
-        MegaLabel label = CreateLabel(depth == 0 ? "MATCH" : $"GROUP {depth}", 23, StsColors.gold, HorizontalAlignment.Left);
+        MegaLabel label = CreateLabel(depth == 0
+                ? LocMan.Loc("CUSTOM_RUN_MATCH", "Match").ToUpperInvariant()
+                : LocMan.Loc("CUSTOM_RUN_GROUP_NUMBER", "Group {0}", depth).ToUpperInvariant(),
+            23, StsColors.gold, HorizontalAlignment.Left);
         label.CustomMinimumSize = new Vector2(150f, 52f);
         header.AddChild(label);
 
         NSelectFilterDropdown operatorDropdown = CreateDropdown(
             Enum.GetValues<ConditionGroupOperator>()
-                .Select(value => new LoadoutDropdownOption(value.ToString(), value == ConditionGroupOperator.And ? "ALL (AND)" : "ANY (OR)")),
+                .Select(value => new LoadoutDropdownOption(value.ToString(), value == ConditionGroupOperator.And
+                    ? LocMan.Loc("CUSTOM_RUN_ALL_AND", "All (AND)").ToUpperInvariant()
+                    : LocMan.Loc("CUSTOM_RUN_ANY_OR", "Any (OR)").ToUpperInvariant())),
             group.Operator.ToString(),
             260f);
         operatorDropdown.SelectedItemChanged += value =>
@@ -381,11 +387,11 @@ public partial class NCustomRunRuleEditorScreen : Control
         };
         header.AddChild(operatorDropdown);
         header.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        AddSettingsActionButton(header, "add_condition", "+ CONDITION", 174f, () => AddCondition(group));
+        AddSettingsActionButton(header, "add_condition", "+ " + LocMan.Loc("CUSTOM_RUN_CONDITION", "Condition").ToUpperInvariant(), 174f, () => AddCondition(group));
         if (depth < MaximumConditionDepth)
-            AddSettingsActionButton(header, "add_group", "+ GROUP", 150f, () => AddConditionGroup(group));
+            AddSettingsActionButton(header, "add_group", "+ " + LocMan.Loc("CUSTOM_RUN_GROUP", "Group").ToUpperInvariant(), 150f, () => AddConditionGroup(group));
         if (deleteAction is not null)
-            AddSettingsActionButton(header, "delete_group", "DELETE GROUP", 180f, deleteAction, danger: true);
+            AddSettingsActionButton(header, "delete_group", LocMan.Loc("CUSTOM_RUN_DELETE_GROUP", "Delete Group").ToUpperInvariant(), 180f, deleteAction, danger: true);
         panel.AddChild(header);
 
         MarginContainer bodyIndent = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -429,7 +435,7 @@ public partial class NCustomRunRuleEditorScreen : Control
 
         if (group.Conditions.Count == 0 && group.Groups.Count == 0)
         {
-            MegaLabel empty = CreateHint("No conditions. This group currently passes automatically.");
+            MegaLabel empty = CreateHint(LocMan.Loc("CUSTOM_RUN_NO_CONDITIONS", "No conditions. This group currently passes automatically."));
             empty.CustomMinimumSize = new Vector2(0f, 54f);
             body.AddChild(empty);
         }
@@ -460,15 +466,15 @@ public partial class NCustomRunRuleEditorScreen : Control
         if (_contentHost is null || _workingRule is null)
             return;
         HBoxContainer heading = CreateRow();
-        MegaLabel title = CreateSectionTitle("THEN");
+        MegaLabel title = CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_THEN", "Then").ToUpperInvariant());
         title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         heading.AddChild(title);
-        AddSettingsActionButton(heading, "add_action", "+ ACTION", 180f, AddAction);
+        AddSettingsActionButton(heading, "add_action", "+ " + LocMan.Loc("CUSTOM_RUN_ACTION", "Action").ToUpperInvariant(), 180f, AddAction);
         _contentHost.AddChild(heading);
 
         if (_workingRule.Actions.Count == 0)
         {
-            MegaLabel empty = CreateHint("No actions. Add at least one action before saving.");
+            MegaLabel empty = CreateHint(LocMan.Loc("CUSTOM_RUN_NO_ACTIONS", "No actions. Add at least one action before saving."));
             empty.AddThemeColorOverride("font_color", new Color(1f, 0.58f, 0.46f));
             _contentHost.AddChild(empty);
             return;
@@ -518,8 +524,8 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         if (_contentHost is null || _workingRule is null)
             return;
-        _contentHost.AddChild(CreateSectionTitle("LIMIT"));
-        HBoxContainer row = CreateFieldRow("Frequency");
+        _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_LIMIT", "Limit").ToUpperInvariant()));
+        HBoxContainer row = CreateFieldRow(LocMan.Loc("CUSTOM_RUN_FREQUENCY", "Frequency"));
         RuleLimitKind[] authoringKinds =
         [
             RuleLimitKind.Unlimited,
@@ -553,7 +559,7 @@ public partial class NCustomRunRuleEditorScreen : Control
 
         if (_workingRule.Limit.Kind is RuleLimitKind.TimesPerTurn or RuleLimitKind.TimesPerCombat or RuleLimitKind.TimesPerRun)
         {
-            HBoxContainer countRow = CreateFieldRow("Maximum executions");
+            HBoxContainer countRow = CreateFieldRow(LocMan.Loc("CUSTOM_RUN_MAXIMUM_EXECUTIONS", "Maximum executions"));
             NLoadoutNumberStepper count = new();
             count.Init(_workingRule.Limit.Count);
             count.ValueChanged += value =>
@@ -568,7 +574,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         }
         if (_workingRule.Limit.Kind == RuleLimitKind.UntilCondition)
         {
-            _contentHost.AddChild(CreateSectionTitle("UNTIL IF"));
+            _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_UNTIL_IF", "Until If").ToUpperInvariant()));
             _contentHost.AddChild(BuildConditionGroup(
                 _workingRule.Limit.UntilConditions,
                 depth: 0,
@@ -600,16 +606,16 @@ public partial class NCustomRunRuleEditorScreen : Control
             RuleComponentParameterService.ApplyDefaults(component, descriptor);
 
         HBoxContainer typeRow = CreateRow();
-        MegaLabel typeLabel = CreateLabel(kind.ToString().ToUpperInvariant(), 22, StsColors.gold, HorizontalAlignment.Left);
+        MegaLabel typeLabel = CreateLabel(FormatComponentKind(kind).ToUpperInvariant(), 22, StsColors.gold, HorizontalAlignment.Left);
         typeLabel.CustomMinimumSize = new Vector2(150f, 54f);
         typeRow.AddChild(typeLabel);
         List<LoadoutDropdownOption> options = descriptors
             .Select(candidate => new LoadoutDropdownOption(
                 candidate.StableId,
-                $"{candidate.Category}  •  {candidate.DisplayName}{(CustomRunRegistry.IsCompatibleWithTrigger(candidate, _workingRule?.Trigger.TypeId ?? string.Empty) ? string.Empty : "  (not available for this trigger)")}"))
+                $"{FormatComponentCategory(candidate.Category)}  •  {FormatComponentName(candidate)}{(CustomRunRegistry.IsCompatibleWithTrigger(candidate, _workingRule?.Trigger.TypeId ?? string.Empty) ? string.Empty : LocMan.Loc("CUSTOM_RUN_NOT_AVAILABLE_FOR_TRIGGER", "  (not available for this trigger)"))}"))
             .ToList();
         if (descriptor is null && !string.IsNullOrWhiteSpace(component.TypeId))
-            options.Insert(0, new LoadoutDropdownOption(component.TypeId, $"Missing: {component.TypeId}"));
+            options.Insert(0, new LoadoutDropdownOption(component.TypeId, LocMan.Loc("CUSTOM_RUN_MISSING_VALUE", "Missing: {0}", component.TypeId)));
         NSelectFilterDropdown typeDropdown = CreateDropdown(options, component.TypeId, 560f);
         typeDropdown.SelectedItemChanged += selected =>
         {
@@ -631,9 +637,9 @@ public partial class NCustomRunRuleEditorScreen : Control
             {
                 Name = "NotToggle",
                 CustomMinimumSize = new Vector2(150f, 50f),
-                TooltipText = "Invert this condition"
+                TooltipText = LocMan.Loc("CUSTOM_RUN_INVERT_CONDITION", "Invert this condition")
             };
-            notToggle.Init("not", "NOT", component.Negated);
+            notToggle.Init("not", LocMan.Loc("CUSTOM_RUN_NOT", "Not").ToUpperInvariant(), component.Negated);
             notToggle.Connect(
                 NLoadoutToggle.SignalName.Toggled,
                 Callable.From<NLoadoutToggle>(toggle =>
@@ -649,12 +655,12 @@ public partial class NCustomRunRuleEditorScreen : Control
         if (moveDownAction is not null)
             AddSettingsActionButton(typeRow, "down", "↓", 62f, moveDownAction);
         if (deleteAction is not null)
-            AddSettingsActionButton(typeRow, "delete", "DELETE", 118f, deleteAction, danger: true);
+            AddSettingsActionButton(typeRow, "delete", LocMan.Loc("DELETE_LOADOUT", "Delete").ToUpperInvariant(), 118f, deleteAction, danger: true);
         panel.AddChild(typeRow);
 
         if (descriptor is null)
         {
-            panel.AddChild(CreateHint($"Component '{component.TypeId}' is unavailable. Install its defining mod or choose another component."));
+            panel.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_COMPONENT_UNAVAILABLE", "Component '{0}' is unavailable. Install its defining mod or choose another component.", component.TypeId)));
             return panel;
         }
         foreach (RuleParameterDescriptor parameter in descriptor.Parameters)
@@ -672,7 +678,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             BuildParameterEditor(panel, component, parameter, controlsVisibility ? RebuildContentDeferred : null);
         }
         if (descriptor.Parameters.Count == 0)
-            panel.AddChild(CreateHint("This component has no parameters."));
+            panel.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_NO_PARAMETERS", "This component has no parameters.")));
         return panel;
     }
 
@@ -732,7 +738,7 @@ public partial class NCustomRunRuleEditorScreen : Control
                 BuildModelFilterParameter(parent, component, parameter, afterChanged);
                 break;
             default:
-                parent.AddChild(CreateHint($"{parameter.DisplayName}: this parameter editor is not available yet."));
+                parent.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_PARAMETER_EDITOR_UNAVAILABLE", "{0}: this parameter editor is not available yet.", FormatParameterName(parameter))));
                 break;
         }
     }
@@ -743,7 +749,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleParameterDescriptor parameter,
         Action? afterChanged)
     {
-        HBoxContainer row = CreateFieldRow(parameter.DisplayName);
+        HBoxContainer row = CreateFieldRow(FormatParameterName(parameter));
         NLoadoutNumberStepper stepper = new();
         stepper.Init(
             RuleComponentParameterService.GetInt32(component, parameter.Key, parameter.DefaultInteger),
@@ -765,7 +771,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleParameterDescriptor parameter,
         Action? afterChanged)
     {
-        HBoxContainer row = CreateFieldRow(parameter.DisplayName);
+        HBoxContainer row = CreateFieldRow(FormatParameterName(parameter));
         NLoadoutToggle toggle = new() { CustomMinimumSize = new Vector2(260f, 50f) };
         toggle.Init(parameter.Key, string.Empty, RuleComponentParameterService.GetBoolean(component, parameter.Key));
         toggle.Connect(
@@ -786,7 +792,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleParameterDescriptor parameter,
         Action? afterChanged)
     {
-        HBoxContainer row = CreateFieldRow(parameter.DisplayName);
+        HBoxContainer row = CreateFieldRow(FormatParameterName(parameter));
         string selected = RuleComponentParameterService.GetString(component, parameter.Key);
         IEnumerable<RuleParameterOption> options = parameter.Options;
         if (component.TypeId == "Loadout2:VariableComparison"
@@ -796,7 +802,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             options = options.Where(option => option.Id is "Equal" or "NotEqual");
         }
         NSelectFilterDropdown dropdown = CreateDropdown(
-            options.Select(option => new LoadoutDropdownOption(option.Id, option.DisplayName)),
+            options.Select(option => new LoadoutDropdownOption(option.Id, FormatParameterOption(option))),
             selected,
             420f);
         dropdown.SelectedItemChanged += value =>
@@ -815,7 +821,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleParameterDescriptor parameter,
         Action? afterChanged)
     {
-        HBoxContainer row = CreateFieldRow(parameter.DisplayName);
+        HBoxContainer row = CreateFieldRow(FormatParameterName(parameter));
         LineEdit edit = CreateLineEdit(RuleComponentParameterService.GetString(component, parameter.Key));
         edit.TextChanged += value =>
         {
@@ -834,10 +840,10 @@ public partial class NCustomRunRuleEditorScreen : Control
         SelectionModelKind kind,
         Action? afterChanged)
     {
-        HBoxContainer row = CreateFieldRow(parameter.DisplayName);
+        HBoxContainer row = CreateFieldRow(FormatParameterName(parameter));
         string id = RuleComponentParameterService.GetString(component, parameter.Key);
         MegaLabel selected = CreateLabel(
-            string.IsNullOrWhiteSpace(id) ? "Not selected" : GetModelDisplayName(kind, id),
+            string.IsNullOrWhiteSpace(id) ? LocMan.Loc("CUSTOM_RUN_NOT_SELECTED", "Not selected") : GetModelDisplayName(kind, id),
             20,
             string.IsNullOrWhiteSpace(id) ? new Color(1f, 0.58f, 0.46f) : StsColors.cream,
             HorizontalAlignment.Left);
@@ -848,7 +854,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         AddSettingsActionButton(
             row,
             $"select_{parameter.Key}",
-            "SELECT",
+            LocMan.Loc("TITLE_SELECT", "Select").ToUpperInvariant(),
             132f,
             () => OpenModelSelector(kind, component, parameter.Key, afterChanged));
         if (!string.IsNullOrWhiteSpace(id))
@@ -856,7 +862,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             AddSettingsActionButton(
                 row,
                 $"clear_{parameter.Key}",
-                "CLEAR",
+                LocMan.Loc("CUSTOM_RUN_CLEAR", "Clear").ToUpperInvariant(),
                 116f,
                 () =>
                 {
@@ -873,7 +879,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             MarginContainer previewIndent = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
             previewIndent.AddThemeConstantOverride("margin_left", 274);
             Control preview = CreateSpecificModelPreview(selectedEntry.Model, kind);
-            preview.TooltipText = "Click to clear this selection.";
+            preview.TooltipText = LocMan.Loc("CUSTOM_RUN_CLICK_CLEAR_SELECTION", "Click to clear this selection.");
             BindSpecificModelRemoval(preview, () =>
             {
                 RuleComponentParameterService.Set(component, parameter.Key, string.Empty);
@@ -913,7 +919,7 @@ public partial class NCustomRunRuleEditorScreen : Control
                 if (!CustomRunCatalogService.TryResolve(kind, modelId, out CustomRunCatalogEntry entry))
                     continue;
                 Control view = CreateSpecificModelPreview(entry.Model, kind);
-                view.TooltipText = "Click to remove this selection.";
+                view.TooltipText = LocMan.Loc("CUSTOM_RUN_CLICK_REMOVE_SELECTION", "Click to remove this selection.");
                 BindSpecificModelRemoval(view, () =>
                 {
                     filter.ModelIds.RemoveAll(id => ModelIdsMatch(kind, id, entry.ModelId));
@@ -937,7 +943,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             if (view is null)
                 continue;
             string modelId = item.Model.Id.ToString();
-            view.TooltipText = "Click to remove this card.";
+            view.TooltipText = LocMan.Loc("CUSTOM_RUN_CLICK_REMOVE_CARD", "Click to remove this card.");
             AttachSpecificCardHover(view, item.Model);
             view.Connect(
                 NDeckHistoryEntry.SignalName.Clicked,
@@ -1086,7 +1092,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         filter.Value ??= string.Empty;
         ModelMatchSpec captured = filter;
 
-        HBoxContainer modeRow = CreateFieldRow($"Match {FormatModelKind(parameter.ModelKind).ToLowerInvariant()} by");
+        HBoxContainer modeRow = CreateFieldRow(LocMan.Loc("CUSTOM_RUN_MATCH_KIND_BY", "Match {0} by", FormatModelKind(parameter.ModelKind).ToLowerInvariant()));
         NSelectFilterDropdown mode = CreateDropdown(
             GetMatchKinds(parameter.ModelKind)
                 .Select(kind => new LoadoutDropdownOption(kind.ToString(), FormatModelMatchKind(kind, parameter.ModelKind))),
@@ -1115,9 +1121,9 @@ public partial class NCustomRunRuleEditorScreen : Control
 
         if (captured.Kind == ModelMatchKind.TextContains)
         {
-            HBoxContainer textRow = CreateFieldRow("Title or text contains");
+            HBoxContainer textRow = CreateFieldRow(LocMan.Loc("CUSTOM_RUN_TITLE_OR_TEXT_CONTAINS", "Title or text contains"));
             LineEdit text = CreateLineEdit(captured.Value);
-            text.PlaceholderText = "Text to find";
+            text.PlaceholderText = LocMan.Loc("CUSTOM_RUN_TEXT_TO_FIND", "Text to find");
             text.TextChanged += value =>
             {
                 captured.Value = value;
@@ -1133,7 +1139,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         List<LoadoutDropdownOption> options = GetModelFilterOptions(parameter.ModelKind, captured.Kind);
         if (options.Count == 0)
         {
-            parent.AddChild(CreateHint($"No {FormatModelMatchKind(captured.Kind, parameter.ModelKind).ToLowerInvariant()} values are available."));
+            parent.AddChild(CreateHint(LocMan.Loc("CUSTOM_RUN_NO_MATCH_VALUES", "No {0} values are available.", FormatModelMatchKind(captured.Kind, parameter.ModelKind).ToLowerInvariant())));
             return;
         }
         if (options.All(option => !string.Equals(option.Id, captured.Value, StringComparison.Ordinal)))
@@ -1162,7 +1168,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         ModelMatchSpec filter,
         Action? afterChanged)
     {
-        HBoxContainer row = CreateFieldRow($"Specific {FormatModelKind(parameter.ModelKind).ToLowerInvariant()}");
+        HBoxContainer row = CreateFieldRow(LocMan.Loc("CUSTOM_RUN_SPECIFIC_KIND", "Specific {0}", FormatModelKind(parameter.ModelKind).ToLowerInvariant()));
         MegaLabel selected = CreateLabel(
             FormatSpecificModels(parameter.ModelKind, filter.ModelIds),
             20,
@@ -1175,7 +1181,9 @@ public partial class NCustomRunRuleEditorScreen : Control
         AddSettingsActionButton(
             row,
             $"select_{parameter.Key}",
-            filter.ModelIds.Count == 0 ? "SELECT" : "EDIT",
+            filter.ModelIds.Count == 0
+                ? LocMan.Loc("TITLE_SELECT", "Select").ToUpperInvariant()
+                : LocMan.Loc("CUSTOM_RUN_EDIT", "Edit").ToUpperInvariant(),
             132f,
             () => OpenCardMatchSelector(component, parameter.Key, filter, afterChanged));
         if (filter.ModelIds.Count > 0)
@@ -1183,7 +1191,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             AddSettingsActionButton(
                 row,
                 $"clear_{parameter.Key}",
-                "CLEAR",
+                LocMan.Loc("CUSTOM_RUN_CLEAR", "Clear").ToUpperInvariant(),
                 116f,
                 () =>
                 {
@@ -1238,13 +1246,15 @@ public partial class NCustomRunRuleEditorScreen : Control
     private static string FormatSpecificModels(SelectionModelKind kind, IReadOnlyList<string> modelIds)
     {
         if (modelIds.Count == 0)
-            return $"No {FormatModelKind(kind).ToLowerInvariant()} selected";
+            return LocMan.Loc("CUSTOM_RUN_NO_KIND_SELECTED", "No {0} selected", FormatModelKind(kind).ToLowerInvariant());
         string[] names = modelIds
             .Take(3)
             .Select(id => GetModelDisplayName(kind, id))
             .ToArray();
         string summary = string.Join(", ", names);
-        return modelIds.Count > names.Length ? $"{summary}  +{modelIds.Count - names.Length} more" : summary;
+        return modelIds.Count > names.Length
+            ? LocMan.Loc("CUSTOM_RUN_MORE_SUMMARY", "{0}  +{1} more", summary, modelIds.Count - names.Length)
+            : summary;
     }
 
     private static IReadOnlyList<ModelMatchKind> GetMatchKinds(SelectionModelKind kind)
@@ -1292,7 +1302,10 @@ public partial class NCustomRunRuleEditorScreen : Control
                 .Where(act => act.Index >= 0)
                 .OrderBy(act => act.Index)
                 .ThenBy(act => act.Id.ToString(), StringComparer.Ordinal)
-                .Select(act => new LoadoutDropdownOption(act.Id.ToString(), $"Act {act.Index + 1}: {act.Id.Entry}"))
+                .Select(act => new LoadoutDropdownOption(act.Id.ToString(),
+                    LocMan.Loc("CUSTOM_RUN_ACT_OPTION", "{0}: {1}",
+                        LocMan.Loc("ACT_NUMBER", "Act {0}", act.Index + 1),
+                        FormatActTitle(act))))
                 .ToList();
         }
         if (matchKind == ModelMatchKind.MonsterCategory)
@@ -1301,7 +1314,8 @@ public partial class NCustomRunRuleEditorScreen : Control
                 .SelectMany(entry => entry.Types)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-                .Select(value => new LoadoutDropdownOption(value, value))
+                .Select(value => new LoadoutDropdownOption(value,
+                    LocMan.Loc($"MONSTER_CATEGORY_{value.ToUpperInvariant()}", value)))
                 .ToList();
         }
 
@@ -1338,13 +1352,15 @@ public partial class NCustomRunRuleEditorScreen : Control
                 .Select(relic => relic.Rarity.ToString())
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(value => value, StringComparer.Ordinal)
-                .Select(value => new LoadoutDropdownOption(value, value))
+                .Select(value => new LoadoutDropdownOption(value,
+                    LocMan.Loc($"ENUM_RELICRARITY_{value.ToUpperInvariant()}", value)))
                 .ToList(),
             (SelectionModelKind.Potion, ModelMatchKind.Rarity) => ModelDb.AllPotions
                 .Select(potion => potion.Rarity.ToString())
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(value => value, StringComparer.Ordinal)
-                .Select(value => new LoadoutDropdownOption(value, value))
+                .Select(value => new LoadoutDropdownOption(value,
+                    LocMan.Loc($"ENUM_POTIONRARITY_{value.ToUpperInvariant()}", value)))
                 .ToList(),
             (SelectionModelKind.Card, ModelMatchKind.Keyword) => cards
                 .SelectMany(card => card.GetKeywordsWithSources(KeywordSources.Local))
@@ -1367,7 +1383,7 @@ public partial class NCustomRunRuleEditorScreen : Control
                 new LoadoutDropdownOption("2", "2"),
                 new LoadoutDropdownOption("3+", "3+"),
                 new LoadoutDropdownOption("X", "X"),
-                new LoadoutDropdownOption("unplayable", "Unplayable")
+                new LoadoutDropdownOption("unplayable", LocMan.Loc("CUSTOM_RUN_UNPLAYABLE", "Unplayable"))
             ],
             _ => []
         };
@@ -1377,17 +1393,17 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         return kind switch
         {
-            ModelMatchKind.SpecificModels => $"Specific {FormatModelKind(modelKind).ToLowerInvariant()}",
-            ModelMatchKind.Pool => $"{FormatModelKind(modelKind)} pool",
-            ModelMatchKind.Type => "Card type",
-            ModelMatchKind.Rarity => "Rarity",
-            ModelMatchKind.Keyword => "Keyword",
-            ModelMatchKind.Tag => "Tag",
-            ModelMatchKind.EnergyCost => "Energy cost",
-            ModelMatchKind.TextContains => "Title or text contains",
-            ModelMatchKind.Mod => "Mod",
-            ModelMatchKind.Act => "Act",
-            ModelMatchKind.MonsterCategory => "Monster category",
+            ModelMatchKind.SpecificModels => LocMan.Loc("CUSTOM_RUN_SPECIFIC_KIND", "Specific {0}", FormatModelKind(modelKind).ToLowerInvariant()),
+            ModelMatchKind.Pool => LocMan.Loc("CUSTOM_RUN_KIND_POOL", "{0} pool", FormatModelKind(modelKind)),
+            ModelMatchKind.Type => LocMan.Loc("CUSTOM_RUN_CARD_TYPE", "Card type"),
+            ModelMatchKind.Rarity => LocMan.Loc("FILTER_GROUP_RARITY", "Rarity"),
+            ModelMatchKind.Keyword => LocMan.Loc("FILTER_GROUP_KEYWORD", "Keyword"),
+            ModelMatchKind.Tag => LocMan.Loc("FILTER_GROUP_TAG", "Tag"),
+            ModelMatchKind.EnergyCost => LocMan.Loc("CUSTOM_RUN_ENERGY_COST", "Energy cost"),
+            ModelMatchKind.TextContains => LocMan.Loc("CUSTOM_RUN_TITLE_OR_TEXT_CONTAINS", "Title or text contains"),
+            ModelMatchKind.Mod => LocMan.Loc("CUSTOM_RUN_MOD", "Mod"),
+            ModelMatchKind.Act => LocMan.Loc("FILTER_GROUP_ACT", "Act"),
+            ModelMatchKind.MonsterCategory => LocMan.Loc("CUSTOM_RUN_MONSTER_CATEGORY", "Monster category"),
             _ => kind.ToString()
         };
     }
@@ -1396,16 +1412,16 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         return kind switch
         {
-            ModelMatchKind.Pool => "Pool",
-            ModelMatchKind.Type => "Type",
-            ModelMatchKind.Rarity => "Rarity",
-            ModelMatchKind.Keyword => "Keyword",
-            ModelMatchKind.Tag => "Tag",
-            ModelMatchKind.EnergyCost => "Cost",
-            ModelMatchKind.Mod => "Mod",
-            ModelMatchKind.Act => "Act",
-            ModelMatchKind.MonsterCategory => "Category",
-            _ => "Value"
+            ModelMatchKind.Pool => LocMan.Loc("CUSTOM_RUN_POOL", "Pool"),
+            ModelMatchKind.Type => LocMan.Loc("FILTER_GROUP_TYPE", "Type"),
+            ModelMatchKind.Rarity => LocMan.Loc("FILTER_GROUP_RARITY", "Rarity"),
+            ModelMatchKind.Keyword => LocMan.Loc("FILTER_GROUP_KEYWORD", "Keyword"),
+            ModelMatchKind.Tag => LocMan.Loc("FILTER_GROUP_TAG", "Tag"),
+            ModelMatchKind.EnergyCost => LocMan.Loc("SORT_COST", "Cost"),
+            ModelMatchKind.Mod => LocMan.Loc("CUSTOM_RUN_MOD", "Mod"),
+            ModelMatchKind.Act => LocMan.Loc("FILTER_GROUP_ACT", "Act"),
+            ModelMatchKind.MonsterCategory => LocMan.Loc("CUSTOM_RUN_CATEGORY", "Category"),
+            _ => LocMan.Loc("CUSTOM_RUN_VALUE", "Value")
         };
     }
 
@@ -1413,13 +1429,46 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         return kind switch
         {
-            SelectionModelKind.Card => "Cards",
-            SelectionModelKind.Relic => "Relics",
-            SelectionModelKind.Potion => "Potions",
-            SelectionModelKind.Power => "Powers",
-            SelectionModelKind.Monster => "Monsters",
+            SelectionModelKind.Card => LocMan.Loc("LOADOUT_KIND_CARDS", "Cards"),
+            SelectionModelKind.Relic => LocMan.Loc("LOADOUT_KIND_RELICS", "Relics"),
+            SelectionModelKind.Potion => LocMan.Loc("CUSTOM_RUN_POTIONS", "Potions"),
+            SelectionModelKind.Power => LocMan.Loc("POWER_GIVER_ALL_POWERS", "Powers"),
+            SelectionModelKind.Monster => LocMan.Loc("POWER_GIVER_TARGET_MONSTERS", "Monsters"),
             _ => kind.ToString()
         };
+    }
+
+    private static string FormatComponentKind(RuleComponentKind kind)
+    {
+        return kind switch
+        {
+            RuleComponentKind.Trigger => LocMan.Loc("CUSTOM_RUN_TRIGGER", "Trigger"),
+            RuleComponentKind.Condition => LocMan.Loc("CUSTOM_RUN_CONDITION", "Condition"),
+            RuleComponentKind.Action => LocMan.Loc("CUSTOM_RUN_ACTION", "Action"),
+            RuleComponentKind.Target => LocMan.Loc("LOADOUT_TARGET", "Target"),
+            _ => kind.ToString()
+        };
+    }
+
+    private static string FormatComponentName(RuleComponentDescriptor descriptor)
+    {
+        string id = descriptor.StableId[(descriptor.StableId.LastIndexOf(':') + 1)..];
+        return LocMan.Loc($"CUSTOM_RUN_COMPONENT_{LocMan.ToUpperSnakeCase(id)}", descriptor.DisplayName);
+    }
+
+    private static string FormatComponentCategory(string category)
+    {
+        return LocMan.Loc($"CUSTOM_RUN_CATEGORY_{LocMan.ToUpperSnakeCase(category)}", category);
+    }
+
+    private static string FormatParameterName(RuleParameterDescriptor parameter)
+    {
+        return LocMan.Loc($"CUSTOM_RUN_PARAMETER_{LocMan.ToUpperSnakeCase(parameter.DisplayName).Replace(' ', '_')}", parameter.DisplayName);
+    }
+
+    private static string FormatParameterOption(RuleParameterOption option)
+    {
+        return LocMan.Loc($"CUSTOM_RUN_OPTION_{LocMan.ToUpperSnakeCase(option.Id)}", option.DisplayName);
     }
 
     private void BuildReferenceParameter(
@@ -1429,7 +1478,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         bool isRole,
         Action? afterChanged)
     {
-        HBoxContainer row = CreateFieldRow(parameter.DisplayName);
+        HBoxContainer row = CreateFieldRow(FormatParameterName(parameter));
         string selected = RuleComponentParameterService.GetString(component, parameter.Key);
         IEnumerable<VariableDefinition> availableVariables = _definitionContext?.Variables ?? [];
         if (!isRole && component.TypeId is "Loadout2:AddToVariable" or "Loadout2:SubtractFromVariable")
@@ -1438,9 +1487,11 @@ public partial class NCustomRunRuleEditorScreen : Control
             ? (_definitionContext?.Roles ?? []).Select(role => new LoadoutDropdownOption(role.Id, role.Name)).ToList()
             : availableVariables.Select(variable => new LoadoutDropdownOption(variable.Id, variable.Name)).ToList();
         if (!string.IsNullOrWhiteSpace(selected) && options.All(option => option.Id != selected))
-            options.Insert(0, new LoadoutDropdownOption(selected, $"Missing: {selected}"));
+            options.Insert(0, new LoadoutDropdownOption(selected, LocMan.Loc("CUSTOM_RUN_MISSING_VALUE", "Missing: {0}", selected)));
         if (options.Count == 0)
-            options.Add(new LoadoutDropdownOption(string.Empty, isRole ? "No roles defined" : "No variables defined"));
+            options.Add(new LoadoutDropdownOption(string.Empty, isRole
+                ? LocMan.Loc("CUSTOM_RUN_NO_ROLES_DEFINED", "No roles defined")
+                : LocMan.Loc("CUSTOM_RUN_NO_VARIABLES_DEFINED", "No variables defined")));
         NSelectFilterDropdown dropdown = CreateDropdown(options, selected, 420f);
         dropdown.SelectedItemChanged += value =>
         {
@@ -1523,12 +1574,12 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleComponentDescriptor? targetDescriptor = targets.FirstOrDefault(descriptor =>
             string.Equals(descriptor.StableId, capturedTarget.TypeId, StringComparison.Ordinal));
 
-        HBoxContainer row = CreateFieldRow(parameter.DisplayName);
+        HBoxContainer row = CreateFieldRow(FormatParameterName(parameter));
         List<LoadoutDropdownOption> options = targets
-            .Select(descriptor => new LoadoutDropdownOption(descriptor.StableId, descriptor.DisplayName))
+            .Select(descriptor => new LoadoutDropdownOption(descriptor.StableId, FormatComponentName(descriptor)))
             .ToList();
         if (targetDescriptor is null && !string.IsNullOrWhiteSpace(capturedTarget.TypeId))
-            options.Insert(0, new LoadoutDropdownOption(capturedTarget.TypeId, $"Missing: {capturedTarget.TypeId}"));
+            options.Insert(0, new LoadoutDropdownOption(capturedTarget.TypeId, LocMan.Loc("CUSTOM_RUN_MISSING_VALUE", "Missing: {0}", capturedTarget.TypeId)));
         NSelectFilterDropdown dropdown = CreateDropdown(options, capturedTarget.TypeId, 420f);
         dropdown.SelectedItemChanged += value =>
         {
@@ -1592,13 +1643,13 @@ public partial class NCustomRunRuleEditorScreen : Control
         }
         NumericValueSpec captured = value;
 
-        HBoxContainer sourceRow = CreateFieldRow(parameter.DisplayName);
+        HBoxContainer sourceRow = CreateFieldRow(FormatParameterName(parameter));
         NSelectFilterDropdown source = CreateDropdown(
             new[]
             {
-                new LoadoutDropdownOption(NumericValueSourceKind.Constant.ToString(), "Constant"),
-                new LoadoutDropdownOption(NumericValueSourceKind.Variable.ToString(), "Variable"),
-                new LoadoutDropdownOption(NumericValueSourceKind.EventContext.ToString(), "Event Value")
+                new LoadoutDropdownOption(NumericValueSourceKind.Constant.ToString(), LocMan.Loc("CUSTOM_RUN_CONSTANT", "Constant")),
+                new LoadoutDropdownOption(NumericValueSourceKind.Variable.ToString(), LocMan.Loc("CUSTOM_RUN_VARIABLE", "Variable")),
+                new LoadoutDropdownOption(NumericValueSourceKind.EventContext.ToString(), LocMan.Loc("CUSTOM_RUN_EVENT_VALUE", "Event Value"))
             },
             captured.Source.ToString(),
             310f);
@@ -1632,8 +1683,8 @@ public partial class NCustomRunRuleEditorScreen : Control
                     NSelectFilterDropdown numberType = CreateDropdown(
                         new[]
                         {
-                            new LoadoutDropdownOption(NumericConstantKind.Integer.ToString(), "Integer"),
-                            new LoadoutDropdownOption(NumericConstantKind.Double.ToString(), "Double")
+                            new LoadoutDropdownOption(NumericConstantKind.Integer.ToString(), LocMan.Loc("CUSTOM_RUN_INTEGER", "Integer")),
+                            new LoadoutDropdownOption(NumericConstantKind.Double.ToString(), LocMan.Loc("CUSTOM_RUN_DOUBLE", "Double"))
                         },
                         captured.ConstantKind.ToString(),
                         190f);
@@ -1690,10 +1741,10 @@ public partial class NCustomRunRuleEditorScreen : Control
                 {
                     variables.Insert(0, new LoadoutDropdownOption(
                         captured.ReferenceId,
-                        $"Missing or non-Number: {captured.ReferenceId}"));
+                        LocMan.Loc("CUSTOM_RUN_MISSING_OR_NON_NUMBER", "Missing or non-Number: {0}", captured.ReferenceId)));
                 }
                 if (variables.Count == 0)
-                    variables.Add(new LoadoutDropdownOption(string.Empty, "No number variables"));
+                    variables.Add(new LoadoutDropdownOption(string.Empty, LocMan.Loc("CUSTOM_RUN_NO_NUMBER_VARIABLES", "No number variables")));
                 NSelectFilterDropdown variable = CreateDropdown(variables, captured.ReferenceId ?? string.Empty, 350f);
                 variable.SelectedItemChanged += selected =>
                 {
@@ -1710,12 +1761,12 @@ public partial class NCustomRunRuleEditorScreen : Control
                 NSelectFilterDropdown eventValue = CreateDropdown(
                     new[]
                     {
-                        new LoadoutDropdownOption("CurrentHp", "Current HP"),
-                        new LoadoutDropdownOption("MaxHp", "Max HP"),
-                        new LoadoutDropdownOption("Gold", "Gold"),
-                        new LoadoutDropdownOption("Energy", "Energy"),
-                        new LoadoutDropdownOption("TurnNumber", "Turn Number"),
-                        new LoadoutDropdownOption("PlayerCount", "Player Count")
+                        new LoadoutDropdownOption("CurrentHp", LocMan.Loc("CREATURE_MANIP_CURRENT_HP", "Current HP")),
+                        new LoadoutDropdownOption("MaxHp", LocMan.Loc("CREATURE_MANIP_MAX_HP", "Max HP")),
+                        new LoadoutDropdownOption("Gold", LocMan.Loc("CUSTOM_RUN_GOLD", "Gold")),
+                        new LoadoutDropdownOption("Energy", LocMan.Loc("CUSTOM_RUN_ENERGY", "Energy")),
+                        new LoadoutDropdownOption("TurnNumber", LocMan.Loc("TILDEKEY_STAT_TURN_NUMBER", "Turn Number")),
+                        new LoadoutDropdownOption("PlayerCount", LocMan.Loc("CUSTOM_RUN_PLAYER_COUNT", "Player Count"))
                     },
                     captured.ReferenceId ?? "TurnNumber",
                     350f);
@@ -1785,7 +1836,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         if (!TryCreateValidatedRule(out RuleDefinition rule))
             return;
         PermanentRuleStorageService.Upsert(rule, _definitionContext?.Variables ?? []);
-        SetStatus($"Saved '{rule.Name}' to Permanent Rules.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_TO_PERMANENT", "Saved '{0}' to Permanent Rules.", rule.Name), success: true);
     }
 
     private void SaveAndClose()
@@ -1867,7 +1918,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         NModalContainer? modalContainer = NModalContainer.Instance;
         if (modalContainer is null || !GodotObject.IsInstanceValid(modalContainer))
         {
-            SetStatus("Could not open the unsaved-changes warning.", success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_UNSAVED_WARNING_FAILED", "Could not open the unsaved-changes warning."), success: false);
             return false;
         }
         if (modalContainer.OpenModal is GodotObject openModal && !GodotObject.IsInstanceValid(openModal))
@@ -1903,7 +1954,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         if (_loadingFields || _readOnly)
             return;
         _dirty = true;
-        SetStatus("Unsaved rule changes.", success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_UNSAVED_RULE_CHANGES", "Unsaved rule changes."), success: true);
     }
 
     private void SetStatus(string text, bool success)
@@ -2169,14 +2220,14 @@ public partial class NCustomRunRuleEditorScreen : Control
     private static string GetModelDisplayName(SelectionModelKind kind, string id)
     {
         if (!CustomRunCatalogService.TryResolve(kind, id, out CustomRunCatalogEntry entry))
-            return $"Missing: {id}";
+            return LocMan.Loc("CUSTOM_RUN_MISSING_VALUE", "Missing: {0}", id);
         return entry.Model switch
         {
             CardModel card => CardPrinter.FormatCardTitle(card),
             RelicModel relic => CommonHelpers.FormatRelicTitle(relic),
             PotionModel potion => CommonHelpers.FormatPotionTitle(potion),
             PowerModel power => CommonHelpers.FormatPowerTitle(power),
-            MonsterModel monster => monster.Id.Entry,
+            MonsterModel monster => FormatMonsterTitle(monster),
             _ => entry.Model.Id.Entry
         };
     }
@@ -2185,17 +2236,41 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         return kind switch
         {
-            RuleLimitKind.Unlimited => "Unlimited",
-            RuleLimitKind.OncePerEventChain => "Once per event chain",
-            RuleLimitKind.OncePerTurn => "Once per turn",
-            RuleLimitKind.TimesPerTurn => "N times per turn",
-            RuleLimitKind.OncePerCombat => "Once per combat",
-            RuleLimitKind.TimesPerCombat => "N times per combat",
-            RuleLimitKind.OncePerRun => "Once per run",
-            RuleLimitKind.TimesPerRun => "N times per run",
-            RuleLimitKind.UntilCondition => "Until condition",
+            RuleLimitKind.Unlimited => LocMan.Loc("CUSTOM_RUN_LIMIT_UNLIMITED", "Unlimited"),
+            RuleLimitKind.OncePerEventChain => LocMan.Loc("CUSTOM_RUN_LIMIT_ONCE_PER_EVENT_CHAIN", "Once per event chain"),
+            RuleLimitKind.OncePerTurn => LocMan.Loc("CUSTOM_RUN_LIMIT_ONCE_PER_TURN", "Once per turn"),
+            RuleLimitKind.TimesPerTurn => LocMan.Loc("CUSTOM_RUN_LIMIT_N_PER_TURN", "N times per turn"),
+            RuleLimitKind.OncePerCombat => LocMan.Loc("CUSTOM_RUN_LIMIT_ONCE_PER_COMBAT", "Once per combat"),
+            RuleLimitKind.TimesPerCombat => LocMan.Loc("CUSTOM_RUN_LIMIT_N_PER_COMBAT", "N times per combat"),
+            RuleLimitKind.OncePerRun => LocMan.Loc("CUSTOM_RUN_LIMIT_ONCE_PER_RUN", "Once per run"),
+            RuleLimitKind.TimesPerRun => LocMan.Loc("CUSTOM_RUN_LIMIT_N_PER_RUN", "N times per run"),
+            RuleLimitKind.UntilCondition => LocMan.Loc("CUSTOM_RUN_LIMIT_UNTIL_CONDITION", "Until condition"),
             _ => kind.ToString()
         };
+    }
+
+    private static string FormatActTitle(ActModel act)
+    {
+        try
+        {
+            return act.Title.GetFormattedText();
+        }
+        catch
+        {
+            return act.Id.Entry;
+        }
+    }
+
+    private static string FormatMonsterTitle(MonsterModel monster)
+    {
+        try
+        {
+            return monster.Title.GetFormattedText();
+        }
+        catch
+        {
+            return monster.Id.Entry;
+        }
     }
 
     private static void SetEditableRecursive(Node node, bool editable)
