@@ -209,6 +209,11 @@ public static class BottledMonsterMorphService
         ScheduleRestSiteVisualRefresh(player.NetId);
     }
 
+    public static void SynchronizeAuthoritativeState()
+    {
+        BroadcastSnapshot();
+    }
+
     public static void OnCreatureReady(NCreature creatureNode)
     {
         TrackCombatScaleRuntime(creatureNode);

@@ -38,6 +38,7 @@ public static class CustomRunSetupApplyService
             || !CustomRunRuntimeSnapshotService.TryConsumeInitialRuntimeSetup(runState, out ResolvedCustomRunSnapshot snapshot))
             return;
 
+        bool appliedStartingMorph = false;
         foreach (ResolvedPlayerSetup setup in snapshot.Players)
         {
             try
@@ -53,6 +54,7 @@ public static class CustomRunSetupApplyService
                     BottledMonsterMorphService.ApplySynchronizedMorph(
                         morph.Id,
                         LoadoutTargetSelection.ForPlayer(setup.PlayerId));
+                    appliedStartingMorph = true;
                 }
             }
             catch (Exception exception)
@@ -60,6 +62,9 @@ public static class CustomRunSetupApplyService
                 MainFile.Logger.Error($"[Loadout] Custom Run initial powers/morph failed for player {setup.PlayerId}: {exception}");
             }
         }
+
+        if (appliedStartingMorph)
+            BottledMonsterMorphService.SynchronizeAuthoritativeState();
     }
 
     public static void ApplyToNewPlayer(Player player, ResolvedPlayerSetup setup)
