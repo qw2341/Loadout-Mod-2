@@ -27,6 +27,7 @@ public static partial class TildeKey
     private const string InfiniteEnergyToggleName = "TildeKeyInfiniteEnergyToggle";
     private const string DrawTillHandLimitToggleName = "TildeKeyDrawTillHandLimitToggle";
     private const string ScrollRelicCounterToggleName = "TildeKeyScrollRelicCounterToggle";
+    private const string KillAllMonstersToggleName = "TildeKeyKillAllMonstersToggle";
     private const string StaticHoverTipsTable = "static_hover_tips";
     private const string HeartIconPath = "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_heart.tres";
     private const string GoldIconPath = "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_gold.tres";
@@ -250,6 +251,19 @@ public static partial class TildeKey
                 enabled,
                 GetSelectedTarget()));
 
+        UpsertToggle(
+            screen,
+            KillAllMonstersToggleName,
+            TildeKeyStateService.KillAllMonstersToggleId,
+            LocMan.Loc("TILDEKEY_KILL_ALL_MONSTERS", "Kill all monsters"),
+            () => TildeKeyStateService.GetToggle(
+                TildeKeyStateService.KillAllMonstersToggleId,
+                GetSelectedTarget()),
+            enabled => LoadoutImmediateMutationService.RequestTildeSetToggle(
+                TildeKeyStateService.KillAllMonstersToggleId,
+                enabled,
+                GetSelectedTarget()));
+
         RefreshSidebarToggles(screen);
     }
 
@@ -298,6 +312,8 @@ public static partial class TildeKey
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.DrawTillHandLimitToggleId, GetSelectedTarget()), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{ScrollRelicCounterToggleName}")
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.ScrollRelicCounterToggleId, GetSelectedTarget()), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{KillAllMonstersToggleName}")
+            ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.KillAllMonstersToggleId, GetSelectedTarget()), emit: false);
     }
 
     private static LoadoutTargetSelection GetSelectedTarget()

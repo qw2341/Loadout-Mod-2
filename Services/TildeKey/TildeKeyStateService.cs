@@ -101,6 +101,14 @@ public sealed class LoadoutMaxHandSizeModifier : AbstractModel, IMaxHandSizeModi
         => TildeKeyStateService.ApplyMaxHandSizeModifier(player, currentMaxHandSize);
 }
 
+public sealed class LoadoutKillAllMonstersCombatHook : AbstractModel
+{
+    public override bool ShouldReceiveCombatHooks => true;
+
+    public override Task BeforeCombatStartLate()
+        => TildeKeyStateService.KillAllMonstersAtCombatStartAsync();
+}
+
 public static class TildeKeyStateService
 {
     public const string TargetKey = "tilde_key";
@@ -109,6 +117,7 @@ public static class TildeKeyStateService
     public const string InfiniteEnergyToggleId = "infinite_energy";
     public const string DrawTillHandLimitToggleId = "draw_till_hand_limit";
     public const string ScrollRelicCounterToggleId = "scroll_relic_counter";
+    public const string KillAllMonstersToggleId = "kill_all_monsters";
     public const string DrawPerTurnStatId = "draw_per_turn";
     public const string HandSizeStatId = "hand_size";
     public const string PlayerDamageMultiplierStatId = "player_damage_multiplier";
@@ -184,6 +193,7 @@ public static class TildeKeyStateService
     private static RunSaveData _run = new();
     private static readonly Dictionary<string, Dictionary<string, int>> VirtualStats = new(StringComparer.Ordinal);
     private static bool _registered;
+    private static bool _combatHookRegistered;
     private static bool _runLoaded;
     private static long? _loadedRunStartTime;
     private static NMapScreen? _lastMapScreen;
@@ -215,6 +225,7 @@ public static class TildeKeyStateService
         TildeKeyMaxHandSizeFastPath.Warmup();
         if (!TildeKeyMaxHandSizeFastPath.CanApplyDirectly)
             RegisterMaxHandSizeModifier();
+        RegisterCombatHook();
         RunManager.Instance.RunStarted += OnRunStarted;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp += OnCombatSetUp;
@@ -540,7 +551,7 @@ public static class TildeKeyStateService
         EnsureLoaded();
         lock (SyncRoot)
         {
-            if (string.Equals(toggleId, GoToAnyRoomToggleId, StringComparison.Ordinal))
+            if (IsGlobalToggle(toggleId))
                 return _run.GlobalToggles.TryGetValue(toggleId, out bool enabled) && enabled;
         }
 
@@ -639,18 +650,19 @@ public static class TildeKeyStateService
         }
 
         EnsureLoaded();
-        if (string.Equals(payload.ToggleId, GoToAnyRoomToggleId, StringComparison.Ordinal))
+        if (IsGlobalToggle(payload.ToggleId))
         {
             lock (SyncRoot)
             {
                 if (payload.Enabled)
-                    _run.GlobalToggles[GoToAnyRoomToggleId] = true;
+                    _run.GlobalToggles[payload.ToggleId] = true;
                 else
-                    _run.GlobalToggles.Remove(GoToAnyRoomToggleId);
+                    _run.GlobalToggles.Remove(payload.ToggleId);
             }
 
             SaveRunState();
-            SyncMapDebugTravel(force: true);
+            if (string.Equals(payload.ToggleId, GoToAnyRoomToggleId, StringComparison.Ordinal))
+                SyncMapDebugTravel(force: true);
             RaiseStateChanged();
             return;
         }
@@ -712,6 +724,20 @@ public static class TildeKeyStateService
         ModHelper.SubscribeForRunStateHooks(
             "Loadout.TildeKey.MaxHandSize",
             _ => [modifier]);
+    }
+
+    private static void RegisterCombatHook()
+    {
+        if (_combatHookRegistered)
+            return;
+
+        LoadoutKillAllMonstersCombatHook hook = ModelDb.GetById<LoadoutKillAllMonstersCombatHook>(
+            ModelDb.GetId<LoadoutKillAllMonstersCombatHook>());
+
+        ModHelper.SubscribeForCombatStateHooks(
+            "Loadout.TildeKey.KillAllMonsters",
+            _ => [hook]);
+        _combatHookRegistered = true;
     }
 
     public static bool TryGetPlayerDamageMultiplier(Player player, out int value)
@@ -989,18 +1015,131 @@ public static class TildeKeyStateService
 
     public static async Task KillCurrentEnemiesAsync()
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return;
-
-        CombatState? combatState = CombatManager.Instance.DebugOnlyGetState();
+        CombatState? combatState = GetCurrentCombatState();
         if (combatState is null)
             return;
 
-        List<Creature> enemies = combatState.Enemies.ToList();
-        foreach (Creature enemy in enemies)
-            await CreatureCmd.Kill(enemy);
+        await KillEnemiesAsync(combatState.Enemies.ToList(), force: false);
+        if (await TryFinishCombatAsync())
+            return;
 
-        await CombatManager.Instance.CheckWinCondition();
+        combatState = GetCurrentCombatState();
+        if (combatState is null)
+            return;
+
+        List<Creature> survivingEnemies = combatState.Enemies
+            .Where(enemy => enemy.IsAlive)
+            .ToList();
+        if (survivingEnemies.Count > 0)
+        {
+            await KillEnemiesAsync(survivingEnemies, force: false);
+            if (await TryFinishCombatAsync())
+                return;
+        }
+
+        combatState = GetCurrentCombatState();
+        if (combatState is null)
+            return;
+
+        await KillEnemiesAsync(combatState.Enemies.ToList(), force: true);
+        if (await TryFinishCombatAsync())
+            return;
+
+        combatState = GetCurrentCombatState();
+        if (combatState is null)
+            return;
+
+        foreach (Creature enemy in combatState.Enemies.ToList())
+            RemoveEnemyFromCombat(combatState, enemy);
+
+        if (!await TryFinishCombatAsync() && CombatManager.Instance.IsInProgress)
+            await CombatManager.Instance.EndCombatInternal();
+    }
+
+    internal static Task KillAllMonstersAtCombatStartAsync()
+    {
+        if (!_registered || !IsGlobalToggleEnabled(KillAllMonstersToggleId))
+            return Task.CompletedTask;
+
+        return KillCurrentEnemiesAsync();
+    }
+
+    private static async Task KillEnemiesAsync(IReadOnlyList<Creature> enemies, bool force)
+    {
+        foreach (Creature enemy in enemies)
+        {
+            if (!CombatManager.Instance.IsInProgress)
+                return;
+
+            try
+            {
+                await CreatureCmd.Kill(enemy, force);
+            }
+            catch (Exception exception)
+            {
+                GD.PushWarning($"TildeKey: failed to kill '{enemy.Name}' (force={force}). {exception.Message}");
+            }
+        }
+    }
+
+    private static async Task<bool> TryFinishCombatAsync()
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return true;
+
+        try
+        {
+            return await CombatManager.Instance.CheckWinCondition();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"TildeKey: failed to check the combat win condition. {exception.Message}");
+            return !CombatManager.Instance.IsInProgress;
+        }
+    }
+
+    private static CombatState? GetCurrentCombatState()
+    {
+        return CombatManager.Instance.IsInProgress
+            ? CombatManager.Instance.DebugOnlyGetState()
+            : null;
+    }
+
+    private static void RemoveEnemyFromCombat(CombatState combatState, Creature enemy)
+    {
+        try
+        {
+            NCreature? creatureNode = NCombatRoom.Instance?.GetCreatureNode(enemy);
+            if (creatureNode is not null)
+            {
+                NCombatRoom.Instance?.RemoveCreatureNode(creatureNode);
+                creatureNode.ToggleIsInteractable(on: false);
+                creatureNode.Visible = false;
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"TildeKey: failed to remove the combat node for '{enemy.Name}'. {exception.Message}");
+        }
+
+        try
+        {
+            CombatManager.Instance.RemoveCreature(enemy);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"TildeKey: failed to unregister '{enemy.Name}' from combat. {exception.Message}");
+        }
+
+        try
+        {
+            if (ReferenceEquals(enemy.CombatState, combatState) && combatState.Enemies.Contains(enemy))
+                combatState.RemoveCreature(enemy);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"TildeKey: failed to detach '{enemy.Name}' from combat. {exception.Message}");
+        }
     }
 
     public static async Task SpareCurrentEnemiesAsync()
@@ -2320,11 +2459,22 @@ public static class TildeKeyStateService
 
     private static bool IsKnownToggle(string key)
     {
-        return string.Equals(key, GodmodeToggleId, StringComparison.Ordinal)
-               || string.Equals(key, GoToAnyRoomToggleId, StringComparison.Ordinal)
-               || string.Equals(key, InfiniteEnergyToggleId, StringComparison.Ordinal)
-               || string.Equals(key, DrawTillHandLimitToggleId, StringComparison.Ordinal)
-               || string.Equals(key, ScrollRelicCounterToggleId, StringComparison.Ordinal);
+        return IsGlobalToggle(key) || IsKnownPlayerToggle(key);
+    }
+
+    private static bool IsGlobalToggle(string key)
+    {
+        return string.Equals(key, GoToAnyRoomToggleId, StringComparison.Ordinal)
+               || string.Equals(key, KillAllMonstersToggleId, StringComparison.Ordinal);
+    }
+
+    private static bool IsGlobalToggleEnabled(string key)
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            return _run.GlobalToggles.TryGetValue(key, out bool enabled) && enabled;
+        }
     }
 
     private static bool IsKnownPlayerToggle(string key)
