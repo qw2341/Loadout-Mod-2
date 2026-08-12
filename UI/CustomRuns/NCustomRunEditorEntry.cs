@@ -28,7 +28,7 @@ public static class NCustomRunEditorEntry
     internal const string RoleDropdownNodeName = "LoadoutCustomRunRoleDropdown";
     internal const string PlayerDropdownNodeName = "LoadoutCustomRunPlayerDropdown";
     internal const string RoleLockButtonNodeName = "LoadoutCustomRunRoleLockButton";
-    private static readonly StringName OriginalNameplateMeta = "LoadoutCustomRunOriginalNameplate";
+    private const string PlayerRoleLabelNodeName = "LoadoutCustomRunPlayerRoleLabel";
     private static readonly Dictionary<Control, ulong> SelectedAssignmentPlayers = [];
     private static readonly Dictionary<StartRunLobby, Dictionary<ulong, string?>> PendingRoleSelections = [];
     private static readonly HashSet<StartRunLobby> AwaitingRoleLocks = [];
@@ -234,8 +234,8 @@ public static class NCustomRunEditorEntry
             NLoadoutSettingsActionButton roleLock = new()
             {
                 Name = RoleLockButtonNodeName,
-                CustomMinimumSize = new Vector2(300f, 54f),
-                Size = new Vector2(300f, 54f),
+                CustomMinimumSize = new Vector2(360f, 54f),
+                Size = new Vector2(360f, 54f),
                 ZIndex = 24
             };
             roleLock.Init("custom_run_role_lock", LocMan.Loc("CUSTOM_RUN_LOCK_IN_ROLE", "Lock In Role").ToUpperInvariant());
@@ -297,9 +297,31 @@ public static class NCustomRunEditorEntry
         playerDropdown.SetEnabled(hostCanAssign && !CustomRunRoleAssignmentService.IsHostReady(lobby));
 
         bool locked = CustomRunRoleAssignmentService.HasLockedSelection(lobby, selectedPlayer);
+        if (!locked
+            && lobby.NetService.Type == NetGameType.Singleplayer
+            && !TryGetPendingRole(lobby, selectedPlayer, out _)
+            && definition.Roles.FirstOrDefault(role => role.MinimumPlayers > 0) is { } requiredRole)
+        {
+            SetPendingRole(lobby, selectedPlayer, requiredRole.Id);
+            bool accepted = definition.RoleAssignmentMode switch
+            {
+                RoleAssignmentMode.HostAssigns =>
+                    CustomRunRoleAssignmentService.AssignAsHost(lobby, selectedPlayer, requiredRole.Id, out _),
+                RoleAssignmentMode.PlayersChoose =>
+                    CustomRunRoleAssignmentService.RequestLocalRoleLock(lobby, requiredRole.Id, out _),
+                _ => false
+            };
+            if (accepted)
+            {
+                RemovePendingRole(lobby, selectedPlayer);
+                locked = true;
+            }
+        }
         string selectedRoleId = locked
             ? CustomRunRoleAssignmentService.GetRoleId(lobby, selectedPlayer) ?? string.Empty
-            : GetPendingRole(lobby, selectedPlayer) ?? string.Empty;
+            : TryGetPendingRole(lobby, selectedPlayer, out string? pendingRoleId)
+                ? pendingRoleId ?? string.Empty
+                : string.Empty;
         IReadOnlyDictionary<ulong, string?> assignments = CustomRunRoleAssignmentService.GetAssignments(lobby);
         List<LoadoutDropdownOption> options =
         [
@@ -458,44 +480,88 @@ public static class NCustomRunEditorEntry
         CustomRunDefinition definition)
     {
         IReadOnlyDictionary<ulong, string?> assignments = CustomRunRoleAssignmentService.GetAssignments(lobby);
-        bool showRoles = definition.RoleAssignmentMode != RoleAssignmentMode.Random
-                         && assignments.Values.Any(roleId => !string.IsNullOrWhiteSpace(roleId));
-        foreach (Node node in screen.FindChildren("*", "NRemoteLobbyPlayer", recursive: true, owned: false))
+        foreach (NRemoteLobbyPlayer playerNode in EnumerateRemoteLobbyPlayers(screen))
         {
-            if (node is not NRemoteLobbyPlayer playerNode
-                || playerNode.GetNodeOrNull<MegaLabel>("%NameplateLabel") is not { } nameplate)
+            if (playerNode.GetNodeOrNull<MegaLabel>("%NameplateLabel") is not { } nameplate)
                 continue;
-            string originalName = GetOriginalNameplate(nameplate);
-            if (!showRoles)
+
+            bool locked = CustomRunRoleAssignmentService.HasLockedSelection(lobby, playerNode.PlayerId);
+            string? roleId = locked
+                ? assignments.GetValueOrDefault(playerNode.PlayerId)
+                : TryGetPendingRole(lobby, playerNode.PlayerId, out string? pendingRoleId)
+                    ? pendingRoleId
+                    : null;
+            MegaLabel? roleLabel = nameplate.GetParentOrNull<Control>()?
+                .GetNodeOrNull<MegaLabel>(PlayerRoleLabelNodeName);
+            if (definition.RoleAssignmentMode == RoleAssignmentMode.Random || string.IsNullOrWhiteSpace(roleId))
             {
-                nameplate.SetTextAutoSize(originalName);
+                if (roleLabel is not null)
+                    roleLabel.Visible = false;
                 continue;
             }
 
-            assignments.TryGetValue(playerNode.PlayerId, out string? roleId);
-            nameplate.SetTextAutoSize($"{originalName}  •  {GetRoleName(definition, roleId)}");
+            roleLabel ??= CreatePlayerRoleLabel(nameplate);
+            roleLabel.Visible = true;
+            roleLabel.Modulate = new Color(1f, 1f, 1f, locked ? 1f : 0.5f);
+            PositionPlayerRoleLabel(nameplate, roleLabel);
+            roleLabel.SetTextAutoSize($"\u2022  {GetRoleName(definition, roleId)}");
         }
     }
 
-    private static string GetOriginalNameplate(MegaLabel nameplate)
+    private static IEnumerable<NRemoteLobbyPlayer> EnumerateRemoteLobbyPlayers(Control screen)
     {
-        if (!nameplate.HasMeta(OriginalNameplateMeta))
-            nameplate.SetMeta(OriginalNameplateMeta, nameplate.Text);
-        return nameplate.GetMeta(OriginalNameplateMeta).AsString();
+        return screen.FindChildren("*", "Control", recursive: true, owned: false)
+            .OfType<NRemoteLobbyPlayer>();
+    }
+
+    private static MegaLabel CreatePlayerRoleLabel(MegaLabel nameplate)
+    {
+        MegaLabel roleLabel = new()
+        {
+            Name = PlayerRoleLabelNodeName,
+            AutoSizeEnabled = true,
+            MinFontSize = nameplate.MinFontSize,
+            MaxFontSize = nameplate.MaxFontSize,
+            VerticalAlignment = nameplate.VerticalAlignment,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ZIndex = 1
+        };
+        roleLabel.AddThemeFontOverride("font", nameplate.GetThemeFont("font"));
+        roleLabel.AddThemeFontSizeOverride("font_size", nameplate.GetThemeFontSize("font_size"));
+        roleLabel.AddThemeColorOverride("font_color", nameplate.GetThemeColor("font_color"));
+        roleLabel.AddThemeColorOverride("font_shadow_color", nameplate.GetThemeColor("font_shadow_color"));
+        roleLabel.AddThemeColorOverride("font_outline_color", nameplate.GetThemeColor("font_outline_color"));
+        roleLabel.AddThemeConstantOverride("shadow_offset_x", nameplate.GetThemeConstant("shadow_offset_x"));
+        roleLabel.AddThemeConstantOverride("shadow_offset_y", nameplate.GetThemeConstant("shadow_offset_y"));
+        roleLabel.AddThemeConstantOverride("outline_size", nameplate.GetThemeConstant("outline_size"));
+        nameplate.GetParent().AddChild(roleLabel);
+        return roleLabel;
+    }
+
+    private static void PositionPlayerRoleLabel(MegaLabel nameplate, MegaLabel roleLabel)
+    {
+        const float gap = 12f;
+        Font font = nameplate.GetThemeFont("font");
+        int fontSize = nameplate.GetThemeFontSize("font_size");
+        float nameWidth = font.GetStringSize(nameplate.Text, HorizontalAlignment.Left, -1f, fontSize).X;
+        roleLabel.AnchorLeft = nameplate.AnchorLeft;
+        roleLabel.AnchorTop = nameplate.AnchorTop;
+        roleLabel.AnchorRight = nameplate.AnchorRight;
+        roleLabel.AnchorBottom = nameplate.AnchorBottom;
+        roleLabel.OffsetLeft = nameplate.OffsetLeft + nameWidth + gap;
+        roleLabel.OffsetTop = nameplate.OffsetTop;
+        roleLabel.OffsetRight = nameplate.OffsetRight;
+        roleLabel.OffsetBottom = nameplate.OffsetBottom;
     }
 
     private static void ClearPlayerRoleLabels(Control screen)
     {
-        foreach (Node node in screen.FindChildren("*", "NRemoteLobbyPlayer", recursive: true, owned: false))
+        foreach (NRemoteLobbyPlayer playerNode in EnumerateRemoteLobbyPlayers(screen))
         {
-            if (node is not NRemoteLobbyPlayer playerNode
-                || playerNode.GetNodeOrNull<MegaLabel>("%NameplateLabel") is not { } nameplate
-                || !nameplate.HasMeta(OriginalNameplateMeta))
-            {
-                continue;
-            }
-            nameplate.SetTextAutoSize(nameplate.GetMeta(OriginalNameplateMeta).AsString());
-            nameplate.RemoveMeta(OriginalNameplateMeta);
+            MegaLabel? nameplate = playerNode.GetNodeOrNull<MegaLabel>("%NameplateLabel");
+            nameplate?.GetParentOrNull<Control>()?
+                .GetNodeOrNull<MegaLabel>(PlayerRoleLabelNodeName)?
+                .QueueFree();
         }
     }
 
@@ -520,30 +586,11 @@ public static class NCustomRunEditorEntry
         NLoadoutDropdown? roles = screen.GetNodeOrNull<NLoadoutDropdown>(RoleDropdownNodeName);
         if (confirm is null || roles is null)
             return;
-        PositionRoleDropdown(confirm, roles, 0);
+        PositionRoleDropdown(confirm, roles, 2);
         if (screen.GetNodeOrNull<NLoadoutSettingsActionButton>(RoleLockButtonNodeName) is { } roleLock)
-            PositionRoleLockButton(roles, roleLock);
+            PositionRoleDropdown(confirm, roleLock, 1);
         if (screen.GetNodeOrNull<NLoadoutDropdown>(PlayerDropdownNodeName) is { } players)
-            PositionRoleDropdown(confirm, players, 1);
-    }
-
-    private static void PositionRoleLockButton(Control roleDropdown, Control roleLock)
-    {
-        const float width = 300f;
-        const float gap = 10f;
-        roleLock.AnchorLeft = roleDropdown.AnchorLeft;
-        roleLock.AnchorTop = roleDropdown.AnchorTop;
-        roleLock.AnchorRight = roleDropdown.AnchorRight;
-        roleLock.AnchorBottom = roleDropdown.AnchorBottom;
-        roleLock.OffsetRight = roleDropdown.OffsetLeft - gap;
-        roleLock.OffsetLeft = roleLock.OffsetRight - width;
-        roleLock.OffsetTop = roleDropdown.OffsetTop;
-        roleLock.OffsetBottom = roleDropdown.OffsetBottom;
-        roleLock.CustomMinimumSize = new Vector2(width, roleDropdown.Size.Y);
-        roleLock.Size = new Vector2(width, roleDropdown.Size.Y);
-        roleLock.PivotOffset = roleLock.Size * 0.5f;
-        roleLock.GrowHorizontal = Control.GrowDirection.Begin;
-        roleLock.GrowVertical = Control.GrowDirection.Begin;
+            PositionRoleDropdown(confirm, players, 3);
     }
 
     private static void PositionRoleDropdown(Control confirm, Control dropdown, int rowAboveConfirm)
@@ -663,10 +710,14 @@ public static class NCustomRunEditorEntry
 
     private static string? GetPendingRole(StartRunLobby lobby, ulong playerId)
     {
+        return TryGetPendingRole(lobby, playerId, out string? roleId) ? roleId : null;
+    }
+
+    private static bool TryGetPendingRole(StartRunLobby lobby, ulong playerId, out string? roleId)
+    {
+        roleId = null;
         return PendingRoleSelections.TryGetValue(lobby, out Dictionary<ulong, string?>? selections)
-               && selections.TryGetValue(playerId, out string? roleId)
-            ? roleId
-            : null;
+               && selections.TryGetValue(playerId, out roleId);
     }
 
     private static void SetPendingRole(StartRunLobby lobby, ulong playerId, string? roleId)
@@ -704,7 +755,7 @@ public static class NCustomRunEditorEntry
                      .Select(pair => pair.Key)
                      .ToArray())
         {
-            selections[playerId] = null;
+            selections.Remove(playerId);
         }
         if (selections.Count == 0)
             PendingRoleSelections.Remove(lobby);

@@ -445,6 +445,8 @@ CUSTOM_RUN_PLAYER,Player,玩家,Joueur,プレイヤー,플레이어,Jugador
 CUSTOM_RUN_PLAYER_YOU,Player {0} (You),玩家 {0}（你）,Joueur {0} (vous),プレイヤー{0}（あなた）,플레이어 {0} (나),Jugador {0} (tú)
 CUSTOM_RUN_ROLE,Role,职责,Rôle,ロール,역할,Rol
 CUSTOM_RUN_ROLES,Roles,职责,Rôles,ロール,역할,Roles
+CUSTOM_RUN_LOCK_IN_ROLE,Lock In Role,锁定职责,Verrouiller le rôle,ロールを確定,역할 확정,Fijar rol
+CUSTOM_RUN_UNLOCK_ROLE,Unlock Role,解锁职责,Déverrouiller le rôle,ロールの確定を解除,역할 확정 해제,Desbloquear rol
 CUSTOM_RUN_ROLES_RESOLVE_ON_EMBARK,Roles resolve on embark,职责将在出发时确定,Les rôles sont résolus au départ,ロールは出発時に決定,역할은 출발 시 결정됩니다,Los roles se resuelven al partir
 CUSTOM_RUN_MAX_SUFFIX, - MAX {0}, - 最大 {0}, - MAX {0}, - 最大 {0}, - 최대 {0}, - MÁX {0}
 CUSTOM_RUN_MAX_SPACED,    MAX {0},    最大 {0},    MAX {0},    最大 {0},    최대 {0},    MÁX {0}
