@@ -637,7 +637,7 @@ public static class TildeKeyStateService
         RaiseStateChanged();
     }
 
-    public static void ApplySynchronizedToggle(
+    public static async Task ApplySynchronizedToggle(
         string payloadJson,
         LoadoutTargetSelection target,
         Player requester)
@@ -664,6 +664,14 @@ public static class TildeKeyStateService
             if (string.Equals(payload.ToggleId, GoToAnyRoomToggleId, StringComparison.Ordinal))
                 SyncMapDebugTravel(force: true);
             RaiseStateChanged();
+
+            if (payload.Enabled
+                && string.Equals(payload.ToggleId, KillAllMonstersToggleId, StringComparison.Ordinal)
+                && CombatManager.Instance.IsInProgress)
+            {
+                await KillCurrentEnemiesAsync();
+            }
+
             return;
         }
 

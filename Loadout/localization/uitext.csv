@@ -156,6 +156,7 @@ TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER,Enemy Damage Multiplier(%),敌人伤害倍
 TILDEKEY_INFINITE_ENERGY,Infinite Energy,无限能量,Énergie infinie,無限エナジー,무한 에너지,Energía infinita
 TILDEKEY_DRAW_TILL_HAND_LIMIT,Draw Till Hand Limit,抽牌至手牌上限,Piocher jusqu'à la limite de main,手札上限まで引く,손패 한도까지 드로우,Robar hasta el límite de mano
 TILDEKEY_SCROLL_RELIC_COUNTER,Scroll Edit Relic Counter,滚轮编辑遗物计数,Modifier le compteur de relique avec la molette,スクロールでレリックカウンターを編集,스크롤로 유물 카운터 편집,Editar contador de reliquia con la rueda
+TILDEKEY_KILL_ALL_MONSTERS,Kill all monsters,杀死所有怪物,Tuer tous les monstres,すべてのモンスターを倒す,모든 몬스터 처치,Matar a todos los monstruos
 TILDEKEY_STAT_TURN_NUMBER,Turn Number,回合数,Numéro du tour,ターン数,턴 번호,Número de turno
 TILDEKEY_STAT_CARD_SHOP_REMOVALS_USED,Card Shop Removals Used,商店删卡次数,Suppressions de carte utilisées en boutique,ショップで使用したカード削除回数,상점 카드 제거 사용 횟수,Eliminaciones de carta usadas en tienda
 TILDEKEY_STAT_WONGO_POINTS,Wongo Points,旺购点数,Points Wongo,ウォンゴポイント,웡고 포인트,Puntos Wongo

@@ -1237,7 +1237,7 @@ public static class LoadoutImmediateMutationService
                 TildeKeyStateService.ApplySynchronizedStatLock(payload.TildePayloadJson, payload.Amount, payload.Target, requester);
                 break;
             case LoadoutImmediateMutationKind.TildeToggleSet:
-                TildeKeyStateService.ApplySynchronizedToggle(payload.TildePayloadJson, payload.Target, requester);
+                await TildeKeyStateService.ApplySynchronizedToggle(payload.TildePayloadJson, payload.Target, requester);
                 break;
             case LoadoutImmediateMutationKind.TildeKillEnemies:
                 await TildeKeyStateService.KillCurrentEnemiesAsync();
