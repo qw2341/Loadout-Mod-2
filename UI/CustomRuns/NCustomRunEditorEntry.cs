@@ -30,9 +30,7 @@ public static class NCustomRunEditorEntry
     internal const string RoleLockButtonNodeName = "LoadoutCustomRunRoleLockButton";
     private const string PlayerRoleLabelNodeName = "LoadoutCustomRunPlayerRoleLabel";
     private static readonly Dictionary<Control, ulong> SelectedAssignmentPlayers = [];
-    private static readonly Dictionary<StartRunLobby, Dictionary<ulong, string?>> PendingRoleSelections = [];
     private static readonly HashSet<StartRunLobby> AwaitingRoleLocks = [];
-    private static readonly Dictionary<StartRunLobby, bool> PendingLocalRoleActions = [];
     private static readonly Dictionary<StartRunLobby, string> PendingDefinitionIds = [];
 
     public static void AttachTo(Control screen, StartRunLobby? lobby)
@@ -115,9 +113,7 @@ public static class NCustomRunEditorEntry
 
         if (lobby is null)
             return;
-        PendingRoleSelections.Remove(lobby);
         AwaitingRoleLocks.Remove(lobby);
-        PendingLocalRoleActions.Remove(lobby);
         PendingDefinitionIds.Remove(lobby);
 
         if (!lobby.IsAboutToBeginGame()
@@ -159,17 +155,13 @@ public static class NCustomRunEditorEntry
         {
             if (definition is null)
             {
-                PendingRoleSelections.Remove(lobby);
                 AwaitingRoleLocks.Remove(lobby);
-                PendingLocalRoleActions.Remove(lobby);
                 PendingDefinitionIds.Remove(lobby);
             }
             else if (!PendingDefinitionIds.TryGetValue(lobby, out string? pendingDefinitionId)
                      || !string.Equals(pendingDefinitionId, definition.Id, StringComparison.Ordinal))
             {
-                PendingRoleSelections.Remove(lobby);
                 AwaitingRoleLocks.Remove(lobby);
-                PendingLocalRoleActions.Remove(lobby);
                 PendingDefinitionIds[lobby] = definition.Id;
             }
         }
@@ -223,7 +215,17 @@ public static class NCustomRunEditorEntry
                     : lobby.NetService.NetId;
                 if (CustomRunRoleAssignmentService.HasLockedSelection(lobby, playerId))
                     return;
-                SetPendingRole(lobby, playerId, roleId);
+                string error = string.Empty;
+                bool accepted = definition.RoleAssignmentMode switch
+                {
+                    RoleAssignmentMode.HostAssigns =>
+                        CustomRunRoleAssignmentService.PreviewAsHost(lobby, playerId, roleId, out error),
+                    RoleAssignmentMode.PlayersChoose =>
+                        CustomRunRoleAssignmentService.RequestLocalRolePreview(lobby, roleId, out error),
+                    _ => false
+                };
+                if (!accepted)
+                    ShowAttachedStatus(screen, error, error: true);
                 RefreshRoleControls(screen, lobby, definition);
             };
             screen.AddChild(roles);
@@ -272,7 +274,6 @@ public static class NCustomRunEditorEntry
         roleLock.Visible = hostCanAssign || localCanChoose;
         if (!hasManualRoles || definition is null)
         {
-            PendingRoleSelections.Remove(lobby);
             ClearPlayerRoleLabels(screen);
             return;
         }
@@ -281,7 +282,6 @@ public static class NCustomRunEditorEntry
             .OrderBy(player => player.SlotId)
             .ThenBy(player => player.PlayerId)
             .ToList();
-        PrunePendingRoles(lobby, definition, players.Select(player => player.PlayerId));
         ulong selectedPlayer = hostCanAssign
             ? SelectedAssignmentPlayers.GetValueOrDefault(screen, lobby.NetService.NetId)
             : lobby.NetService.NetId;
@@ -299,10 +299,9 @@ public static class NCustomRunEditorEntry
         bool locked = CustomRunRoleAssignmentService.HasLockedSelection(lobby, selectedPlayer);
         if (!locked
             && lobby.NetService.Type == NetGameType.Singleplayer
-            && !TryGetPendingRole(lobby, selectedPlayer, out _)
+            && !CustomRunRoleAssignmentService.HasPendingSelection(lobby, selectedPlayer)
             && definition.Roles.FirstOrDefault(role => role.MinimumPlayers > 0) is { } requiredRole)
         {
-            SetPendingRole(lobby, selectedPlayer, requiredRole.Id);
             bool accepted = definition.RoleAssignmentMode switch
             {
                 RoleAssignmentMode.HostAssigns =>
@@ -312,16 +311,11 @@ public static class NCustomRunEditorEntry
                 _ => false
             };
             if (accepted)
-            {
-                RemovePendingRole(lobby, selectedPlayer);
                 locked = true;
-            }
         }
         string selectedRoleId = locked
             ? CustomRunRoleAssignmentService.GetRoleId(lobby, selectedPlayer) ?? string.Empty
-            : TryGetPendingRole(lobby, selectedPlayer, out string? pendingRoleId)
-                ? pendingRoleId ?? string.Empty
-                : string.Empty;
+            : CustomRunRoleAssignmentService.GetPendingRoleId(lobby, selectedPlayer) ?? string.Empty;
         IReadOnlyDictionary<ulong, string?> assignments = CustomRunRoleAssignmentService.GetAssignments(lobby);
         List<LoadoutDropdownOption> options =
         [
@@ -382,7 +376,7 @@ public static class NCustomRunEditorEntry
         bool locked = CustomRunRoleAssignmentService.HasLockedSelection(lobby, playerId);
         string? selectedRoleId = locked
             ? CustomRunRoleAssignmentService.GetRoleId(lobby, playerId)
-            : GetPendingRole(lobby, playerId);
+            : CustomRunRoleAssignmentService.GetPendingRoleId(lobby, playerId);
         if (!locked && CustomRunRoleAssignmentService.IsRoleAtCapacity(lobby, definition, playerId, selectedRoleId))
         {
             ShowAttachedStatus(
@@ -392,9 +386,6 @@ public static class NCustomRunEditorEntry
             return;
         }
 
-        if (locked)
-            SetPendingRole(lobby, playerId, selectedRoleId);
-
         bool accepted;
         string error;
         if (definition.RoleAssignmentMode == RoleAssignmentMode.HostAssigns)
@@ -402,8 +393,6 @@ public static class NCustomRunEditorEntry
             accepted = locked
                 ? CustomRunRoleAssignmentService.UnlockAsHost(lobby, playerId, out error)
                 : CustomRunRoleAssignmentService.AssignAsHost(lobby, playerId, selectedRoleId, out error);
-            if (accepted && !locked)
-                RemovePendingRole(lobby, playerId);
         }
         else if (definition.RoleAssignmentMode == RoleAssignmentMode.PlayersChoose)
         {
@@ -413,11 +402,6 @@ public static class NCustomRunEditorEntry
             if (accepted && lobby.NetService.Type == NetGameType.Client)
             {
                 AwaitingRoleLocks.Add(lobby);
-                PendingLocalRoleActions[lobby] = !locked;
-            }
-            else if (accepted && !locked)
-            {
-                RemovePendingRole(lobby, playerId);
             }
         }
         else
@@ -427,8 +411,6 @@ public static class NCustomRunEditorEntry
 
         if (!accepted)
         {
-            if (locked)
-                RemovePendingRole(lobby, playerId);
             ShowAttachedStatus(screen, error, error: true);
         }
         RefreshRoleControls(screen, lobby, definition);
@@ -467,9 +449,6 @@ public static class NCustomRunEditorEntry
     internal static void CompleteLocalRoleAction(Control? screen, StartRunLobby lobby, bool accepted)
     {
         AwaitingRoleLocks.Remove(lobby);
-        bool wasLock = PendingLocalRoleActions.Remove(lobby, out bool locking) && locking;
-        if (accepted && wasLock || !accepted && !wasLock)
-            RemovePendingRole(lobby, lobby.NetService.NetId);
         if (screen is not null)
             RefreshRoleControls(screen, lobby, CustomRunLobbyService.GetLoadedDefinition(lobby));
     }
@@ -480,6 +459,8 @@ public static class NCustomRunEditorEntry
         CustomRunDefinition definition)
     {
         IReadOnlyDictionary<ulong, string?> assignments = CustomRunRoleAssignmentService.GetAssignments(lobby);
+        IReadOnlyDictionary<ulong, string?> pendingSelections =
+            CustomRunRoleAssignmentService.GetPendingSelections(lobby);
         foreach (NRemoteLobbyPlayer playerNode in EnumerateRemoteLobbyPlayers(screen))
         {
             if (playerNode.GetNodeOrNull<MegaLabel>("%NameplateLabel") is not { } nameplate)
@@ -488,9 +469,7 @@ public static class NCustomRunEditorEntry
             bool locked = CustomRunRoleAssignmentService.HasLockedSelection(lobby, playerNode.PlayerId);
             string? roleId = locked
                 ? assignments.GetValueOrDefault(playerNode.PlayerId)
-                : TryGetPendingRole(lobby, playerNode.PlayerId, out string? pendingRoleId)
-                    ? pendingRoleId
-                    : null;
+                : pendingSelections.GetValueOrDefault(playerNode.PlayerId);
             MegaLabel? roleLabel = nameplate.GetParentOrNull<Control>()?
                 .GetNodeOrNull<MegaLabel>(PlayerRoleLabelNodeName);
             if (definition.RoleAssignmentMode == RoleAssignmentMode.Random || string.IsNullOrWhiteSpace(roleId))
@@ -708,56 +687,4 @@ public static class NCustomRunEditorEntry
             .FirstOrDefault(player => player.PlayerId == lobby.NetService.NetId)?.IsReady == true;
     }
 
-    private static string? GetPendingRole(StartRunLobby lobby, ulong playerId)
-    {
-        return TryGetPendingRole(lobby, playerId, out string? roleId) ? roleId : null;
-    }
-
-    private static bool TryGetPendingRole(StartRunLobby lobby, ulong playerId, out string? roleId)
-    {
-        roleId = null;
-        return PendingRoleSelections.TryGetValue(lobby, out Dictionary<ulong, string?>? selections)
-               && selections.TryGetValue(playerId, out roleId);
-    }
-
-    private static void SetPendingRole(StartRunLobby lobby, ulong playerId, string? roleId)
-    {
-        if (!PendingRoleSelections.TryGetValue(lobby, out Dictionary<ulong, string?>? selections))
-        {
-            selections = [];
-            PendingRoleSelections[lobby] = selections;
-        }
-        selections[playerId] = roleId;
-    }
-
-    private static void RemovePendingRole(StartRunLobby lobby, ulong playerId)
-    {
-        if (!PendingRoleSelections.TryGetValue(lobby, out Dictionary<ulong, string?>? selections))
-            return;
-        selections.Remove(playerId);
-        if (selections.Count == 0)
-            PendingRoleSelections.Remove(lobby);
-    }
-
-    private static void PrunePendingRoles(
-        StartRunLobby lobby,
-        CustomRunDefinition definition,
-        IEnumerable<ulong> playerIds)
-    {
-        if (!PendingRoleSelections.TryGetValue(lobby, out Dictionary<ulong, string?>? selections))
-            return;
-        HashSet<ulong> roster = playerIds.ToHashSet();
-        foreach (ulong playerId in selections.Keys.Where(playerId => !roster.Contains(playerId)).ToArray())
-            selections.Remove(playerId);
-        HashSet<string> roleIds = definition.Roles.Select(role => role.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (ulong playerId in selections
-                     .Where(pair => pair.Value is not null && !roleIds.Contains(pair.Value))
-                     .Select(pair => pair.Key)
-                     .ToArray())
-        {
-            selections.Remove(playerId);
-        }
-        if (selections.Count == 0)
-            PendingRoleSelections.Remove(lobby);
-    }
 }

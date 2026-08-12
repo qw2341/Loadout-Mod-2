@@ -22,6 +22,7 @@ public sealed class CustomRunRoleAssignmentSnapshot
     public string DefinitionId { get; set; } = string.Empty;
     public long Revision { get; set; }
     public List<CustomRunRoleAssignmentEntry> Assignments { get; set; } = [];
+    public List<CustomRunRoleAssignmentEntry> PendingSelections { get; set; } = [];
 }
 
 public sealed class CustomRunRoleAssignmentEntry
@@ -45,6 +46,7 @@ public static class CustomRunRoleAssignmentService
         if (!RegisteredLobbies.Add(lobby))
             return;
         lobby.NetService.RegisterMessageHandler<CustomRunRoleSelectionRequestMessage>(HandleSelectionRequest);
+        lobby.NetService.RegisterMessageHandler<CustomRunRolePreviewRequestMessage>(HandlePreviewRequest);
         lobby.NetService.RegisterMessageHandler<CustomRunRoleAssignmentSnapshotMessage>(HandleSnapshot);
         lobby.NetService.RegisterMessageHandler<CustomRunRoleAssignmentResultMessage>(HandleResult);
         States[lobby] = new CustomRunRoleAssignmentSnapshot();
@@ -55,6 +57,7 @@ public static class CustomRunRoleAssignmentService
         if (!RegisteredLobbies.Remove(lobby))
             return;
         lobby.NetService.UnregisterMessageHandler<CustomRunRoleSelectionRequestMessage>(HandleSelectionRequest);
+        lobby.NetService.UnregisterMessageHandler<CustomRunRolePreviewRequestMessage>(HandlePreviewRequest);
         lobby.NetService.UnregisterMessageHandler<CustomRunRoleAssignmentSnapshotMessage>(HandleSnapshot);
         lobby.NetService.UnregisterMessageHandler<CustomRunRoleAssignmentResultMessage>(HandleResult);
         States.Remove(lobby);
@@ -68,6 +71,7 @@ public static class CustomRunRoleAssignmentService
             : [];
         state.DefinitionId = definition.Id;
         state.Assignments = Reconcile(lobby, definition, previous);
+        state.PendingSelections.Clear();
         state.Revision++;
         if (lobby.NetService.Type != NetGameType.Client)
             CustomRunLobbyService.CancelPreparation(lobby, "The loaded Custom Run changed; press Play again.");
@@ -80,6 +84,7 @@ public static class CustomRunRoleAssignmentService
         CustomRunRoleAssignmentSnapshot state = GetOrCreateState(lobby);
         state.DefinitionId = string.Empty;
         state.Assignments.Clear();
+        state.PendingSelections.Clear();
         state.Revision++;
         BroadcastSnapshot(lobby);
         Changed?.Invoke(lobby);
@@ -95,7 +100,9 @@ public static class CustomRunRoleAssignmentService
     public static void OnPlayerDisconnected(StartRunLobby lobby, ulong playerId)
     {
         CustomRunRoleAssignmentSnapshot state = GetOrCreateState(lobby);
-        if (state.Assignments.RemoveAll(entry => entry.PlayerId == playerId) == 0)
+        int removed = state.Assignments.RemoveAll(entry => entry.PlayerId == playerId);
+        removed += state.PendingSelections.RemoveAll(entry => entry.PlayerId == playerId);
+        if (removed == 0)
             return;
         state.Revision++;
         BroadcastSnapshot(lobby);
@@ -117,6 +124,29 @@ public static class CustomRunRoleAssignmentService
             ? state.Assignments.FirstOrDefault(entry => entry.PlayerId == playerId)?.RoleId
             : null;
         return string.IsNullOrWhiteSpace(roleId) ? null : roleId;
+    }
+
+    public static IReadOnlyDictionary<ulong, string?> GetPendingSelections(StartRunLobby lobby)
+    {
+        if (!States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state))
+            return new Dictionary<ulong, string?>();
+        return state.PendingSelections.ToDictionary(
+            entry => entry.PlayerId,
+            entry => string.IsNullOrWhiteSpace(entry.RoleId) ? null : (string?)entry.RoleId);
+    }
+
+    public static string? GetPendingRoleId(StartRunLobby lobby, ulong playerId)
+    {
+        string? roleId = States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state)
+            ? state.PendingSelections.FirstOrDefault(entry => entry.PlayerId == playerId)?.RoleId
+            : null;
+        return string.IsNullOrWhiteSpace(roleId) ? null : roleId;
+    }
+
+    public static bool HasPendingSelection(StartRunLobby lobby, ulong playerId)
+    {
+        return States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state)
+               && state.PendingSelections.Any(entry => entry.PlayerId == playerId);
     }
 
     public static bool HasLockedSelection(StartRunLobby lobby, ulong playerId)
@@ -166,6 +196,60 @@ public static class CustomRunRoleAssignmentService
     public static long GetRevision(StartRunLobby lobby)
     {
         return States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state) ? state.Revision : 0;
+    }
+
+    public static bool RequestLocalRolePreview(StartRunLobby lobby, string? roleId, out string error)
+    {
+        error = string.Empty;
+        CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(lobby);
+        if (definition is null)
+        {
+            error = "No Custom Run is loaded.";
+            return false;
+        }
+        if (definition.RoleAssignmentMode != RoleAssignmentMode.PlayersChoose)
+        {
+            error = "Players cannot choose roles in this Custom Run.";
+            return false;
+        }
+        ulong playerId = lobby.NetService.NetId;
+        if (!ValidatePendingSelection(lobby, definition, playerId, roleId, out error))
+            return false;
+
+        if (lobby.NetService.Type == NetGameType.Client)
+        {
+            SetPendingSelectionState(lobby, definition, playerId, roleId, authoritative: false);
+            lobby.NetService.SendMessage(new CustomRunRolePreviewRequestMessage
+            {
+                definitionId = definition.Id,
+                roleId = roleId ?? string.Empty
+            });
+            return true;
+        }
+
+        return TrySetPendingSelection(lobby, definition, playerId, roleId, out error);
+    }
+
+    public static bool PreviewAsHost(StartRunLobby lobby, ulong playerId, string? roleId, out string error)
+    {
+        error = string.Empty;
+        if (lobby.NetService.Type == NetGameType.Client)
+        {
+            error = "Only the host can preview another player's role.";
+            return false;
+        }
+        CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(lobby);
+        if (definition is null)
+        {
+            error = "No Custom Run is loaded.";
+            return false;
+        }
+        if (definition.RoleAssignmentMode != RoleAssignmentMode.HostAssigns)
+        {
+            error = "This Custom Run does not use host-assigned roles.";
+            return false;
+        }
+        return TrySetPendingSelection(lobby, definition, playerId, roleId, out error);
     }
 
     public static bool RequestLocalRoleLock(StartRunLobby lobby, string? roleId, out string error)
@@ -284,6 +368,81 @@ public static class CustomRunRoleAssignmentService
         return TryClearAssignment(lobby, playerId, out error);
     }
 
+    private static bool TrySetPendingSelection(
+        StartRunLobby lobby,
+        CustomRunDefinition definition,
+        ulong playerId,
+        string? roleId,
+        out string error)
+    {
+        if (!ValidatePendingSelection(lobby, definition, playerId, roleId, out error))
+            return false;
+        SetPendingSelectionState(lobby, definition, playerId, roleId, authoritative: true);
+        return true;
+    }
+
+    private static bool ValidatePendingSelection(
+        StartRunLobby lobby,
+        CustomRunDefinition definition,
+        ulong playerId,
+        string? roleId,
+        out string error)
+    {
+        error = string.Empty;
+        StartRunLobbyPlayerInfo? player = GetPlayer(lobby, playerId);
+        if (player is null)
+        {
+            error = "The selected player is no longer in the lobby.";
+            return false;
+        }
+        if (player.IsReady)
+        {
+            error = "That player must unready before their role can change.";
+            return false;
+        }
+        if (IsHostReady(lobby))
+        {
+            error = "The host must unready before roles can change.";
+            return false;
+        }
+        if (HasLockedSelection(lobby, playerId))
+        {
+            error = "Unlock the player's role before changing it.";
+            return false;
+        }
+        return ValidateRoleId(definition, roleId, out error);
+    }
+
+    private static void SetPendingSelectionState(
+        StartRunLobby lobby,
+        CustomRunDefinition definition,
+        ulong playerId,
+        string? roleId,
+        bool authoritative)
+    {
+        CustomRunRoleAssignmentSnapshot state = GetOrCreateState(lobby);
+        string normalizedRoleId = roleId ?? string.Empty;
+        CustomRunRoleAssignmentEntry? current = state.PendingSelections
+            .FirstOrDefault(entry => entry.PlayerId == playerId);
+        if (current is not null && string.Equals(current.RoleId, normalizedRoleId, StringComparison.Ordinal))
+            return;
+
+        state.DefinitionId = definition.Id;
+        state.PendingSelections.RemoveAll(entry => entry.PlayerId == playerId);
+        state.PendingSelections.Add(new CustomRunRoleAssignmentEntry
+        {
+            PlayerId = playerId,
+            RoleId = normalizedRoleId
+        });
+        state.PendingSelections = OrderAssignments(lobby, state.PendingSelections);
+        if (authoritative)
+        {
+            state.Revision++;
+            BroadcastSnapshot(lobby);
+        }
+        Changed?.Invoke(lobby);
+    }
+
     private static bool TrySetAssignment(
         StartRunLobby lobby,
         CustomRunDefinition definition,
@@ -317,7 +476,14 @@ public static class CustomRunRoleAssignmentService
         string normalizedRoleId = roleId ?? string.Empty;
         if (currentEntry is not null
             && string.Equals(currentEntry.RoleId, normalizedRoleId, StringComparison.Ordinal))
+        {
+            if (state.PendingSelections.RemoveAll(entry => entry.PlayerId == playerId) == 0)
+                return true;
+            state.Revision++;
+            BroadcastSnapshot(lobby);
+            Changed?.Invoke(lobby);
             return true;
+        }
 
         if (roleId is not null)
         {
@@ -333,6 +499,7 @@ public static class CustomRunRoleAssignmentService
 
         state.DefinitionId = definition.Id;
         state.Assignments.RemoveAll(entry => entry.PlayerId == playerId);
+        state.PendingSelections.RemoveAll(entry => entry.PlayerId == playerId);
         state.Assignments.Add(new CustomRunRoleAssignmentEntry
         {
             PlayerId = playerId,
@@ -367,8 +534,18 @@ public static class CustomRunRoleAssignmentService
         }
 
         CustomRunRoleAssignmentSnapshot state = GetOrCreateState(lobby);
-        if (state.Assignments.RemoveAll(entry => entry.PlayerId == playerId) == 0)
+        CustomRunRoleAssignmentEntry? current = state.Assignments
+            .FirstOrDefault(entry => entry.PlayerId == playerId);
+        if (current is null)
             return true;
+        state.Assignments.Remove(current);
+        state.PendingSelections.RemoveAll(entry => entry.PlayerId == playerId);
+        state.PendingSelections.Add(new CustomRunRoleAssignmentEntry
+        {
+            PlayerId = playerId,
+            RoleId = current.RoleId
+        });
+        state.PendingSelections = OrderAssignments(lobby, state.PendingSelections);
         state.Revision++;
         CustomRunLobbyService.CancelPreparation(lobby, "A role assignment changed; press Play again.");
         BroadcastSnapshot(lobby);
@@ -479,6 +656,23 @@ public static class CustomRunRoleAssignmentService
         lobby.NetService.SendMessage(new CustomRunRoleAssignmentSnapshotMessage { payload = payload }, playerId);
     }
 
+    private static void HandlePreviewRequest(CustomRunRolePreviewRequestMessage message, ulong senderId)
+    {
+        StartRunLobby? lobby = RegisteredLobbies.FirstOrDefault(candidate =>
+            candidate.NetService.Type == NetGameType.Host
+            && Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(candidate).Contains(senderId));
+        if (lobby is null)
+            return;
+        CustomRunDefinition? definition = CustomRunLobbyService.GetHostDefinition(lobby);
+        string? roleId = string.IsNullOrWhiteSpace(message.roleId) ? null : message.roleId;
+        bool accepted = definition is not null
+                        && string.Equals(definition.Id, message.definitionId, StringComparison.Ordinal)
+                        && definition.RoleAssignmentMode == RoleAssignmentMode.PlayersChoose
+                        && TrySetPendingSelection(lobby, definition, senderId, roleId, out _);
+        if (!accepted)
+            SendSnapshot(lobby, senderId);
+    }
+
     private static void HandleSelectionRequest(CustomRunRoleSelectionRequestMessage message, ulong senderId)
     {
         StartRunLobby? lobby = RegisteredLobbies.FirstOrDefault(candidate =>
@@ -531,15 +725,28 @@ public static class CustomRunRoleAssignmentService
             if (incoming is null
                 || definition is null
                 || incoming.Assignments is null
+                || incoming.PendingSelections is null
                 || !string.Equals(incoming.DefinitionId, definition.Id, StringComparison.Ordinal)
                 || incoming.Revision < 0
                 || incoming.Assignments.Count > 4
+                || incoming.PendingSelections.Count > 4
                 || incoming.Assignments.Select(entry => entry.PlayerId).Distinct().Count() != incoming.Assignments.Count
+                || incoming.PendingSelections.Select(entry => entry.PlayerId).Distinct().Count()
+                   != incoming.PendingSelections.Count
+                || incoming.Assignments.Any(assignment =>
+                    incoming.PendingSelections.Any(pending => pending.PlayerId == assignment.PlayerId))
                 || incoming.Assignments.Any(entry => (entry.RoleId?.Length ?? 0) > 64)
+                || incoming.PendingSelections.Any(entry => (entry.RoleId?.Length ?? 0) > 64)
                 || incoming.Assignments.Any(entry => GetPlayer(lobby, entry.PlayerId) is null)
+                || incoming.PendingSelections.Any(entry => GetPlayer(lobby, entry.PlayerId) is null)
                 || incoming.Assignments.Any(entry =>
                     !string.IsNullOrWhiteSpace(entry.RoleId)
                     && !definition.Roles.Any(role => string.Equals(role.Id, entry.RoleId, StringComparison.Ordinal)))
+                || incoming.PendingSelections.Any(entry =>
+                    !string.IsNullOrWhiteSpace(entry.RoleId)
+                    && !definition.Roles.Any(role => string.Equals(role.Id, entry.RoleId, StringComparison.Ordinal)))
+                || definition.RoleAssignmentMode == RoleAssignmentMode.Random
+                   && (incoming.Assignments.Count > 0 || incoming.PendingSelections.Count > 0)
                 || definition.Roles.Any(role => incoming.Assignments.Count(entry => entry.RoleId == role.Id)
                                                    > role.MaximumPlayers && role.MaximumPlayers > 0))
             {
@@ -570,6 +777,29 @@ public static class CustomRunRoleAssignmentService
             AssignmentAccepted?.Invoke(lobby);
         else
             AssignmentRejected?.Invoke(lobby, message.error);
+    }
+}
+
+public struct CustomRunRolePreviewRequestMessage : INetMessage, IPacketSerializable
+{
+    public string definitionId;
+    public string roleId;
+
+    public bool ShouldBroadcast => false;
+    public NetTransferMode Mode => NetTransferMode.Reliable;
+    public LogLevel LogLevel => LogLevel.VeryDebug;
+    public bool ShouldBuffer => false;
+
+    public void Serialize(PacketWriter writer)
+    {
+        writer.WriteString(definitionId ?? string.Empty);
+        writer.WriteString(roleId ?? string.Empty);
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+        definitionId = reader.ReadString();
+        roleId = reader.ReadString();
     }
 }
 
