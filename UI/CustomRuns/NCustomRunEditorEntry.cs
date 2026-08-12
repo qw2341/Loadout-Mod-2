@@ -473,12 +473,13 @@ public static class NCustomRunEditorEntry
                 continue;
 
             bool locked = CustomRunRoleAssignmentService.HasLockedSelection(lobby, playerNode.PlayerId);
+            bool pending = !locked && pendingSelections.ContainsKey(playerNode.PlayerId);
             string? roleId = locked
                 ? assignments.GetValueOrDefault(playerNode.PlayerId)
                 : pendingSelections.GetValueOrDefault(playerNode.PlayerId);
             MegaLabel? roleLabel = nameplate.GetParentOrNull<Control>()?
                 .GetNodeOrNull<MegaLabel>(PlayerRoleLabelNodeName);
-            if (definition.RoleAssignmentMode == RoleAssignmentMode.Random || string.IsNullOrWhiteSpace(roleId))
+            if (definition.RoleAssignmentMode == RoleAssignmentMode.Random || !locked && !pending)
             {
                 if (roleLabel is not null)
                     roleLabel.Visible = false;
