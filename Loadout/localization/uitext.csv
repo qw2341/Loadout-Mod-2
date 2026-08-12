@@ -365,10 +365,10 @@ CUSTOM_RUN_SCOPE_PLAYER,Player,玩家,Joueur,プレイヤー,플레이어,Jugado
 CUSTOM_RUN_SCOPE_COMBAT,Combat,战斗,Combat,戦闘,전투,Combate
 CUSTOM_RUN_STABLE_ID,Stable ID: {0},稳定 ID：{0},ID stable : {0},固定ID: {0},고정 ID: {0},ID estable: {0}
 CUSTOM_RUN_DEFINED_COUNT,{0} defined,已定义 {0} 个,{0} définies,{0}件を定義済み,{0}개 정의됨,{0} definidas
-CUSTOM_RUN_WHEN,When,何时,Quand,WHEN,WHEN,Cuando
-CUSTOM_RUN_IF,If,如果,Si,IF,IF,Si
-CUSTOM_RUN_THEN,Then,则会,Alors,THEN,THEN,Entonces
-CUSTOM_RUN_LIMIT,Limit,限制,Limite,制限,제한,Límite
+CUSTOM_RUN_WHEN,When,触发扳机,Quand,WHEN,WHEN,Cuando
+CUSTOM_RUN_IF,If,判定条件,Si,IF,IF,Si
+CUSTOM_RUN_THEN,Then,后续结果,Alors,THEN,THEN,Entonces
+CUSTOM_RUN_LIMIT,Limit,触发限制,Limite,制限,제한,Límite
 CUSTOM_RUN_MATCH,Match,匹配,Correspondance,一致,일치,Coincidencia
 CUSTOM_RUN_GROUP,Group,组,Groupe,グループ,그룹,Grupo
 CUSTOM_RUN_GROUP_NUMBER,Group {0},组 {0},Groupe {0},グループ {0},그룹 {0},Grupo {0}
