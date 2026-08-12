@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using Loadout.Services.Morphing;
-using Loadout.Services.CustomRuns.Runtime;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -295,7 +294,6 @@ public static class BottledMonsterMorphRunLaunchPatch
     public static void Postfix()
     {
         BottledMonsterMorphService.OnRunLaunched();
-        CustomRunSetupApplyService.ApplyInitialRuntimeSetup();
     }
 }
 

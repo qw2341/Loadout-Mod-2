@@ -71,10 +71,13 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleDefinition rule,
         Action<RuleDefinition>? saved = null)
     {
+        PermanentRuleBundle? bundle = PermanentRuleStorageService.GetBundles().FirstOrDefault(candidate =>
+            string.Equals(candidate.Rule.Id, rule.Id, StringComparison.Ordinal));
         CustomRunDefinition context = new()
         {
             Name = "Permanent Rules",
-            Rules = [CustomRunNormalizationService.CloneRule(rule)]
+            Rules = [CustomRunNormalizationService.CloneRule(rule)],
+            Variables = bundle?.Variables ?? []
         };
         Open(
             source,
@@ -84,7 +87,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             editingPermanent: true,
             updated =>
             {
-                RuleDefinition stored = PermanentRuleStorageService.Upsert(updated);
+                RuleDefinition stored = PermanentRuleStorageService.Upsert(updated, context.Variables);
                 saved?.Invoke(stored);
             });
     }
@@ -679,6 +682,11 @@ public partial class NCustomRunRuleEditorScreen : Control
         RuleParameterDescriptor parameter,
         Action? afterChanged = null)
     {
+        if (IsBooleanVariableValueParameter(component, parameter))
+        {
+            BuildBooleanParameter(parent, component, parameter, afterChanged);
+            return;
+        }
         switch (parameter.Kind)
         {
             case RuleParameterKind.Integer:
@@ -780,8 +788,15 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         HBoxContainer row = CreateFieldRow(parameter.DisplayName);
         string selected = RuleComponentParameterService.GetString(component, parameter.Key);
+        IEnumerable<RuleParameterOption> options = parameter.Options;
+        if (component.TypeId == "Loadout2:VariableComparison"
+            && parameter.Key == "operator"
+            && GetSelectedVariable(component)?.ValueType == VariableValueType.Boolean)
+        {
+            options = options.Where(option => option.Id is "Equal" or "NotEqual");
+        }
         NSelectFilterDropdown dropdown = CreateDropdown(
-            parameter.Options.Select(option => new LoadoutDropdownOption(option.Id, option.DisplayName)),
+            options.Select(option => new LoadoutDropdownOption(option.Id, option.DisplayName)),
             selected,
             420f);
         dropdown.SelectedItemChanged += value =>
@@ -1416,9 +1431,12 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         HBoxContainer row = CreateFieldRow(parameter.DisplayName);
         string selected = RuleComponentParameterService.GetString(component, parameter.Key);
+        IEnumerable<VariableDefinition> availableVariables = _definitionContext?.Variables ?? [];
+        if (!isRole && component.TypeId is "Loadout2:AddToVariable" or "Loadout2:SubtractFromVariable")
+            availableVariables = availableVariables.Where(variable => variable.ValueType == VariableValueType.Number);
         List<LoadoutDropdownOption> options = isRole
             ? (_definitionContext?.Roles ?? []).Select(role => new LoadoutDropdownOption(role.Id, role.Name)).ToList()
-            : (_definitionContext?.Variables ?? []).Select(variable => new LoadoutDropdownOption(variable.Id, variable.Name)).ToList();
+            : availableVariables.Select(variable => new LoadoutDropdownOption(variable.Id, variable.Name)).ToList();
         if (!string.IsNullOrWhiteSpace(selected) && options.All(option => option.Id != selected))
             options.Insert(0, new LoadoutDropdownOption(selected, $"Missing: {selected}"));
         if (options.Count == 0)
@@ -1427,11 +1445,68 @@ public partial class NCustomRunRuleEditorScreen : Control
         dropdown.SelectedItemChanged += value =>
         {
             RuleComponentParameterService.Set(component, parameter.Key, value);
+            if (!isRole && parameter.Key == "variableId")
+                InitializeVariableValueControl(component);
             afterChanged?.Invoke();
             MarkDirty();
+            if (!isRole && parameter.Key == "variableId")
+                RebuildContentDeferred();
         };
         row.AddChild(dropdown);
         parent.AddChild(row);
+    }
+
+    private VariableDefinition? GetSelectedVariable(RuleComponentSpec component)
+    {
+        string variableId = RuleComponentParameterService.GetString(component, "variableId");
+        return _definitionContext?.Variables.FirstOrDefault(variable =>
+            string.Equals(variable.Id, variableId, StringComparison.Ordinal));
+    }
+
+    private bool IsBooleanVariableValueParameter(
+        RuleComponentSpec component,
+        RuleParameterDescriptor parameter)
+    {
+        bool valueParameter = component.TypeId == "Loadout2:SetVariable" && parameter.Key == "amount"
+                              || component.TypeId == "Loadout2:VariableComparison" && parameter.Key == "value";
+        return valueParameter && GetSelectedVariable(component)?.ValueType == VariableValueType.Boolean;
+    }
+
+    private void InitializeVariableValueControl(RuleComponentSpec component)
+    {
+        VariableDefinition? variable = GetSelectedVariable(component);
+        if (variable is null)
+            return;
+        string? key = component.TypeId switch
+        {
+            "Loadout2:SetVariable" => "amount",
+            "Loadout2:AddToVariable" => "amount",
+            "Loadout2:SubtractFromVariable" => "amount",
+            "Loadout2:VariableComparison" => "value",
+            _ => null
+        };
+        if (key is null)
+            return;
+        if (variable.ValueType == VariableValueType.Boolean)
+        {
+            if (!RuleComponentParameterService.TryGet(component, key, out bool _))
+                RuleComponentParameterService.Set(component, key, false);
+            if (component.TypeId == "Loadout2:VariableComparison")
+            {
+                string comparison = RuleComponentParameterService.GetString(component, "operator");
+                if (comparison is not ("Equal" or "NotEqual"))
+                    RuleComponentParameterService.Set(component, "operator", "Equal");
+            }
+        }
+        else if (!RuleComponentParameterService.TryGet(component, key, out NumericValueSpec _))
+        {
+            RuleComponentParameterService.Set(component, key, new NumericValueSpec
+            {
+                Source = NumericValueSourceKind.Constant,
+                Constant = 1d,
+                ConstantKind = NumericConstantKind.Double
+            });
+        }
     }
 
     private void BuildTargetParameter(
@@ -1534,7 +1609,8 @@ public partial class NCustomRunRuleEditorScreen : Control
             captured.Source = parsed;
             captured.ReferenceId = parsed switch
             {
-                NumericValueSourceKind.Variable => _definitionContext?.Variables.FirstOrDefault()?.Id,
+                NumericValueSourceKind.Variable => _definitionContext?.Variables
+                    .FirstOrDefault(variable => variable.ValueType == VariableValueType.Number)?.Id,
                 NumericValueSourceKind.EventContext => "TurnNumber",
                 _ => null
             };
@@ -1609,6 +1685,13 @@ public partial class NCustomRunRuleEditorScreen : Control
                     .Where(variable => variable.ValueType == VariableValueType.Number)
                     .Select(variable => new LoadoutDropdownOption(variable.Id, variable.Name))
                     .ToList();
+                if (!string.IsNullOrWhiteSpace(captured.ReferenceId)
+                    && variables.All(option => !string.Equals(option.Id, captured.ReferenceId, StringComparison.Ordinal)))
+                {
+                    variables.Insert(0, new LoadoutDropdownOption(
+                        captured.ReferenceId,
+                        $"Missing or non-Number: {captured.ReferenceId}"));
+                }
                 if (variables.Count == 0)
                     variables.Add(new LoadoutDropdownOption(string.Empty, "No number variables"));
                 NSelectFilterDropdown variable = CreateDropdown(variables, captured.ReferenceId ?? string.Empty, 350f);
@@ -1701,7 +1784,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             return;
         if (!TryCreateValidatedRule(out RuleDefinition rule))
             return;
-        PermanentRuleStorageService.Upsert(rule);
+        PermanentRuleStorageService.Upsert(rule, _definitionContext?.Variables ?? []);
         SetStatus($"Saved '{rule.Name}' to Permanent Rules.", success: true);
     }
 

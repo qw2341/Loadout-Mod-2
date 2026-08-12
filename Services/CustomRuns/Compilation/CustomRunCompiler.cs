@@ -7,11 +7,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Loadout.PanelItems;
 using Loadout.Services.Compatibility;
 using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Persistence;
+using Loadout.Services.CustomRuns.Registry;
 using Loadout.Services.Loadouts;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
@@ -30,7 +32,9 @@ public static class CustomRunCompiler
     {
         CustomRunDefinition definition = CustomRunNormalizationService.Normalize(
             CustomRunNormalizationService.Clone(source));
-        CustomRunValidationResult result = CustomRunValidator.Validate(definition);
+        CustomRunDefinition playable = CustomRunNormalizationService.Clone(definition);
+        playable.Rules = playable.Rules.Where(rule => rule.Enabled).ToList();
+        CustomRunValidationResult result = CustomRunValidator.Validate(playable);
         ValidateRuntimeSupport(definition, result.Issues);
         return result;
     }
@@ -115,6 +119,7 @@ public static class CustomRunCompiler
             resolvedPlayers.Add(new ResolvedPlayerSetup
             {
                 PlayerId = player.PlayerId,
+                LobbySlot = player.SlotId + 1,
                 CharacterModelId = character.Id.ToString(),
                 RoleId = roleId,
                 DeckModelIds = resolvedLoadout.DeckModelIds,
@@ -143,19 +148,42 @@ public static class CustomRunCompiler
         if (issues.Any(issue => issue.Severity == CustomRunValidationSeverity.Error))
             return new CustomRunCompileResult { Issues = issues };
 
-        IReadOnlyList<string> requiredModIds = BuildRequiredModIds(definition.RequiredModIds, resolvedPlayers);
+        IReadOnlyList<CompiledRuleDefinition> compiledRules = definition.Rules
+            .Where(rule => rule.Enabled)
+            .Select(CompileRule)
+            .ToList();
+        IReadOnlyList<ResolvedVariableDefinition> resolvedVariables = definition.Variables
+            .Select(variable => new ResolvedVariableDefinition
+            {
+                Id = variable.Id,
+                Name = variable.Name,
+                ValueType = variable.ValueType,
+                Scope = variable.Scope,
+                DefaultNumber = variable.DefaultNumber,
+                DefaultBoolean = variable.DefaultBoolean
+            })
+            .ToList();
+        IReadOnlyList<string> requiredModIds = BuildRequiredModIds(
+            definition.RequiredModIds,
+            resolvedPlayers,
+            compiledRules);
 
         ResolvedCustomRunSnapshot unhashed = new()
         {
+            SchemaVersion = 2,
+            HostPlayerId = lobby.NetService.NetId,
             SourceDefinitionId = definition.Id,
             RunSeed = seed,
             AscensionLevel = definition.Setup.StartingAscension,
             Players = resolvedPlayers,
+            Rules = compiledRules,
+            Variables = resolvedVariables,
             RequiredModIds = requiredModIds
         };
         ResolvedCustomRunSnapshot snapshot = new()
         {
             SchemaVersion = unhashed.SchemaVersion,
+            HostPlayerId = unhashed.HostPlayerId,
             SourceDefinitionId = unhashed.SourceDefinitionId,
             RunSeed = unhashed.RunSeed,
             AscensionLevel = unhashed.AscensionLevel,
@@ -200,10 +228,8 @@ public static class CustomRunCompiler
             ValidateSetupRuntimeSupport(role.Setup, "Roles", role.Id, issues);
         if (definition.PlayerChoices.Count > 0)
             AddError(issues, "Player Choices", definition.Id, "Player choices are not supported by Play yet.");
-        if (definition.Rules.Count > 0)
-            AddError(issues, "Rules", definition.Id, "Rules are not supported by Play yet.");
-        if (definition.Variables.Count > 0)
-            AddError(issues, "Variables", definition.Id, "Variables are not supported by Play yet.");
+        foreach (RuleDefinition rule in definition.Rules.Where(rule => rule.Enabled))
+            ValidateRuleRuntimeHandlers(rule, issues);
     }
 
     private static void ValidateSetupRuntimeSupport(
@@ -342,7 +368,8 @@ public static class CustomRunCompiler
 
     private static IReadOnlyList<string> BuildRequiredModIds(
         IEnumerable<string> authoredModIds,
-        IEnumerable<ResolvedPlayerSetup> players)
+        IEnumerable<ResolvedPlayerSetup> players,
+        IEnumerable<CompiledRuleDefinition> rules)
     {
         HashSet<string> required = authoredModIds
             .Where(id => !string.IsNullOrWhiteSpace(id))
@@ -364,9 +391,233 @@ public static class CustomRunCompiler
                 required.Add(CommonHelpers.GetModelModId(morph));
             }
         }
+        foreach (CompiledRuleDefinition rule in rules)
+        {
+            AddComponentMods(required, rule.Trigger);
+            AddConditionGroupMods(required, rule.Conditions);
+            AddConditionGroupMods(required, rule.Limit.UntilConditions);
+            foreach (RuleComponentSpec action in rule.Actions)
+                AddComponentMods(required, action);
+        }
 
         required.RemoveWhere(id => string.Equals(id, "slaythespire2", StringComparison.OrdinalIgnoreCase));
         return required.OrderBy(id => id, StringComparer.Ordinal).ToList();
+    }
+
+    private static CompiledRuleDefinition CompileRule(RuleDefinition rule)
+    {
+        RuleDefinition clone = CustomRunNormalizationService.CloneRule(rule);
+        CompileComponent(clone.Trigger, RuleComponentKind.Trigger);
+        CompileConditionGroup(clone.Conditions);
+        CompileConditionGroup(clone.Limit.UntilConditions);
+        foreach (RuleComponentSpec action in clone.Actions)
+            CompileComponent(action, RuleComponentKind.Action);
+        return new CompiledRuleDefinition
+        {
+            Id = clone.Id,
+            Name = clone.Name,
+            Trigger = clone.Trigger,
+            Conditions = clone.Conditions,
+            Actions = clone.Actions,
+            Limit = clone.Limit
+        };
+    }
+
+    private static void CompileConditionGroup(ConditionGroupDefinition group)
+    {
+        foreach (RuleComponentSpec condition in group.Conditions)
+            CompileComponent(condition, RuleComponentKind.Condition);
+        foreach (ConditionGroupDefinition child in group.Groups)
+            CompileConditionGroup(child);
+    }
+
+    private static void CompileComponent(RuleComponentSpec component, RuleComponentKind kind)
+    {
+        RuleComponentDescriptor? descriptor = CustomRunRegistry.GetDescriptors(kind)
+            .FirstOrDefault(candidate => string.Equals(candidate.StableId, component.TypeId, StringComparison.Ordinal));
+        if (descriptor is null)
+            return;
+        foreach (RuleParameterDescriptor parameter in descriptor.Parameters)
+        {
+            switch (parameter.Kind)
+            {
+                case RuleParameterKind.Card:
+                    CanonicalizeModelParameter(component, parameter.Key, SelectionModelKind.Card);
+                    break;
+                case RuleParameterKind.Relic:
+                    CanonicalizeModelParameter(component, parameter.Key, SelectionModelKind.Relic);
+                    break;
+                case RuleParameterKind.Potion:
+                    CanonicalizeModelParameter(component, parameter.Key, SelectionModelKind.Potion);
+                    break;
+                case RuleParameterKind.Power:
+                    CanonicalizeModelParameter(component, parameter.Key, SelectionModelKind.Power);
+                    break;
+                case RuleParameterKind.Monster:
+                    CanonicalizeModelParameter(component, parameter.Key, SelectionModelKind.Monster);
+                    break;
+                case RuleParameterKind.ModelFilter:
+                    if (RuleComponentParameterService.TryGet(component, parameter.Key, out ModelMatchSpec matcher))
+                    {
+                        matcher.ModelKind = parameter.ModelKind;
+                        List<string> resolvedIds = RuleModelMatcher.Resolve(matcher)
+                            .Select(model => model.Id.ToString())
+                            .Distinct(StringComparer.Ordinal)
+                            .OrderBy(id => id, StringComparer.Ordinal)
+                            .ToList();
+                        matcher.Kind = ModelMatchKind.SpecificModels;
+                        matcher.Value = string.Empty;
+                        matcher.ModelIds = resolvedIds;
+                        RuleComponentParameterService.Set(component, parameter.Key, matcher);
+                    }
+                    break;
+                case RuleParameterKind.PlayerTarget:
+                    if (RuleComponentParameterService.TryGet(component, parameter.Key, out RuleTargetSpec target))
+                    {
+                        RuleComponentSpec targetComponent = new()
+                        {
+                            TypeId = target.TypeId,
+                            Parameters = target.Parameters
+                        };
+                        CompileComponent(targetComponent, RuleComponentKind.Target);
+                        target.Parameters = targetComponent.Parameters;
+                        RuleComponentParameterService.Set(component, parameter.Key, target);
+                    }
+                    break;
+            }
+        }
+        descriptor.CompilationHandler?.Compile(component);
+    }
+
+    private static void CanonicalizeModelParameter(
+        RuleComponentSpec component,
+        string key,
+        SelectionModelKind kind)
+    {
+        string id = RuleComponentParameterService.GetString(component, key);
+        if (!string.IsNullOrWhiteSpace(id))
+            RuleComponentParameterService.Set(component, key, CustomRunCatalogService.CanonicalizeModelId(kind, id));
+    }
+
+    private static void AddConditionGroupMods(ISet<string> required, ConditionGroupDefinition group)
+    {
+        foreach (RuleComponentSpec condition in group.Conditions)
+            AddComponentMods(required, condition);
+        foreach (ConditionGroupDefinition child in group.Groups)
+            AddConditionGroupMods(required, child);
+    }
+
+    private static void AddComponentMods(ISet<string> required, RuleComponentSpec component)
+    {
+        foreach (JsonElement element in component.Parameters.Values)
+        {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                string? id = element.GetString();
+                if (string.IsNullOrWhiteSpace(id))
+                    continue;
+                foreach (SelectionModelKind kind in Enum.GetValues<SelectionModelKind>())
+                {
+                    if (CustomRunCatalogService.TryResolve(kind, id, out CustomRunCatalogEntry entry))
+                    {
+                        required.Add(entry.ModId);
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                TryAddMatcherMods(required, element);
+                TryAddTargetMods(required, element);
+            }
+        }
+    }
+
+    private static void TryAddMatcherMods(ISet<string> required, JsonElement element)
+    {
+        try
+        {
+            ModelMatchSpec? matcher = element.Deserialize<ModelMatchSpec>(CustomRunSerializationService.SharedJsonOptions);
+            if (matcher is null || matcher.ModelIds.Count == 0)
+                return;
+            foreach (string id in matcher.ModelIds)
+                AddModelMod(required, matcher.ModelKind, id);
+        }
+        catch (JsonException)
+        {
+        }
+    }
+
+    private static void TryAddTargetMods(ISet<string> required, JsonElement element)
+    {
+        try
+        {
+            RuleTargetSpec? target = element.Deserialize<RuleTargetSpec>(CustomRunSerializationService.SharedJsonOptions);
+            if (target is null || string.IsNullOrWhiteSpace(target.TypeId))
+                return;
+            AddComponentMods(required, new RuleComponentSpec
+            {
+                TypeId = target.TypeId,
+                Parameters = target.Parameters
+            });
+        }
+        catch (JsonException)
+        {
+        }
+    }
+
+    private static void ValidateRuleRuntimeHandlers(
+        RuleDefinition rule,
+        List<CustomRunValidationIssue> issues)
+    {
+        ValidateRuntimeHandler(rule, rule.Trigger, RuleComponentKind.Trigger, issues);
+        ValidateConditionRuntimeHandlers(rule, rule.Conditions, issues);
+        ValidateConditionRuntimeHandlers(rule, rule.Limit.UntilConditions, issues);
+        foreach (RuleComponentSpec action in rule.Actions)
+            ValidateRuntimeHandler(rule, action, RuleComponentKind.Action, issues);
+    }
+
+    private static void ValidateConditionRuntimeHandlers(
+        RuleDefinition rule,
+        ConditionGroupDefinition group,
+        List<CustomRunValidationIssue> issues)
+    {
+        foreach (RuleComponentSpec condition in group.Conditions)
+            ValidateRuntimeHandler(rule, condition, RuleComponentKind.Condition, issues);
+        foreach (ConditionGroupDefinition child in group.Groups)
+            ValidateConditionRuntimeHandlers(rule, child, issues);
+    }
+
+    private static void ValidateRuntimeHandler(
+        RuleDefinition rule,
+        RuleComponentSpec component,
+        RuleComponentKind kind,
+        List<CustomRunValidationIssue> issues)
+    {
+        RuleComponentDescriptor? descriptor = CustomRunRegistry.GetDescriptors(kind)
+            .FirstOrDefault(candidate => string.Equals(candidate.StableId, component.TypeId, StringComparison.Ordinal));
+        if (descriptor is null || descriptor.RuntimeHandler is not null)
+        {
+            if (descriptor is not null)
+            {
+                foreach (RuleParameterDescriptor parameter in descriptor.Parameters.Where(parameter =>
+                             parameter.Kind == RuleParameterKind.PlayerTarget))
+                {
+                    if (!RuleComponentParameterService.TryGet(component, parameter.Key, out RuleTargetSpec target))
+                        continue;
+                    RuleComponentDescriptor? targetDescriptor = CustomRunRegistry.GetDescriptors(RuleComponentKind.Target)
+                        .FirstOrDefault(candidate => string.Equals(candidate.StableId, target.TypeId, StringComparison.Ordinal));
+                    if (targetDescriptor is not null && targetDescriptor.RuntimeHandler is null)
+                    {
+                        AddError(issues, "Rules", rule.Id,
+                            $"Rule '{rule.Name}' uses target '{targetDescriptor.DisplayName}', which has no runtime handler and cannot be played.");
+                    }
+                }
+            }
+            return;
+        }
+        AddError(issues, "Rules", rule.Id,
+            $"Rule '{rule.Name}' uses '{descriptor.DisplayName}', which has no runtime handler and cannot be played.");
     }
 
     private static void AddModelMod(

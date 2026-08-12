@@ -480,6 +480,9 @@ public partial class NCustomRunEditorScreen : Control
                 case "Rules":
                     BuildRulesPanel();
                     break;
+                case "Variables":
+                    BuildVariablesPanel();
+                    break;
                 default:
                     BuildFoundationPanel(_activeTab);
                     break;
@@ -1997,15 +2000,12 @@ public partial class NCustomRunEditorScreen : Control
         HBoxContainer summary = CreateRow();
         List<RuleDefinition> enabledPermanentRules = PermanentRuleStorageService.GetRules()
             .Where(rule => rule.Enabled)
-            .GroupBy(RuleBehaviorHashService.Compute, StringComparer.Ordinal)
-            .Select(group => group.First())
             .ToList();
-        HashSet<string> permanentHashes = enabledPermanentRules
-            .Select(RuleBehaviorHashService.Compute)
+        HashSet<string> permanentIds = enabledPermanentRules
+            .Select(rule => rule.Id)
             .ToHashSet(StringComparer.Ordinal);
         int permanentCount = enabledPermanentRules.Count;
-        int suppressedCount = _workingDefinition.Rules.Count(rule =>
-            permanentHashes.Contains(RuleBehaviorHashService.Compute(rule)));
+        int suppressedCount = _workingDefinition.Rules.Count(rule => permanentIds.Contains(rule.Id));
         int effectiveCount = _workingDefinition.Rules.Count - suppressedCount + permanentCount;
         MegaLabel count = CreateLabel(
             $"SCENARIO  {_workingDefinition.Rules.Count}    •    PERMANENT  {permanentCount}    •    SUPPRESSED  {suppressedCount}    •    EFFECTIVE  {effectiveCount}",
@@ -2044,9 +2044,213 @@ public partial class NCustomRunEditorScreen : Control
                 () => DeleteRule(captured),
                 ReorderRule,
                 _readOnly,
-                permanentHashes.Contains(RuleBehaviorHashService.Compute(captured))));
+                permanentIds.Contains(captured.Id)));
             _contentHost.AddChild(row);
         }
+    }
+
+    private void BuildVariablesPanel()
+    {
+        if (_contentHost is null || _workingDefinition is null)
+            return;
+
+        _contentHost.AddChild(CreateSectionTitle("VARIABLES"));
+        _contentHost.AddChild(CreateHint(
+            "Variables keep deterministic rule state. Their scope controls when values are shared, keyed by player or role, and reset."));
+
+        HBoxContainer summary = CreateRow();
+        MegaLabel count = CreateLabel(
+            $"{_workingDefinition.Variables.Count} DEFINED",
+            24,
+            StsColors.cream,
+            HorizontalAlignment.Left);
+        count.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        summary.AddChild(count);
+        AddSettingsActionButton(summary, "new_variable", "+  NEW VARIABLE", 260f, CreateVariable);
+        _contentHost.AddChild(summary);
+        _contentHost.AddChild(CreateSectionDivider());
+
+        if (_workingDefinition.Variables.Count == 0)
+        {
+            MegaLabel empty = CreateLabel(
+                "No variables yet. Add one, then reference it from conditions and actions.",
+                25,
+                StsColors.cream,
+                HorizontalAlignment.Center);
+            empty.CustomMinimumSize = new Vector2(0f, 180f);
+            empty.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            _contentHost.AddChild(empty);
+            return;
+        }
+
+        foreach (VariableDefinition variable in _workingDefinition.Variables)
+            BuildVariableEditor(variable);
+    }
+
+    private void BuildVariableEditor(VariableDefinition variable)
+    {
+        if (_contentHost is null)
+            return;
+
+        VBoxContainer panel = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 210f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        panel.AddThemeConstantOverride("separation", 10);
+
+        HBoxContainer titleRow = CreateRow();
+        LineEdit name = CreateLineEdit(variable.Name);
+        name.CustomMinimumSize = new Vector2(420f, 48f);
+        name.TextChanged += value =>
+        {
+            if (_loadingFields || _readOnly)
+                return;
+            variable.Name = value;
+            MarkDirty();
+        };
+        titleRow.AddChild(name);
+        titleRow.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        AddSettingsActionButton(titleRow, "duplicate_variable", "DUPLICATE", 170f, () => DuplicateVariable(variable));
+        AddSettingsActionButton(titleRow, "delete_variable", "DELETE", 132f, () => DeleteVariable(variable), danger: true);
+        panel.AddChild(titleRow);
+
+        HBoxContainer typeRow = CreateRow();
+        typeRow.AddChild(CreateRowLabel("Value Type"));
+        NLoadoutDropdown type = new()
+        {
+            CustomMinimumSize = new Vector2(420f, 52f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
+            DropdownWidth = 420f
+        };
+        type.SetItems(string.Empty,
+        [
+            new LoadoutDropdownOption(VariableValueType.Number.ToString(), "Number"),
+            new LoadoutDropdownOption(VariableValueType.Boolean.ToString(), "Boolean")
+        ], variable.ValueType.ToString());
+        type.SelectedItemChanged += selected =>
+        {
+            if (_loadingFields || _readOnly || !Enum.TryParse(selected, out VariableValueType valueType))
+                return;
+            variable.ValueType = valueType;
+            MarkDirty();
+            RebuildContent();
+        };
+        typeRow.AddChild(type);
+        panel.AddChild(typeRow);
+
+        HBoxContainer scopeRow = CreateRow();
+        scopeRow.AddChild(CreateRowLabel("Scope"));
+        NLoadoutDropdown scope = new()
+        {
+            CustomMinimumSize = new Vector2(420f, 52f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkEnd,
+            DropdownWidth = 420f
+        };
+        scope.SetItems(string.Empty,
+            Enum.GetValues<VariableScope>()
+                .Select(value => new LoadoutDropdownOption(value.ToString(), value.ToString()))
+                .ToList(),
+            variable.Scope.ToString());
+        scope.SelectedItemChanged += selected =>
+        {
+            if (_loadingFields || _readOnly || !Enum.TryParse(selected, out VariableScope valueScope))
+                return;
+            variable.Scope = valueScope;
+            MarkDirty();
+        };
+        scopeRow.AddChild(scope);
+        panel.AddChild(scopeRow);
+
+        HBoxContainer defaultRow = CreateRow();
+        defaultRow.AddChild(CreateRowLabel("Default Value"));
+        if (variable.ValueType == VariableValueType.Boolean)
+        {
+            NLoadoutToggle toggle = new() { CustomMinimumSize = new Vector2(260f, 50f) };
+            toggle.Init("variable_default", variable.DefaultBoolean ? "TRUE" : "FALSE", variable.DefaultBoolean);
+            toggle.Connect(
+                NLoadoutToggle.SignalName.Toggled,
+                Callable.From<NLoadoutToggle>(changed =>
+                {
+                    if (_loadingFields || _readOnly)
+                        return;
+                    variable.DefaultBoolean = changed.IsChecked;
+                    MarkDirty();
+                    RebuildContent();
+                }));
+            defaultRow.AddChild(toggle);
+        }
+        else
+        {
+            NLoadoutDecimalStepper stepper = new();
+            stepper.Init(variable.DefaultNumber, double.MinValue, double.MaxValue, 0.01d);
+            stepper.ValueChanged += value =>
+            {
+                if (_loadingFields || _readOnly)
+                    return;
+                variable.DefaultNumber = value;
+                MarkDirty();
+            };
+            defaultRow.AddChild(stepper);
+        }
+        panel.AddChild(defaultRow);
+        panel.AddChild(CreateHint($"Stable ID: {variable.Id}"));
+        _contentHost.AddChild(panel);
+        _contentHost.AddChild(CreateSectionDivider());
+    }
+
+    private void CreateVariable()
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+        VariableDefinition variable = new()
+        {
+            Name = $"Variable {_workingDefinition.Variables.Count + 1}",
+            ValueType = VariableValueType.Number,
+            Scope = VariableScope.Run
+        };
+        _workingDefinition.Variables.Add(variable);
+        MarkDirty();
+        RebuildContent();
+        SetStatus($"Created variable '{variable.Name}'.", success: true);
+    }
+
+    private void DuplicateVariable(VariableDefinition source)
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+        VariableDefinition copy = new()
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = $"{source.Name} Copy",
+            ValueType = source.ValueType,
+            Scope = source.Scope,
+            DefaultNumber = source.DefaultNumber,
+            DefaultBoolean = source.DefaultBoolean
+        };
+        int index = _workingDefinition.Variables.IndexOf(source);
+        _workingDefinition.Variables.Insert(Math.Max(0, index + 1), copy);
+        MarkDirty();
+        RebuildContent();
+        SetStatus($"Duplicated variable '{source.Name}'.", success: true);
+    }
+
+    private void DeleteVariable(VariableDefinition variable)
+    {
+        if (_workingDefinition is null || _readOnly)
+            return;
+        if (!string.Equals(_deleteConfirmationId, variable.Id, StringComparison.Ordinal))
+        {
+            _deleteConfirmationId = variable.Id;
+            SetStatus($"Press delete again to remove variable '{variable.Name}'. References will remain as validation errors.", success: false);
+            return;
+        }
+        _deleteConfirmationId = null;
+        if (!_workingDefinition.Variables.Remove(variable))
+            return;
+        MarkDirty();
+        RebuildContent();
+        SetStatus($"Deleted variable '{variable.Name}'.", success: true);
     }
 
     private void CreateRule()
@@ -2142,7 +2346,7 @@ public partial class NCustomRunEditorScreen : Control
     {
         if (_readOnly)
             return;
-        RuleDefinition saved = PermanentRuleStorageService.Upsert(source);
+        RuleDefinition saved = PermanentRuleStorageService.Upsert(source, _workingDefinition?.Variables ?? []);
         SetStatus($"Saved '{saved.Name}' to Permanent Rules.", success: true);
     }
 

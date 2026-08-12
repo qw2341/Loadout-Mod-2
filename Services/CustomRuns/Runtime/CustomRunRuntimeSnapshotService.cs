@@ -5,6 +5,7 @@ namespace Loadout.Services.CustomRuns.Runtime;
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Persistence;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -73,6 +74,25 @@ public static class CustomRunRuntimeSnapshotService
         attachment.Snapshot = snapshot;
     }
 
+    public static bool TryGetSnapshot(RunState runState, out ResolvedCustomRunSnapshot snapshot)
+    {
+        if (SnapshotsByRun.TryGetValue(runState, out SnapshotAttachment? attachment)
+            && attachment.Snapshot is not null)
+        {
+            snapshot = attachment.Snapshot;
+            return true;
+        }
+        snapshot = new ResolvedCustomRunSnapshot();
+        return false;
+    }
+
+    public static CustomRunRuntimeState? GetRestoredRuntimeState(RunState runState)
+    {
+        return SnapshotsByRun.TryGetValue(runState, out SnapshotAttachment? attachment)
+            ? attachment.RestoredRuntime
+            : null;
+    }
+
     public static bool TryGetPlayerSetup(Player player, out ResolvedPlayerSetup setup)
     {
         if (player.RunState is RunState runState
@@ -93,16 +113,36 @@ public static class CustomRunRuntimeSnapshotService
 
     public static string GetSerializedSnapshotForSave(RunState runState)
     {
-        return SnapshotsByRun.TryGetValue(runState, out SnapshotAttachment? attachment)
-               && attachment.Snapshot is not null
-            ? CustomRunSnapshotSerializationService.Serialize(attachment.Snapshot)
-            : string.Empty;
+        if (!SnapshotsByRun.TryGetValue(runState, out SnapshotAttachment? attachment)
+            || attachment.Snapshot is null)
+        {
+            return string.Empty;
+        }
+        CustomRunRuntimeState runtime = CustomRunRuleRuntimeService.IsForRun(runState)
+            ? CustomRunRuleRuntimeService.ExportState()
+            : attachment.RestoredRuntime ?? new CustomRunRuntimeState
+            {
+                SetupApplied = true,
+                RunStartEmitted = true
+            };
+        return JsonSerializer.Serialize(new CustomRunRuntimeSaveEnvelope
+        {
+            Snapshot = attachment.Snapshot,
+            Runtime = runtime
+        }, CustomRunSerializationService.SharedJsonOptions);
     }
 
     public static void LoadSerializedSnapshot(RunState runState, string? payload)
     {
         if (string.IsNullOrWhiteSpace(payload))
             return;
+
+        if (TryLoadEnvelope(payload, out ResolvedCustomRunSnapshot envelopeSnapshot, out CustomRunRuntimeState runtime))
+        {
+            Attach(runState, envelopeSnapshot);
+            SnapshotsByRun.GetValue(runState, static _ => new SnapshotAttachment()).RestoredRuntime = runtime;
+            return;
+        }
 
         if (!CustomRunSnapshotSerializationService.TryDeserialize(payload, out ResolvedCustomRunSnapshot snapshot, out string error))
         {
@@ -113,8 +153,38 @@ public static class CustomRunRuntimeSnapshotService
         Attach(runState, snapshot);
     }
 
+    private static bool TryLoadEnvelope(
+        string payload,
+        out ResolvedCustomRunSnapshot snapshot,
+        out CustomRunRuntimeState runtime)
+    {
+        snapshot = new ResolvedCustomRunSnapshot();
+        runtime = new CustomRunRuntimeState();
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(payload);
+            if (!document.RootElement.TryGetProperty("envelopeVersion", out _))
+                return false;
+            CustomRunRuntimeSaveEnvelope? envelope = JsonSerializer.Deserialize<CustomRunRuntimeSaveEnvelope>(
+                payload,
+                CustomRunSerializationService.SharedJsonOptions);
+            if (envelope is null || envelope.EnvelopeVersion != 1)
+                return false;
+            string snapshotPayload = CustomRunSnapshotSerializationService.Serialize(envelope.Snapshot);
+            if (!CustomRunSnapshotSerializationService.TryDeserialize(snapshotPayload, out snapshot, out _))
+                return false;
+            runtime = envelope.Runtime ?? new CustomRunRuntimeState();
+            return runtime.Revision >= 0 && runtime.RngSequence >= 0 && runtime.EventSequence >= 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private sealed class SnapshotAttachment
     {
         public ResolvedCustomRunSnapshot? Snapshot;
+        public CustomRunRuntimeState? RestoredRuntime;
     }
 }

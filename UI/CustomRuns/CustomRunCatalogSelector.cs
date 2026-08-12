@@ -187,6 +187,104 @@ public static class CustomRunCatalogSelector
         }
     }
 
+    public static bool TryOpenCatalogChoice(
+        SelectionModelKind kind,
+        IReadOnlyCollection<string> allowedModelIds,
+        int minimum,
+        int maximum,
+        Action<IReadOnlyList<string>> confirmed,
+        Action cancelled,
+        out IDisposable? session,
+        out string error)
+    {
+        session = null;
+        if (!TryFindCatalogScreen(kind, out NGenericSelectScreen screen, out error))
+            return false;
+
+        HashSet<string> allowed = allowedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<IGenericSelectItem> models = screen.Items
+            .Where(item => item.UntypedModel is AbstractModel model
+                && (allowed.Contains(model.Id.ToString()) || allowed.Contains(model.Id.Entry)))
+            .OrderBy(item => ((AbstractModel)item.UntypedModel).Id.ToString(), StringComparer.Ordinal)
+            .ToList();
+        if (models.Count < minimum)
+        {
+            error = $"The {kind.ToString().ToLowerInvariant()} choice has only {models.Count} valid options.";
+            return false;
+        }
+
+        SelectItemAdapter<IGenericSelectItem> adapter = new()
+        {
+            GetId = item => ((AbstractModel)item.UntypedModel).Id.ToString(),
+            GetName = item => item.Name,
+            GetSearchText = item => item.SearchText,
+            CreateView = (item, state) =>
+            {
+                Control view = item.CreateView(state);
+                item.SetView(view);
+                return view;
+            },
+            PreloadResources = (item, token) => item.PreloadResources(token),
+            ViewReady = (item, view) => item.NotifyViewReady(view),
+            UpdateView = (item, view, state) =>
+            {
+                item.SetView(view);
+                item.UpdateView(state);
+            },
+            MatchesSearch = (item, query) => item.MatchesSearch(query),
+            BindActivationWithCleanup = (item, _, activate) =>
+                item.TryBindActivation(activate, out Action? cleanup) ? cleanup : null
+        };
+        try
+        {
+            IDisposable configuration = screen.BeginTemporaryConfiguration(
+                models,
+                adapter,
+                builder => builder.Options(new SelectScreenOptions
+                {
+                    SelectionMode = maximum == 1 ? SelectSelectionMode.Single : SelectSelectionMode.Multi,
+                    MinSelection = minimum,
+                    MaxTotalSelection = maximum,
+                    MaxCopiesPerItem = 1
+                }));
+            IDisposable selection = screen.BeginReusedSelection(
+                new SelectScreenOptions
+                {
+                    SelectionMode = maximum == 1 ? SelectSelectionMode.Single : SelectSelectionMode.Multi,
+                    MinSelection = minimum,
+                    MaxTotalSelection = maximum,
+                    MaxCopiesPerItem = 1
+                },
+                showSelectionChrome: true,
+                useCustomRunBackdrop: true);
+            RuntimeChoiceSession? active = null;
+            active = new RuntimeChoiceSession(
+                screen,
+                [selection, configuration],
+                items =>
+                {
+                    confirmed(items
+                        .Select(item => item.UntypedModel)
+                        .OfType<IGenericSelectItem>()
+                        .Select(item => ((AbstractModel)item.UntypedModel).Id.ToString())
+                        .ToList());
+                    active?.Dispose();
+                    NLoadoutPanelRoot.Instance?.CloseTopScreen();
+                },
+                cancelled);
+            session = active;
+            NLoadoutPanelRoot.Instance!.OpenScreen(screen);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            session?.Dispose();
+            session = null;
+            error = $"Could not open the shared {kind.ToString().ToLowerInvariant()} choice: {exception.Message}";
+            return false;
+        }
+    }
+
     public static bool TryOpenOwnedCardAction(
         string screenNameFragment,
         IReadOnlyList<LoadoutOwnedItem<CardModel>> cards,
@@ -662,5 +760,62 @@ public static class CustomRunCatalogSelector
         }
 
         private void OnClosed() => Callable.From(Dispose).CallDeferred();
+    }
+
+    private sealed class RuntimeChoiceSession : IDisposable
+    {
+        private readonly NGenericSelectScreen _screen;
+        private readonly IDisposable[] _leases;
+        private readonly Action<IReadOnlyList<IGenericSelectItem>> _confirmed;
+        private readonly Action _cancelled;
+        private bool _done;
+
+        public RuntimeChoiceSession(
+            NGenericSelectScreen screen,
+            IDisposable[] leases,
+            Action<IReadOnlyList<IGenericSelectItem>> confirmed,
+            Action cancelled)
+        {
+            _screen = screen;
+            _leases = leases;
+            _confirmed = confirmed;
+            _cancelled = cancelled;
+            screen.Confirmed += confirmed;
+            screen.Cancelled += OnCancelled;
+            screen.ScreenClosed += OnClosed;
+        }
+
+        public void Dispose()
+        {
+            if (_done)
+                return;
+            _done = true;
+            _screen.Confirmed -= _confirmed;
+            _screen.Cancelled -= OnCancelled;
+            _screen.ScreenClosed -= OnClosed;
+            foreach (IDisposable lease in _leases)
+                lease.Dispose();
+        }
+
+        private void OnCancelled()
+        {
+            _cancelled();
+            Dispose();
+        }
+
+        private void OnClosed()
+        {
+            if (_done)
+                return;
+            Callable.From(FinishClosed).CallDeferred();
+        }
+
+        private void FinishClosed()
+        {
+            if (_done)
+                return;
+            _cancelled();
+            Dispose();
+        }
     }
 }

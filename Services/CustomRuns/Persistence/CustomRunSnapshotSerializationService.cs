@@ -41,7 +41,7 @@ public static class CustomRunSnapshotSerializationService
             ResolvedCustomRunSnapshot? decoded = JsonSerializer.Deserialize<ResolvedCustomRunSnapshot>(
                 payload,
                 CustomRunSerializationService.SharedJsonOptions);
-            if (decoded is null || decoded.SchemaVersion != 1)
+            if (decoded is null || decoded.SchemaVersion is not (1 or 2))
             {
                 error = "Custom Run snapshot has an unsupported schema version.";
                 return false;
@@ -59,8 +59,9 @@ public static class CustomRunSnapshotSerializationService
                 || decoded.SnapshotHash.Length != 64
                 || decoded.Players.Count > 8
                 || decoded.RequiredModIds.Count > 128
-                || decoded.Rules.Count > 0
-                || decoded.Variables.Count > 0)
+                || decoded.Rules.Count > 512
+                || decoded.Variables.Count > 512
+                || decoded.Rules.Any(rule => rule.Actions.Count > 128))
             {
                 error = "Custom Run snapshot exceeds supported bounds.";
                 return false;
@@ -80,6 +81,27 @@ public static class CustomRunSnapshotSerializationService
                     || !InRange(player.CardsDrawnPerTurn, 0, 99)))
             {
                 error = "Custom Run snapshot contains an invalid player setup.";
+                return false;
+            }
+
+            if (decoded.SchemaVersion == 1
+                && (decoded.Rules.Count > 0 || decoded.Variables.Count > 0 || decoded.HostPlayerId != 0
+                    || decoded.Players.Any(player => player.LobbySlot != 0)))
+            {
+                error = "Legacy Custom Run snapshots cannot contain runtime rules, variables, or lobby targeting data.";
+                return false;
+            }
+
+            if (decoded.SchemaVersion == 2
+                && (decoded.Players.All(player => player.PlayerId != decoded.HostPlayerId)
+                    || decoded.Players.Any(player => player.LobbySlot is < 1 or > 8)
+                    || decoded.Players.Select(player => player.LobbySlot).Distinct().Count() != decoded.Players.Count
+                    || decoded.Variables.Select(variable => variable.Id).Distinct(StringComparer.Ordinal).Count()
+                       != decoded.Variables.Count
+                    || decoded.Rules.Select(rule => rule.Id).Distinct(StringComparer.Ordinal).Count()
+                       != decoded.Rules.Count))
+            {
+                error = "Custom Run snapshot contains invalid runtime targeting or stable IDs.";
                 return false;
             }
 

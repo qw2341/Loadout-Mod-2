@@ -13,19 +13,34 @@ public static class CustomRunDefinitionResolver
 {
     public static CustomRunDefinition WithEnabledPermanentRules(CustomRunDefinition source)
     {
+        IReadOnlyList<PermanentRuleBundle> permanentBundles = PermanentRuleStorageService.GetBundles()
+            .Where(bundle => bundle.Rule.Enabled)
+            .ToList();
+        return MergeWithPermanentBundles(source, permanentBundles);
+    }
+
+    public static CustomRunDefinition MergeWithPermanentBundles(
+        CustomRunDefinition source,
+        IReadOnlyList<PermanentRuleBundle> permanentBundles)
+    {
         CustomRunDefinition effective = CustomRunNormalizationService.Clone(source);
-        List<RuleDefinition> permanentRules = PermanentRuleStorageService.GetRules()
-            .Where(rule => rule.Enabled)
-            .GroupBy(RuleBehaviorHashService.Compute, StringComparer.Ordinal)
-            .Select(group => group.First())
+        HashSet<string> scenarioRuleIds = effective.Rules.Select(rule => rule.Id).ToHashSet(StringComparer.Ordinal);
+        HashSet<string> scenarioVariableIds = effective.Variables.Select(variable => variable.Id).ToHashSet(StringComparer.Ordinal);
+        List<RuleDefinition> rules = permanentBundles
+            .Select(bundle => bundle.Rule)
+            .Where(rule => !scenarioRuleIds.Contains(rule.Id))
             .Select(CustomRunNormalizationService.CloneRule)
             .ToList();
-        HashSet<string> permanentHashes = permanentRules
-            .Select(RuleBehaviorHashService.Compute)
-            .ToHashSet(StringComparer.Ordinal);
-        List<RuleDefinition> rules = permanentRules;
-        rules.AddRange(effective.Rules.Where(rule => !permanentHashes.Contains(RuleBehaviorHashService.Compute(rule))));
+        rules.AddRange(effective.Rules);
         effective.Rules = rules;
+        List<VariableDefinition> variables = permanentBundles
+            .SelectMany(bundle => bundle.Variables)
+            .Where(variable => !scenarioVariableIds.Contains(variable.Id))
+            .GroupBy(variable => variable.Id, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToList();
+        variables.AddRange(effective.Variables);
+        effective.Variables = variables;
         return effective;
     }
 }

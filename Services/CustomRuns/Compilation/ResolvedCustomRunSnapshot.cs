@@ -10,7 +10,11 @@ using Loadout.Services.CustomRuns.Models;
 public sealed class ResolvedCustomRunSnapshot
 {
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
+
+    [JsonPropertyName("hostPlayerId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public ulong HostPlayerId { get; init; }
 
     [JsonPropertyName("sourceDefinitionId")]
     public string SourceDefinitionId { get; init; } = string.Empty;
@@ -41,6 +45,10 @@ public sealed class ResolvedPlayerSetup
 {
     [JsonPropertyName("playerId")]
     public ulong PlayerId { get; init; }
+
+    [JsonPropertyName("lobbySlot")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int LobbySlot { get; init; }
 
     [JsonPropertyName("characterModelId")]
     public string CharacterModelId { get; init; } = string.Empty;

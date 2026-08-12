@@ -197,8 +197,22 @@ public static class CustomRunValidator
     private static void ValidateVariables(CustomRunDefinition definition, CustomRunValidationResult result)
     {
         ValidateUniqueIds(definition.Variables.Select(variable => variable.Id), "Variables", result);
-        foreach (VariableDefinition variable in definition.Variables.Where(variable => !IsGuidStyleId(variable.Id)))
-            Error(result, "Variables", variable.Id, $"Variable '{variable.Name}' has an invalid ID.");
+        foreach (VariableDefinition variable in definition.Variables)
+        {
+            if (!IsGuidStyleId(variable.Id))
+                Error(result, "Variables", variable.Id, $"Variable '{variable.Name}' has an invalid ID.");
+            if (string.IsNullOrWhiteSpace(variable.Name))
+                Error(result, "Variables", variable.Id, "Variable name is required.");
+            if (!Enum.IsDefined(variable.ValueType))
+                Error(result, "Variables", variable.Id, $"Variable '{variable.Name}' has an invalid type.");
+            if (!Enum.IsDefined(variable.Scope))
+                Error(result, "Variables", variable.Id, $"Variable '{variable.Name}' has an invalid scope.");
+            if (variable.ValueType == VariableValueType.Number
+                && (double.IsNaN(variable.DefaultNumber) || double.IsInfinity(variable.DefaultNumber)))
+            {
+                Error(result, "Variables", variable.Id, $"Variable '{variable.Name}' has an invalid default value.");
+            }
+        }
     }
 
     private static void ValidateRules(CustomRunDefinition definition, CustomRunValidationResult result)
@@ -323,7 +337,8 @@ public static class CustomRunValidator
                     ValidateTargetParameter(definition, component, rule, descriptor, parameter, result);
                     break;
                 case RuleParameterKind.NumericSource:
-                    ValidateNumericSourceParameter(definition, component, rule, descriptor, parameter, result);
+                    if (!IsBooleanVariableValueParameter(definition, component, parameter.Key))
+                        ValidateNumericSourceParameter(definition, component, rule, descriptor, parameter, result);
                     break;
                 case RuleParameterKind.ModelFilter:
                     ValidateModelFilterParameter(component, rule, descriptor, parameter, result);
@@ -332,7 +347,10 @@ public static class CustomRunValidator
         }
 
         if (descriptor.Validate is null)
+        {
+            ValidateTypedVariableUsage(definition, rule, component, descriptor, result);
             return;
+        }
         try
         {
             foreach (string message in descriptor.Validate(component))
@@ -342,6 +360,74 @@ public static class CustomRunValidator
         {
             Error(result, "Rules", rule.Id, $"Rule '{rule.Name}', {descriptor.DisplayName}: validation failed ({exception.Message}).");
         }
+        ValidateTypedVariableUsage(definition, rule, component, descriptor, result);
+    }
+
+    private static void ValidateTypedVariableUsage(
+        CustomRunDefinition definition,
+        RuleDefinition rule,
+        RuleComponentSpec component,
+        RuleComponentDescriptor descriptor,
+        CustomRunValidationResult result)
+    {
+        if (component.TypeId is not ("Loadout2:SetVariable" or "Loadout2:AddToVariable" or
+            "Loadout2:SubtractFromVariable" or "Loadout2:VariableComparison"))
+        {
+            return;
+        }
+
+        string variableId = RuleComponentParameterService.GetString(component, "variableId");
+        VariableDefinition? variable = definition.Variables.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, variableId, StringComparison.Ordinal));
+        if (variable is null)
+            return;
+
+        if (component.TypeId is "Loadout2:AddToVariable" or "Loadout2:SubtractFromVariable"
+            && variable.ValueType != VariableValueType.Number)
+        {
+            Error(result, "Rules", rule.Id,
+                $"Rule '{rule.Name}', {descriptor.DisplayName}: variable '{variable.Name}' must be a Number variable.");
+            return;
+        }
+
+        string valueKey = component.TypeId == "Loadout2:VariableComparison" ? "value" : "amount";
+        if (variable.ValueType == VariableValueType.Boolean)
+        {
+            if (!RuleComponentParameterService.TryGet(component, valueKey, out bool _))
+            {
+                Error(result, "Rules", rule.Id,
+                    $"Rule '{rule.Name}', {descriptor.DisplayName}: value for Boolean variable '{variable.Name}' must be true or false.");
+            }
+            if (component.TypeId == "Loadout2:VariableComparison")
+            {
+                string comparison = RuleComponentParameterService.GetString(component, "operator");
+                if (comparison is not ("Equal" or "NotEqual"))
+                {
+                    Error(result, "Rules", rule.Id,
+                        $"Rule '{rule.Name}', {descriptor.DisplayName}: Boolean variables support only equality comparisons.");
+                }
+            }
+        }
+        else if (!RuleComponentParameterService.TryGet(component, valueKey, out NumericValueSpec _))
+        {
+            Error(result, "Rules", rule.Id,
+                $"Rule '{rule.Name}', {descriptor.DisplayName}: value for Number variable '{variable.Name}' must be numeric.");
+        }
+    }
+
+    private static bool IsBooleanVariableValueParameter(
+        CustomRunDefinition definition,
+        RuleComponentSpec component,
+        string parameterKey)
+    {
+        bool isValue = component.TypeId == "Loadout2:SetVariable" && parameterKey == "amount"
+                       || component.TypeId == "Loadout2:VariableComparison" && parameterKey == "value";
+        if (!isValue)
+            return false;
+        string variableId = RuleComponentParameterService.GetString(component, "variableId");
+        return definition.Variables.Any(variable =>
+            string.Equals(variable.Id, variableId, StringComparison.Ordinal)
+            && variable.ValueType == VariableValueType.Boolean);
     }
 
     private static void ValidateEnumParameter(
@@ -496,9 +582,11 @@ public static class CustomRunValidator
 
         if (value.Source == NumericValueSourceKind.Variable
             && (string.IsNullOrWhiteSpace(value.ReferenceId)
-                || !definition.Variables.Any(variable => string.Equals(variable.Id, value.ReferenceId, StringComparison.Ordinal))))
+                || !definition.Variables.Any(variable =>
+                    string.Equals(variable.Id, value.ReferenceId, StringComparison.Ordinal)
+                    && variable.ValueType == VariableValueType.Number)))
         {
-            RuleParameterError(result, rule, descriptor, parameter, "references a missing variable");
+            RuleParameterError(result, rule, descriptor, parameter, "references a missing or non-Number variable");
         }
         if (value.Source == NumericValueSourceKind.EventContext
             && value.ReferenceId is not ("CurrentHp" or "MaxHp" or "Gold" or "Energy" or "TurnNumber" or "PlayerCount"))

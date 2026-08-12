@@ -532,11 +532,10 @@ public partial class NCustomRunLibraryScreen : Control
 
     private void DuplicatePermanentRule(RuleDefinition rule)
     {
-        RuleDefinition copy = CustomRunNormalizationService.CloneRule(rule);
-        copy.Id = Guid.NewGuid().ToString("N");
-        copy.Name = $"{rule.Name} Copy";
-        RuleDefinition saved = PermanentRuleStorageService.Upsert(copy);
-        _focusPermanentRuleId = saved.Id;
+        PermanentRuleBundle? saved = PermanentRuleStorageService.Duplicate(rule.Id);
+        if (saved is null)
+            return;
+        _focusPermanentRuleId = saved.Rule.Id;
         SetStatus($"Duplicated permanent rule '{rule.Name}'.", success: true);
     }
 

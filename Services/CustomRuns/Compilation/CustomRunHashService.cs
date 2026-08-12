@@ -15,10 +15,14 @@ public static class CustomRunHashService
         ResolvedCustomRunSnapshot canonical = new()
         {
             SchemaVersion = snapshot.SchemaVersion,
+            HostPlayerId = snapshot.HostPlayerId,
             SourceDefinitionId = snapshot.SourceDefinitionId,
             RunSeed = snapshot.RunSeed,
             AscensionLevel = snapshot.AscensionLevel,
-            Players = snapshot.Players.OrderBy(player => player.PlayerId).ToList(),
+            Players = snapshot.Players
+                .OrderBy(player => player.LobbySlot)
+                .ThenBy(player => player.PlayerId)
+                .ToList(),
             Rules = snapshot.Rules.ToList(),
             Variables = snapshot.Variables.OrderBy(variable => variable.Id, StringComparer.Ordinal).ToList(),
             RequiredModIds = snapshot.RequiredModIds.OrderBy(id => id, StringComparer.Ordinal).ToList(),

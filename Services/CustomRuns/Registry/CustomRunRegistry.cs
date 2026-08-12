@@ -53,6 +53,26 @@ public sealed record RuleParameterDescriptor(
 
 public sealed record RuleParameterOption(string Id, string DisplayName);
 
+public interface IRuleComponentCompileHandler
+{
+    RuleComponentSpec Compile(RuleComponentSpec component);
+}
+
+public interface IRuleComponentRuntimeHandler
+{
+    string StableId { get; }
+}
+
+public sealed class BuiltInRuleComponentHandler(string stableId) : IRuleComponentCompileHandler, IRuleComponentRuntimeHandler
+{
+    public string StableId { get; } = stableId;
+
+    public RuleComponentSpec Compile(RuleComponentSpec component)
+    {
+        return component;
+    }
+}
+
 public sealed class RuleComponentDescriptor
 {
     public required string StableId { get; init; }
@@ -62,8 +82,8 @@ public sealed class RuleComponentDescriptor
     public IReadOnlyList<RuleParameterDescriptor> Parameters { get; init; } = [];
     public IReadOnlySet<string> CompatibleTriggerIds { get; init; } = new HashSet<string>(StringComparer.Ordinal);
     public Func<RuleComponentSpec, IReadOnlyList<string>>? Validate { get; init; }
-    public object? CompilationHandler { get; init; }
-    public object? RuntimeHandler { get; init; }
+    public IRuleComponentCompileHandler? CompilationHandler { get; init; }
+    public IRuleComponentRuntimeHandler? RuntimeHandler { get; init; }
 }
 
 public static class CustomRunRegistry
@@ -84,6 +104,7 @@ public static class CustomRunRegistry
             _builtInsRegistered = true;
 
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:RunStart", "Run Start", "Run");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:RunEnd", "Run End", "Run");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CombatStart", "Combat Start", "Combat");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CombatEnd", "Combat End", "Combat");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:TurnStart", "Turn Start", "Combat");
@@ -413,7 +434,9 @@ public static class CustomRunRegistry
             DisplayName = displayName,
             Category = category,
             Kind = kind,
-            Parameters = parameters
+            Parameters = parameters,
+            CompilationHandler = new BuiltInRuleComponentHandler(id),
+            RuntimeHandler = new BuiltInRuleComponentHandler(id)
         };
     }
 
@@ -432,7 +455,9 @@ public static class CustomRunRegistry
             Category = category,
             Kind = RuleComponentKind.Condition,
             CompatibleTriggerIds = compatibleTriggerIds,
-            Parameters = parameters
+            Parameters = parameters,
+            CompilationHandler = new BuiltInRuleComponentHandler(id),
+            RuntimeHandler = new BuiltInRuleComponentHandler(id)
         };
     }
 }
