@@ -1994,8 +1994,6 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         _contentHost.AddChild(CreateSectionTitle("RULES"));
-        _contentHost.AddChild(CreateHint(
-            "Rules execute from top to bottom when they respond to the same event. Drag a rule to change its priority, or click it to open the full rule editor."));
 
         HBoxContainer summary = CreateRow();
         List<RuleDefinition> enabledPermanentRules = PermanentRuleStorageService.GetRules()
@@ -2055,8 +2053,6 @@ public partial class NCustomRunEditorScreen : Control
             return;
 
         _contentHost.AddChild(CreateSectionTitle("VARIABLES"));
-        _contentHost.AddChild(CreateHint(
-            "Variables keep deterministic rule state. Their scope controls when values are shared, keyed by player or role, and reset."));
 
         HBoxContainer summary = CreateRow();
         MegaLabel count = CreateLabel(
@@ -2408,9 +2404,6 @@ public partial class NCustomRunEditorScreen : Control
             _ => 0
         };
         _contentHost.AddChild(CreateSectionTitle(tabName.ToUpperInvariant()));
-        _contentHost.AddChild(CreateHint(
-            "The authoring model, stable IDs, validation, extension registry, storage, and share codec are active. " +
-            "This editor panel is reserved for the next implementation phase."));
         MegaLabel countLabel = CreateLabel(
             tabName == "Permanent Rules"
                 ? "Permanent Rules library: not yet populated"

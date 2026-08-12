@@ -67,7 +67,34 @@ public static class CustomRunSetupApplyService
         ApplyStats(player, setup);
         ApplyDeck(player, setup.DeckEntries, setup.DeckModelIds, setup.OverrideDeck);
         ApplyRelics(player, setup.RelicEntries, setup.RelicModelIds, setup.OverrideRelics);
-        ApplyPotions(player, setup.PotionModelIds, setup.OverridePotions);
+    }
+
+    public static void ApplyPostAscensionSetup(RunState runState)
+    {
+        if (!CustomRunRuntimeSnapshotService.TryGetSnapshot(runState, out ResolvedCustomRunSnapshot snapshot))
+            return;
+
+        foreach (ResolvedPlayerSetup setup in snapshot.Players)
+        {
+            Player? player = runState.GetPlayer(setup.PlayerId);
+            if (player is null)
+                continue;
+            try
+            {
+                int retainedPotionCount = setup.PotionSlots ?? player.MaxPotionCount;
+                IEnumerable<PotionModel> potionsToDiscard = setup.OverridePotions
+                    ? player.Potions.ToList()
+                    : player.Potions.Skip(Math.Max(0, retainedPotionCount)).ToList();
+                foreach (PotionModel potion in potionsToDiscard)
+                    player.DiscardPotionInternal(potion, silent: true);
+                ApplyPotionCapacity(player, setup.PotionSlots);
+                ApplyPotions(player, setup.PotionModelIds, setup.OverridePotions);
+            }
+            catch (Exception exception)
+            {
+                MainFile.Logger.Error($"[Loadout] Custom Run post-ascension potion setup failed for player {setup.PlayerId}: {exception}");
+            }
+        }
     }
 
     private static void ApplyStats(Player player, ResolvedPlayerSetup setup)
@@ -80,20 +107,22 @@ public static class CustomRunSetupApplyService
         else if (setup.StartingMaxHp.HasValue && player.Creature.CurrentHp > player.Creature.MaxHp)
             player.Creature.SetCurrentHpInternal(player.Creature.MaxHp);
 
-        if (setup.PotionSlots.HasValue)
-        {
-            int target = Math.Max(0, setup.PotionSlots.Value);
-            int delta = target - player.MaxPotionCount;
-            if (delta > 0)
-                player.AddToMaxPotionCount(delta);
-            else if (delta < 0)
-                player.SubtractFromMaxPotionCount(-delta);
-        }
-
         if (setup.StartingGold.HasValue)
             player.Gold = setup.StartingGold.Value;
         if (setup.BaseEnergyPerTurn.HasValue)
             player.MaxEnergy = setup.BaseEnergyPerTurn.Value;
+    }
+
+    private static void ApplyPotionCapacity(Player player, int? potionSlots)
+    {
+        if (!potionSlots.HasValue)
+            return;
+        int target = Math.Max(0, potionSlots.Value);
+        int delta = target - player.MaxPotionCount;
+        if (delta > 0)
+            player.AddToMaxPotionCount(delta);
+        else if (delta < 0)
+            player.SubtractFromMaxPotionCount(-delta);
     }
 
     private static void ApplyDeck(

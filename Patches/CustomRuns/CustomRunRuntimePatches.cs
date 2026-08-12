@@ -118,6 +118,24 @@ public static class CustomRunRuleRuntimeLaunchPatch
     }
 }
 
+[HarmonyPatch]
+public static class CustomRunPostAscensionSetupPatch
+{
+    public static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(typeof(RunManager), "InitializeNewRun")
+               ?? throw new MissingMethodException(typeof(RunManager).FullName, "InitializeNewRun");
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(RunManager __instance)
+    {
+        RunState? runState = __instance.DebugOnlyGetState();
+        if (runState is not null)
+            CustomRunSetupApplyService.ApplyPostAscensionSetup(runState);
+    }
+}
+
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.CleanUp))]
 public static class CustomRunRuleRuntimeCleanupPatch
 {
