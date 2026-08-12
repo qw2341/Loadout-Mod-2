@@ -121,17 +121,10 @@ public static class CharacterSelectCustomRunEmbarkPatch
         if (CustomRunLobbyService.GetLoadedDefinition(lobby) is null)
             return true;
 
-        if (!NCustomRunEditorEntry.TryHandleRoleConfirmation(
-                screen,
-                lobby,
-                out bool awaitingHost,
-                out string roleError))
+        if (!NCustomRunEditorEntry.TryHandleRoleConfirmation(lobby, out string roleError))
         {
             if (!string.IsNullOrWhiteSpace(roleError))
                 ShowError(screen, roleError);
-            if (awaitingHost)
-                screen.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(NCustomRunEditorEntry.OverlayNodeName)
-                    ?.RefreshRoleGate();
             return false;
         }
 
@@ -216,26 +209,54 @@ public static class CharacterSelectCustomRunEmbarkPatch
             ?.ShowError(error);
     }
 
-    internal static void ResumeAfterRoleLock(Control screen, StartRunLobby lobby)
+}
+
+[HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.SelectCharacter))]
+public static class CharacterSelectCustomRunRoleGatePatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(NCharacterSelectScreen __instance)
     {
-        if (!GodotObject.IsInstanceValid(screen))
-            return;
-        NConfirmButton? confirm = screen.GetNodeOrNull<NConfirmButton>("ConfirmButton");
-        if (confirm is null || !GodotObject.IsInstanceValid(confirm))
-            return;
-        Bypass.Add(lobby);
-        confirm.Enable();
-        confirm.ForceClick();
+        __instance.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(NCustomRunEditorEntry.OverlayNodeName)
+            ?.RefreshRoleGate();
     }
 }
 
-[HarmonyPatch(typeof(StartRunLobby), nameof(StartRunLobby.SetReady))]
-public static class StartRunLobbyCustomRunReadyChangedPatch
+[HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.PlayerChanged))]
+public static class CharacterSelectCustomRunPlayerChangedPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(StartRunLobby __instance)
+    public static void Postfix(NCharacterSelectScreen __instance)
     {
-        CustomRunRoleAssignmentService.NotifyLobbyStateChanged(__instance);
+        CustomRunRoleAssignmentService.NotifyLobbyStateChanged(__instance.Lobby);
+    }
+}
+
+[HarmonyPatch(typeof(NCustomRunScreen), nameof(NCustomRunScreen.PlayerChanged))]
+public static class NativeCustomRunPlayerChangedPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(NCustomRunScreen __instance)
+    {
+        CustomRunRoleAssignmentService.NotifyLobbyStateChanged(__instance.Lobby);
+    }
+}
+
+[HarmonyPatch(typeof(StartRunLobby), nameof(StartRunLobby.IsAboutToBeginGame))]
+public static class StartRunLobbyCustomRunPreparedRosterPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(StartRunLobby __instance, ref bool __result)
+    {
+        if (!__result
+            || __instance.NetService.Type == NetGameType.Client
+            || CustomRunLobbyService.GetLoadedDefinition(__instance) is null)
+        {
+            return;
+        }
+
+        if (!CustomRunLobbyService.IsPreparedForCurrentRoster(__instance))
+            __result = false;
     }
 }
 

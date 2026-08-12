@@ -168,7 +168,7 @@ public static class CustomRunRoleAssignmentService
         return States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state) ? state.Revision : 0;
     }
 
-    public static bool RequestLocalRole(StartRunLobby lobby, string? roleId, out string error)
+    public static bool RequestLocalRoleLock(StartRunLobby lobby, string? roleId, out string error)
     {
         error = string.Empty;
         CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(lobby);
@@ -196,12 +196,48 @@ public static class CustomRunRoleAssignmentService
             {
                 definitionId = definition.Id,
                 roleId = roleId ?? string.Empty,
-                revision = GetRevision(lobby)
+                revision = GetRevision(lobby),
+                locked = true
             });
             return true;
         }
 
         return TrySetAssignment(lobby, definition, lobby.NetService.NetId, roleId, out error);
+    }
+
+    public static bool RequestLocalRoleUnlock(StartRunLobby lobby, out string error)
+    {
+        error = string.Empty;
+        CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(lobby);
+        if (definition is null)
+        {
+            error = "No Custom Run is loaded.";
+            return false;
+        }
+        if (definition.RoleAssignmentMode != RoleAssignmentMode.PlayersChoose)
+        {
+            error = "Players cannot choose roles in this Custom Run.";
+            return false;
+        }
+        if (GetPlayer(lobby, lobby.NetService.NetId)?.IsReady == true)
+        {
+            error = "Unready before changing roles.";
+            return false;
+        }
+
+        if (lobby.NetService.Type == NetGameType.Client)
+        {
+            lobby.NetService.SendMessage(new CustomRunRoleSelectionRequestMessage
+            {
+                definitionId = definition.Id,
+                roleId = string.Empty,
+                revision = GetRevision(lobby),
+                locked = false
+            });
+            return true;
+        }
+
+        return TryClearAssignment(lobby, lobby.NetService.NetId, out error);
     }
 
     public static bool AssignAsHost(StartRunLobby lobby, ulong playerId, string? roleId, out string error)
@@ -226,6 +262,28 @@ public static class CustomRunRoleAssignmentService
         return TrySetAssignment(lobby, definition, playerId, roleId, out error);
     }
 
+    public static bool UnlockAsHost(StartRunLobby lobby, ulong playerId, out string error)
+    {
+        error = string.Empty;
+        if (lobby.NetService.Type == NetGameType.Client)
+        {
+            error = "Only the host can unlock another player's role.";
+            return false;
+        }
+        CustomRunDefinition? definition = CustomRunLobbyService.GetLoadedDefinition(lobby);
+        if (definition is null)
+        {
+            error = "No Custom Run is loaded.";
+            return false;
+        }
+        if (definition.RoleAssignmentMode != RoleAssignmentMode.HostAssigns)
+        {
+            error = "This Custom Run does not use host-assigned roles.";
+            return false;
+        }
+        return TryClearAssignment(lobby, playerId, out error);
+    }
+
     private static bool TrySetAssignment(
         StartRunLobby lobby,
         CustomRunDefinition definition,
@@ -243,6 +301,11 @@ public static class CustomRunRoleAssignmentService
         if (player.IsReady)
         {
             error = "That player must unready before their role can change.";
+            return false;
+        }
+        if (IsHostReady(lobby))
+        {
+            error = "The host must unready before roles can change.";
             return false;
         }
         if (!ValidateRoleId(definition, roleId, out error))
@@ -276,6 +339,36 @@ public static class CustomRunRoleAssignmentService
             RoleId = normalizedRoleId
         });
         state.Assignments = OrderAssignments(lobby, state.Assignments);
+        state.Revision++;
+        CustomRunLobbyService.CancelPreparation(lobby, "A role assignment changed; press Play again.");
+        BroadcastSnapshot(lobby);
+        Changed?.Invoke(lobby);
+        return true;
+    }
+
+    private static bool TryClearAssignment(StartRunLobby lobby, ulong playerId, out string error)
+    {
+        error = string.Empty;
+        StartRunLobbyPlayerInfo? player = GetPlayer(lobby, playerId);
+        if (player is null)
+        {
+            error = "The selected player is no longer in the lobby.";
+            return false;
+        }
+        if (player.IsReady)
+        {
+            error = "That player must unready before their role can change.";
+            return false;
+        }
+        if (IsHostReady(lobby))
+        {
+            error = "The host must unready before roles can change.";
+            return false;
+        }
+
+        CustomRunRoleAssignmentSnapshot state = GetOrCreateState(lobby);
+        if (state.Assignments.RemoveAll(entry => entry.PlayerId == playerId) == 0)
+            return true;
         state.Revision++;
         CustomRunLobbyService.CancelPreparation(lobby, "A role assignment changed; press Play again.");
         BroadcastSnapshot(lobby);
@@ -348,6 +441,15 @@ public static class CustomRunRoleAssignmentService
             .FirstOrDefault(player => player.PlayerId == playerId);
     }
 
+    public static bool IsHostReady(StartRunLobby lobby)
+    {
+        ulong hostId = lobby.NetService.Type == NetGameType.Client
+            && lobby.NetService is INetClientGameService clientService
+            ? clientService.NetClient?.HostNetId ?? 0
+            : lobby.NetService.NetId;
+        return hostId != 0 && GetPlayer(lobby, hostId)?.IsReady == true;
+    }
+
     private static CustomRunRoleAssignmentSnapshot GetOrCreateState(StartRunLobby lobby)
     {
         if (!States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state))
@@ -390,17 +492,16 @@ public static class CustomRunRoleAssignmentService
         bool accepted = definition is not null
                         && string.Equals(definition.Id, message.definitionId, StringComparison.Ordinal)
                         && definition.RoleAssignmentMode == RoleAssignmentMode.PlayersChoose
-                        && message.revision == GetRevision(lobby)
-                        && TrySetAssignment(lobby, definition, senderId, roleId, out error);
+                        && (message.locked
+                            ? TrySetAssignment(lobby, definition, senderId, roleId, out error)
+                            : TryClearAssignment(lobby, senderId, out error));
         string failure = accepted
             ? string.Empty
             : definition is null || !string.Equals(definition.Id, message.definitionId, StringComparison.Ordinal)
                 ? "The loaded Custom Run changed; choose again."
                 : definition.RoleAssignmentMode != RoleAssignmentMode.PlayersChoose
                     ? "Players cannot choose roles in this Custom Run."
-                    : message.revision != GetRevision(lobby)
-                        ? "Role assignments changed; choose again."
-                        : error;
+                    : error;
         if (!accepted)
             SendSnapshot(lobby, senderId);
         lobby.NetService.SendMessage(new CustomRunRoleAssignmentResultMessage
@@ -477,6 +578,7 @@ public struct CustomRunRoleSelectionRequestMessage : INetMessage, IPacketSeriali
     public string definitionId;
     public string roleId;
     public long revision;
+    public bool locked;
 
     public bool ShouldBroadcast => false;
     public NetTransferMode Mode => NetTransferMode.Reliable;
@@ -488,6 +590,7 @@ public struct CustomRunRoleSelectionRequestMessage : INetMessage, IPacketSeriali
         writer.WriteString(definitionId ?? string.Empty);
         writer.WriteString(roleId ?? string.Empty);
         writer.WriteLong(revision);
+        writer.WriteBool(locked);
     }
 
     public void Deserialize(PacketReader reader)
@@ -495,6 +598,7 @@ public struct CustomRunRoleSelectionRequestMessage : INetMessage, IPacketSeriali
         definitionId = reader.ReadString();
         roleId = reader.ReadString();
         revision = reader.ReadLong();
+        locked = reader.ReadBool();
     }
 }
 
@@ -505,7 +609,7 @@ public struct CustomRunRoleAssignmentSnapshotMessage : INetMessage, IPacketSeria
     public bool ShouldBroadcast => false;
     public NetTransferMode Mode => NetTransferMode.Reliable;
     public LogLevel LogLevel => LogLevel.VeryDebug;
-    public bool ShouldBuffer => false;
+    public bool ShouldBuffer => true;
 
     public void Serialize(PacketWriter writer) => writer.WriteString(payload ?? string.Empty);
     public void Deserialize(PacketReader reader) => payload = reader.ReadString();

@@ -36,6 +36,7 @@ public static class CustomRunLobbyService
     private static readonly Dictionary<StartRunLobby, CustomRunDefinition> HostDefinitions = new();
     private static readonly Dictionary<StartRunLobby, HostPreparationState> HostPreparations = new();
     private static readonly Dictionary<StartRunLobby, string?> PreparedPreviousSeeds = new();
+    private static readonly Dictionary<StartRunLobby, HashSet<ulong>> PreparedPlayerRosters = new();
     private static readonly MethodInfo? SeedSetter = AccessTools.PropertySetter(
         typeof(StartRunLobby),
         nameof(StartRunLobby.Seed));
@@ -224,12 +225,20 @@ public static class CustomRunLobbyService
     {
         if (PreparedPreviousSeeds.Remove(lobby, out string? previousSeed))
             SetSeedWithoutStandardModeNotification(lobby, previousSeed);
+        PreparedPlayerRosters.Remove(lobby);
         CustomRunRuntimeSnapshotService.ClearPending();
     }
 
     public static void CompletePreparedRun(StartRunLobby lobby)
     {
         PreparedPreviousSeeds.Remove(lobby);
+        PreparedPlayerRosters.Remove(lobby);
+    }
+
+    public static bool IsPreparedForCurrentRoster(StartRunLobby lobby)
+    {
+        return PreparedPlayerRosters.TryGetValue(lobby, out HashSet<ulong>? preparedRoster)
+               && preparedRoster.SetEquals(Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby));
     }
 
     private static CustomRunPreparationResult StagePreparedSnapshot(
@@ -245,6 +254,7 @@ public static class CustomRunLobbyService
         }
 
         CustomRunRuntimeSnapshotService.SetPending(snapshot);
+        PreparedPlayerRosters[lobby] = snapshot.Players.Select(player => player.PlayerId).ToHashSet();
         MainFile.Logger.Info($"[Loadout] Prepared Custom Run snapshot {snapshot.SnapshotHash}.");
         return CustomRunPreparationResult.Success;
     }

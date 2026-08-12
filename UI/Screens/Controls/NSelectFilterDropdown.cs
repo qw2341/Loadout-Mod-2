@@ -22,7 +22,8 @@ public readonly record struct LoadoutDropdownOption(
     Func<IReadOnlyList<IHoverTip>>? HoverTipsFactory = null,
     Texture2D? Icon = null,
     Color? TextColor = null,
-    Func<Texture2D?>? IconFactory = null);
+    Func<Texture2D?>? IconFactory = null,
+    bool Enabled = true);
 
 public partial class NLoadoutDropdown : NDropdown
 {
@@ -253,6 +254,7 @@ public partial class NLoadoutDropdown : NDropdown
             item.SetHoverTipsFactory(option.HoverTipsFactory);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(OnDropdownItemSelected));
             _dropdownItems.AddChild(item);
+            item.SetEnabled(option.Enabled);
             _itemIdsByNode[item] = option.Id;
         }
 
@@ -265,6 +267,8 @@ public partial class NLoadoutDropdown : NDropdown
     private void OnDropdownItemSelected(NDropdownItem dropdownItem)
     {
         if (dropdownItem is not NSelectDropdownItem selectItem || !_itemIdsByNode.TryGetValue(selectItem, out string? itemId))
+            return;
+        if (_items.FirstOrDefault(item => item.Id == itemId) is { Enabled: false })
             return;
 
         _selectedItemId = itemId;

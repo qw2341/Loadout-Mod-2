@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
-using Loadout.Patches.CustomRuns;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
 using MegaCrit.Sts2.Core.Helpers;
@@ -116,7 +115,7 @@ public partial class NCustomRunCharacterSelectOverlay : Control
     {
         if (ReferenceEquals(lobby, _lobby))
         {
-            NCustomRunEditorEntry.CompleteLocalRoleLock(_sourceScreen, lobby, accepted: false);
+            NCustomRunEditorEntry.CompleteLocalRoleAction(_sourceScreen, lobby, accepted: false);
             RefreshRoleGate();
             ShowError(error);
         }
@@ -126,9 +125,8 @@ public partial class NCustomRunCharacterSelectOverlay : Control
     {
         if (!ReferenceEquals(lobby, _lobby) || _sourceScreen is null)
             return;
-        NCustomRunEditorEntry.CompleteLocalRoleLock(_sourceScreen, lobby, accepted: true);
-        ReleaseConfirmRoleGate();
-        CharacterSelectCustomRunEmbarkPatch.ResumeAfterRoleLock(_sourceScreen, lobby);
+        NCustomRunEditorEntry.CompleteLocalRoleAction(_sourceScreen, lobby, accepted: true);
+        RefreshRoleGate();
     }
 
     public void RefreshRoleGate()
