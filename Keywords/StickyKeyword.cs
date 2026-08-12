@@ -108,16 +108,23 @@ public static class StickyFlushPlayerHandPatch
 {
     public static MethodBase TargetMethod()
     {
-        return AccessTools.Method(
-                   typeof(CombatManager),
-                   "FlushPlayerHand",
-                   [
-                       typeof(Player),
-                       typeof(HookPlayerChoiceContext)
-                   ])
-               ?? throw new MissingMethodException(
-                   typeof(CombatManager).FullName,
-                   "FlushPlayerHand(Player, HookPlayerChoiceContext)");
+        foreach (MethodInfo method in AccessTools.GetDeclaredMethods(typeof(CombatManager)))
+        {
+            if (!string.Equals(method.Name, "FlushPlayerHand", StringComparison.Ordinal))
+                continue;
+
+            ParameterInfo[] parameters = method.GetParameters();
+            if (parameters.Length is 2 or 3
+                && parameters[^2].ParameterType == typeof(Player)
+                && parameters[^1].ParameterType == typeof(HookPlayerChoiceContext))
+            {
+                return method;
+            }
+        }
+
+        throw new MissingMethodException(
+            typeof(CombatManager).FullName,
+            "FlushPlayerHand(..., Player, HookPlayerChoiceContext)");
     }
 
     [HarmonyPrefix]
