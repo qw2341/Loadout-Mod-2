@@ -162,9 +162,9 @@ public static class NCustomRunEditorEntry
             return;
         statusLabel.Visible = loaded;
         statusLabel.Text = loaded
-            ? LocMan.Loc("CUSTOM_RUN_LOADED", "Custom Run loaded  •  {0}", GetDefinitionName(definition!)).ToUpperInvariant()
+            ? LocMan.Loc("CUSTOM_RUN_LOADED", "Custom Run loaded  •  {0}", CustomRunUiText.DefinitionName(definition!)).ToUpperInvariant()
             : string.Empty;
-        statusLabel.TooltipText = loaded ? GetDefinitionName(definition!) : string.Empty;
+        statusLabel.TooltipText = loaded ? CustomRunUiText.DefinitionName(definition!) : string.Empty;
         statusLabel.AddThemeColorOverride("font_color", StsColors.gold);
         if (lobby is not null)
             RefreshRoleControls(screen, lobby, definition);
@@ -277,7 +277,7 @@ public static class NCustomRunEditorEntry
         IReadOnlyDictionary<ulong, string?> assignments = CustomRunRoleAssignmentService.GetAssignments(lobby);
         List<LoadoutDropdownOption> options =
         [
-            new LoadoutDropdownOption(string.Empty, definition.DefaultRoleName)
+            new LoadoutDropdownOption(string.Empty, CustomRunUiText.DefaultRoleName(definition.DefaultRoleName))
         ];
         foreach (RoleDefinition role in definition.Roles)
         {
@@ -293,7 +293,7 @@ public static class NCustomRunEditorEntry
                 string maximum = role.MaximumPlayers > 0
                     ? LocMan.Loc("CUSTOM_RUN_MAX_SUFFIX", " - MAX {0}", role.MaximumPlayers)
                     : string.Empty;
-                options.Add(new LoadoutDropdownOption(role.Id, $"{role.Name}{required}{progress}{maximum}"));
+                options.Add(new LoadoutDropdownOption(role.Id, $"{CustomRunUiText.RoleName(role)}{required}{progress}{maximum}"));
             }
         }
         roleDropdown.SetItems(LocMan.Loc("CUSTOM_RUN_ROLE", "Role").ToUpperInvariant() + "  ", options, selectedRoleId);
@@ -460,10 +460,7 @@ public static class NCustomRunEditorEntry
                 ? LocMan.Loc("CUSTOM_RUN_RANDOM_ROLE", "Random role")
                 : !locked && definition.RoleAssignmentMode == RoleAssignmentMode.PlayersChoose
                 ? LocMan.Loc("CUSTOM_RUN_CHOOSING_ROLE", "Choosing role...")
-                : roleId is null
-                    ? definition.DefaultRoleName
-                    : definition.Roles.FirstOrDefault(role => role.Id == roleId)?.Name
-                      ?? LocMan.Loc("CUSTOM_RUN_UNKNOWN_ROLE", "Unknown Role");
+                : GetRoleName(definition, roleId);
             label.Text = roleName;
         }
     }
@@ -607,10 +604,13 @@ public static class NCustomRunEditorEntry
         label.GrowVertical = Control.GrowDirection.Begin;
     }
 
-    private static string GetDefinitionName(CustomRunDefinition definition)
+    private static string GetRoleName(CustomRunDefinition definition, string? roleId)
     {
-        return string.IsNullOrWhiteSpace(definition.Name)
-            ? LocMan.Loc("CUSTOM_RUN_UNNAMED", "Unnamed Custom Run")
-            : definition.Name;
+        if (roleId is null)
+            return CustomRunUiText.DefaultRoleName(definition.DefaultRoleName);
+        RoleDefinition? role = definition.Roles.FirstOrDefault(candidate => candidate.Id == roleId);
+        return role is null
+            ? LocMan.Loc("CUSTOM_RUN_UNKNOWN_ROLE", "Unknown Role")
+            : CustomRunUiText.RoleName(role);
     }
 }

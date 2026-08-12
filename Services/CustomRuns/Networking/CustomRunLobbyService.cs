@@ -373,6 +373,16 @@ public static class CustomRunLobbyService
             return;
         }
 
+        IReadOnlyList<ModifierModel> resolvedModifiers =
+            CustomRunModifierResolver.ResolveAll(snapshot.Modifiers);
+        if (snapshot.ModifiersEnabled
+            && (resolvedModifiers.Count != snapshot.Modifiers.Count
+                || CustomRunModifierResolver.ContainsMutuallyExclusiveModifiers(resolvedModifiers)))
+        {
+            SendAck(lobby, senderId, snapshot.SnapshotHash, false, "The Custom Run modifiers are invalid or unavailable.");
+            return;
+        }
+
         ResolvedPlayerSetup? localSetup = snapshot.Players
             .FirstOrDefault(player => player.PlayerId == lobby.NetService.NetId);
         CharacterModel? localCharacter = CustomRunCompiler.ResolveCharacter(localSetup?.CharacterModelId);

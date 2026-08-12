@@ -1484,7 +1484,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         if (!isRole && component.TypeId is "Loadout2:AddToVariable" or "Loadout2:SubtractFromVariable")
             availableVariables = availableVariables.Where(variable => variable.ValueType == VariableValueType.Number);
         List<LoadoutDropdownOption> options = isRole
-            ? (_definitionContext?.Roles ?? []).Select(role => new LoadoutDropdownOption(role.Id, role.Name)).ToList()
+            ? (_definitionContext?.Roles ?? []).Select(role => new LoadoutDropdownOption(role.Id, CustomRunUiText.RoleName(role))).ToList()
             : availableVariables.Select(variable => new LoadoutDropdownOption(variable.Id, variable.Name)).ToList();
         if (!string.IsNullOrWhiteSpace(selected) && options.All(option => option.Id != selected))
             options.Insert(0, new LoadoutDropdownOption(selected, LocMan.Loc("CUSTOM_RUN_MISSING_VALUE", "Missing: {0}", selected)));

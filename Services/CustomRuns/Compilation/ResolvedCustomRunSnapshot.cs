@@ -10,7 +10,7 @@ using Loadout.Services.CustomRuns.Models;
 public sealed class ResolvedCustomRunSnapshot
 {
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; init; } = 2;
+    public int SchemaVersion { get; init; } = 3;
 
     [JsonPropertyName("hostPlayerId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -24,6 +24,14 @@ public sealed class ResolvedCustomRunSnapshot
 
     [JsonPropertyName("ascensionLevel")]
     public int? AscensionLevel { get; init; }
+
+    [JsonPropertyName("modifiersEnabled")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ModifiersEnabled { get; init; }
+
+    [JsonPropertyName("modifiers")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<RunModifierDefinition> Modifiers { get; init; } = [];
 
     [JsonPropertyName("players")]
     public IReadOnlyList<ResolvedPlayerSetup> Players { get; init; } = [];

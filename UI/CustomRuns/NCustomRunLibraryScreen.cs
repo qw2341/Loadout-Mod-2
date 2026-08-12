@@ -336,7 +336,7 @@ public partial class NCustomRunLibraryScreen : Control
                        && !_launching;
         NCustomRunLibraryRow row = new();
         row.Init(new CustomRunLibraryRowOptions(
-            captured.Name,
+            CustomRunUiText.DefinitionName(captured),
             captured.Description,
             isLobbyDefinition
                 ? LocMan.Loc("CUSTOM_RUN_LOBBY", "Lobby").ToUpperInvariant()
@@ -749,7 +749,7 @@ public partial class NCustomRunLibraryScreen : Control
     private void Export(CustomRunDefinition definition)
     {
         if (CustomRunClipboardService.Copy(definition, out string error))
-            SetStatus(LocMan.Loc("CUSTOM_RUN_COPIED_TO_CLIPBOARD", "Copied '{0}' to clipboard.", definition.Name), success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_COPIED_TO_CLIPBOARD", "Copied '{0}' to clipboard.", CustomRunUiText.DefinitionName(definition)), success: true);
         else
             SetStatus(error, success: false);
     }
@@ -757,7 +757,7 @@ public partial class NCustomRunLibraryScreen : Control
     private async Task DeleteAsync(CustomRunDefinition definition)
     {
         LocString body = new("settings_ui", "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_BODY.title");
-        body.Add("Name", definition.Name);
+        body.Add("Name", CustomRunUiText.DefinitionName(definition));
         bool confirmed = await WaitForConfirmationAboveScreen(
             body,
             new LocString("settings_ui", "LOADOUT-DELETE_CUSTOM_RUN_CONFIRM_TITLE.title"),
@@ -769,9 +769,9 @@ public partial class NCustomRunLibraryScreen : Control
         int index = _rows.FindIndex(row => string.Equals(row.Id, definition.Id, StringComparison.Ordinal));
         _focusDefinitionId = index >= 0 && index + 1 < _rows.Count ? _rows[index + 1].Id : "new";
         if (CustomRunStorageService.Delete(definition.Id))
-            SetStatus(LocMan.Loc("CUSTOM_RUN_DELETED_NAMED", "Deleted '{0}'.", definition.Name), success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_DELETED_NAMED", "Deleted '{0}'.", CustomRunUiText.DefinitionName(definition)), success: true);
         else
-            SetStatus(LocMan.Loc("CUSTOM_RUN_COULD_NOT_FIND_TO_DELETE", "Could not find '{0}' to delete.", definition.Name), success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_COULD_NOT_FIND_TO_DELETE", "Could not find '{0}' to delete.", CustomRunUiText.DefinitionName(definition)), success: false);
     }
 
     private async Task DeletePermanentRuleAsync(RuleDefinition rule)

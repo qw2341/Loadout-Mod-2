@@ -41,7 +41,7 @@ public static class CustomRunSnapshotSerializationService
             ResolvedCustomRunSnapshot? decoded = JsonSerializer.Deserialize<ResolvedCustomRunSnapshot>(
                 payload,
                 CustomRunSerializationService.SharedJsonOptions);
-            if (decoded is null || decoded.SchemaVersion is not (1 or 2))
+            if (decoded is null || decoded.SchemaVersion is not (1 or 2 or 3))
             {
                 error = "Custom Run snapshot has an unsupported schema version.";
                 return false;
@@ -59,11 +59,22 @@ public static class CustomRunSnapshotSerializationService
                 || decoded.SnapshotHash.Length != 64
                 || decoded.Players.Count > 8
                 || decoded.RequiredModIds.Count > 128
+                || decoded.Modifiers.Count > 64
                 || decoded.Rules.Count > 512
                 || decoded.Variables.Count > 512
                 || decoded.Rules.Any(rule => rule.Actions.Count > 128))
             {
                 error = "Custom Run snapshot exceeds supported bounds.";
+                return false;
+            }
+
+            if (decoded.Modifiers.Any(modifier =>
+                    string.IsNullOrWhiteSpace(modifier.ModelId)
+                    || modifier.ModelId.Length > 256
+                    || modifier.CharacterModelId?.Length > 256)
+                || !decoded.ModifiersEnabled && decoded.Modifiers.Count > 0)
+            {
+                error = "Custom Run snapshot contains invalid run modifiers.";
                 return false;
             }
 
@@ -92,7 +103,7 @@ public static class CustomRunSnapshotSerializationService
                 return false;
             }
 
-            if (decoded.SchemaVersion == 2
+            if (decoded.SchemaVersion is 2 or 3
                 && (decoded.Players.All(player => player.PlayerId != decoded.HostPlayerId)
                     || decoded.Players.Any(player => player.LobbySlot is < 1 or > 8)
                     || decoded.Players.Select(player => player.LobbySlot).Distinct().Count() != decoded.Players.Count

@@ -167,14 +167,21 @@ public static class CustomRunCompiler
             definition.RequiredModIds,
             resolvedPlayers,
             compiledRules);
+        IReadOnlyList<RunModifierDefinition> resolvedModifiers = definition.Setup.ModifiersEnabled
+            ? CustomRunModifierResolver.ResolveAll(definition.Setup.Modifiers)
+                .Select(CustomRunModifierResolver.ToDefinition)
+                .ToList()
+            : [];
 
         ResolvedCustomRunSnapshot unhashed = new()
         {
-            SchemaVersion = 2,
+            SchemaVersion = 3,
             HostPlayerId = lobby.NetService.NetId,
             SourceDefinitionId = definition.Id,
             RunSeed = seed,
             AscensionLevel = definition.Setup.StartingAscension,
+            ModifiersEnabled = definition.Setup.ModifiersEnabled,
+            Modifiers = resolvedModifiers,
             Players = resolvedPlayers,
             Rules = compiledRules,
             Variables = resolvedVariables,
@@ -187,6 +194,8 @@ public static class CustomRunCompiler
             SourceDefinitionId = unhashed.SourceDefinitionId,
             RunSeed = unhashed.RunSeed,
             AscensionLevel = unhashed.AscensionLevel,
+            ModifiersEnabled = unhashed.ModifiersEnabled,
+            Modifiers = unhashed.Modifiers,
             Players = unhashed.Players,
             Rules = unhashed.Rules,
             Variables = unhashed.Variables,
@@ -238,6 +247,7 @@ public static class CustomRunCompiler
         string objectId,
         List<CustomRunValidationIssue> issues)
     {
+        ValidateModifiers(setup, section, objectId, issues);
         if (setup.Character.Mode == SelectionMode.PlayerChoice)
             AddError(issues, section, objectId, "Character mode cannot use a separate player choice before Play.");
         if (setup.StartingLoadoutMode == StartingLoadoutMode.Unified)
@@ -249,6 +259,27 @@ public static class CustomRunCompiler
             foreach (CharacterStartingLoadoutDefinition loadout in setup.CharacterStartingLoadouts)
                 ValidateStartingLoadoutRuntimeSupport(loadout, section, objectId, issues);
         }
+    }
+
+    private static void ValidateModifiers(
+        RunSetupDefinition setup,
+        string section,
+        string objectId,
+        List<CustomRunValidationIssue> issues)
+    {
+        if (!setup.ModifiersEnabled)
+            return;
+
+        List<ModifierModel> resolved = [];
+        foreach (RunModifierDefinition definition in setup.Modifiers)
+        {
+            if (CustomRunModifierResolver.TryResolve(definition, out ModifierModel modifier))
+                resolved.Add(modifier);
+            else
+                AddError(issues, section, objectId, $"Unknown run modifier '{definition.ModelId}'.");
+        }
+        if (CustomRunModifierResolver.ContainsMutuallyExclusiveModifiers(resolved))
+            AddError(issues, section, objectId, "The selected run modifiers include a mutually exclusive combination.");
     }
 
     private static void ValidateStartingLoadoutRuntimeSupport(

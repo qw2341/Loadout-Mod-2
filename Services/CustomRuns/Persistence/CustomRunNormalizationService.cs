@@ -76,6 +76,19 @@ public static class CustomRunNormalizationService
         setup.StartingAscension = setup.StartingAscension.HasValue
             ? Math.Clamp(setup.StartingAscension.Value, 0, 10)
             : null;
+        setup.Modifiers = (setup.Modifiers ?? [])
+            .Where(modifier => modifier is not null && !string.IsNullOrWhiteSpace(modifier.ModelId))
+            .Select(modifier => new RunModifierDefinition
+            {
+                ModelId = modifier.ModelId.Trim(),
+                CharacterModelId = string.IsNullOrWhiteSpace(modifier.CharacterModelId)
+                    ? null
+                    : modifier.CharacterModelId.Trim()
+            })
+            .DistinctBy(
+                modifier => $"{modifier.ModelId}\n{modifier.CharacterModelId}",
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
         setup.RunSeed = string.IsNullOrWhiteSpace(setup.RunSeed) ? null : setup.RunSeed.Trim();
         return setup;
     }
@@ -238,6 +251,8 @@ public static class CustomRunNormalizationService
         role.Setup = NormalizeSetup(role.Setup);
         role.Setup.RunSeed = null;
         role.Setup.StartingAscension = null;
+        role.Setup.ModifiersEnabled = false;
+        role.Setup.Modifiers.Clear();
         return role;
     }
 

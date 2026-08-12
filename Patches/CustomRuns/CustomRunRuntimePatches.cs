@@ -61,10 +61,19 @@ public static class CustomRunPlayerCreationPatch
 public static class CustomRunStateCreationPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(ref int ascensionLevel)
+    public static void Prefix(
+        ref IReadOnlyList<ModifierModel> modifiers,
+        ref GameMode gameMode,
+        ref int ascensionLevel)
     {
-        if (CustomRunRuntimeSnapshotService.PendingSnapshot?.AscensionLevel is int customAscension)
+        ResolvedCustomRunSnapshot? snapshot = CustomRunRuntimeSnapshotService.PendingSnapshot;
+        if (snapshot?.AscensionLevel is int customAscension)
             ascensionLevel = Math.Clamp(customAscension, 0, 10);
+        if (snapshot?.ModifiersEnabled == true)
+        {
+            modifiers = CustomRunModifierResolver.ResolveAll(snapshot.Modifiers);
+            gameMode = GameMode.Custom;
+        }
     }
 
     [HarmonyPostfix]

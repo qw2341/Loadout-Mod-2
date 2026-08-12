@@ -19,6 +19,13 @@ public static class CustomRunHashService
             SourceDefinitionId = snapshot.SourceDefinitionId,
             RunSeed = snapshot.RunSeed,
             AscensionLevel = snapshot.AscensionLevel,
+            ModifiersEnabled = snapshot.ModifiersEnabled,
+            Modifiers = snapshot.SchemaVersion >= 3
+                ? snapshot.Modifiers
+                    .OrderBy(modifier => modifier.ModelId, StringComparer.Ordinal)
+                    .ThenBy(modifier => modifier.CharacterModelId, StringComparer.Ordinal)
+                    .ToList()
+                : null!,
             Players = snapshot.Players
                 .OrderBy(player => player.LobbySlot)
                 .ThenBy(player => player.PlayerId)

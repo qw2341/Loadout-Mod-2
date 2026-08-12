@@ -25,6 +25,7 @@ using Loadout.UI.Screens;
 using Loadout.UI.Screens.Controls;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
@@ -34,6 +35,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Potions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.RunHistoryScreen;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -46,13 +48,14 @@ using MegaCrit.Sts2.Core.Models.Characters;
 public partial class NCustomRunEditorScreen : Control
 {
     private const string ScenePath = "res://UI/CustomRuns/CustomRunEditorScreen.tscn";
+    private const string NativeModifiersListScenePath = "res://scenes/screens/custom_run/modifiers_list.tscn";
     private const float RunSetupToolButtonWidth = 224f;
     private const double StartingCardHoverDelaySeconds = 0.2d;
     private const string PotionInventoryBackdropPath =
         "res://images/atlases/ui_atlas.sprites/top_bar/top_bar_char_backdrop.tres";
     private static readonly string[] TabNames =
     [
-        "Overview", "Run Setup", "Player Choices", "Rules", "Variables"
+        "Overview", "Run Setup", "Rules", "Variables"
     ];
 
     private StartRunLobby? _lobby;
@@ -374,7 +377,7 @@ public partial class NCustomRunEditorScreen : Control
         if (_runNameLabel is null)
             return;
 
-        string name = _workingDefinition?.Name?.Trim() ?? string.Empty;
+        string name = _workingDefinition is null ? string.Empty : CustomRunUiText.DefinitionName(_workingDefinition);
         _runNameLabel.Text = string.IsNullOrWhiteSpace(name)
             ? LocMan.Loc("CUSTOM_RUN_UNTITLED", "Untitled Custom Run").ToUpperInvariant()
             : name;
@@ -419,7 +422,7 @@ public partial class NCustomRunEditorScreen : Control
 
     private Button CreateSavedDefinitionButton(CustomRunDefinition definition, bool selected)
     {
-        Button button = CreateCompactButton(definition.Name, 21, 52f);
+        Button button = CreateCompactButton(CustomRunUiText.DefinitionName(definition), 21, 52f);
         button.Alignment = HorizontalAlignment.Left;
         button.TooltipText = definition.Description;
         button.AddThemeColorOverride(
@@ -551,7 +554,7 @@ public partial class NCustomRunEditorScreen : Control
 
         _contentHost.AddChild(CreateSectionTitle(LocMan.Loc("CUSTOM_RUN_OVERVIEW", "Overview").ToUpperInvariant()));
         _contentHost.AddChild(CreateFieldLabel(LocMan.Loc("SORT_NAME", "Name")));
-        LineEdit name = CreateLineEdit(_workingDefinition.Name);
+        LineEdit name = CreateLineEdit(CustomRunUiText.DefinitionName(_workingDefinition));
         name.TextChanged += value =>
         {
             if (_loadingFields || _workingDefinition is null)
@@ -617,6 +620,7 @@ public partial class NCustomRunEditorScreen : Control
         _contentHost.AddChild(seedRow);
         AddNullableNumberRow(LocMan.Loc("CUSTOM_RUN_STARTING_ASCENSION", "Starting Ascension"), defaultSetup.StartingAscension, 0, 0, 10,
             value => defaultSetup.StartingAscension = value);
+        BuildModifiersEditor(defaultSetup);
 
         HBoxContainer assignmentRow = CreateRow();
         assignmentRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_ROLE_ASSIGNMENT", "Role Assignment")));
@@ -644,7 +648,7 @@ public partial class NCustomRunEditorScreen : Control
         _contentHost.AddChild(assignmentRow);
         _contentHost.AddChild(CreateSectionDivider());
 
-        Button noRole = CreateCompactButton(_workingDefinition.DefaultRoleName, 21, 52f);
+        Button noRole = CreateCompactButton(CustomRunUiText.DefaultRoleName(_workingDefinition.DefaultRoleName), 21, 52f);
         noRole.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         if (_activeSetupRoleId is null)
             noRole.AddThemeColorOverride("font_color", StsColors.gold);
@@ -659,12 +663,8 @@ public partial class NCustomRunEditorScreen : Control
         foreach (RoleDefinition role in _workingDefinition.Roles)
         {
             RoleDefinition capturedRole = role;
-            string required = role.MinimumPlayers > 0 ? " *" : string.Empty;
-            string maximum = role.MaximumPlayers > 0
-                ? LocMan.Loc("CUSTOM_RUN_MAX_SPACED", "    MAX {0}", role.MaximumPlayers)
-                : string.Empty;
             Button row = CreateCompactButton(
-                $"{role.Name}{required}    MIN {role.MinimumPlayers}{maximum}",
+                FormatRoleButtonText(role),
                 21,
                 52f);
             row.SizeFlagsHorizontal = SizeFlags.ExpandFill;
@@ -728,6 +728,86 @@ public partial class NCustomRunEditorScreen : Control
             value => setup.CardsDrawnPerTurn = value);
     }
 
+    private void BuildModifiersEditor(RunSetupDefinition setup)
+    {
+        if (_contentHost is null)
+            return;
+
+        HBoxContainer toggleRow = CreateRow();
+        NLoadoutToggle toggle = new() { CustomMinimumSize = new Vector2(390f, 50f) };
+        toggle.Init(
+            "custom_run_enable_modifiers",
+            LocMan.Loc("CUSTOM_RUN_ENABLE_MODIFIERS", "Enable Modifiers"),
+            setup.ModifiersEnabled);
+        toggle.Connect(
+            NLoadoutToggle.SignalName.Toggled,
+            Callable.From<NLoadoutToggle>(toggleState =>
+            {
+                if (_loadingFields || _workingDefinition?.Setup != setup)
+                    return;
+                setup.ModifiersEnabled = toggleState.IsChecked;
+                MarkDirty();
+                RebuildContent();
+            }));
+        toggleRow.AddChild(toggle);
+        AddToolSpacer(toggleRow);
+        _contentHost.AddChild(toggleRow);
+
+        if (!setup.ModifiersEnabled)
+            return;
+
+        MarginContainer modifierHost = new()
+        {
+            CustomMinimumSize = new Vector2(0f, 560f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        modifierHost.AddThemeConstantOverride("margin_left", 18);
+        modifierHost.AddThemeConstantOverride("margin_right", 18);
+        _contentHost.AddChild(modifierHost);
+
+        NCustomRunModifiersList modifierList = PreloadManager.Cache
+            .GetScene(NativeModifiersListScenePath)
+            .Instantiate<NCustomRunModifiersList>(PackedScene.GenEditState.Disabled);
+        modifierList.Name = "CustomRunModifiersList";
+        modifierList.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        modifierList.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        modifierList.SizeFlagsVertical = SizeFlags.ExpandFill;
+        modifierHost.AddChild(modifierList);
+        IReadOnlyList<ModifierModel> selectedModifiers = CustomRunModifierResolver.ResolveAll(setup.Modifiers);
+        if (_readOnly)
+        {
+            modifierList.Initialize(MultiplayerUiMode.Client);
+            modifierList.SyncModifierList(selectedModifiers);
+        }
+        else
+        {
+            modifierList.Initialize(MultiplayerUiMode.Singleplayer);
+            modifierList.SetTickedModifiers(selectedModifiers);
+            modifierList.Connect(
+                NCustomRunModifiersList.SignalName.ModifiersChanged,
+                Callable.From(() =>
+                {
+                    if (_loadingFields || _workingDefinition?.Setup != setup
+                        || !GodotObject.IsInstanceValid(modifierList))
+                        return;
+                    setup.Modifiers = modifierList.GetModifiersTickedOn()
+                        .Select(CustomRunModifierResolver.ToDefinition)
+                        .ToList();
+                    MarkDirty();
+                }));
+        }
+    }
+
+    private static string FormatRoleButtonText(RoleDefinition role, string? name = null)
+    {
+        string required = role.MinimumPlayers > 0 ? " *" : string.Empty;
+        string minimum = LocMan.Loc("CUSTOM_RUN_MIN_SPACED", "    MIN {0}", role.MinimumPlayers);
+        string maximum = role.MaximumPlayers > 0
+            ? LocMan.Loc("CUSTOM_RUN_MAX_SPACED", "    MAX {0}", role.MaximumPlayers)
+            : string.Empty;
+        return $"{name ?? CustomRunUiText.RoleName(role)}{required}{minimum}{maximum}";
+    }
+
     private void AddRole()
     {
         if (_workingDefinition is null || _readOnly)
@@ -745,7 +825,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
         HBoxContainer nameRow = CreateRow();
         nameRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_ROLE_NAME", "Role Name")));
-        LineEdit name = CreateLineEdit(role.Name);
+        LineEdit name = CreateLineEdit(CustomRunUiText.RoleName(role));
         name.TextChanged += value =>
         {
             if (_loadingFields || ResolveRole(role.Id) != role)
@@ -753,11 +833,7 @@ public partial class NCustomRunEditorScreen : Control
             role.Name = value;
             if (roleButton is not null)
             {
-                string required = role.MinimumPlayers > 0 ? " *" : string.Empty;
-                string maximum = role.MaximumPlayers > 0
-                    ? LocMan.Loc("CUSTOM_RUN_MAX_SPACED", "    MAX {0}", role.MaximumPlayers)
-                    : string.Empty;
-                roleButton.Text = $"{value}{required}    MIN {role.MinimumPlayers}{maximum}";
+                roleButton.Text = FormatRoleButtonText(role, value);
             }
             MarkDirty();
         };
@@ -803,7 +879,7 @@ public partial class NCustomRunEditorScreen : Control
             return;
         HBoxContainer nameRow = CreateRow();
         nameRow.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_ROLE_NAME", "Role Name")));
-        LineEdit name = CreateLineEdit(_workingDefinition.DefaultRoleName);
+        LineEdit name = CreateLineEdit(CustomRunUiText.DefaultRoleName(_workingDefinition.DefaultRoleName));
         name.TextChanged += value =>
         {
             if (_loadingFields || _workingDefinition is null || _activeSetupRoleId is not null)
@@ -2651,7 +2727,7 @@ public partial class NCustomRunEditorScreen : Control
         RefreshRunName();
         RebuildContent();
         RefreshEditableState();
-        SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_AS", "Saved as '{0}'.", _workingDefinition.Name), success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_AS", "Saved as '{0}'.", CustomRunUiText.DefinitionName(_workingDefinition)), success: true);
     }
 
     private void DeleteDefinition()
@@ -2663,11 +2739,11 @@ public partial class NCustomRunEditorScreen : Control
         {
             _deleteConfirmationId = _workingDefinition.Id;
             _deleteButton?.Init("delete", LocMan.Loc("CUSTOM_RUN_CONFIRM_DELETE", "Confirm Delete"));
-            SetStatus(LocMan.Loc("CUSTOM_RUN_PRESS_CONFIRM_DELETE", "Press Confirm Delete to remove '{0}'.", _workingDefinition.Name), success: false);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_PRESS_CONFIRM_DELETE", "Press Confirm Delete to remove '{0}'.", CustomRunUiText.DefinitionName(_workingDefinition)), success: false);
             return;
         }
 
-        string deletedName = _workingDefinition.Name;
+        string deletedName = CustomRunUiText.DefinitionName(_workingDefinition);
         CustomRunStorageService.Delete(_workingDefinition.Id);
         _workingDefinition = CustomRunStorageService.GetDefinitions().FirstOrDefault()
                              ?? CustomRunStorageService.CreateNew();
@@ -2690,7 +2766,7 @@ public partial class NCustomRunEditorScreen : Control
         ResetDeleteButton();
         RefreshSavedList();
         RebuildContent();
-        SetStatus(LocMan.Loc("CUSTOM_RUN_EDITING_NAMED", "Editing '{0}'.", _workingDefinition.Name), success: true);
+        SetStatus(LocMan.Loc("CUSTOM_RUN_EDITING_NAMED", "Editing '{0}'.", CustomRunUiText.DefinitionName(_workingDefinition)), success: true);
     }
 
     private void SaveCurrent(bool showStatus)
@@ -2701,7 +2777,7 @@ public partial class NCustomRunEditorScreen : Control
         _dirty = false;
         RefreshRunName();
         if (showStatus)
-            SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_NAMED", "Saved '{0}'.", _workingDefinition.Name), success: true);
+            SetStatus(LocMan.Loc("CUSTOM_RUN_SAVED_NAMED", "Saved '{0}'.", CustomRunUiText.DefinitionName(_workingDefinition)), success: true);
     }
 
     private void ImportDefinition()

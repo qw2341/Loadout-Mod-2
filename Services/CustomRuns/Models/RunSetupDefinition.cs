@@ -58,6 +58,12 @@ public sealed class RunSetupDefinition : IStartingLoadoutDefinition
     [JsonPropertyName("startingAscension")]
     public int? StartingAscension { get; set; }
 
+    [JsonPropertyName("modifiersEnabled")]
+    public bool ModifiersEnabled { get; set; }
+
+    [JsonPropertyName("modifiers")]
+    public List<RunModifierDefinition> Modifiers { get; set; } = [];
+
     [JsonPropertyName("potionSlots")]
     public int? PotionSlots { get; set; }
 
@@ -78,6 +84,16 @@ public sealed class RunSetupDefinition : IStartingLoadoutDefinition
 
     [JsonPropertyName("runSeed")]
     public string? RunSeed { get; set; }
+}
+
+public sealed class RunModifierDefinition
+{
+    [JsonPropertyName("modelId")]
+    public string ModelId { get; set; } = string.Empty;
+
+    [JsonPropertyName("characterModelId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CharacterModelId { get; set; }
 }
 
 public sealed class CharacterStartingLoadoutDefinition : IStartingLoadoutDefinition
