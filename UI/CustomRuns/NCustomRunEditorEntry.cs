@@ -425,6 +425,11 @@ public static class NCustomRunEditorEntry
 
         if (lobby.NetService.Type == NetGameType.Client)
             return true;
+        if (!CustomRunRoleAssignmentService.AreAllPlayersLocked(lobby))
+        {
+            error = LocMan.Loc("CUSTOM_RUN_WAIT_FOR_ROLE_LOCKS", "Wait for every player to lock in a role.");
+            return false;
+        }
         if (!CustomRunRoleAssignmentService.AreMinimumsSatisfied(lobby, definition))
         {
             error = LocMan.Loc("CUSTOM_RUN_ROLE_MINIMUMS_NOT_FILLED", "The required role minimums have not been filled.");
@@ -438,7 +443,8 @@ public static class NCustomRunEditorEntry
         return lobby.NetService.Type != NetGameType.Client
                && definition.Roles.Count > 0
                && definition.RoleAssignmentMode != RoleAssignmentMode.Random
-               && !CustomRunRoleAssignmentService.AreMinimumsSatisfied(lobby, definition);
+               && (!CustomRunRoleAssignmentService.AreAllPlayersLocked(lobby)
+                   || !CustomRunRoleAssignmentService.AreMinimumsSatisfied(lobby, definition));
     }
 
     internal static string? GetEffectiveLocalRoleId(StartRunLobby lobby)

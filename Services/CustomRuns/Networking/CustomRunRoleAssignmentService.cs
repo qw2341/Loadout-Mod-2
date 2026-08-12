@@ -155,6 +155,17 @@ public static class CustomRunRoleAssignmentService
                && state.Assignments.Any(entry => entry.PlayerId == playerId);
     }
 
+    public static bool AreAllPlayersLocked(StartRunLobby lobby)
+    {
+        if (!States.TryGetValue(lobby, out CustomRunRoleAssignmentSnapshot? state))
+            return false;
+        HashSet<ulong> lockedPlayerIds = state.Assignments
+            .Select(entry => entry.PlayerId)
+            .ToHashSet();
+        return Sts2Compatibility.EnumerateStartRunLobbyPlayerIds(lobby)
+            .All(lockedPlayerIds.Contains);
+    }
+
     public static bool AreMinimumsSatisfied(
         StartRunLobby lobby,
         CustomRunDefinition definition,
