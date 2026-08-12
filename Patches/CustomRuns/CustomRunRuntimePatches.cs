@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using BaseLib.Patches.Saves;
 using HarmonyLib;
+using Loadout.Services.Compatibility;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
@@ -18,6 +19,7 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
@@ -171,9 +173,10 @@ public static class CustomRunRuleRuntimeRunEndPatch
 public static class CustomRunAfterCardPlayedPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(CardPlay cardPlay, ref Task __result)
+    public static void Postfix(PlayerChoiceContext choiceContext, CardPlay cardPlay, ref Task __result)
     {
-        __result = CaptureAfterAsync(__result, "Loadout2:CardPlayed", cardPlay.Card.Owner.NetId,
+        __result = CaptureAfterAsync(__result, choiceContext, cardPlay.Card.Owner,
+            "Loadout2:CardPlayed", cardPlay.Card.Owner.NetId,
             SelectionModelKind.Card, cardPlay.Card.Id.ToString());
     }
 }
@@ -273,9 +276,10 @@ public static class CustomRunBeforeCombatStartPatch
 public static class CustomRunAfterCardDrawnPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(CardModel card, ref Task __result)
+    public static void Postfix(PlayerChoiceContext choiceContext, CardModel card, ref Task __result)
     {
-        __result = CaptureAfterAsync(__result, "Loadout2:CardDrawn", card.Owner.NetId,
+        __result = CaptureAfterAsync(__result, choiceContext, card.Owner,
+            "Loadout2:CardDrawn", card.Owner.NetId,
             SelectionModelKind.Card, card.Id.ToString());
     }
 }
@@ -284,9 +288,10 @@ public static class CustomRunAfterCardDrawnPatch
 public static class CustomRunAfterCardDiscardedPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(CardModel card, ref Task __result)
+    public static void Postfix(PlayerChoiceContext choiceContext, CardModel card, ref Task __result)
     {
-        __result = CaptureAfterAsync(__result, "Loadout2:CardDiscarded", card.Owner.NetId,
+        __result = CaptureAfterAsync(__result, choiceContext, card.Owner,
+            "Loadout2:CardDiscarded", card.Owner.NetId,
             SelectionModelKind.Card, card.Id.ToString());
     }
 }
@@ -295,9 +300,10 @@ public static class CustomRunAfterCardDiscardedPatch
 public static class CustomRunAfterCardExhaustedPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(CardModel card, ref Task __result)
+    public static void Postfix(PlayerChoiceContext choiceContext, CardModel card, ref Task __result)
     {
-        __result = CaptureAfterAsync(__result, "Loadout2:CardExhausted", card.Owner.NetId,
+        __result = CaptureAfterAsync(__result, choiceContext, card.Owner,
+            "Loadout2:CardExhausted", card.Owner.NetId,
             SelectionModelKind.Card, card.Id.ToString());
     }
 }
@@ -476,6 +482,49 @@ public static class CustomRunMonsterMoveStartedPatch
 
 internal static class CustomRunTriggerCapture
 {
+    public static async Task CaptureAfterAsync(
+        Task nativeTask,
+        PlayerChoiceContext choiceContext,
+        Player choicePlayer,
+        string triggerId,
+        ulong playerId,
+        SelectionModelKind? kind = null,
+        string? modelId = null,
+        double amount = 0d)
+    {
+        await nativeTask;
+        if (choiceContext is not HookPlayerChoiceContext hookContext
+            || !CustomRunRuleRuntimeService.NeedsHookCompletionBarrier(triggerId))
+        {
+            CustomRunRuleRuntimeService.Capture(triggerId, playerId, kind, modelId, amount);
+            return;
+        }
+
+        if (hookContext.GameAction is null)
+        {
+            // Put phase-driven autoplay behind the native synchronized hook boundary.
+            await Sts2Compatibility.SignalHookPlayerChoiceBegun(
+                hookContext,
+                choicePlayer,
+                PlayerChoiceOptions.None);
+            await Sts2Compatibility.SignalHookPlayerChoiceEnded(hookContext, choicePlayer);
+        }
+
+        if (hookContext.GameAction is { } hookAction)
+        {
+            CustomRunRuleRuntimeService.CaptureAtActionFinish(
+                hookAction,
+                triggerId,
+                playerId,
+                kind,
+                modelId,
+                amount);
+            return;
+        }
+
+        CustomRunRuleRuntimeService.Capture(triggerId, playerId, kind, modelId, amount);
+    }
+
     public static async Task CaptureAfterAsync(
         Task nativeTask,
         string triggerId,

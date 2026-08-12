@@ -18,6 +18,7 @@ using Loadout.Services.Networking;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Models;
@@ -38,6 +39,7 @@ public static class CustomRunRuleRuntimeService
     private static readonly Dictionary<long, TaskCompletionSource<CustomRunDecisionBatch>> BatchWaiters = [];
     private static readonly Dictionary<long, CustomRunDecisionBatch> PendingBatches = [];
     private static readonly Dictionary<long, ChainState> Chains = [];
+    private static readonly Dictionary<GameAction, List<DeferredTriggerCapture>> CapturesAfterActions = [];
     private static readonly Queue<string> DebugEntries = new();
     private static readonly HashSet<ulong> PendingRejoinRecipients = [];
 
@@ -116,6 +118,9 @@ public static class CustomRunRuleRuntimeService
             BatchWaiters.Clear();
             PendingBatches.Clear();
             Chains.Clear();
+            foreach (GameAction action in CapturesAfterActions.Keys)
+                action.JustBeforeFinished -= OnDeferredCaptureActionFinishing;
+            CapturesAfterActions.Clear();
             PendingRejoinRecipients.Clear();
             RulesByTrigger.Clear();
             RuleCounters.Clear();
@@ -146,10 +151,68 @@ public static class CustomRunRuleRuntimeService
         EnqueueEvent(triggerId, triggeringPlayerId, modelKind, modelId, amount);
     }
 
+    internal static bool NeedsHookCompletionBarrier(string triggerId)
+    {
+        return IsActive
+               && _netService?.Type is NetGameType.Host or NetGameType.Client
+               && RulesByTrigger.ContainsKey(triggerId);
+    }
+
+    internal static void CaptureAtActionFinish(
+        GameAction action,
+        string triggerId,
+        ulong triggeringPlayerId,
+        SelectionModelKind? modelKind = null,
+        string? modelId = null,
+        double amount = 0d)
+    {
+        if (!IsActive
+            || _netService?.Type != NetGameType.Host
+            || !RulesByTrigger.ContainsKey(triggerId))
+            return;
+
+        lock (Gate)
+        {
+            if (!CapturesAfterActions.TryGetValue(action, out List<DeferredTriggerCapture>? captures))
+            {
+                CapturesAfterActions[action] = captures = [];
+                action.JustBeforeFinished += OnDeferredCaptureActionFinishing;
+            }
+            captures!.Add(new DeferredTriggerCapture(
+                triggerId,
+                triggeringPlayerId,
+                modelKind,
+                modelId,
+                amount));
+        }
+    }
+
     private static bool IsSupportedSnapshot(ResolvedCustomRunSnapshot? snapshot)
     {
         return snapshot is not null
             && ResolvedCustomRunSnapshot.IsSchemaVersionSupported(snapshot.SchemaVersion);
+    }
+
+    private static void OnDeferredCaptureActionFinishing(GameAction action)
+    {
+        List<DeferredTriggerCapture>? captures;
+        lock (Gate)
+        {
+            if (!CapturesAfterActions.Remove(action, out captures))
+                return;
+            action.JustBeforeFinished -= OnDeferredCaptureActionFinishing;
+        }
+        if (action.Exception is not null)
+            return;
+        foreach (DeferredTriggerCapture capture in captures)
+        {
+            Capture(
+                capture.TriggerId,
+                capture.TriggeringPlayerId,
+                capture.ModelKind,
+                capture.ModelId,
+                capture.Amount);
+        }
     }
 
     public static async Task ExecuteSynchronizedEventAsync(CustomRunRuntimeEvent runtimeEvent)
@@ -773,4 +836,11 @@ public static class CustomRunRuleRuntimeService
         public bool Halted;
         public Dictionary<string, int> ExecutionsByRule { get; } = new(StringComparer.Ordinal);
     }
+
+    private readonly record struct DeferredTriggerCapture(
+        string TriggerId,
+        ulong TriggeringPlayerId,
+        SelectionModelKind? ModelKind,
+        string? ModelId,
+        double Amount);
 }

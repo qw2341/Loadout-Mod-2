@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Commands.Builders;
 using MegaCrit.Sts2.Core.ControllerInput;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
@@ -59,6 +60,15 @@ internal static class Sts2Compatibility
         ModifyDamageHookType modifyDamageHookType,
         CardPreviewMode previewMode);
 
+    private delegate Task HookPlayerChoiceBeginInvoker(
+        HookPlayerChoiceContext context,
+        Player player,
+        PlayerChoiceOptions options);
+
+    private delegate Task HookPlayerChoiceEndInvoker(
+        HookPlayerChoiceContext context,
+        Player player);
+
     private static readonly Type AbstractModelEnumerableByRef =
         typeof(IEnumerable<AbstractModel>).MakeByRefType();
 
@@ -68,6 +78,21 @@ internal static class Sts2Compatibility
         ResolveModelDbEnumerableGetter<EncounterModel>("EventEncounters");
     private static readonly Func<IEnumerable<EncounterModel>>? AllEncountersGetter =
         ResolveModelDbEnumerableGetter<EncounterModel>("AllEncounters");
+
+    private static readonly MethodInfo HookPlayerChoiceBeginMethod =
+        ResolveHookPlayerChoiceMethod(
+            nameof(HookPlayerChoiceContext.SignalPlayerChoiceBegun),
+            [typeof(Player), typeof(PlayerChoiceOptions)],
+            [typeof(PlayerChoiceOptions)]);
+    private static readonly HookPlayerChoiceBeginInvoker BeginHookPlayerChoice =
+        CreateHookPlayerChoiceBeginInvoker();
+    private static readonly MethodInfo HookPlayerChoiceEndMethod =
+        ResolveHookPlayerChoiceMethod(
+            nameof(HookPlayerChoiceContext.SignalPlayerChoiceEnded),
+            [typeof(Player)],
+            Type.EmptyTypes);
+    private static readonly HookPlayerChoiceEndInvoker EndHookPlayerChoice =
+        CreateHookPlayerChoiceEndInvoker();
 
     private static readonly EventInfo StartRunLobbyPlayerConnectedEvent =
         ResolveEvent(typeof(StartRunLobby), "PlayerConnected");
@@ -207,6 +232,21 @@ internal static class Sts2Compatibility
 
         foreach (object player in GetStartRunLobbyPlayers(lobby))
             yield return GetStartRunLobbyPlayerId(player);
+    }
+
+    internal static Task SignalHookPlayerChoiceBegun(
+        HookPlayerChoiceContext context,
+        Player player,
+        PlayerChoiceOptions options)
+    {
+        return BeginHookPlayerChoice(context, player, options);
+    }
+
+    internal static Task SignalHookPlayerChoiceEnded(
+        HookPlayerChoiceContext context,
+        Player player)
+    {
+        return EndHookPlayerChoice(context, player);
     }
 
     internal static IEnumerable<StartRunLobbyPlayerInfo> EnumerateStartRunLobbyPlayers(StartRunLobby lobby)
@@ -931,6 +971,43 @@ internal static class Sts2Compatibility
             Expression.Constant(handler),
             playerId);
         return Expression.Lambda(eventHandlerType, invokeHandler, payload).Compile();
+    }
+
+    private static MethodInfo ResolveHookPlayerChoiceMethod(
+        string methodName,
+        Type[] playerAwareParameters,
+        Type[] legacyParameters)
+    {
+        return AccessTools.Method(typeof(HookPlayerChoiceContext), methodName, playerAwareParameters)
+               ?? AccessTools.Method(typeof(HookPlayerChoiceContext), methodName, legacyParameters)
+               ?? throw new MissingMethodException(
+                   typeof(HookPlayerChoiceContext).FullName,
+                   methodName);
+    }
+
+    private static HookPlayerChoiceBeginInvoker CreateHookPlayerChoiceBeginInvoker()
+    {
+        ParameterExpression context = Expression.Parameter(typeof(HookPlayerChoiceContext), "context");
+        ParameterExpression player = Expression.Parameter(typeof(Player), "player");
+        ParameterExpression options = Expression.Parameter(typeof(PlayerChoiceOptions), "options");
+        MethodCallExpression call = HookPlayerChoiceBeginMethod.GetParameters().Length == 2
+            ? Expression.Call(context, HookPlayerChoiceBeginMethod, player, options)
+            : Expression.Call(context, HookPlayerChoiceBeginMethod, options);
+        return Expression.Lambda<HookPlayerChoiceBeginInvoker>(
+            call,
+            context,
+            player,
+            options).Compile();
+    }
+
+    private static HookPlayerChoiceEndInvoker CreateHookPlayerChoiceEndInvoker()
+    {
+        ParameterExpression context = Expression.Parameter(typeof(HookPlayerChoiceContext), "context");
+        ParameterExpression player = Expression.Parameter(typeof(Player), "player");
+        MethodCallExpression call = HookPlayerChoiceEndMethod.GetParameters().Length == 1
+            ? Expression.Call(context, HookPlayerChoiceEndMethod, player)
+            : Expression.Call(context, HookPlayerChoiceEndMethod);
+        return Expression.Lambda<HookPlayerChoiceEndInvoker>(call, context, player).Compile();
     }
 
     private static string ResolveControllerAction(string betaFieldName, string legacyFieldName)
