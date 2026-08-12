@@ -193,6 +193,7 @@ public static class CustomRunCatalogSelector
         IReadOnlyCollection<string> allowedModelIds,
         int minimum,
         int maximum,
+        bool canSkip,
         Action<IReadOnlyList<string>> confirmed,
         Action cancelled,
         out IDisposable? session,
@@ -257,7 +258,8 @@ public static class CustomRunCatalogSelector
                     MaxCopiesPerItem = 1
                 },
                 showSelectionChrome: true,
-                useCustomRunBackdrop: true);
+                useCustomRunBackdrop: true,
+                allowCancellation: canSkip);
             RuntimeChoiceSession? active = null;
             active = new RuntimeChoiceSession(
                 screen,
@@ -266,8 +268,8 @@ public static class CustomRunCatalogSelector
                 {
                     confirmed(items
                         .Select(item => item.UntypedModel)
-                        .OfType<IGenericSelectItem>()
-                        .Select(item => ((AbstractModel)item.UntypedModel).Id.ToString())
+                        .OfType<AbstractModel>()
+                        .Select(model => model.Id.ToString())
                         .ToList());
                     active?.Dispose();
                     NLoadoutPanelRoot.Instance?.CloseTopScreen();
@@ -441,8 +443,17 @@ public static class CustomRunCatalogSelector
             GetName = item => CommonHelpers.FormatRelicTitle(item.Model),
             GetSearchText = item => $"{item.Model.Id} {CommonHelpers.FormatRelicTitle(item.Model)} {item.Model.DynamicDescription.GetFormattedText()}",
             CapturePreloadResourcePaths = item => [item.Model.IconPath],
-            CreateView = (item, _) => NLoadoutPanel.CreateOwnedRelicGridItem(item.Model),
-            UpdateView = (item, view, _) => RefreshRelicView(view, item.Model),
+            CreateView = (item, state) =>
+            {
+                Control view = NLoadoutPanel.CreateOwnedRelicGridItem(item.Model);
+                LoadoutBag.UpdateRelicSelectionOutline(view, state);
+                return view;
+            },
+            UpdateView = (item, view, state) =>
+            {
+                RefreshRelicView(view, item.Model);
+                LoadoutBag.UpdateRelicSelectionOutline(view, state);
+            },
             BindActivationWithCleanup = (boundItem, view, activate) => rightClickOnly
                 ? RelicModifier.BindRightClickWithCleanup(
                     view,
@@ -700,6 +711,7 @@ public static class CustomRunCatalogSelector
             SelectionModelKind.Potion => LocMan.Loc("CATEGORY_POTION", "potion").ToLowerInvariant(),
             SelectionModelKind.Power => LocMan.Loc("CARD_TYPE_POWER", "power").ToLowerInvariant(),
             SelectionModelKind.Monster => LocMan.Loc("CUSTOM_RUN_MONSTER", "monster"),
+            SelectionModelKind.Event => LocMan.Loc("CUSTOM_RUN_EVENT", "event"),
             _ => kind.ToString().ToLowerInvariant()
         };
     }
@@ -724,7 +736,7 @@ public static class CustomRunCatalogSelector
         {
             _screen = screen;
             _leases = leases;
-            screen.Cancelled += Dispose;
+            screen.Cancelled += OnCancelled;
             screen.ScreenClosed += OnClosed;
         }
 
@@ -733,10 +745,16 @@ public static class CustomRunCatalogSelector
             if (_done)
                 return;
             _done = true;
-            _screen.Cancelled -= Dispose;
+            _screen.Cancelled -= OnCancelled;
             _screen.ScreenClosed -= OnClosed;
             foreach (IDisposable lease in _leases)
                 lease.Dispose();
+        }
+
+        private void OnCancelled()
+        {
+            Dispose();
+            NLoadoutPanelRoot.Instance?.CloseTopScreen();
         }
 
         private void OnClosed() => Callable.From(Dispose).CallDeferred();
@@ -758,7 +776,7 @@ public static class CustomRunCatalogSelector
             _lease = lease;
             _confirmed = confirmed;
             screen.Confirmed += confirmed;
-            screen.Cancelled += Dispose;
+            screen.Cancelled += OnCancelled;
             screen.ScreenClosed += OnClosed;
         }
 
@@ -768,9 +786,15 @@ public static class CustomRunCatalogSelector
                 return;
             _done = true;
             _screen.Confirmed -= _confirmed;
-            _screen.Cancelled -= Dispose;
+            _screen.Cancelled -= OnCancelled;
             _screen.ScreenClosed -= OnClosed;
             _lease.Dispose();
+        }
+
+        private void OnCancelled()
+        {
+            Dispose();
+            NLoadoutPanelRoot.Instance?.CloseTopScreen();
         }
 
         private void OnClosed() => Callable.From(Dispose).CallDeferred();
@@ -815,6 +839,7 @@ public static class CustomRunCatalogSelector
         {
             _cancelled();
             Dispose();
+            NLoadoutPanelRoot.Instance?.CloseTopScreen();
         }
 
         private void OnClosed()

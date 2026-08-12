@@ -559,18 +559,22 @@ public partial class NCustomRunRuleEditorScreen : Control
 
         if (_workingRule.Limit.Kind is RuleLimitKind.TimesPerTurn or RuleLimitKind.TimesPerCombat or RuleLimitKind.TimesPerRun)
         {
-            HBoxContainer countRow = CreateFieldRow(LocMan.Loc("CUSTOM_RUN_MAXIMUM_EXECUTIONS", "Maximum executions"));
-            NLoadoutNumberStepper count = new();
-            count.Init(_workingRule.Limit.Count);
-            count.ValueChanged += value =>
-            {
-                if (_workingRule is null)
-                    return;
-                _workingRule.Limit.Count = value;
-                MarkDirty();
-            };
-            countRow.AddChild(count);
-            _contentHost.AddChild(countRow);
+            RuleComponentSpec proxy = new();
+            RuleComponentParameterService.Set(proxy, "count", _workingRule.Limit.Count);
+            BuildNumericSourceParameter(
+                _contentHost,
+                proxy,
+                new RuleParameterDescriptor("count", "Maximum executions", RuleParameterKind.NumericSource)
+                {
+                    Minimum = 1
+                },
+                () =>
+                {
+                    if (_workingRule is null
+                        || !RuleComponentParameterService.TryGet(proxy, "count", out NumericValueSpec count))
+                        return;
+                    _workingRule.Limit.Count = count;
+                });
         }
         if (_workingRule.Limit.Kind == RuleLimitKind.UntilCondition)
         {
@@ -596,6 +600,9 @@ public partial class NCustomRunRuleEditorScreen : Control
             : allDescriptors;
         RuleComponentDescriptor? currentDescriptor = allDescriptors.FirstOrDefault(candidate =>
             string.Equals(candidate.StableId, component.TypeId, StringComparison.Ordinal));
+        descriptors = descriptors
+            .Where(candidate => !candidate.HiddenFromPicker || ReferenceEquals(candidate, currentDescriptor))
+            .ToList();
         if (currentDescriptor is not null && descriptors.All(candidate => candidate.StableId != currentDescriptor.StableId))
             descriptors = [currentDescriptor, .. descriptors];
         if (string.IsNullOrWhiteSpace(component.TypeId) && descriptors.Count > 0)
@@ -612,7 +619,7 @@ public partial class NCustomRunRuleEditorScreen : Control
         List<LoadoutDropdownOption> options = descriptors
             .Select(candidate => new LoadoutDropdownOption(
                 candidate.StableId,
-                $"{FormatComponentCategory(candidate.Category)}  •  {FormatComponentName(candidate)}{(CustomRunRegistry.IsCompatibleWithTrigger(candidate, _workingRule?.Trigger.TypeId ?? string.Empty) ? string.Empty : LocMan.Loc("CUSTOM_RUN_NOT_AVAILABLE_FOR_TRIGGER", "  (not available for this trigger)"))}"))
+                $"{FormatComponentCategory(candidate.Category)}  •  {FormatComponentName(candidate)}{(candidate.HiddenFromPicker ? LocMan.Loc("CUSTOM_RUN_LEGACY_COMPONENT", "  (legacy)") : string.Empty)}{(CustomRunRegistry.IsCompatibleWithTrigger(candidate, _workingRule?.Trigger.TypeId ?? string.Empty) ? string.Empty : LocMan.Loc("CUSTOM_RUN_NOT_AVAILABLE_FOR_TRIGGER", "  (not available for this trigger)"))}"))
             .ToList();
         if (descriptor is null && !string.IsNullOrWhiteSpace(component.TypeId))
             options.Insert(0, new LoadoutDropdownOption(component.TypeId, LocMan.Loc("CUSTOM_RUN_MISSING_VALUE", "Missing: {0}", component.TypeId)));
@@ -721,6 +728,9 @@ public partial class NCustomRunRuleEditorScreen : Control
                 break;
             case RuleParameterKind.Monster:
                 BuildModelParameter(parent, component, parameter, SelectionModelKind.Monster, afterChanged);
+                break;
+            case RuleParameterKind.Event:
+                BuildModelParameter(parent, component, parameter, SelectionModelKind.Event, afterChanged);
                 break;
             case RuleParameterKind.Role:
                 BuildReferenceParameter(parent, component, parameter, isRole: true, afterChanged);
@@ -1277,6 +1287,11 @@ public partial class NCustomRunRuleEditorScreen : Control
                 ModelMatchKind.SpecificModels, ModelMatchKind.Act, ModelMatchKind.MonsterCategory,
                 ModelMatchKind.TextContains, ModelMatchKind.Mod
             ],
+            SelectionModelKind.Event =>
+            [
+                ModelMatchKind.SpecificModels, ModelMatchKind.Act,
+                ModelMatchKind.TextContains, ModelMatchKind.Mod
+            ],
             _ => [ModelMatchKind.SpecificModels, ModelMatchKind.TextContains, ModelMatchKind.Mod]
         };
     }
@@ -1434,6 +1449,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             SelectionModelKind.Potion => LocMan.Loc("CUSTOM_RUN_POTIONS", "Potions"),
             SelectionModelKind.Power => LocMan.Loc("POWER_GIVER_ALL_POWERS", "Powers"),
             SelectionModelKind.Monster => LocMan.Loc("POWER_GIVER_TARGET_MONSTERS", "Monsters"),
+            SelectionModelKind.Event => LocMan.Loc("CUSTOM_RUN_EVENTS", "Events"),
             _ => kind.ToString()
         };
     }
@@ -1637,7 +1653,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             value = new NumericValueSpec
             {
                 Source = NumericValueSourceKind.Constant,
-                Constant = 1d,
+                Constant = parameter.DefaultNumeric,
                 ConstantKind = parameter.DefaultConstantKind
             };
         }
@@ -1718,7 +1734,10 @@ public partial class NCustomRunRuleEditorScreen : Control
                 else
                 {
                     NLoadoutNumberStepper constant = new();
-                    constant.Init((int)Math.Clamp(captured.Constant, int.MinValue, int.MaxValue));
+                    constant.Init(
+                        (int)Math.Clamp(captured.Constant, parameter.Minimum, parameter.Maximum),
+                        parameter.Minimum,
+                        parameter.Maximum);
                     constant.ValueChanged += changedValue =>
                     {
                         captured.Constant = changedValue;
@@ -1788,7 +1807,7 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         IReadOnlyList<RuleComponentDescriptor> descriptors = CustomRunRegistry.GetDescriptors(kind);
         RuleComponentDescriptor? descriptor = descriptors.FirstOrDefault(candidate => candidate.StableId == preferredId)
-                                             ?? descriptors.FirstOrDefault();
+                                             ?? descriptors.FirstOrDefault(candidate => !candidate.HiddenFromPicker);
         RuleComponentSpec component = new() { TypeId = descriptor?.StableId ?? string.Empty };
         if (descriptor is not null)
             RuleComponentParameterService.ApplyDefaults(component, descriptor);
@@ -2228,6 +2247,7 @@ public partial class NCustomRunRuleEditorScreen : Control
             PotionModel potion => CommonHelpers.FormatPotionTitle(potion),
             PowerModel power => CommonHelpers.FormatPowerTitle(power),
             MonsterModel monster => FormatMonsterTitle(monster),
+            EventModel eventModel => CommonHelpers.FormatEventTitle(eventModel),
             _ => entry.Model.Id.Entry
         };
     }

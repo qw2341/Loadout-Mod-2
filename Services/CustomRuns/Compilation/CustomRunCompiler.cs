@@ -487,6 +487,9 @@ public static class CustomRunCompiler
                 case RuleParameterKind.Monster:
                     CanonicalizeModelParameter(component, parameter.Key, SelectionModelKind.Monster);
                     break;
+                case RuleParameterKind.Event:
+                    CanonicalizeModelParameter(component, parameter.Key, SelectionModelKind.Event);
+                    break;
                 case RuleParameterKind.ModelFilter:
                     if (RuleComponentParameterService.TryGet(component, parameter.Key, out ModelMatchSpec matcher))
                     {

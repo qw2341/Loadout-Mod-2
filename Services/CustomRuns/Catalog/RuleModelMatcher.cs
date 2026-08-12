@@ -69,6 +69,7 @@ public static class RuleModelMatcher
             RelicModel relic => $"{CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription.GetFormattedText()}",
             PotionModel potion => CommonHelpers.FormatPotionTitle(potion),
             PowerModel power => CommonHelpers.FormatPowerTitle(power),
+            EventModel eventModel => CommonHelpers.FormatEventTitle(eventModel),
             _ => model.Id.Entry
         };
         return $"{model.Id} {titleAndText}";

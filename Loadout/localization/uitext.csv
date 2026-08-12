@@ -663,3 +663,23 @@ CUSTOM_RUN_DEFAULT_ROLE_NAME,Default Role,默认职责,Rôle par défaut,既定�
 CUSTOM_RUN_NEW_ROLE_NAME,New Role,新职责,Nouveau rôle,新しい役割,새 역할,Nuevo rol
 CUSTOM_RUN_MIN_SPACED,    MIN {0},    最少 {0},    MIN. {0},    最小 {0},    최소 {0},    MÍN. {0}
 CUSTOM_RUN_ENABLE_MODIFIERS,Enable Modifiers,启用特效,Activer les modificateurs,モディファイアを有効化,변경 요소 활성화,Activar modificadores
+CUSTOM_RUN_CATEGORY_EVENTS,Events,事件,Événements,イベント,이벤트,Eventos
+CUSTOM_RUN_EVENTS,Events,事件,Événements,イベント,이벤트,Eventos
+CUSTOM_RUN_EVENT,Event,事件,Événement,イベント,이벤트,Evento
+CUSTOM_RUN_EVENT_TYPE_EVENT,Event,事件,Événement,イベント,이벤트,Evento
+CUSTOM_RUN_EVENT_TYPE_ANCIENT,Ancient,先祖事件,Ancien,古代イベント,고대 이벤트,Antiguo
+CUSTOM_RUN_COMPONENT_ROOM_ENTERED,Room Entered,进入房间,Entrée dans une salle,部屋に入った,방 입장,Sala iniciada
+CUSTOM_RUN_COMPONENT_ROOM_COMPLETED,Room Completed,完成房间,Salle terminée,部屋を完了,방 완료,Sala completada
+CUSTOM_RUN_COMPONENT_EVENT_ENTERED,Event Entered,进入事件,Entrée dans un événement,イベントに入った,이벤트 입장,Evento iniciado
+CUSTOM_RUN_COMPONENT_EVENT_MATCHES,Event Matches,事件匹配,L'événement correspond,イベントが一致,이벤트 일치,El evento coincide
+CUSTOM_RUN_COMPONENT_ADD_CARDS_TO_HAND,Add Cards To Hand From Matcher,从匹配器将卡牌加入手牌,Ajouter à la main les cartes correspondantes,一致するカードを手札に加える,일치하는 카드를 손패에 추가,Añadir cartas coincidentes a la mano
+CUSTOM_RUN_COMPONENT_SET_PLAYER_DAMAGE_MULTIPLIER,Set Player Damage Multiplier,设置玩家伤害倍率,Définir le multiplicateur de dégâts du joueur,プレイヤーのダメージ倍率を設定,플레이어 피해 배율 설정,Definir multiplicador de daño del jugador
+CUSTOM_RUN_COMPONENT_SET_MONSTER_DAMAGE_MULTIPLIER,Set Monster Damage Multiplier,设置怪物伤害倍率,Définir le multiplicateur de dégâts des monstres,モンスターのダメージ倍率を設定,몬스터 피해 배율 설정,Definir multiplicador de daño de monstruos
+CUSTOM_RUN_COMPONENT_ENTER_EVENT,Enter Event Now,立即进入事件,Entrer dans l'événement maintenant,今すぐイベントに入る,지금 이벤트 입장,Entrar al evento ahora
+CUSTOM_RUN_COMPONENT_SET_NEXT_EVENT,Set Next Event,设置下一个事件,Définir le prochain événement,次のイベントを設定,다음 이벤트 설정,Definir próximo evento
+CUSTOM_RUN_PARAMETER_EVENT,Event,事件,Événement,イベント,이벤트,Evento
+CUSTOM_RUN_PARAMETER_EVENT_MATCHER,Event matcher,事件匹配器,Filtre d'événements,イベント照合,이벤트 일치 조건,Filtro de eventos
+CUSTOM_RUN_PARAMETER_NUMBER_TO_SELECT,Number to select,选择数量,Nombre à sélectionner,選択する数,선택할 수,Número a seleccionar
+CUSTOM_RUN_PARAMETER_MAXIMUM_EXECUTIONS,Maximum executions,最大执行次数,Exécutions maximales,最大実行回数,최대 실행 횟수,Ejecuciones máximas
+CUSTOM_RUN_LEGACY_COMPONENT,  (legacy),  （旧版）,  (hérité),  （旧式）,  (레거시),  (heredado)
+CUSTOM_RUN_CHOICE_TIMED_OUT,Loadout Custom Run: choice {0} timed out for player {1}.,Loadout 自定义游戏：玩家 {1} 的选择 {0} 已超时。,Partie personnalisée Loadout : le choix {0} a expiré pour le joueur {1}.,Loadout カスタムラン：プレイヤー {1} の選択 {0} がタイムアウトしました。,Loadout 커스텀 런: 플레이어 {1}의 선택 {0} 시간이 초과되었습니다.,Partida personalizada de Loadout: la elección {0} agotó el tiempo para el jugador {1}.

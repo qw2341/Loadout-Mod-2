@@ -11,6 +11,7 @@ using Godot;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Persistence;
 using Loadout.Services.Networking;
+using Loadout.UI;
 using Loadout.UI.CustomRuns;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -25,6 +26,7 @@ internal static class CustomRunRuntimeChoiceService
     private static RunLobby? _runLobby;
     private static long _requestSequence;
     private static IDisposable? _localChoiceSession;
+    private static long _localChoiceRequestId;
 
     public static void Register(INetGameService netService, RunLobby? runLobby)
     {
@@ -60,6 +62,7 @@ internal static class CustomRunRuntimeChoiceService
         }
         _localChoiceSession?.Dispose();
         _localChoiceSession = null;
+        _localChoiceRequestId = 0;
         _netService = null;
         _runLobby = null;
         _requestSequence = 0;
@@ -85,8 +88,9 @@ internal static class CustomRunRuntimeChoiceService
             TargetPlayerId = targetPlayerId,
             ModelKind = kind,
             AllowedModelIds = allowedModelIds.Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToList(),
-            Minimum = canSkip ? 0 : minimum,
-            Maximum = maximum
+            Minimum = minimum,
+            Maximum = maximum,
+            CanSkip = canSkip
         };
         TaskCompletionSource<IReadOnlyList<string>> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (Gate)
@@ -107,8 +111,13 @@ internal static class CustomRunRuntimeChoiceService
             PendingHostChoices.Remove(requestId);
         if (completed != completion.Task)
         {
-            GD.PushWarning($"Loadout Custom Run: choice {requestId} timed out for player {targetPlayerId}.");
-            return [];
+            GD.PushWarning(Loadout.UI.Managers.LocMan.Loc(
+                "CUSTOM_RUN_CHOICE_TIMED_OUT",
+                "Loadout Custom Run: choice {0} timed out for player {1}.",
+                requestId,
+                targetPlayerId));
+            CloseLocalChoice(requestId);
+            return GetFallback(request);
         }
         return await completion.Task;
     }
@@ -182,7 +191,7 @@ internal static class CustomRunRuntimeChoiceService
         if (!CustomRunRuntimeProtocolValidation.IsValidChoiceResponse(request, response, senderId))
         {
             GD.PushWarning($"Loadout Custom Run: rejected forged or stale choice response {response.RequestId} from {senderId}.");
-            pending.Completion.TrySetResult([]);
+            pending.Completion.TrySetResult(GetFallback(request));
             return;
         }
         pending.Completion.TrySetResult(response.Cancelled ? [] : response.SelectedModelIds);
@@ -194,20 +203,32 @@ internal static class CustomRunRuntimeChoiceService
     {
         _localChoiceSession?.Dispose();
         _localChoiceSession = null;
+        _localChoiceRequestId = request.RequestId;
         bool opened = CustomRunCatalogSelector.TryOpenCatalogChoice(
             request.ModelKind,
             request.AllowedModelIds,
             request.Minimum,
             request.Maximum,
-            selected => completed(CreateResponse(request, selected, cancelled: false)),
-            () => completed(CreateResponse(request, [], cancelled: true)),
+            request.CanSkip,
+            selected =>
+            {
+                MarkLocalChoiceCompleted(request.RequestId);
+                completed(CreateResponse(request, selected, cancelled: false));
+            },
+            () =>
+            {
+                MarkLocalChoiceCompleted(request.RequestId);
+                completed(CreateResponse(request, [], cancelled: true));
+            },
             out _localChoiceSession,
             out string error);
         if (!opened)
         {
             GD.PushWarning($"Loadout Custom Run: could not open choice {request.RequestId}. {error}");
             completed(CreateResponse(request, [], cancelled: true));
+            return;
         }
+        _ = ExpireLocalChoiceAsync(request, completed);
     }
 
     private static void OnRemotePlayerDisconnected(ulong playerId)
@@ -220,7 +241,7 @@ internal static class CustomRunRuntimeChoiceService
                 .ToArray();
         }
         foreach (PendingHostChoice pending in cancelled)
-            pending.Completion.TrySetResult([]);
+            pending.Completion.TrySetResult(GetFallback(pending.Request));
     }
 
     private static void OnLocalPlayerDisconnected()
@@ -228,10 +249,11 @@ internal static class CustomRunRuntimeChoiceService
         lock (Gate)
         {
             foreach (PendingHostChoice pending in PendingHostChoices.Values)
-                pending.Completion.TrySetResult([]);
+                pending.Completion.TrySetResult(GetFallback(pending.Request));
         }
         _localChoiceSession?.Dispose();
         _localChoiceSession = null;
+        _localChoiceRequestId = 0;
     }
 
     private static CustomRunChoiceResponse CreateResponse(
@@ -247,6 +269,47 @@ internal static class CustomRunRuntimeChoiceService
             Cancelled = cancelled,
             SelectedModelIds = selected.ToList()
         };
+    }
+
+    private static IReadOnlyList<string> GetFallback(CustomRunChoiceRequest request)
+    {
+        if (request.CanSkip)
+            return [];
+        return request.AllowedModelIds
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .Take(Math.Clamp(request.Minimum, 0, request.AllowedModelIds.Count))
+            .ToList();
+    }
+
+    private static void CloseLocalChoice(long requestId)
+    {
+        if (_localChoiceRequestId != requestId)
+            return;
+        _localChoiceSession?.Dispose();
+        _localChoiceSession = null;
+        _localChoiceRequestId = 0;
+        NLoadoutPanelRoot.Instance?.CloseTopScreen();
+    }
+
+    private static void MarkLocalChoiceCompleted(long requestId)
+    {
+        if (_localChoiceRequestId != requestId)
+            return;
+        _localChoiceSession = null;
+        _localChoiceRequestId = 0;
+    }
+
+    private static async Task ExpireLocalChoiceAsync(
+        CustomRunChoiceRequest request,
+        Action<CustomRunChoiceResponse> completed)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(59));
+        if (_localChoiceRequestId != request.RequestId)
+            return;
+        IReadOnlyList<string> fallback = GetFallback(request);
+        CloseLocalChoice(request.RequestId);
+        completed(CreateResponse(request, fallback, cancelled: request.CanSkip));
     }
 
     private sealed record PendingHostChoice(

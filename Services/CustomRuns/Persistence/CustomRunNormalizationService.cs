@@ -307,6 +307,18 @@ public static class CustomRunNormalizationService
         foreach (RuleComponentSpec action in rule.Actions)
             NormalizeKnownParameters(action, RuleComponentKind.Action);
         rule.Limit ??= new RuleLimitDefinition();
+        rule.Limit.Count ??= NumericValueSpec.Integer(1);
+        rule.Limit.Count.ReferenceId = string.IsNullOrWhiteSpace(rule.Limit.Count.ReferenceId)
+            ? null
+            : rule.Limit.Count.ReferenceId.Trim();
+        if (rule.Limit.Count.Source == NumericValueSourceKind.Constant)
+        {
+            rule.Limit.Count.ConstantKind = NumericConstantKind.Integer;
+            rule.Limit.Count.Constant = Math.Max(1d, Math.Truncate(Math.Clamp(
+                rule.Limit.Count.Constant,
+                int.MinValue,
+                int.MaxValue)));
+        }
         if (!Enum.IsDefined(rule.Limit.Kind))
             rule.Limit.Kind = RuleLimitKind.Unlimited;
         rule.Limit.Kind = rule.Limit.Kind switch
@@ -395,7 +407,7 @@ public static class CustomRunNormalizationService
                 if (!parameter.AllowDouble)
                 {
                     numeric.ConstantKind = NumericConstantKind.Integer;
-                    numeric.Constant = Math.Truncate(Math.Clamp(numeric.Constant, int.MinValue, int.MaxValue));
+                    numeric.Constant = Math.Truncate(Math.Clamp(numeric.Constant, parameter.Minimum, parameter.Maximum));
                 }
                 RuleComponentParameterService.Set(component, parameter.Key, numeric);
             }

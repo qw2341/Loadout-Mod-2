@@ -15,12 +15,13 @@ public enum SelectionMode
 
 public enum SelectionModelKind
 {
-    Card,
-    Relic,
-    Potion,
-    Character,
-    Power,
-    Monster
+    Card = 0,
+    Relic = 1,
+    Potion = 2,
+    Character = 3,
+    Power = 4,
+    Monster = 5,
+    Event = 6
 }
 
 public sealed class SelectionSpec

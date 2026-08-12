@@ -368,6 +368,10 @@ public partial class NLoadoutPanelRoot : Control
 
 	public bool CloseTopScreen()
 	{
+		if (_screenHistory.TryPeek(out var currentScreen)
+		    && currentScreen is NGenericSelectScreen selectScreen
+		    && !selectScreen.CanCloseFromBackNavigation)
+			return false;
 		if (!_screenHistory.TryPop(out var screen))
 			return false;
 

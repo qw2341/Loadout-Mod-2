@@ -337,16 +337,17 @@ public partial class NGenericSelectScreen : Control
     
     private void SetActionButtonsActive(bool active)
     {
+        bool canCancel = _reusedSelectionSession?.AllowCancellation != false;
         if (_cancelButton is not null)
         {
-            _cancelButton.Visible = active;
-            _cancelButton.Disabled = !active;
+            _cancelButton.Visible = active && canCancel;
+            _cancelButton.Disabled = !active || !canCancel;
         }
 
         if (_cancelClickable is not null)
         {
-            _cancelClickable.Visible = active;
-            _cancelClickable.SetEnabled(active);
+            _cancelClickable.Visible = active && canCancel;
+            _cancelClickable.SetEnabled(active && canCancel);
             ResetActionButtonVisualState(_cancelClickable);
         }
 
@@ -1623,7 +1624,8 @@ public partial class NGenericSelectScreen : Control
         bool allowSignedAmounts = false,
         bool showSelectionChrome = true,
         bool useCustomRunBackdrop = false,
-        Action<string, int>? selectionAmountChanged = null)
+        Action<string, int>? selectionAmountChanged = null,
+        bool allowCancellation = true)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (_reusedSelectionSession is not null)
@@ -1638,7 +1640,8 @@ public partial class NGenericSelectScreen : Control
             allowSignedAmounts,
             showSelectionChrome,
             useCustomRunBackdrop,
-            selectionAmountChanged);
+            selectionAmountChanged,
+            allowCancellation);
         _reusedSelectionSession = session;
         _options = options;
         _selectedAmounts.Clear();
@@ -1755,6 +1758,8 @@ public partial class NGenericSelectScreen : Control
 
     public void CancelSelection()
     {
+        if (_reusedSelectionSession?.AllowCancellation == false)
+            return;
         // GD.Print($"NGenericSelectScreen CancelSelection fired. Visible={Visible}, IsVisibleInTree={IsVisibleInTree()}, Path={GetPath()}");
 
         CloseOpenDropdowns();
@@ -4003,7 +4008,8 @@ public partial class NGenericSelectScreen : Control
             bool allowSignedAmounts,
             bool showSelectionChrome,
             bool useCustomRunBackdrop,
-            Action<string, int>? selectionAmountChanged)
+            Action<string, int>? selectionAmountChanged,
+            bool allowCancellation)
         {
             _owner = owner;
             _previousOptions = previousOptions;
@@ -4013,6 +4019,7 @@ public partial class NGenericSelectScreen : Control
             _selectionAmountChanged = selectionAmountChanged;
             AllowSignedAmounts = allowSignedAmounts;
             ShowSelectionChrome = showSelectionChrome;
+            AllowCancellation = allowCancellation;
             CaptureVisibility(owner._actionButtonsContainer);
             CaptureVisibility(owner._bottomActionButtonsContainer);
             CaptureVisibility(owner._customControlsContainer);
@@ -4024,6 +4031,7 @@ public partial class NGenericSelectScreen : Control
         public Func<IGenericSelectItem, bool>? PreviousVisibilityPredicate { get; }
         public bool AllowSignedAmounts { get; }
         public bool ShowSelectionChrome { get; }
+        public bool AllowCancellation { get; }
 
         public void NotifySelectionAmountChanged(string itemId, int amount)
         {
@@ -5015,16 +5023,19 @@ public partial class NGenericSelectScreen : Control
             _confirmClickable.SetEnabled(isActive && usesSelection && IsConfirmAllowed());
         }
 
+        bool canCancel = _reusedSelectionSession?.AllowCancellation != false;
         if (_cancelButton is not null)
-            _cancelButton.Visible = isActive;
+            _cancelButton.Visible = isActive && canCancel;
 
         if (_cancelClickable is not null)
         {
-            _cancelClickable.Visible = isActive;
-            _cancelClickable.SetEnabled(isActive);
+            _cancelClickable.Visible = isActive && canCancel;
+            _cancelClickable.SetEnabled(isActive && canCancel);
             ResetActionButtonVisualState(_cancelClickable);
         }
     }
+
+    public bool CanCloseFromBackNavigation => _reusedSelectionSession?.AllowCancellation != false;
 }
 
 public static class SelectScreenLoc

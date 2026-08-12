@@ -239,6 +239,27 @@ public static class CustomRunValidator
                 else
                     ValidateComponentParameters(definition, rule, action, actionDescriptor, result);
             }
+            if (rule.Limit.Kind is RuleLimitKind.TimesPerTurn or RuleLimitKind.TimesPerCombat or RuleLimitKind.TimesPerRun)
+            {
+                RuleComponentSpec limit = new();
+                RuleComponentParameterService.Set(limit, "count", rule.Limit.Count);
+                ValidateNumericSourceParameter(
+                    definition,
+                    limit,
+                    rule,
+                    new RuleComponentDescriptor
+                    {
+                        StableId = "Loadout2:RuleLimit",
+                        DisplayName = "Rule Limit",
+                        Category = "Rules",
+                        Kind = RuleComponentKind.Condition
+                    },
+                    new RuleParameterDescriptor("count", "Maximum executions", RuleParameterKind.NumericSource)
+                    {
+                        Minimum = 1
+                    },
+                    result);
+            }
             if (rule.Limit.Kind == RuleLimitKind.UntilCondition)
                 ValidateConditions(definition, rule.Limit.UntilConditions, rule, result);
         }
@@ -312,6 +333,9 @@ public static class CustomRunValidator
                     break;
                 case RuleParameterKind.Monster:
                     ValidateModelParameter(definition, component, rule, descriptor, parameter, SelectionModelKind.Monster, result);
+                    break;
+                case RuleParameterKind.Event:
+                    ValidateModelParameter(definition, component, rule, descriptor, parameter, SelectionModelKind.Event, result);
                     break;
                 case RuleParameterKind.Role:
                     ValidateReferenceParameter(
@@ -587,6 +611,11 @@ public static class CustomRunValidator
                     && variable.ValueType == VariableValueType.Number)))
         {
             RuleParameterError(result, rule, descriptor, parameter, "references a missing or non-Number variable");
+        }
+        if (value.Source == NumericValueSourceKind.Constant
+            && (value.Constant < parameter.Minimum || value.Constant > parameter.Maximum))
+        {
+            RuleParameterError(result, rule, descriptor, parameter, $"must be between {parameter.Minimum} and {parameter.Maximum}");
         }
         if (value.Source == NumericValueSourceKind.EventContext
             && value.ReferenceId is not ("CurrentHp" or "MaxHp" or "Gold" or "Energy" or "TurnNumber" or "PlayerCount"))

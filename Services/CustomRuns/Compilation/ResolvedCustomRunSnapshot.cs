@@ -10,7 +10,7 @@ using Loadout.Services.CustomRuns.Models;
 public sealed class ResolvedCustomRunSnapshot
 {
     public const int MinimumSupportedSchemaVersion = 2;
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
     public const int ModifiersIntroducedInSchemaVersion = 3;
 
     [JsonPropertyName("schemaVersion")]

@@ -607,6 +607,33 @@ public static class TildeKeyStateService
         RaiseStateChanged();
     }
 
+    public static void ApplyCustomRunDamageMultiplier(
+        string statId,
+        int value,
+        IReadOnlyList<Player> players)
+    {
+        if (statId is not (PlayerDamageMultiplierStatId or EnemyDamageMultiplierStatId)
+            || !DefinitionById.TryGetValue(statId, out TildeKeyStatDefinition? definition))
+            return;
+
+        EnsureLoaded();
+        List<Player> distinctPlayers = players
+            .DistinctBy(player => player.NetId)
+            .ToList();
+        bool savedValueChanged = false;
+        foreach (Player player in distinctPlayers)
+        {
+            savedValueChanged |= UpdateSavedValueAfterSet(player.NetId, definition.Id, value);
+            ApplyStat(definition, player, value);
+        }
+
+        if (savedValueChanged)
+            SaveRunState();
+        RefreshDynamicLockPatches();
+        RefreshCombatPreviewsForStatChange(definition.Id, distinctPlayers);
+        RaiseStateChanged();
+    }
+
     public static void ApplySynchronizedStatLock(
         string payloadJson,
         int value,

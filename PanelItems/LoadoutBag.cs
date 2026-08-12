@@ -34,9 +34,13 @@ public class LoadoutBag
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription.GetFormattedText()}",
 				CapturePreloadResourcePaths = relic => [relic.IconPath],
-				CreateView = (relic, _) => CreateRelicGridItem(relic),
+				CreateView = (relic, state) => CreateRelicGridItem(relic, state),
 				ViewReady = (relic, view) => RefreshRelicGridItem(view, relic),
-				UpdateView = (relic, view, _) => RefreshRelicGridItem(view, relic),
+				UpdateView = (relic, view, state) =>
+				{
+					RefreshRelicGridItem(view, relic);
+					UpdateRelicSelectionOutline(view, state);
+				},
 				BindActivationWithCleanup = (_, view, activate) => BindRelicActivationWithCleanup(view, activate)
 			}, builder =>
 			{
@@ -198,7 +202,7 @@ public class LoadoutBag
 	    }
     }
 
-    private static Control CreateRelicGridItem(RelicModel model)
+    private static Control CreateRelicGridItem(RelicModel model, SelectItemState state)
     {
 	    NRelicBasicHolder holder = NRelicBasicHolder.Create(model);
 	    if (holder is null)
@@ -206,7 +210,29 @@ public class LoadoutBag
 
 	    holder.MouseFilter = Control.MouseFilterEnum.Pass;
 	    holder.CustomMinimumSize = new Vector2(68f, 68f);
+	    UpdateRelicSelectionOutline(holder, state);
 	    return holder;
+    }
+
+    public static void UpdateRelicSelectionOutline(Control view, SelectItemState state)
+    {
+        const string outlineName = "LoadoutSelectionOutline";
+        ReferenceRect? outline = view.GetNodeOrNull<ReferenceRect>(outlineName);
+        if (outline is null)
+        {
+            outline = new ReferenceRect
+            {
+                Name = outlineName,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                BorderColor = new Color(1f, 0.82f, 0.08f, 0.98f),
+                BorderWidth = 7f,
+                EditorOnly = false,
+                ZIndex = 50
+            };
+            outline.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            view.AddChild(outline);
+        }
+        outline.Visible = state.IsSelected;
     }
 
     private static void RefreshRelicGridItem(Control view, RelicModel model)

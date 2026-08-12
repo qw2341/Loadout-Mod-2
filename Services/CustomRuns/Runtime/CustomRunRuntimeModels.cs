@@ -122,6 +122,12 @@ public sealed class CustomRunRuntimeState
 
     [JsonPropertyName("playerTurnActive")]
     public bool PlayerTurnActive { get; set; }
+
+    [JsonPropertyName("pendingEventModelId")]
+    public string PendingEventModelId { get; set; } = string.Empty;
+
+    [JsonPropertyName("lastCompletedRoomToken")]
+    public string LastCompletedRoomToken { get; set; } = string.Empty;
 }
 
 public sealed class CustomRunRuntimeSaveEnvelope
@@ -179,6 +185,9 @@ public sealed class CustomRunChoiceRequest
 
     [JsonPropertyName("maximum")]
     public int Maximum { get; set; }
+
+    [JsonPropertyName("canSkip")]
+    public bool CanSkip { get; set; }
 }
 
 public sealed class CustomRunChoiceResponse

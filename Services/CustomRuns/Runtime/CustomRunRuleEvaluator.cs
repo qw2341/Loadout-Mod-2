@@ -5,13 +5,16 @@ namespace Loadout.Services.CustomRuns.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
+using HarmonyLib;
 using Loadout.Services.Actions;
 using Loadout.Services.Compatibility;
 using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Registry;
+using Loadout.Services.TildeKey;
 using Loadout.UI.Screens;
 using Loadout.UI;
 using MegaCrit.Sts2.Core.Combat;
@@ -20,12 +23,20 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
 
 internal static class CustomRunRuleEvaluator
 {
+    private static readonly MethodInfo? CreateRoomMethod = AccessTools.Method(
+        typeof(RunManager),
+        "CreateRoom",
+        [typeof(RoomType), typeof(MapPointType), typeof(AbstractModel)]);
+
     public static bool AllowsByLimit(
         CustomRunRuntimeEvent runtimeEvent,
         CompiledRuleDefinition rule,
@@ -35,7 +46,8 @@ internal static class CustomRunRuleEvaluator
         CustomRunRuleCounterState counter = CustomRunRuleRuntimeService.GetCounter(rule.Id);
         bool untilConditionMet = limit.Kind == RuleLimitKind.UntilCondition
                                  && EvaluateConditions(limit.UntilConditions, runtimeEvent, rule.Id);
-        return CustomRunRuleLimitLogic.Allows(limit, counter, priorChainExecutions, untilConditionMet);
+        int maximum = ToTruncatedInt(ReadNumber(limit.Count, runtimeEvent, rule.Id), 1, int.MaxValue);
+        return CustomRunRuleLimitLogic.Allows(limit.Kind, maximum, counter, priorChainExecutions, untilConditionMet);
     }
 
     public static bool EvaluateConditions(
@@ -87,6 +99,7 @@ internal static class CustomRunRuleEvaluator
             case "Loadout2:ObtainRelics":
             case "Loadout2:ObtainPotions":
             case "Loadout2:SpawnMonsters":
+            case "Loadout2:AddCardsToHand":
                 await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision);
                 break;
             case "Loadout2:GainPowers":
@@ -119,6 +132,16 @@ internal static class CustomRunRuleEvaluator
                 }
                 else
                     decision.Amount = ReadNumber(action, "amount", runtimeEvent, ruleId);
+                break;
+            case "Loadout2:SetPlayerDamageMultiplier":
+            case "Loadout2:SetMonsterDamageMultiplier":
+                decision.Amount = ReadNumber(action, "percent", runtimeEvent, ruleId);
+                break;
+            case "Loadout2:EnterEvent":
+                decision.ModelIds = GetExactModel(action, "eventId", SelectionModelKind.Event);
+                break;
+            case "Loadout2:SetNextEvent":
+                decision.ModelIds = [RuleComponentParameterService.GetString(action, "eventId")];
                 break;
             default:
                 return null;
@@ -247,8 +270,32 @@ internal static class CustomRunRuleEvaluator
                 if (Enum.TryParse(decision.Pile, out PileType pile))
                 {
                     foreach (Player target in targets)
-                        await AddCombatCardsAsync(target, decision.ModelIds, Math.Max(0, (int)Math.Truncate(decision.Amount)), pile);
+                        await AddCombatCardsAsync(target, decision.ModelIds, ToTruncatedInt(decision.Amount, 0, int.MaxValue), pile);
                 }
+                break;
+            case "Loadout2:AddCardsToHand":
+                foreach (Player target in targets)
+                    await AddCombatCardsAsync(target, GetModelsForPlayer(decision, target.NetId), 1, PileType.Hand);
+                break;
+            case "Loadout2:SetPlayerDamageMultiplier":
+                TildeKeyStateService.ApplyCustomRunDamageMultiplier(
+                    TildeKeyStateService.PlayerDamageMultiplierStatId,
+                    ToTruncatedInt(decision.Amount, int.MinValue, int.MaxValue),
+                    targets);
+                break;
+            case "Loadout2:SetMonsterDamageMultiplier":
+                TildeKeyStateService.ApplyCustomRunDamageMultiplier(
+                    TildeKeyStateService.EnemyDamageMultiplierStatId,
+                    ToTruncatedInt(decision.Amount, int.MinValue, int.MaxValue),
+                    targets);
+                break;
+            case "Loadout2:EnterEvent":
+                if (decision.ModelIds.FirstOrDefault() is { } eventId)
+                    await EnterEventAsync(eventId);
+                break;
+            case "Loadout2:SetNextEvent":
+                if (decision.ModelIds.FirstOrDefault() is { } nextEventId)
+                    CustomRunRuleRuntimeService.SetPendingEventModel(nextEventId);
                 break;
             case "Loadout2:SetVariable":
                 CustomRunRuleRuntimeService.Variables.Set(
@@ -294,16 +341,17 @@ internal static class CustomRunRuleEvaluator
             "Loadout2:PotionMatches" => MatchesEventModel(condition, runtimeEvent, "matcher", SelectionModelKind.Potion),
             "Loadout2:PowerMatches" => MatchesEventModel(condition, runtimeEvent, "matcher", SelectionModelKind.Power),
             "Loadout2:MonsterMatches" => MatchesEventModel(condition, runtimeEvent, "matcher", SelectionModelKind.Monster),
+            "Loadout2:EventMatches" => MatchesEventModel(condition, runtimeEvent, "matcher", SelectionModelKind.Event),
             "Loadout2:PlayerHasCard" => ResolveTargets(GetTarget(condition), runtimeEvent).Any(player =>
                 player.Deck.Cards.Any(card => ModelMatches(card, RuleComponentParameterService.GetString(condition, "cardId")))),
             "Loadout2:PlayerHasRelic" => ResolveTargets(GetTarget(condition), runtimeEvent).Any(player =>
                 player.Relics.Any(relic => ModelMatches(relic, RuleComponentParameterService.GetString(condition, "relicId")))),
             "Loadout2:PlayerHasPower" => ResolveTargets(GetTarget(condition), runtimeEvent).Any(player =>
                 player.Creature.Powers.Any(power => ModelMatches(power, RuleComponentParameterService.GetString(condition, "powerId")))),
-            "Loadout2:PlayerHasCardsMatching" => HasMatchingInventory(condition, runtimeEvent, player => player.Deck.Cards),
-            "Loadout2:PlayerHasRelicsMatching" => HasMatchingInventory(condition, runtimeEvent, player => player.Relics),
-            "Loadout2:PlayerHasPotionsMatching" => HasMatchingInventory(condition, runtimeEvent, player => player.Potions),
-            "Loadout2:PlayerHasPowersMatching" => HasMatchingInventory(condition, runtimeEvent, player => player.Creature.Powers),
+            "Loadout2:PlayerHasCardsMatching" => HasMatchingInventory(condition, runtimeEvent, ruleId, player => player.Deck.Cards),
+            "Loadout2:PlayerHasRelicsMatching" => HasMatchingInventory(condition, runtimeEvent, ruleId, player => player.Relics),
+            "Loadout2:PlayerHasPotionsMatching" => HasMatchingInventory(condition, runtimeEvent, ruleId, player => player.Potions),
+            "Loadout2:PlayerHasPowersMatching" => HasMatchingInventory(condition, runtimeEvent, ruleId, player => player.Creature.Powers),
             "Loadout2:NumericComparison" => Compare(
                 ReadNumber(condition, "left", runtimeEvent, ruleId),
                 ReadNumber(condition, "right", runtimeEvent, ruleId),
@@ -335,12 +383,13 @@ internal static class CustomRunRuleEvaluator
     private static bool HasMatchingInventory<TModel>(
         RuleComponentSpec condition,
         CustomRunRuntimeEvent runtimeEvent,
+        string ruleId,
         Func<Player, IEnumerable<TModel>> selector)
         where TModel : AbstractModel
     {
         if (!RuleComponentParameterService.TryGet(condition, "matcher", out ModelMatchSpec matcher))
             return false;
-        int minimum = Math.Max(0, RuleComponentParameterService.GetInt32(condition, "minimumMatches", 1));
+        int minimum = ToTruncatedInt(ReadNumber(condition, "minimumMatches", runtimeEvent, ruleId), 0, int.MaxValue);
         HashSet<string> ids = matcher.ModelIds.ToHashSet(StringComparer.Ordinal);
         return ResolveTargets(GetTarget(condition), runtimeEvent).Any(player =>
             selector(player).Count(model => ids.Contains(model.Id.ToString())) >= minimum);
@@ -384,6 +433,14 @@ internal static class CustomRunRuleEvaluator
     {
         if (!RuleComponentParameterService.TryGet(component, key, out NumericValueSpec value))
             return 0d;
+        return ReadNumber(value, runtimeEvent, ruleId);
+    }
+
+    private static double ReadNumber(
+        NumericValueSpec value,
+        CustomRunRuntimeEvent runtimeEvent,
+        string ruleId)
+    {
         return value.Source switch
         {
             NumericValueSourceKind.Constant => value.Constant,
@@ -474,14 +531,18 @@ internal static class CustomRunRuleEvaluator
         IReadOnlyList<Player> targets,
         CustomRunResolvedDecision decision)
     {
-        _ = ruleId;
         if (!RuleComponentParameterService.TryGet(action, "matcher", out ModelMatchSpec matcher))
             return;
         List<string> available = matcher.ModelIds
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToList();
-        int count = Math.Clamp(RuleComponentParameterService.GetInt32(action, "count", 1), 0, available.Count);
+        int count = ToTruncatedInt(
+            ReadNumber(action, "count", runtimeEvent, ruleId),
+            0,
+            Math.Min(50, available.Count));
+        if (count == 0)
+            return;
         if (string.Equals(RuleComponentParameterService.GetString(action, "selectionMode"), "Choose", StringComparison.Ordinal)
             && targets.Count > 0)
         {
@@ -575,6 +636,19 @@ internal static class CustomRunRuleEvaluator
             await CardPileCmd.AddGeneratedCardsToCombat(cards, pile, target);
     }
 
+    private static async Task EnterEventAsync(string eventId)
+    {
+        if (!CustomRunCatalogService.TryResolve(SelectionModelKind.Event, eventId, out CustomRunCatalogEntry entry)
+            || entry.Model is not EventModel eventModel)
+            return;
+        RunState runState = CustomRunRuleRuntimeService.RunState;
+        if (runState.CurrentRoom is EventRoom active
+            && string.Equals(active.CanonicalEvent.Id.ToString(), eventModel.Id.ToString(), StringComparison.Ordinal))
+            return;
+        if (CreateRoomMethod?.Invoke(RunManager.Instance, [RoomType.Event, MapPointType.Unknown, eventModel]) is AbstractRoom room)
+            await RunManager.Instance.EnterRoom(room);
+    }
+
     private static TModel? ResolveModel<TModel>(SelectionModelKind kind, string id)
         where TModel : AbstractModel
     {
@@ -610,9 +684,20 @@ internal static class CustomRunRuleEvaluator
         return (decimal)Math.Clamp(value, (double)decimal.MinValue, (double)decimal.MaxValue);
     }
 
+    private static int ToTruncatedInt(double value, int minimum, int maximum)
+    {
+        if (double.IsNaN(value))
+            return minimum;
+        if (value <= minimum)
+            return minimum;
+        if (value >= maximum)
+            return maximum;
+        return (int)Math.Truncate(value);
+    }
+
     private static bool RequiresPlayers(string actionTypeId)
     {
-        return actionTypeId != "Loadout2:SpawnMonsters";
+        return actionTypeId is not ("Loadout2:SpawnMonsters" or "Loadout2:EnterEvent" or "Loadout2:SetNextEvent");
     }
 
     private static bool RequiresModels(string actionTypeId)
@@ -620,6 +705,7 @@ internal static class CustomRunRuleEvaluator
         return actionTypeId is "Loadout2:GainPower" or "Loadout2:ObtainCard" or "Loadout2:ObtainRelic"
             or "Loadout2:ObtainPotion" or "Loadout2:ObtainCards" or "Loadout2:ObtainRelics"
             or "Loadout2:ObtainPotions" or "Loadout2:GainPowers" or "Loadout2:SpawnMonsters"
-            or "Loadout2:AddCardToHand" or "Loadout2:AddCardToDrawPile" or "Loadout2:AddCardToDiscardPile";
+            or "Loadout2:AddCardToHand" or "Loadout2:AddCardsToHand" or "Loadout2:AddCardToDrawPile" or "Loadout2:AddCardToDiscardPile"
+            or "Loadout2:EnterEvent" or "Loadout2:SetNextEvent";
     }
 }

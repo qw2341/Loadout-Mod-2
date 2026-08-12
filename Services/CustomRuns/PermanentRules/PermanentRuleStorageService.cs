@@ -247,6 +247,9 @@ public static class PermanentRuleStorageService
         IEnumerable<VariableDefinition> availableVariables)
     {
         HashSet<string> ids = [];
+        if (rule.Limit.Count.Source == NumericValueSourceKind.Variable
+            && !string.IsNullOrWhiteSpace(rule.Limit.Count.ReferenceId))
+            ids.Add(rule.Limit.Count.ReferenceId);
         CollectVariableIds(rule.Trigger, ids);
         CollectVariableIds(rule.Conditions, ids);
         CollectVariableIds(rule.Limit.UntilConditions, ids);
@@ -290,6 +293,10 @@ public static class PermanentRuleStorageService
 
     private static void RemapVariableIds(RuleDefinition rule, IReadOnlyDictionary<string, string> ids)
     {
+        if (rule.Limit.Count.Source == NumericValueSourceKind.Variable
+            && rule.Limit.Count.ReferenceId is not null
+            && ids.TryGetValue(rule.Limit.Count.ReferenceId, out string? limitReplacement))
+            rule.Limit.Count.ReferenceId = limitReplacement;
         RemapVariableIds(rule.Trigger, ids);
         RemapVariableIds(rule.Conditions, ids);
         RemapVariableIds(rule.Limit.UntilConditions, ids);

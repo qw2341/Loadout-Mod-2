@@ -24,6 +24,8 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
@@ -173,6 +175,81 @@ public static class CustomRunAfterCardPlayedPatch
     {
         __result = CaptureAfterAsync(__result, "Loadout2:CardPlayed", cardPlay.Card.Owner.NetId,
             SelectionModelKind.Card, cardPlay.Card.Id.ToString());
+    }
+}
+
+[HarmonyPatch(typeof(Hook), nameof(Hook.AfterRoomEntered))]
+public static class CustomRunAfterRoomEnteredPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(IRunState runState, AbstractRoom room, ref Task __result)
+    {
+        __result = CaptureAfterRoomEnteredAsync(__result, runState, room);
+    }
+
+    private static async Task CaptureAfterRoomEnteredAsync(Task nativeTask, IRunState runState, AbstractRoom room)
+    {
+        await nativeTask;
+        if (runState is not RunState concrete || !CustomRunRuleRuntimeService.IsForRun(concrete))
+            return;
+        CustomRunRuleRuntimeService.Capture("Loadout2:RoomEntered", 0);
+        if (room is EventRoom eventRoom)
+        {
+            CustomRunRuleRuntimeService.Capture(
+                "Loadout2:EventEntered",
+                0,
+                SelectionModelKind.Event,
+                eventRoom.CanonicalEvent.Id.ToString());
+        }
+    }
+}
+
+[HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.Open))]
+public static class CustomRunRoomCompletedPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(bool isOpenedFromTopBar, out AbstractRoom? __state)
+    {
+        __state = !isOpenedFromTopBar
+            ? RunManager.Instance.DebugOnlyGetState()?.CurrentRoom
+            : null;
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(AbstractRoom? __state)
+    {
+        if (__state is not null)
+            CustomRunRuleRuntimeService.CaptureRoomCompleted(__state);
+    }
+}
+
+[HarmonyPatch]
+public static class CustomRunPendingEventRoomPatch
+{
+    public static MethodBase TargetMethod()
+    {
+        return AccessTools.GetDeclaredMethods(typeof(RunManager))
+                   .Single(method => method.Name == "CreateRoom"
+                                     && method.GetParameters().Length == 3
+                                     && method.GetParameters()[0].ParameterType == typeof(RoomType));
+    }
+
+    [HarmonyPrefix]
+    public static void Prefix(RoomType __0, ref AbstractModel? __2, out bool __state)
+    {
+        __state = false;
+        if (__0 != RoomType.Event || __2 is not null
+            || !CustomRunRuleRuntimeService.TryGetPendingEventModel(out EventModel eventModel))
+            return;
+        __2 = eventModel;
+        __state = true;
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(bool __state)
+    {
+        if (__state)
+            CustomRunRuleRuntimeService.ConsumePendingEventModel();
     }
 }
 

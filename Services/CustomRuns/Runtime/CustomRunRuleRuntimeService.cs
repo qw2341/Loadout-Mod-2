@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Compatibility;
 using Loadout.Services.CustomRuns.Compilation;
+using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Persistence;
 using Loadout.Services.Networking;
@@ -19,6 +20,7 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -51,6 +53,7 @@ public static class CustomRunRuleRuntimeService
     private static bool _initialized;
     private static bool _captureEnabled;
     private static int _activeActions;
+    private static AbstractRoom? _lastCompletedRoom;
 
     public static bool IsActive => _initialized && _captureEnabled && IsSupportedSnapshot(_snapshot);
     internal static bool IsForRun(RunState runState) => _initialized && ReferenceEquals(_runState, runState);
@@ -126,6 +129,7 @@ public static class CustomRunRuleRuntimeService
         _runLobby = null;
         _playerRejoinedHandler = null;
         _activeActions = 0;
+        _lastCompletedRoom = null;
         _captureEnabled = false;
         _initialized = false;
     }
@@ -284,7 +288,9 @@ public static class CustomRunRuleRuntimeService
                 SetupApplied = _state.SetupApplied,
                 RunStartEmitted = _state.RunStartEmitted,
                 CombatActive = _state.CombatActive,
-                PlayerTurnActive = _state.PlayerTurnActive
+                PlayerTurnActive = _state.PlayerTurnActive,
+                PendingEventModelId = _state.PendingEventModelId,
+                LastCompletedRoomToken = _state.LastCompletedRoomToken
             };
         }
     }
@@ -311,6 +317,50 @@ public static class CustomRunRuleRuntimeService
                 RuleCounters[ruleId] = counter = new CustomRunRuleCounterState();
             return counter;
         }
+    }
+
+    internal static void SetPendingEventModel(string modelId)
+    {
+        _state.PendingEventModelId = CustomRunCatalogService.TryResolve(
+            SelectionModelKind.Event,
+            modelId,
+            out CustomRunCatalogEntry entry)
+            ? entry.ModelId
+            : string.Empty;
+    }
+
+    internal static bool TryGetPendingEventModel(out EventModel eventModel)
+    {
+        if (!string.IsNullOrWhiteSpace(_state.PendingEventModelId)
+            && CustomRunCatalogService.TryResolve(
+                SelectionModelKind.Event,
+                _state.PendingEventModelId,
+                out CustomRunCatalogEntry entry)
+            && entry.Model is EventModel resolved)
+        {
+            eventModel = resolved;
+            return true;
+        }
+        _state.PendingEventModelId = string.Empty;
+        eventModel = null!;
+        return false;
+    }
+
+    internal static void ConsumePendingEventModel()
+    {
+        _state.PendingEventModelId = string.Empty;
+    }
+
+    internal static void CaptureRoomCompleted(AbstractRoom room)
+    {
+        string roomToken = $"{RunState.CurrentMapCoord?.ToString() ?? string.Empty}|{room.GetType().FullName}";
+        if (!IsActive
+            || ReferenceEquals(_lastCompletedRoom, room)
+            || string.Equals(_state.LastCompletedRoomToken, roomToken, StringComparison.Ordinal))
+            return;
+        _lastCompletedRoom = room;
+        _state.LastCompletedRoomToken = roomToken;
+        Capture("Loadout2:RoomCompleted", Snapshot.HostPlayerId);
     }
 
     private static void Initialize(

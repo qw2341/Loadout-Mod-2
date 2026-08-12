@@ -115,12 +115,13 @@ public sealed class RuleLimitDefinition
     public RuleLimitKind Kind { get; set; }
 
     [JsonPropertyName("count")]
-    public int Count { get; set; } = 1;
+    public NumericValueSpec Count { get; set; } = NumericValueSpec.Integer(1);
 
     [JsonPropertyName("untilConditions")]
     public ConditionGroupDefinition UntilConditions { get; set; } = new();
 }
 
+[JsonConverter(typeof(NumericValueSpecJsonConverter))]
 public sealed class NumericValueSpec
 {
     [JsonPropertyName("source")]
@@ -134,6 +135,69 @@ public sealed class NumericValueSpec
 
     [JsonPropertyName("referenceId")]
     public string? ReferenceId { get; set; }
+
+    public static NumericValueSpec Integer(int value) => new()
+    {
+        Source = NumericValueSourceKind.Constant,
+        Constant = value,
+        ConstantKind = NumericConstantKind.Integer
+    };
+}
+
+public sealed class NumericValueSpecJsonConverter : JsonConverter<NumericValueSpec>
+{
+    public override NumericValueSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            double number = reader.GetDouble();
+            return new NumericValueSpec
+            {
+                Source = NumericValueSourceKind.Constant,
+                Constant = number,
+                ConstantKind = Math.Truncate(number) == number
+                    ? NumericConstantKind.Integer
+                    : NumericConstantKind.Double
+            };
+        }
+
+        using JsonDocument document = JsonDocument.ParseValue(ref reader);
+        JsonElement root = document.RootElement;
+        NumericValueSpec result = new();
+        if (root.TryGetProperty("source", out JsonElement source))
+        {
+            if (source.ValueKind == JsonValueKind.String
+                && Enum.TryParse(source.GetString(), ignoreCase: true, out NumericValueSourceKind parsedSource))
+                result.Source = parsedSource;
+            else if (source.TryGetInt32(out int sourceValue) && Enum.IsDefined(typeof(NumericValueSourceKind), sourceValue))
+                result.Source = (NumericValueSourceKind)sourceValue;
+        }
+        if (root.TryGetProperty("constant", out JsonElement constant) && constant.TryGetDouble(out double value))
+            result.Constant = value;
+        if (root.TryGetProperty("constantKind", out JsonElement constantKind))
+        {
+            if (constantKind.ValueKind == JsonValueKind.String
+                && Enum.TryParse(constantKind.GetString(), ignoreCase: true, out NumericConstantKind parsedKind))
+                result.ConstantKind = parsedKind;
+            else if (constantKind.TryGetInt32(out int kindValue) && Enum.IsDefined(typeof(NumericConstantKind), kindValue))
+                result.ConstantKind = (NumericConstantKind)kindValue;
+        }
+        if (root.TryGetProperty("referenceId", out JsonElement referenceId)
+            && referenceId.ValueKind == JsonValueKind.String)
+            result.ReferenceId = referenceId.GetString();
+        return result;
+    }
+
+    public override void Write(Utf8JsonWriter writer, NumericValueSpec value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("source", (int)value.Source);
+        writer.WriteNumber("constant", value.Constant);
+        writer.WriteNumber("constantKind", (int)value.ConstantKind);
+        if (!string.IsNullOrWhiteSpace(value.ReferenceId))
+            writer.WriteString("referenceId", value.ReferenceId);
+        writer.WriteEndObject();
+    }
 }
 
 public sealed class RuleTargetSpec

@@ -30,13 +30,14 @@ public static class CustomRunConditionGroupLogic
 public static class CustomRunRuleLimitLogic
 {
     public static bool Allows(
-        RuleLimitDefinition limit,
+        RuleLimitKind kind,
+        int maximum,
         CustomRunRuleCounterState counter,
         int priorChainExecutions,
         bool untilConditionMet)
     {
-        int maximum = Math.Max(1, limit.Count);
-        return limit.Kind switch
+        maximum = Math.Max(1, maximum);
+        return kind switch
         {
             RuleLimitKind.Unlimited => true,
             RuleLimitKind.OncePerEventChain => priorChainExecutions == 0,

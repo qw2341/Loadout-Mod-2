@@ -37,7 +37,7 @@ public static class RuleComponentParameterService
                     Set(component, parameter.Key, new NumericValueSpec
                     {
                         Source = NumericValueSourceKind.Constant,
-                        Constant = 1d,
+                        Constant = parameter.DefaultNumeric,
                         ConstantKind = parameter.DefaultConstantKind
                     });
                     break;

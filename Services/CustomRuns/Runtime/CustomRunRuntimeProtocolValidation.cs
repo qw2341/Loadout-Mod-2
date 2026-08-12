@@ -18,7 +18,7 @@ public static class CustomRunRuntimeProtocolValidation
                && string.Equals(response.SnapshotHash, request.SnapshotHash, StringComparison.Ordinal)
                && response.RequestId == request.RequestId
                && response.Revision == request.Revision
-               && (!response.Cancelled || request.Minimum == 0)
+               && (!response.Cancelled || request.CanSkip)
                && response.SelectedModelIds.Count >= (response.Cancelled ? 0 : request.Minimum)
                && response.SelectedModelIds.Count <= request.Maximum
                && response.SelectedModelIds.Distinct(StringComparer.Ordinal).Count() == response.SelectedModelIds.Count

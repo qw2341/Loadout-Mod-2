@@ -78,6 +78,7 @@ public static class CustomRunCatalogService
             SelectionModelKind.Character => model is CharacterModel,
             SelectionModelKind.Power => model is PowerModel,
             SelectionModelKind.Monster => model is MonsterModel,
+            SelectionModelKind.Event => model is EventModel,
             _ => false
         };
     }
@@ -95,6 +96,7 @@ public static class CustomRunCatalogService
             SelectionModelKind.Character => Build(kind, ModelDb.AllCharacters),
             SelectionModelKind.Power => Build(kind, ModelDb.AllPowers),
             SelectionModelKind.Monster => BuildMonsters(),
+            SelectionModelKind.Event => BuildEvents(),
             _ => []
         };
         Dictionary<string, CustomRunCatalogEntry> lookup = new(StringComparer.OrdinalIgnoreCase);
@@ -163,6 +165,37 @@ public static class CustomRunCatalogService
                     ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 typesByMonster.GetValueOrDefault(monster.Id.ToString())
                     ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase)))
+            .OrderBy(entry => entry.ModelId, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static IReadOnlyList<CustomRunCatalogEntry> BuildEvents()
+    {
+        Dictionary<string, HashSet<string>> actsByEvent = new(StringComparer.Ordinal);
+        foreach (ActModel act in ModelDb.Acts.Where(act => act.Index >= 0))
+        {
+            foreach (EventModel eventModel in act.AllEvents.Cast<EventModel>().Concat(act.AllAncients))
+            {
+                if (!actsByEvent.TryGetValue(eventModel.Id.ToString(), out HashSet<string>? acts))
+                    actsByEvent[eventModel.Id.ToString()] = acts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                Add(acts, act.Id.ToString(), act.Id.Entry, $"Act {act.Index + 1}");
+            }
+        }
+
+        return ModelDb.AllEvents.Cast<EventModel>()
+            .Concat(ModelDb.AllAncients)
+            .GroupBy(eventModel => eventModel.Id.ToString(), StringComparer.Ordinal)
+            .Select(group => group.First())
+            .Select(eventModel => new CustomRunCatalogEntry(
+                SelectionModelKind.Event,
+                eventModel.Id.ToString(),
+                eventModel,
+                CommonHelpers.GetModelModId(eventModel),
+                actsByEvent.GetValueOrDefault(eventModel.Id.ToString())
+                    ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                new HashSet<string>(
+                    [eventModel is AncientEventModel ? "Ancient" : "Event", eventModel.LayoutType.ToString()],
+                    StringComparer.OrdinalIgnoreCase)))
             .OrderBy(entry => entry.ModelId, StringComparer.Ordinal)
             .ToList();
     }
