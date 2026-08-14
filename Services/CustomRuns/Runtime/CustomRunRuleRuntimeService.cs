@@ -54,6 +54,9 @@ public static class CustomRunRuleRuntimeService
     private static Delegate? _playerRejoinedHandler;
     private static bool _initialized;
     private static bool _captureEnabled;
+    private static bool _combatEndedSubscribed;
+    private static bool _turnStartedSubscribed;
+    private static bool _turnEndedSubscribed;
     private static int _activeActions;
     private static AbstractRoom? _lastCompletedRoom;
 
@@ -97,12 +100,12 @@ public static class CustomRunRuleRuntimeService
 
     public static void OnRunCleaningUp()
     {
-        if (_initialized)
-        {
+        if (_combatEndedSubscribed)
             CombatManager.Instance.CombatEnded -= OnCombatEnded;
+        if (_turnStartedSubscribed)
             CombatManager.Instance.TurnStarted -= OnTurnStarted;
+        if (_turnEndedSubscribed)
             CombatManager.Instance.TurnEnded -= OnTurnEnded;
-        }
         if (_runLobby is not null && _playerRejoinedHandler is not null)
             Sts2Compatibility.UnsubscribeRunLobbyPlayerRejoined(_runLobby, _playerRejoinedHandler);
         if (_netService is not null)
@@ -136,6 +139,9 @@ public static class CustomRunRuleRuntimeService
         _activeActions = 0;
         _lastCompletedRoom = null;
         _captureEnabled = false;
+        _combatEndedSubscribed = false;
+        _turnStartedSubscribed = false;
+        _turnEndedSubscribed = false;
         _initialized = false;
     }
 
@@ -156,6 +162,11 @@ public static class CustomRunRuleRuntimeService
         return IsActive
                && _netService?.Type is NetGameType.Host or NetGameType.Client
                && RulesByTrigger.ContainsKey(triggerId);
+    }
+
+    internal static bool UsesTrigger(string triggerId)
+    {
+        return IsActive && RulesByTrigger.ContainsKey(triggerId);
     }
 
     internal static void CaptureAtActionFinish(
@@ -416,10 +427,12 @@ public static class CustomRunRuleRuntimeService
 
     internal static void CaptureRoomCompleted(AbstractRoom room)
     {
-        string roomToken = $"{RunState.CurrentMapCoord?.ToString() ?? string.Empty}|{room.GetType().FullName}";
         if (!IsActive
-            || ReferenceEquals(_lastCompletedRoom, room)
-            || string.Equals(_state.LastCompletedRoomToken, roomToken, StringComparison.Ordinal))
+            || !RulesByTrigger.ContainsKey("Loadout2:RoomCompleted")
+            || ReferenceEquals(_lastCompletedRoom, room))
+            return;
+        string roomToken = $"{RunState.CurrentMapCoord?.ToString() ?? string.Empty}|{room.GetType().FullName}";
+        if (string.Equals(_state.LastCompletedRoomToken, roomToken, StringComparison.Ordinal))
             return;
         _lastCompletedRoom = room;
         _state.LastCompletedRoomToken = roomToken;
@@ -450,16 +463,26 @@ public static class CustomRunRuleRuntimeService
         _netService.RegisterMessageHandler<CustomRunDecisionBatchMessage>(HandleDecisionBatch);
         _netService.RegisterMessageHandler<CustomRunRuntimeStateMessage>(HandleRuntimeState);
         _runLobby = RunManager.Instance.RunLobby;
-        CustomRunRuntimeChoiceService.Register(_netService, _runLobby);
+        if (CustomRunRulePlan.NeedsPlayerChoices(snapshot))
+            CustomRunRuntimeChoiceService.Register(_netService, _runLobby);
         if (_runLobby is not null)
         {
             _playerRejoinedHandler = Sts2Compatibility.SubscribeRunLobbyPlayerRejoined(
                 _runLobby,
                 OnPlayerRejoined);
         }
-        CombatManager.Instance.CombatEnded += OnCombatEnded;
-        CombatManager.Instance.TurnStarted += OnTurnStarted;
-        CombatManager.Instance.TurnEnded += OnTurnEnded;
+        if (CustomRunRulePlan.NeedsCombatLifecycle(snapshot))
+        {
+            CombatManager.Instance.CombatEnded += OnCombatEnded;
+            _combatEndedSubscribed = true;
+        }
+        if (CustomRunRulePlan.NeedsTurnLifecycle(snapshot))
+        {
+            CombatManager.Instance.TurnStarted += OnTurnStarted;
+            CombatManager.Instance.TurnEnded += OnTurnEnded;
+            _turnStartedSubscribed = true;
+            _turnEndedSubscribed = true;
+        }
         _initialized = true;
         _captureEnabled = false;
     }

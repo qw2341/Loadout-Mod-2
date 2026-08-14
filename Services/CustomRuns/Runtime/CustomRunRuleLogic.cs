@@ -63,6 +63,20 @@ public static class CustomRunDeterministicRng
 
 public static class CustomRunRulePlan
 {
+    private static readonly HashSet<string> CombatLifecycleTriggers = new(StringComparer.Ordinal)
+    {
+        "Loadout2:CombatStart",
+        "Loadout2:CombatEnd",
+        "Loadout2:TurnStart",
+        "Loadout2:TurnEnd"
+    };
+
+    private static readonly HashSet<string> TurnLifecycleTriggers = new(StringComparer.Ordinal)
+    {
+        "Loadout2:TurnStart",
+        "Loadout2:TurnEnd"
+    };
+
     public static IReadOnlyDictionary<string, IReadOnlyList<CompiledRuleDefinition>> Build(
         IEnumerable<CompiledRuleDefinition> rules)
     {
@@ -77,5 +91,39 @@ public static class CustomRunRulePlan
             pair => pair.Key,
             pair => (IReadOnlyList<CompiledRuleDefinition>)pair.Value,
             StringComparer.Ordinal);
+    }
+
+    public static IReadOnlySet<string> GetTriggerIds(IEnumerable<CompiledRuleDefinition> rules)
+    {
+        return rules.Select(rule => rule.Trigger.TypeId).ToHashSet(StringComparer.Ordinal);
+    }
+
+    public static bool NeedsCombatLifecycle(ResolvedCustomRunSnapshot snapshot)
+    {
+        return snapshot.Rules.Any(rule =>
+                   CombatLifecycleTriggers.Contains(rule.Trigger.TypeId)
+                   || rule.Limit.Kind is RuleLimitKind.OncePerCombat
+                       or RuleLimitKind.TimesPerCombat
+                       or RuleLimitKind.OncePerTurn
+                       or RuleLimitKind.TimesPerTurn)
+               || snapshot.Variables.Any(variable =>
+                   variable.Scope is VariableScope.Combat or VariableScope.Turn);
+    }
+
+    public static bool NeedsTurnLifecycle(ResolvedCustomRunSnapshot snapshot)
+    {
+        return snapshot.Rules.Any(rule =>
+                   TurnLifecycleTriggers.Contains(rule.Trigger.TypeId)
+                   || rule.Limit.Kind is RuleLimitKind.OncePerTurn or RuleLimitKind.TimesPerTurn)
+               || snapshot.Variables.Any(variable => variable.Scope == VariableScope.Turn);
+    }
+
+    public static bool NeedsPlayerChoices(ResolvedCustomRunSnapshot snapshot)
+    {
+        return snapshot.Rules
+            .SelectMany(rule => rule.Actions)
+            .Any(action => action.Parameters.TryGetValue("selectionMode", out System.Text.Json.JsonElement value)
+                           && value.ValueKind == System.Text.Json.JsonValueKind.String
+                           && string.Equals(value.GetString(), "Choose", StringComparison.Ordinal));
     }
 }

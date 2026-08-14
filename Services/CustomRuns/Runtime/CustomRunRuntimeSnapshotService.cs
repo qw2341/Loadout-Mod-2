@@ -6,6 +6,7 @@ using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Loadout.Patches.CustomRuns;
 using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Persistence;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -22,13 +23,17 @@ public static class CustomRunRuntimeSnapshotService
     public static void SetPending(ResolvedCustomRunSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        CustomRunRuntimePatchManager.ActivateForSnapshot(snapshot, pendingLaunch: true);
         _pendingSnapshot = snapshot;
     }
 
     public static void ClearPending()
     {
+        bool shouldDeactivate = _pendingSnapshot is not null && _needsInitialRuntimeApply is null;
         _pendingSnapshot = null;
         _needsInitialRuntimeApply = null;
+        if (shouldDeactivate)
+            CustomRunRuntimePatchManager.Deactivate();
     }
 
     public static bool TryGetPendingPlayerSetup(ulong playerId, out ResolvedPlayerSetup setup)
@@ -139,6 +144,7 @@ public static class CustomRunRuntimeSnapshotService
 
         if (TryLoadEnvelope(payload, out ResolvedCustomRunSnapshot envelopeSnapshot, out CustomRunRuntimeState runtime))
         {
+            CustomRunRuntimePatchManager.ActivateForSnapshot(envelopeSnapshot, pendingLaunch: false);
             Attach(runState, envelopeSnapshot);
             SnapshotsByRun.GetValue(runState, static _ => new SnapshotAttachment()).RestoredRuntime = runtime;
             return;
@@ -150,6 +156,7 @@ public static class CustomRunRuntimeSnapshotService
             return;
         }
 
+        CustomRunRuntimePatchManager.ActivateForSnapshot(snapshot, pendingLaunch: false);
         Attach(runState, snapshot);
     }
 

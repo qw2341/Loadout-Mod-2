@@ -33,7 +33,6 @@ using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
 using MegaCrit.Sts2.Core.ValueProps;
 
-[HarmonyPatch]
 public static class CustomRunPlayerCreationPatch
 {
     public static MethodBase TargetMethod()
@@ -45,7 +44,6 @@ public static class CustomRunPlayerCreationPatch
                ?? throw new MissingMethodException(typeof(Player).FullName, nameof(Player.CreateForNewRun));
     }
 
-    [HarmonyPostfix]
     public static void Postfix(Player __result)
     {
         if (!CustomRunRuntimeSnapshotService.TryGetPendingPlayerSetup(__result.NetId, out ResolvedPlayerSetup setup))
@@ -61,10 +59,8 @@ public static class CustomRunPlayerCreationPatch
     }
 }
 
-[HarmonyPatch(typeof(RunState), nameof(RunState.CreateForNewRun))]
 public static class CustomRunStateCreationPatch
 {
-    [HarmonyPrefix]
     public static void Prefix(
         ref IReadOnlyList<ModifierModel> modifiers,
         ref GameMode gameMode,
@@ -80,17 +76,14 @@ public static class CustomRunStateCreationPatch
         }
     }
 
-    [HarmonyPostfix]
     public static void Postfix(RunState __result)
     {
         CustomRunRuntimeSnapshotService.AttachPending(__result);
     }
 }
 
-[HarmonyPatch(typeof(StartRunLobby), nameof(StartRunLobby.CleanUp))]
 public static class CustomRunLobbyCleanupPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(StartRunLobby __instance, bool disconnectSession)
     {
         if (disconnectSession)
@@ -100,10 +93,8 @@ public static class CustomRunLobbyCleanupPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.ModifyHandDraw))]
 public static class CustomRunHandDrawPatch
 {
-    [HarmonyPrefix]
     public static void Prefix(Player __1, ref decimal __2)
     {
         if (CustomRunRuntimeSnapshotService.TryGetPlayerSetup(__1, out ResolvedPlayerSetup setup)
@@ -114,16 +105,13 @@ public static class CustomRunHandDrawPatch
     }
 }
 
-[HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
 public static class CustomRunRuleRuntimeLaunchPatch
 {
-    [HarmonyPrefix]
     public static void Prefix()
     {
         CustomRunRuleRuntimeService.PrepareRunLaunch();
     }
 
-    [HarmonyPostfix]
     public static void Postfix()
     {
         CustomRunSetupApplyService.ApplyInitialRuntimeSetup();
@@ -131,7 +119,6 @@ public static class CustomRunRuleRuntimeLaunchPatch
     }
 }
 
-[HarmonyPatch]
 public static class CustomRunPostAscensionSetupPatch
 {
     public static MethodBase TargetMethod()
@@ -140,7 +127,6 @@ public static class CustomRunPostAscensionSetupPatch
                ?? throw new MissingMethodException(typeof(RunManager).FullName, "InitializeNewRun");
     }
 
-    [HarmonyPostfix]
     public static void Postfix(RunManager __instance)
     {
         RunState? runState = __instance.DebugOnlyGetState();
@@ -149,30 +135,29 @@ public static class CustomRunPostAscensionSetupPatch
     }
 }
 
-[HarmonyPatch(typeof(RunManager), nameof(RunManager.CleanUp))]
 public static class CustomRunRuleRuntimeCleanupPatch
 {
-    [HarmonyPrefix]
     public static void Prefix()
     {
         CustomRunRuleRuntimeService.OnRunCleaningUp();
     }
+
+    public static void Postfix()
+    {
+        CustomRunRuntimePatchManager.Deactivate();
+    }
 }
 
-[HarmonyPatch(typeof(RunManager), nameof(RunManager.OnEnded))]
 public static class CustomRunRuleRuntimeRunEndPatch
 {
-    [HarmonyPrefix]
     public static void Prefix()
     {
         CustomRunRuleRuntimeService.Capture("Loadout2:RunEnd", 0);
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterCardPlayed))]
 public static class CustomRunAfterCardPlayedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(PlayerChoiceContext choiceContext, CardPlay cardPlay, ref Task __result)
     {
         __result = CaptureAfterAsync(__result, choiceContext, cardPlay.Card.Owner,
@@ -181,10 +166,8 @@ public static class CustomRunAfterCardPlayedPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterRoomEntered))]
 public static class CustomRunAfterRoomEnteredPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(IRunState runState, AbstractRoom room, ref Task __result)
     {
         __result = CaptureAfterRoomEnteredAsync(__result, runState, room);
@@ -195,8 +178,10 @@ public static class CustomRunAfterRoomEnteredPatch
         await nativeTask;
         if (runState is not RunState concrete || !CustomRunRuleRuntimeService.IsForRun(concrete))
             return;
-        CustomRunRuleRuntimeService.Capture("Loadout2:RoomEntered", 0);
-        if (room is EventRoom eventRoom)
+        if (CustomRunRuleRuntimeService.UsesTrigger("Loadout2:RoomEntered"))
+            CustomRunRuleRuntimeService.Capture("Loadout2:RoomEntered", 0);
+        if (room is EventRoom eventRoom
+            && CustomRunRuleRuntimeService.UsesTrigger("Loadout2:EventEntered"))
         {
             CustomRunRuleRuntimeService.Capture(
                 "Loadout2:EventEntered",
@@ -207,10 +192,8 @@ public static class CustomRunAfterRoomEnteredPatch
     }
 }
 
-[HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.Open))]
 public static class CustomRunRoomCompletedPatch
 {
-    [HarmonyPrefix]
     public static void Prefix(bool isOpenedFromTopBar, out AbstractRoom? __state)
     {
         __state = !isOpenedFromTopBar
@@ -218,7 +201,6 @@ public static class CustomRunRoomCompletedPatch
             : null;
     }
 
-    [HarmonyPostfix]
     public static void Postfix(AbstractRoom? __state)
     {
         if (__state is not null)
@@ -226,7 +208,6 @@ public static class CustomRunRoomCompletedPatch
     }
 }
 
-[HarmonyPatch]
 public static class CustomRunPendingEventRoomPatch
 {
     public static MethodBase TargetMethod()
@@ -237,7 +218,6 @@ public static class CustomRunPendingEventRoomPatch
                                      && method.GetParameters()[0].ParameterType == typeof(RoomType));
     }
 
-    [HarmonyPrefix]
     public static void Prefix(RoomType __0, ref AbstractModel? __2, out bool __state)
     {
         __state = false;
@@ -248,7 +228,6 @@ public static class CustomRunPendingEventRoomPatch
         __state = true;
     }
 
-    [HarmonyPostfix]
     public static void Postfix(bool __state)
     {
         if (__state)
@@ -256,10 +235,8 @@ public static class CustomRunPendingEventRoomPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.BeforeCombatStart))]
 public static class CustomRunBeforeCombatStartPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(ICombatState combatState, ref Task __result)
     {
         __result = CaptureCombatStartAsync(__result, combatState);
@@ -272,10 +249,8 @@ public static class CustomRunBeforeCombatStartPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterCardDrawn))]
 public static class CustomRunAfterCardDrawnPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(PlayerChoiceContext choiceContext, CardModel card, ref Task __result)
     {
         __result = CaptureAfterAsync(__result, choiceContext, card.Owner,
@@ -284,10 +259,8 @@ public static class CustomRunAfterCardDrawnPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterCardDiscarded))]
 public static class CustomRunAfterCardDiscardedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(PlayerChoiceContext choiceContext, CardModel card, ref Task __result)
     {
         __result = CaptureAfterAsync(__result, choiceContext, card.Owner,
@@ -296,10 +269,8 @@ public static class CustomRunAfterCardDiscardedPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterCardExhausted))]
 public static class CustomRunAfterCardExhaustedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(PlayerChoiceContext choiceContext, CardModel card, ref Task __result)
     {
         __result = CaptureAfterAsync(__result, choiceContext, card.Owner,
@@ -308,10 +279,8 @@ public static class CustomRunAfterCardExhaustedPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterCardGeneratedForCombat))]
 public static class CustomRunAfterCardGeneratedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(CardModel card, Player? creator, ref Task __result)
     {
         __result = CaptureAfterAsync(__result, "Loadout2:CardGenerated", creator?.NetId ?? card.Owner.NetId,
@@ -319,10 +288,8 @@ public static class CustomRunAfterCardGeneratedPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterDamageReceived))]
 public static class CustomRunAfterDamageReceivedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(Creature target, DamageResult result, ref Task __result)
     {
         if (target.Player is not { } player || result.UnblockedDamage <= 0)
@@ -332,10 +299,8 @@ public static class CustomRunAfterDamageReceivedPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterBlockGained))]
 public static class CustomRunAfterBlockGainedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(Creature creature, decimal amount, ref Task __result)
     {
         if (creature.Player is not { } player || amount <= 0m)
@@ -344,10 +309,8 @@ public static class CustomRunAfterBlockGainedPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterPowerAmountChanged))]
 public static class CustomRunAfterPowerChangedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(PowerModel power, decimal amount, ref Task __result)
     {
         if (power.Owner.Player is not { } player || amount <= 0m)
@@ -357,10 +320,8 @@ public static class CustomRunAfterPowerChangedPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterPotionUsed))]
 public static class CustomRunAfterPotionUsedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(PotionModel potion, ref Task __result)
     {
         __result = CaptureAfterAsync(__result, "Loadout2:PotionUsed", potion.Owner.NetId,
@@ -368,10 +329,8 @@ public static class CustomRunAfterPotionUsedPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterPotionProcured))]
 public static class CustomRunAfterPotionProcuredPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(PotionModel potion, ref Task __result)
     {
         __result = CaptureAfterAsync(__result, "Loadout2:PotionObtained", potion.Owner.NetId,
@@ -379,10 +338,8 @@ public static class CustomRunAfterPotionProcuredPatch
     }
 }
 
-[HarmonyPatch(typeof(Hook), nameof(Hook.AfterEnergySpent))]
 public static class CustomRunAfterEnergySpentPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(CardModel card, int amount, ref Task __result)
     {
         if (amount <= 0)
@@ -392,7 +349,6 @@ public static class CustomRunAfterEnergySpentPatch
     }
 }
 
-[HarmonyPatch]
 public static class CustomRunCardObtainedPatch
 {
     public static MethodBase TargetMethod()
@@ -408,7 +364,6 @@ public static class CustomRunCardObtainedPatch
                    });
     }
 
-    [HarmonyPostfix]
     public static void Postfix(CardPile newPile, ref Task<IReadOnlyList<CardPileAddResult>> __result)
     {
         if (newPile.Type != PileType.Deck)
@@ -420,8 +375,10 @@ public static class CustomRunCardObtainedPatch
         Task<IReadOnlyList<CardPileAddResult>> nativeTask)
     {
         IReadOnlyList<CardPileAddResult> results = await nativeTask;
-        foreach (CardPileAddResult result in results.Where(result => result.success))
+        foreach (CardPileAddResult result in results)
         {
+            if (!result.success)
+                continue;
             CardModel card = result.cardAdded;
             CustomRunRuleRuntimeService.Capture("Loadout2:CardObtained", card.Owner.NetId,
                 SelectionModelKind.Card, card.Id.ToString());
@@ -430,10 +387,8 @@ public static class CustomRunCardObtainedPatch
     }
 }
 
-[HarmonyPatch(typeof(RelicCmd), nameof(RelicCmd.Obtain), typeof(RelicModel), typeof(Player), typeof(int))]
 public static class CustomRunRelicObtainedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(ref Task<RelicModel> __result)
     {
         __result = CaptureRelicAsync(__result);
@@ -448,10 +403,8 @@ public static class CustomRunRelicObtainedPatch
     }
 }
 
-[HarmonyPatch(typeof(CreatureCmd), nameof(CreatureCmd.Add), typeof(MonsterModel), typeof(ICombatState), typeof(CombatSide), typeof(string))]
 public static class CustomRunMonsterSpawnedPatch
 {
-    [HarmonyPostfix]
     public static void Postfix(ref Task<Creature> __result)
     {
         __result = CaptureMonsterAsync(__result);
@@ -469,10 +422,8 @@ public static class CustomRunMonsterSpawnedPatch
     }
 }
 
-[HarmonyPatch(typeof(MonsterModel), nameof(MonsterModel.PerformMove))]
 public static class CustomRunMonsterMoveStartedPatch
 {
-    [HarmonyPrefix]
     public static void Prefix(MonsterModel __instance)
     {
         CustomRunRuleRuntimeService.Capture("Loadout2:MonsterMoveStarted", 0,
