@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BaseLib.Patches.Saves;
 using HarmonyLib;
@@ -23,6 +24,7 @@ using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -194,8 +196,34 @@ public static class CustomRunAfterRoomEnteredPatch
 
     private static void CaptureEventTrigger(string triggerId, string eventId)
     {
-        if (CustomRunRuleRuntimeService.UsesTrigger(triggerId))
-            CustomRunRuleRuntimeService.Capture(triggerId, 0, SelectionModelKind.Event, eventId);
+        CustomRunRuleRuntimeService.CaptureRoomEnteredTrigger(triggerId, eventId);
+    }
+}
+
+public static class CustomRunRoomFadeInPatch
+{
+    private static readonly AsyncLocal<bool> Bypass = new();
+
+    public static bool Prefix(NTransition __instance, bool showTransition, ref Task __result)
+    {
+        if (Bypass.Value || !CustomRunRuleRuntimeService.HasPendingRoomEntryRedirects)
+            return true;
+        __result = FadeInAfterRedirectsAsync(__instance, showTransition);
+        return false;
+    }
+
+    private static async Task FadeInAfterRedirectsAsync(NTransition transition, bool showTransition)
+    {
+        await CustomRunRuleRuntimeService.WaitForPendingRoomEntryRedirectsAsync();
+        Bypass.Value = true;
+        try
+        {
+            await transition.RoomFadeIn(showTransition);
+        }
+        finally
+        {
+            Bypass.Value = false;
+        }
     }
 }
 

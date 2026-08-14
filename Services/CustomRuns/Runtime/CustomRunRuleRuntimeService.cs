@@ -57,6 +57,8 @@ public static class CustomRunRuleRuntimeService
     private static bool _combatEndedSubscribed;
     private static bool _turnStartedSubscribed;
     private static bool _turnEndedSubscribed;
+    private static int _pendingRoomEntryRedirects;
+    private static TaskCompletionSource? _roomEntryRedirectsCompleted;
     private static int _activeActions;
     private static AbstractRoom? _lastCompletedRoom;
 
@@ -124,6 +126,9 @@ public static class CustomRunRuleRuntimeService
             foreach (GameAction action in CapturesAfterActions.Keys)
                 action.JustBeforeFinished -= OnDeferredCaptureActionFinishing;
             CapturesAfterActions.Clear();
+            _roomEntryRedirectsCompleted?.TrySetResult();
+            _roomEntryRedirectsCompleted = null;
+            _pendingRoomEntryRedirects = 0;
             PendingRejoinRecipients.Clear();
             RulesByTrigger.Clear();
             RuleCounters.Clear();
@@ -155,6 +160,61 @@ public static class CustomRunRuleRuntimeService
         if (!IsActive)
             return;
         EnqueueEvent(triggerId, triggeringPlayerId, modelKind, modelId, amount);
+    }
+
+    internal static void CaptureRoomEnteredTrigger(string triggerId, string eventId)
+    {
+        if (!UsesTrigger(triggerId))
+            return;
+        if (!ShouldDelayRoomFade(triggerId))
+        {
+            Capture(triggerId, 0, SelectionModelKind.Event, eventId);
+            return;
+        }
+
+        BeginRoomEntryRedirect();
+        if (_netService?.Type != NetGameType.Client
+            && !EnqueueEvent(triggerId, 0, SelectionModelKind.Event, eventId))
+        {
+            CompleteRoomEntryRedirect();
+        }
+    }
+
+    internal static bool HasPendingRoomEntryRedirects
+    {
+        get
+        {
+            lock (Gate)
+                return _pendingRoomEntryRedirects > 0;
+        }
+    }
+
+    internal static async Task WaitForPendingRoomEntryRedirectsAsync()
+    {
+        Task? redirectsCompleted;
+        lock (Gate)
+            redirectsCompleted = _roomEntryRedirectsCompleted?.Task;
+        if (redirectsCompleted is null)
+            return;
+
+        if (await Task.WhenAny(redirectsCompleted, Task.Delay(TimeSpan.FromSeconds(15))) != redirectsCompleted)
+        {
+            bool timedOut = false;
+            lock (Gate)
+            {
+                if (ReferenceEquals(_roomEntryRedirectsCompleted?.Task, redirectsCompleted))
+                {
+                    _roomEntryRedirectsCompleted.TrySetResult();
+                    _roomEntryRedirectsCompleted = null;
+                    _pendingRoomEntryRedirects = 0;
+                    timedOut = true;
+                }
+            }
+            if (timedOut)
+                LogWarning("Timed out waiting for an event-entry redirect before fading in.");
+            return;
+        }
+        await redirectsCompleted;
     }
 
     internal static bool NeedsHookCompletionBarrier(string triggerId)
@@ -233,7 +293,10 @@ public static class CustomRunRuleRuntimeService
             || runtimeEvent.Depth > MaximumDepth
             || !string.Equals(runtimeEvent.SnapshotHash, Snapshot.SnapshotHash, StringComparison.Ordinal)
             || runtimeEvent.EnqueuedRevision > _state.Revision)
+        {
+            CompleteRoomEntryRedirect(runtimeEvent);
             return;
+        }
         Interlocked.Increment(ref _activeActions);
         CustomRunRuntimeEvent? previous = CurrentEvent.Value;
         CurrentEvent.Value = runtimeEvent;
@@ -333,6 +396,7 @@ public static class CustomRunRuleRuntimeService
         {
             CurrentEvent.Value = previous;
             FinishChainEvent(runtimeEvent.ChainId);
+            CompleteRoomEntryRedirect(runtimeEvent);
             if (Interlocked.Decrement(ref _activeActions) == 0)
                 FlushPendingRejoinSnapshots();
         }
@@ -487,7 +551,7 @@ public static class CustomRunRuleRuntimeService
         _captureEnabled = false;
     }
 
-    private static void EnqueueEvent(
+    private static bool EnqueueEvent(
         string triggerId,
         ulong triggeringPlayerId,
         SelectionModelKind? modelKind = null,
@@ -495,7 +559,7 @@ public static class CustomRunRuleRuntimeService
         double amount = 0d)
     {
         if (_netService?.Type == NetGameType.Client || !RulesByTrigger.ContainsKey(triggerId))
-            return;
+            return false;
         CustomRunRuntimeEvent? parent = CurrentEvent.Value;
         long eventId = ++_state.EventSequence;
         long chainId = parent?.ChainId ?? eventId;
@@ -503,7 +567,7 @@ public static class CustomRunRuleRuntimeService
         if (depth > MaximumDepth)
         {
             HaltChain(chainId, $"depth exceeded {MaximumDepth}");
-            return;
+            return false;
         }
 
         ChainState chain;
@@ -512,7 +576,7 @@ public static class CustomRunRuleRuntimeService
             if (!Chains.TryGetValue(chainId, out chain!))
                 Chains[chainId] = chain = new ChainState();
             if (chain.Halted)
-                return;
+                return false;
             chain.Pending++;
         }
         CustomRunRuntimeEvent runtimeEvent = new()
@@ -533,17 +597,63 @@ public static class CustomRunRuleRuntimeService
         if (owner is null)
         {
             FinishChainEvent(chainId);
-            return;
+            return false;
         }
         try
         {
             RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(new CustomRunRuleEventAction(owner, runtimeEvent));
+            return true;
         }
         catch (Exception exception)
         {
             FinishChainEvent(chainId);
             LogWarning($"Could not enqueue Custom Run event {eventId} ({triggerId}): {exception.Message}");
+            return false;
         }
+    }
+
+    private static bool ShouldDelayRoomFade(string triggerId)
+    {
+        if (!RulesByTrigger.TryGetValue(triggerId, out List<CompiledRuleDefinition>? rules)
+            || !rules.Any(rule => rule.Actions.Any(action => action.TypeId == "Loadout2:EnterEvent")))
+        {
+            return false;
+        }
+        return !rules.SelectMany(rule => rule.Actions).Any(action =>
+            action.Parameters.TryGetValue("selectionMode", out JsonElement value)
+            && value.ValueKind == JsonValueKind.String
+            && string.Equals(value.GetString(), "Choose", StringComparison.Ordinal));
+    }
+
+    private static void CompleteRoomEntryRedirect(CustomRunRuntimeEvent runtimeEvent)
+    {
+        if (runtimeEvent.ModelKind == SelectionModelKind.Event
+            && ShouldDelayRoomFade(runtimeEvent.TriggerId))
+        {
+            CompleteRoomEntryRedirect();
+        }
+    }
+
+    private static void BeginRoomEntryRedirect()
+    {
+        lock (Gate)
+        {
+            if (_pendingRoomEntryRedirects++ == 0)
+                _roomEntryRedirectsCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
+    private static void CompleteRoomEntryRedirect()
+    {
+        TaskCompletionSource? completion = null;
+        lock (Gate)
+        {
+            if (_pendingRoomEntryRedirects == 0 || --_pendingRoomEntryRedirects > 0)
+                return;
+            completion = _roomEntryRedirectsCompleted;
+            _roomEntryRedirectsCompleted = null;
+        }
+        completion?.TrySetResult();
     }
 
     private static bool TryBeginRule(CustomRunRuntimeEvent runtimeEvent, CompiledRuleDefinition rule)

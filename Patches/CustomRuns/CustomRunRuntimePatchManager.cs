@@ -16,6 +16,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -128,6 +129,17 @@ public static class CustomRunRuntimePatchManager
         {
             Patch(RequiredMethod(typeof(Hook), nameof(Hook.AfterRoomEntered)),
                 typeof(CustomRunAfterRoomEnteredPatch), postfix: true);
+        }
+        if (snapshot.Rules.Any(rule =>
+                (rule.Trigger.TypeId is "Loadout2:EventEntered"
+                    or "Loadout2:NonAncientEventEntered"
+                    or "Loadout2:AncientEventEntered")
+                && rule.Actions.Any(action => action.TypeId == "Loadout2:EnterEvent")))
+        {
+            Patch(
+                RequiredMethod(typeof(NTransition), nameof(NTransition.RoomFadeIn), [typeof(bool)]),
+                typeof(CustomRunRoomFadeInPatch),
+                prefix: true);
         }
         PatchTrigger(triggers, "Loadout2:RoomCompleted", typeof(NMapScreen), nameof(NMapScreen.Open),
             typeof(CustomRunRoomCompletedPatch), prefix: true, postfix: true);
