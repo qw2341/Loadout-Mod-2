@@ -258,6 +258,21 @@ public class LoadoutBag
 		
 	    relicView.Icon.SelfModulate = Colors.White;
 	    displayModel.UpdateTexture(relicView.Icon);
+	    ApplyRelicClassOutline(relicView, model);
+    }
+
+    private static void ApplyRelicClassOutline(NRelic relicView, RelicModel model)
+    {
+	    foreach (RelicPoolModel pool in ModelDb.AllCharacterRelicPools)
+	    {
+		    if (!pool.AllRelicIds.Contains(model.Id))
+			    continue;
+
+		    Color outlineColor = pool.LabOutlineColor;
+		    outlineColor.A = 0.66f;
+		    relicView.Outline.SelfModulate = outlineColor;
+		    break;
+	    }
     }
 
     public static bool TryGetRelicPool(RelicModel relic, out RelicPoolModel pool)
