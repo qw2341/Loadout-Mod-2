@@ -28,6 +28,7 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
@@ -1508,6 +1509,7 @@ public static class LoadoutImmediateMutationService
 
         foreach (Player targetPlayer in ResolveTargetPlayers(payload.Target, requester))
         {
+            bool obtainedAny = false;
             for (int i = 0; i < payload.Amount; i++)
             {
                 try
@@ -1515,6 +1517,7 @@ public static class LoadoutImmediateMutationService
                     RelicModel relic = canonicalRelic.ToMutable();
                     Task<RelicModel> obtainTask = RelicCmd.Obtain(relic, targetPlayer);
                     NLoadoutPanelRoot.Instance?.TryPreviewRelicObtained(relic);
+                    obtainedAny = true;
 
                     // RelicCmd inserts the relic before it awaits AfterObtained.
                     // Some relics expose their screen as a pickup effect (Kifuda),
@@ -1532,7 +1535,26 @@ public static class LoadoutImmediateMutationService
                     break;
                 }
             }
+
+            if (obtainedAny)
+                RefreshLocalMerchantPrices(targetPlayer);
         }
+    }
+
+    private static void RefreshLocalMerchantPrices(Player targetPlayer)
+    {
+        if (!IsLocalPlayer(targetPlayer)
+            || targetPlayer.RunState.CurrentRoom is not MerchantRoom room)
+        {
+            return;
+        }
+
+        MerchantInventory inventory = room.GetLocalInventory();
+        if (inventory.Player.NetId != targetPlayer.NetId)
+            return;
+
+        foreach (MerchantEntry entry in inventory.AllEntries)
+            entry.OnMerchantInventoryUpdated();
     }
 
     private static async Task ApplyAddPotionAsync(LoadoutImmediateMutationPayload payload, Player requester)
@@ -1788,6 +1810,7 @@ public static class LoadoutImmediateMutationService
         if (payload.Amount <= 0 || TryGetOwnedRelic(payload, requester) is not { } item)
             return;
 
+        bool obtainedAny = false;
         for (int i = 0; i < Math.Min(payload.Amount, MaxSynchronizedCardCopies); i++)
         {
             try
@@ -1795,6 +1818,7 @@ public static class LoadoutImmediateMutationService
                 RelicModel clone = (RelicModel)item.Model.ClonePreservingMutability();
                 Task<RelicModel> obtainTask = RelicCmd.Obtain(clone, item.Owner);
                 NLoadoutPanelRoot.Instance?.TryPreviewRelicObtained(clone);
+                obtainedAny = true;
                 if (!obtainTask.IsCompleted) _ = TaskHelper.RunSafely(obtainTask);
                 else await obtainTask;
             }
@@ -1804,6 +1828,9 @@ public static class LoadoutImmediateMutationService
                 break;
             }
         }
+
+        if (obtainedAny)
+            RefreshLocalMerchantPrices(item.Owner);
     }
 
     private static void ApplyAdjustPower(LoadoutImmediateMutationPayload payload, Player requester)
