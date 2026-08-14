@@ -792,8 +792,9 @@ public partial class NCustomRunEditorScreen : Control
         }
         else
         {
-            modifierList.Initialize(MultiplayerUiMode.Singleplayer);
-            modifierList.SetTickedModifiers(selectedModifiers);
+            Sts2Compatibility.InitializeEditableCustomRunModifiersList(
+                modifierList,
+                selectedModifiers);
             modifierList.Connect(
                 NCustomRunModifiersList.SignalName.ModifiersChanged,
                 Callable.From(() =>

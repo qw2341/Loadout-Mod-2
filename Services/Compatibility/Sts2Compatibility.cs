@@ -20,11 +20,15 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Potions;
+using MegaCrit.Sts2.Core.Entities.UI;
+using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
 
@@ -74,6 +78,18 @@ internal static class Sts2Compatibility
     private delegate Task HookPlayerChoiceEndInvoker(
         HookPlayerChoiceContext context,
         Player player);
+
+    private delegate string HextechCollectionHeaderFormatter(
+        string starterHeader,
+        string zhHeader,
+        string zhBody,
+        string enHeader,
+        string enBody,
+        string logKey);
+
+    private delegate void CustomRunModifierSetter(
+        NCustomRunModifiersList modifierList,
+        IReadOnlyList<ModifierModel> modifiers);
 
     private static readonly Type AbstractModelEnumerableByRef =
         typeof(IEnumerable<AbstractModel>).MakeByRefType();
@@ -136,6 +152,15 @@ internal static class Sts2Compatibility
         ResolveProperty(typeof(LoadRunLobby), "PlayerIds", "ConnectedPlayerIds");
     private static readonly Func<LoadRunLobby, IEnumerable<ulong>> GetLoadRunLobbyPlayerIds =
         CreateLoadRunLobbyPlayerIdsGetter();
+
+    private static readonly HextechCollectionHeaderFormatter? FormatHextechCollectionHeader =
+        CreateHextechCollectionHeaderFormatter();
+
+    private static readonly Func<Player, IEnumerable<PotionModel>> GetPotionOptions =
+        CreatePotionOptionsGetter();
+
+    private static readonly CustomRunModifierSetter? SetCustomRunModifiers =
+        CreateCustomRunModifierSetter();
 
     internal static MethodInfo BatchCardAddMethod { get; } = ResolveBatchCardAddMethod();
     internal static bool UsesNewBatchCardAdd { get; } = BatchCardAddMethod.GetParameters().Length == 6;
@@ -494,6 +519,110 @@ internal static class Sts2Compatibility
             return [assembly];
 
         return Array.Empty<Assembly>();
+    }
+
+    internal static IEnumerable<PotionModel> EnumeratePotionOptions(Player player)
+    {
+        ArgumentNullException.ThrowIfNull(player);
+        return GetPotionOptions(player);
+    }
+
+    internal static void InitializeEditableCustomRunModifiersList(
+        NCustomRunModifiersList modifierList,
+        IReadOnlyList<ModifierModel> modifiers)
+    {
+        ArgumentNullException.ThrowIfNull(modifierList);
+        ArgumentNullException.ThrowIfNull(modifiers);
+
+        if (SetCustomRunModifiers is null)
+        {
+            // Release rejects SyncModifierList after Singleplayer initialization.
+            modifierList.SyncModifierList(modifiers);
+            modifierList.Initialize(MultiplayerUiMode.Singleplayer);
+            return;
+        }
+
+        modifierList.Initialize(MultiplayerUiMode.Singleplayer);
+        SetCustomRunModifiers(modifierList, modifiers);
+    }
+
+    internal static string? TryFormatHextechCollectionHeader(
+        string starterHeader,
+        string zhHeader,
+        string zhBody,
+        string enHeader,
+        string enBody,
+        string logKey)
+    {
+        return FormatHextechCollectionHeader?.Invoke(
+            starterHeader,
+            zhHeader,
+            zhBody,
+            enHeader,
+            enBody,
+            logKey);
+    }
+
+    private static HextechCollectionHeaderFormatter? CreateHextechCollectionHeaderFormatter()
+    {
+        Type? hooksType = AccessTools.TypeByName("HextechRunes.CollectionHooks");
+        MethodInfo? formatter = hooksType is null
+            ? null
+            : AccessTools.Method(
+                hooksType,
+                "FormatLikeStarterHeader",
+                [
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string)
+                ]);
+        if (formatter is null || formatter.ReturnType != typeof(string) || !formatter.IsStatic)
+            return null;
+
+        return formatter.CreateDelegate<HextechCollectionHeaderFormatter>();
+    }
+
+    private static Func<Player, IEnumerable<PotionModel>> CreatePotionOptionsGetter()
+    {
+        ParameterExpression player = Expression.Parameter(typeof(Player), "player");
+
+        MethodInfo? method = AccessTools.Method(
+            typeof(PotionFactory),
+            nameof(PotionFactory.GetPotionOptions),
+            [typeof(Player)]);
+        MethodCallExpression call;
+        if (method is not null)
+        {
+            call = Expression.Call(method, player);
+        }
+        else
+        {
+            method = AccessTools.Method(
+                typeof(PotionFactory),
+                nameof(PotionFactory.GetPotionOptions),
+                [typeof(Player), typeof(IEnumerable<PotionModel>)])
+                ?? throw new MissingMethodException(
+                    typeof(PotionFactory).FullName,
+                    "GetPotionOptions(Player) or GetPotionOptions(Player, IEnumerable<PotionModel>)");
+            call = Expression.Call(
+                method,
+                player,
+                Expression.Constant(Array.Empty<PotionModel>(), typeof(IEnumerable<PotionModel>)));
+        }
+
+        return Expression.Lambda<Func<Player, IEnumerable<PotionModel>>>(call, player).Compile();
+    }
+
+    private static CustomRunModifierSetter? CreateCustomRunModifierSetter()
+    {
+        MethodInfo? method = AccessTools.Method(
+            typeof(NCustomRunModifiersList),
+            "SetTickedModifiers",
+            [typeof(IReadOnlyList<ModifierModel>)]);
+        return method?.CreateDelegate<CustomRunModifierSetter>();
     }
 
     private static MethodInfo ResolveBatchCardAddMethod()

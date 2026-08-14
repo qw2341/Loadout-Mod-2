@@ -5,6 +5,7 @@ namespace Loadout.Patches;
 using System;
 using System.Reflection;
 using HarmonyLib;
+using Loadout.Patches.ContentBans;
 using Loadout.Patches.Core;
 using Loadout.Patches.TildeKey;
 using Loadout.Services.Compatibility;
@@ -25,6 +26,12 @@ internal static class VersionSensitivePatchInstaller
                 Sts2Compatibility.BatchCardAddMethod,
                 typeof(LoadoutNativeDeckAddContentPatch),
                 nameof(LoadoutNativeDeckAddContentPatch.Postfix));
+
+            PatchPrefix(
+                harmony,
+                Sts2Compatibility.BatchCardAddMethod,
+                typeof(ContentBanDirectCardAddPatch),
+                ContentBanDirectCardAddPatch.GetPrefixMethodName());
 
             PatchPostfix(
                 harmony,

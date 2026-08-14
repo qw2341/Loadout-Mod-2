@@ -574,13 +574,13 @@ public class LoadoutBag
     {
 	    try
 	    {
-		    string formatted = HextechRunesCollectionInterop.FormatLikeStarterHeader(
+		    string formatted = Sts2Compatibility.TryFormatHextechCollectionHeader(
 			    starterHeader,
 			    zhTitle,
 			    zhBody,
 			    enTitle,
 			    enBody,
-			    logKey);
+			    logKey) ?? string.Empty;
 		    bool useChinese = starterHeader.Contains("初始：", StringComparison.Ordinal);
 		    string expectedTitle = useChinese ? zhTitle : enTitle;
 		    string expectedBody = useChinese ? zhBody : enBody;

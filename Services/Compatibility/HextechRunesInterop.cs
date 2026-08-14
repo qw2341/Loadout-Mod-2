@@ -49,21 +49,3 @@ public static class HextechRunesInterop
         return Array.Empty<Type>();
     }
 }
-
-/// <summary>
-/// Optional access to ARAM's own relic-collection header formatter.
-/// </summary>
-[ModInterop("HextechRunes", "HextechRunes.CollectionHooks")]
-public static class HextechRunesCollectionInterop
-{
-    public static string FormatLikeStarterHeader(
-        string starterHeader,
-        string zhHeader,
-        string zhBody,
-        string enHeader,
-        string enBody,
-        string logKey)
-    {
-        return $"{enHeader} {enBody}";
-    }
-}

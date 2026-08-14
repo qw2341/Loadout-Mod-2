@@ -3,6 +3,7 @@
 namespace Loadout.Patches.ContentBans;
 
 using HarmonyLib;
+using Loadout.Services.Compatibility;
 using Loadout.Services.ContentBans;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -242,13 +243,54 @@ internal static class ContentBanGeneratedCardPatch
     };
 }
 
-[HarmonyPatch(typeof(CardPileCmd), nameof(CardPileCmd.Add), typeof(IEnumerable<CardModel>), typeof(CardPile), typeof(CardPilePosition), typeof(AbstractModel), typeof(bool), typeof(bool))]
 internal static class ContentBanDirectCardAddPatch
 {
     private static readonly AsyncLocal<int> BypassDepth = new();
 
+    internal static string GetPrefixMethodName() => Sts2Compatibility.UsesNewBatchCardAdd
+        ? nameof(NewPrefix)
+        : nameof(LegacyPrefix);
+
     [HarmonyPrefix]
-    internal static bool Prefix(
+    internal static bool NewPrefix(
+        IEnumerable<CardModel> cards,
+        CardPile newPile,
+        CardPilePosition position,
+        AbstractModel? clonedBy,
+        bool skipVisuals,
+        bool isChangingOwners,
+        ref Task<IReadOnlyList<CardPileAddResult>> __result)
+    {
+        return Prefix(
+            cards,
+            newPile,
+            position,
+            clonedBy,
+            skipVisuals,
+            isChangingOwners,
+            ref __result);
+    }
+
+    [HarmonyPrefix]
+    internal static bool LegacyPrefix(
+        IEnumerable<CardModel> cards,
+        CardPile newPile,
+        CardPilePosition position,
+        AbstractModel? clonedBy,
+        bool skipVisuals,
+        ref Task<IReadOnlyList<CardPileAddResult>> __result)
+    {
+        return Prefix(
+            cards,
+            newPile,
+            position,
+            clonedBy,
+            skipVisuals,
+            isChangingOwners: false,
+            ref __result);
+    }
+
+    private static bool Prefix(
         IEnumerable<CardModel> cards,
         CardPile newPile,
         CardPilePosition position,
@@ -305,8 +347,13 @@ internal static class ContentBanDirectCardAddPatch
             BypassDepth.Value++;
             try
             {
-                IReadOnlyList<CardPileAddResult> native = await CardPileCmd.Add(
-                    allowed.Select(item => item.Card), newPile, position, clonedBy, skipVisuals, isChangingOwners);
+                IReadOnlyList<CardPileAddResult> native = await Sts2Compatibility.AddCards(
+                    allowed.Select(item => item.Card),
+                    newPile,
+                    position,
+                    clonedBy,
+                    skipVisuals,
+                    isChangingOwners);
                 for (int i = 0; i < allowed.Count; i++)
                     results[allowed[i].Index] = i < native.Count ? native[i] : Failure(allowed[i].Card);
             }
@@ -416,7 +463,7 @@ internal static class ContentBanSinglePotionOutOfCombatPatch
         if (!ContentBanService.HasAnyBans(ContentBanKind.Potion))
             return true;
         HashSet<ModelId> blocked = (blacklist ?? Array.Empty<PotionModel>()).Select(potion => potion.Id).ToHashSet();
-        PotionModel[] options = PotionFactory.GetPotionOptions(player)
+        PotionModel[] options = Sts2Compatibility.EnumeratePotionOptions(player)
             .Where(potion => !blocked.Contains(potion.Id))
             .Where(potion => !inCombat || potion.CanBeGeneratedInCombat)
             .ToArray();
@@ -451,7 +498,7 @@ internal static class ContentBanPotionBatchPatch
         if (!ContentBanService.HasAnyBans(ContentBanKind.Potion))
             return true;
         HashSet<ModelId> blocked = (blacklist ?? Array.Empty<PotionModel>()).Select(potion => potion.Id).ToHashSet();
-        List<PotionModel> available = PotionFactory.GetPotionOptions(player)
+        List<PotionModel> available = Sts2Compatibility.EnumeratePotionOptions(player)
             .Where(potion => !blocked.Contains(potion.Id))
             .ToList();
         List<PotionModel> generated = [];
