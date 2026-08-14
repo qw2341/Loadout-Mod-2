@@ -10,6 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -34,12 +35,17 @@ internal sealed record StartRunLobbyPlayerInfo(
     bool IsReady);
 
 /// <summary>
-/// Resolves the two supported STS2 API shapes once: the 0.110 beta API
-/// and the 0.107 release API. Gameplay call sites use cached compiled delegates,
-/// so compatibility probing never adds reflection to hot paths.
+/// Resolves supported STS2 release and beta API shapes once. Gameplay call sites
+/// use cached compiled delegates, so compatibility probing never adds reflection
+/// to hot paths.
 /// </summary>
 internal static class Sts2Compatibility
 {
+    private delegate CreatureAnimator CharacterAnimatorInvoker(
+        CharacterModel character,
+        MegaSprite controller,
+        Creature creature);
+
     private delegate Task<IReadOnlyList<CardPileAddResult>> BatchCardAddInvoker(
         IEnumerable<CardModel> cards,
         CardPile newPile,
@@ -174,6 +180,17 @@ internal static class Sts2Compatibility
         CreateAttackCommandCardPlayGetter();
     internal static bool UsesAttackCommandCardPlay =>
         AttackCommandCardPlayGetter is not null;
+
+    private static readonly MethodInfo CharacterGenerateAnimatorMethod =
+        ResolveCharacterGenerateAnimatorMethod();
+    private static readonly CharacterAnimatorInvoker GenerateCharacterAnimatorInvoker =
+        CreateCharacterAnimatorInvoker();
+
+    private static readonly MethodInfo EndCombatInternalMethod =
+        AccessTools.Method(typeof(CombatManager), "EndCombatInternal", Type.EmptyTypes)
+        ?? throw new MissingMethodException(typeof(CombatManager).FullName, "EndCombatInternal()");
+    private static readonly Func<CombatManager, Task> EndCombatInternalInvoker =
+        AccessTools.MethodDelegate<Func<CombatManager, Task>>(EndCombatInternalMethod);
 
     // 0.110 API shape.
     private static readonly FieldInfo? NewModAssembliesField =
@@ -418,6 +435,19 @@ internal static class Sts2Compatibility
         int track = 0)
     {
         InvokeSetAnimation(animationState, animation, loop, track);
+    }
+
+    internal static CreatureAnimator GenerateCharacterAnimator(
+        CharacterModel character,
+        MegaSprite controller,
+        Creature creature)
+    {
+        return GenerateCharacterAnimatorInvoker(character, controller, creature);
+    }
+
+    internal static Task EndCombatInternal(CombatManager combatManager)
+    {
+        return EndCombatInternalInvoker(combatManager);
     }
 
     internal static void AddAnimation(
@@ -769,6 +799,37 @@ internal static class Sts2Compatibility
 
         return AccessTools.MethodDelegate<Func<AttackCommand, CardPlay?>>(
             AttackCommandCardPlayGetter);
+    }
+
+    private static MethodInfo ResolveCharacterGenerateAnimatorMethod()
+    {
+        return AccessTools.Method(
+                   typeof(CharacterModel),
+                   nameof(CharacterModel.GenerateAnimator),
+                   [typeof(MegaSprite), typeof(Creature)])
+               ?? AccessTools.Method(
+                   typeof(CharacterModel),
+                   nameof(CharacterModel.GenerateAnimator),
+                   [typeof(MegaSprite)])
+               ?? throw new MissingMethodException(
+                   typeof(CharacterModel).FullName,
+                   "GenerateAnimator(MegaSprite, Creature) or GenerateAnimator(MegaSprite)");
+    }
+
+    private static CharacterAnimatorInvoker CreateCharacterAnimatorInvoker()
+    {
+        ParameterExpression character = Expression.Parameter(typeof(CharacterModel), "character");
+        ParameterExpression controller = Expression.Parameter(typeof(MegaSprite), "controller");
+        ParameterExpression creature = Expression.Parameter(typeof(Creature), "creature");
+        Expression[] arguments = CharacterGenerateAnimatorMethod.GetParameters().Length == 2
+            ? [controller, creature]
+            : [controller];
+        MethodCallExpression call = Expression.Call(character, CharacterGenerateAnimatorMethod, arguments);
+        return Expression.Lambda<CharacterAnimatorInvoker>(
+            call,
+            character,
+            controller,
+            creature).Compile();
     }
 
     private static MethodInfo ResolveAnimationMethod(string methodName, Type[] parameterTypes)

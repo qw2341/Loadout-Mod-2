@@ -72,7 +72,9 @@ public static class BottledMonsterMorphService
     private static readonly FieldInfo? StateDisplayField = AccessTools.Field(typeof(NCreature), "_stateDisplay");
     private static readonly MethodInfo? RefreshStateDisplayMethod = AccessTools.Method(typeof(NCreatureStateDisplay), "RefreshValues");
     private static readonly FieldInfo? AnyStateField = AccessTools.Field(typeof(CreatureAnimator), "_anyState");
-    private static readonly FieldInfo? BranchedStatesField = AccessTools.Field(typeof(AnimState), "_branchedStates");
+    private static readonly FieldInfo? BranchedStatesField =
+        AccessTools.Field(typeof(AnimState), "_triggerBranchedStates")
+        ?? AccessTools.Field(typeof(AnimState), "_branchedStates");
     private static readonly FieldInfo? MerchantPlayersField = AccessTools.Field(typeof(NMerchantRoom), "_players");
     private static readonly FieldInfo? MerchantPlayerVisualsField = AccessTools.Field(typeof(NMerchantRoom), "_playerVisuals");
     private static readonly FieldInfo? FakeMerchantPlayersField = AccessTools.Field(typeof(NFakeMerchant), "_players");
@@ -1059,7 +1061,7 @@ public static class BottledMonsterMorphService
                     creatureNode.Entity.GetPower<SurroundedPower>()?.Facing);
             }
 
-            CreatureAnimator? animator = CreateAnimator(visualModel, newVisuals);
+            CreatureAnimator? animator = CreateAnimator(visualModel, newVisuals, creatureNode.Entity);
             VisualsField.SetValue(creatureNode, newVisuals);
             SpineAnimatorField.SetValue(creatureNode, animator);
             fieldsSwapped = true;
@@ -1245,7 +1247,10 @@ public static class BottledMonsterMorphService
         };
     }
 
-    private static CreatureAnimator? CreateAnimator(AbstractModel model, NCreatureVisuals visuals)
+    private static CreatureAnimator? CreateAnimator(
+        AbstractModel model,
+        NCreatureVisuals visuals,
+        Creature creature)
     {
         if (!visuals.HasSpineAnimation || visuals.SpineBody is null)
             return null;
@@ -1258,7 +1263,7 @@ public static class BottledMonsterMorphService
         }
 
         return model is CharacterModel character
-            ? character.GenerateAnimator(visuals.SpineBody)
+            ? Sts2Compatibility.GenerateCharacterAnimator(character, visuals.SpineBody, creature)
             : null;
     }
 

@@ -18,6 +18,7 @@ using Godot;
 using HarmonyLib;
 using Loadout.Patches.TildeKey;
 using Loadout.Services.Actions;
+using Loadout.Services.Compatibility;
 using Loadout.Services.CreatureManipulation;
 using Loadout.Services.Saving;
 using Loadout.Services.RelicModification;
@@ -1101,7 +1102,7 @@ public static class TildeKeyStateService
             RemoveEnemyFromCombat(combatState, enemy);
 
         if (!await TryFinishCombatAsync() && CombatManager.Instance.IsInProgress)
-            await CombatManager.Instance.EndCombatInternal();
+            await Sts2Compatibility.EndCombatInternal(CombatManager.Instance);
     }
 
     internal static Task KillAllMonstersAtCombatStartAsync()
