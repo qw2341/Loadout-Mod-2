@@ -383,7 +383,7 @@ public partial class NGenericSelectScreen : Control
 
     private void OnContentBanChanged(ContentBanChangedEvent change)
     {
-        foreach (IGenericSelectItem item in _visibleItems.ToList())
+        foreach (IGenericSelectItem item in _visibleItems)
         {
             if (item is IContentBanSelectItem { BanTarget: { } target } banItem
                 && target == change.Target)

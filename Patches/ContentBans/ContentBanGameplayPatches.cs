@@ -38,7 +38,10 @@ internal static class ContentBanCardCreationOptionsPatch
 {
     [HarmonyPostfix]
     internal static void Postfix(ref IEnumerable<CardModel> __result)
-        => __result = __result.Where(card => !ContentBanService.IsBanned(card));
+    {
+        if (ContentBanService.HasAnyBans(ContentBanKind.Card))
+            __result = __result.Where(card => !ContentBanService.IsBanned(card));
+    }
 }
 
 [HarmonyPatch(typeof(CardFactory), nameof(CardFactory.FilterForCombat))]
@@ -46,7 +49,10 @@ internal static class ContentBanCombatCardPoolPatch
 {
     [HarmonyPostfix]
     internal static void Postfix(ref IEnumerable<CardModel> __result)
-        => __result = __result.Where(card => !ContentBanService.IsBanned(card));
+    {
+        if (ContentBanService.HasAnyBans(ContentBanKind.Card))
+            __result = __result.Where(card => !ContentBanService.IsBanned(card));
+    }
 }
 
 [HarmonyPatch(typeof(Hook), nameof(Hook.ModifyMerchantCardPool))]
@@ -54,7 +60,10 @@ internal static class ContentBanMerchantCardPoolPatch
 {
     [HarmonyPostfix]
     internal static void Postfix(ref IEnumerable<CardModel> __result)
-        => __result = __result.Where(card => !ContentBanService.IsBanned(card)).ToArray();
+    {
+        if (ContentBanService.HasAnyBans(ContentBanKind.Card))
+            __result = __result.Where(card => !ContentBanService.IsBanned(card)).ToArray();
+    }
 }
 
 [HarmonyPatch(typeof(CardFactory), nameof(CardFactory.GetDefaultTransformationOptions))]
@@ -62,7 +71,10 @@ internal static class ContentBanDefaultTransformationPoolPatch
 {
     [HarmonyPostfix]
     internal static void Postfix(ref IEnumerable<CardModel> __result)
-        => __result = __result.Where(card => !ContentBanService.IsBanned(card)).ToArray();
+    {
+        if (ContentBanService.HasAnyBans(ContentBanKind.Card))
+            __result = __result.Where(card => !ContentBanService.IsBanned(card)).ToArray();
+    }
 }
 
 [HarmonyPatch(typeof(CardCmd), nameof(CardCmd.Transform), typeof(IEnumerable<CardTransformation>), typeof(Rng), typeof(MegaCrit.Sts2.Core.Nodes.CommonUi.CardPreviewStyle))]
@@ -78,6 +90,8 @@ internal static class ContentBanCardTransformationPatch
         ref Task<IEnumerable<CardPileAddResult>> __result)
     {
         if (BypassDepth.Value > 0)
+            return true;
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Card))
             return true;
 
         CardTransformation[] input = transformations.ToArray();
@@ -168,6 +182,8 @@ internal static class ContentBanGeneratedCardPatch
     {
         if (BypassDepth.Value > 0)
             return true;
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Card))
+            return true;
 
         CardModel[] input = cards.ToArray();
         if (!input.Any(ContentBanService.IsBanned))
@@ -226,7 +242,7 @@ internal static class ContentBanGeneratedCardPatch
     };
 }
 
-[HarmonyPatch(typeof(CardPileCmd), nameof(CardPileCmd.Add), typeof(IEnumerable<CardModel>), typeof(CardPile), typeof(CardPilePosition), typeof(AbstractModel), typeof(bool))]
+[HarmonyPatch(typeof(CardPileCmd), nameof(CardPileCmd.Add), typeof(IEnumerable<CardModel>), typeof(CardPile), typeof(CardPilePosition), typeof(AbstractModel), typeof(bool), typeof(bool))]
 internal static class ContentBanDirectCardAddPatch
 {
     private static readonly AsyncLocal<int> BypassDepth = new();
@@ -238,14 +254,26 @@ internal static class ContentBanDirectCardAddPatch
         CardPilePosition position,
         AbstractModel? clonedBy,
         bool skipVisuals,
+        bool isChangingOwners,
         ref Task<IReadOnlyList<CardPileAddResult>> __result)
     {
         if (BypassDepth.Value > 0)
             return true;
-        CardModel[] input = cards.ToArray();
-        if (!input.Any(card => IsBlockedNewAcquisition(card, newPile)))
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Card))
             return true;
-        __result = AddAllowedAsync(input, newPile, position, clonedBy, skipVisuals);
+
+        IReadOnlyList<CardModel> input = cards as IReadOnlyList<CardModel> ?? cards.ToArray();
+        bool hasBlockedCard = false;
+        for (int index = 0; index < input.Count; index++)
+        {
+            if (!IsBlockedNewAcquisition(input[index], newPile))
+                continue;
+            hasBlockedCard = true;
+            break;
+        }
+        if (!hasBlockedCard)
+            return true;
+        __result = AddAllowedAsync(input, newPile, position, clonedBy, skipVisuals, isChangingOwners);
         return false;
     }
 
@@ -254,7 +282,8 @@ internal static class ContentBanDirectCardAddPatch
         CardPile newPile,
         CardPilePosition position,
         AbstractModel? clonedBy,
-        bool skipVisuals)
+        bool skipVisuals,
+        bool isChangingOwners)
     {
         CardPileAddResult?[] results = new CardPileAddResult?[input.Count];
         List<(int Index, CardModel Card)> allowed = [];
@@ -277,7 +306,7 @@ internal static class ContentBanDirectCardAddPatch
             try
             {
                 IReadOnlyList<CardPileAddResult> native = await CardPileCmd.Add(
-                    allowed.Select(item => item.Card), newPile, position, clonedBy, skipVisuals);
+                    allowed.Select(item => item.Card), newPile, position, clonedBy, skipVisuals, isChangingOwners);
                 for (int i = 0; i < allowed.Count; i++)
                     results[allowed[i].Index] = i < native.Count ? native[i] : Failure(allowed[i].Card);
             }
@@ -299,11 +328,11 @@ internal static class ContentBanDirectCardAddPatch
 
     private static bool IsBlockedNewAcquisition(CardModel card, CardPile newPile)
     {
-        if (!ContentBanService.IsBanned(card))
-            return false;
         if (card.FloorAddedToDeck is not null)
             return false;
-        return newPile.Type == PileType.Deck || card.Pile is null;
+        if (newPile.Type != PileType.Deck && card.Pile is not null)
+            return false;
+        return ContentBanService.IsBanned(card);
     }
 }
 
@@ -313,6 +342,8 @@ internal static class ContentBanRelicGrabBagFrontPatch
     [HarmonyPrefix]
     internal static void Prefix(ref Func<RelicModel, bool> filter)
     {
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Relic))
+            return;
         Func<RelicModel, bool> original = filter;
         filter = relic => original(relic) && !ContentBanService.IsBanned(relic);
     }
@@ -324,6 +355,8 @@ internal static class ContentBanRelicGrabBagBackPatch
     [HarmonyPrefix]
     internal static void Prefix(ref Func<RelicModel, bool> filter)
     {
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Relic))
+            return;
         Func<RelicModel, bool> original = filter;
         filter = relic => original(relic) && !ContentBanService.IsBanned(relic);
     }
@@ -338,7 +371,7 @@ internal static class ContentBanRelicAvailabilityPatch
     [HarmonyPostfix]
     internal static void Postfix(RelicGrabBag __instance, IRunState runState, ref bool __result)
     {
-        if (!__result)
+        if (!__result || !ContentBanService.HasAnyBans(ContentBanKind.Relic))
             return;
         Dictionary<RelicRarity, List<RelicModel>> deques = (Dictionary<RelicRarity, List<RelicModel>>)DequesField.GetValue(__instance)!;
         List<RelicModel> fallback = (List<RelicModel>)FallbackField.GetValue(__instance)!;
@@ -353,7 +386,7 @@ internal static class ContentBanRelicObtainPatch
     [HarmonyPrefix]
     internal static bool Prefix(RelicModel relic, ref Task<RelicModel> __result)
     {
-        if (!ContentBanService.IsBanned(relic))
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Relic) || !ContentBanService.IsBanned(relic))
             return true;
         __result = Task.FromResult<RelicModel>(null!);
         return false;
@@ -365,7 +398,10 @@ internal static class ContentBanPotionOptionsPatch
 {
     [HarmonyPostfix]
     internal static void Postfix(ref IEnumerable<PotionModel> __result)
-        => __result = __result.Where(potion => !ContentBanService.IsBanned(potion));
+    {
+        if (ContentBanService.HasAnyBans(ContentBanKind.Potion))
+            __result = __result.Where(potion => !ContentBanService.IsBanned(potion));
+    }
 }
 
 [HarmonyPatch(typeof(PotionFactory), nameof(PotionFactory.CreateRandomPotionOutOfCombat))]
@@ -410,7 +446,7 @@ internal static class ContentBanSinglePotionInCombatPatch
 internal static class ContentBanPotionBatchPatch
 {
     [HarmonyPrefix]
-    internal static bool Prefix(Player player, int count, Rng rng, IEnumerable<PotionModel>? blacklist, ref List<PotionModel> __result)
+    internal static bool Prefix(Player player, int count, Rng rng, IEnumerable<PotionModel>? blacklist, ref IEnumerable<PotionModel> __result)
     {
         if (!ContentBanService.HasAnyBans(ContentBanKind.Potion))
             return true;

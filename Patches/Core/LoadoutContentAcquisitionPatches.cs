@@ -17,7 +17,9 @@ public static class LoadoutShouldAddToDeckPatch
     [HarmonyPrefix]
     public static bool Prefix(CardModel card, ref AbstractModel? preventer, ref bool __result)
     {
-        if (card.FloorAddedToDeck is null && ContentBanService.IsBanned(card))
+        if (card.FloorAddedToDeck is null
+            && ContentBanService.HasAnyBans(ContentBanKind.Card)
+            && ContentBanService.IsBanned(card))
         {
             preventer = BanPreventer;
             __result = false;
@@ -39,7 +41,8 @@ public static class LoadoutShouldProcurePotionPatch
     [HarmonyPrefix]
     public static bool Prefix(PotionModel potion, ref bool __result)
     {
-        if (ContentBanService.IsBanned(potion))
+        if (ContentBanService.HasAnyBans(ContentBanKind.Potion)
+            && ContentBanService.IsBanned(potion))
         {
             __result = false;
             return false;

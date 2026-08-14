@@ -74,6 +74,7 @@ internal static class ContentBanService
     private static bool _loaded;
     private static bool _registered;
     private static bool _hasHostSnapshot;
+    private static volatile int _effectiveKindMask;
     private static long _revision;
     private static IReadOnlyList<ContentBanOfferReconciliation> _lastOfferReconciliations = [];
 
@@ -134,17 +135,7 @@ internal static class ContentBanService
     internal static bool HasAnyBans(ContentBanKind kind)
     {
         EnsureLoaded();
-        lock (Gate)
-        {
-            if (IsGuest())
-                return GetSet(_hostSnapshot, kind, ContentBanScope.Permanent).Count > 0
-                       || GetSet(_hostSnapshot, kind, ContentBanScope.Run).Count > 0;
-            if (GetSet(_profile, kind).Count > 0)
-                return true;
-            return TryGetCurrentRunState(out RunState? runState)
-                   && runState is not null
-                   && GetSet(GetRunState(runState), kind).Count > 0;
-        }
+        return (_effectiveKindMask & (1 << (int)kind)) != 0;
     }
 
     internal static bool IsPermanentlyBanned(ContentBanTarget target)
@@ -180,6 +171,7 @@ internal static class ContentBanService
             if (permanentChanged)
                 SaveProfileLocked();
 
+            RecomputeEffectiveKindMaskLocked();
             _revision++;
             change = new ContentBanChangedEvent(target, previous, next);
         }
@@ -220,6 +212,7 @@ internal static class ContentBanService
             state.Cards.ExceptWith(_profile.Cards);
             state.Relics.ExceptWith(_profile.Relics);
             state.Potions.ExceptWith(_profile.Potions);
+            RecomputeEffectiveKindMaskLocked();
         }
     }
 
@@ -228,6 +221,8 @@ internal static class ContentBanService
         if (!_registered || !Lobbies.Add(lobby))
             return;
 
+        lock (Gate)
+            RecomputeEffectiveKindMaskLocked();
         RegisterMessageHandler(lobby.NetService);
         Delegate connected = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
             lobby,
@@ -273,6 +268,8 @@ internal static class ContentBanService
         {
             RegisterRunNetService(RunManager.Instance.NetService);
             BindRunLobby(RunManager.Instance.RunLobby);
+            lock (Gate)
+                RecomputeEffectiveKindMaskLocked();
             if (RunManager.Instance.NetService.Type == NetGameType.Host)
                 BroadcastSnapshot();
             else if (RunManager.Instance.NetService.Type is NetGameType.Singleplayer or NetGameType.Replay)
@@ -289,7 +286,10 @@ internal static class ContentBanService
         UnregisterRunNetService(clearOverlay: true);
         ContentBanLiveOfferService.Reset();
         lock (Gate)
+        {
             _lastOfferReconciliations = [];
+            RecomputeEffectiveKindMaskLocked(includeRun: false);
+        }
     }
 
     internal static void SendSnapshotToRunPlayer(ulong playerId)
@@ -323,6 +323,7 @@ internal static class ContentBanService
                 return;
             _profile = Normalize(SaveUtility.LoadProfileJson(ProfilePath, new ProfileBanSaveData()).Value);
             _loaded = true;
+            RecomputeEffectiveKindMaskLocked();
         }
     }
 
@@ -613,6 +614,7 @@ internal static class ContentBanService
                 }
                 _hostSnapshot = incoming;
                 _hasHostSnapshot = true;
+                RecomputeEffectiveKindMaskLocked();
             }
             ContentBanLiveOfferService.Apply(incoming.Offers);
             foreach (ContentBanChangedEvent change in changes)
@@ -630,7 +632,37 @@ internal static class ContentBanService
         {
             _hostSnapshot = new NetworkBanSnapshot();
             _hasHostSnapshot = false;
+            RecomputeEffectiveKindMaskLocked();
         }
+    }
+
+    private static void RecomputeEffectiveKindMaskLocked(bool includeRun = true)
+    {
+        int mask = 0;
+        if (IsGuest())
+        {
+            foreach (ContentBanKind kind in Enum.GetValues<ContentBanKind>())
+            {
+                if (GetSet(_hostSnapshot, kind, ContentBanScope.Permanent).Count > 0
+                    || GetSet(_hostSnapshot, kind, ContentBanScope.Run).Count > 0)
+                    mask |= 1 << (int)kind;
+            }
+        }
+        else
+        {
+            RunBanState? runBans = includeRun
+                && TryGetCurrentRunState(out RunState? runState)
+                && runState is not null
+                ? GetRunState(runState)
+                : null;
+            foreach (ContentBanKind kind in Enum.GetValues<ContentBanKind>())
+            {
+                if (GetSet(_profile, kind).Count > 0
+                    || runBans is not null && GetSet(runBans, kind).Count > 0)
+                    mask |= 1 << (int)kind;
+            }
+        }
+        _effectiveKindMask = mask;
     }
 
     private static NetworkBanSnapshot Normalize(NetworkBanSnapshot snapshot)

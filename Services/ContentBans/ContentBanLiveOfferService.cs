@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -81,6 +82,7 @@ internal static class ContentBanLiveOfferService
     private static readonly MethodInfo MerchantPotionFillMethod = AccessTools.Method(typeof(MerchantPotionEntry), "FillSlot");
     private static readonly FieldInfo AncientGeneratedOptionsField = AccessTools.Field(typeof(AncientEventModel), "_generatedOptions");
     private static readonly MethodInfo SetEventStateMethod = AccessTools.Method(typeof(EventModel), "SetEventState");
+    private static readonly MethodInfo RewardButtonReloadMethod = AccessTools.Method(typeof(NRewardButton), "Reload");
 
     internal static void TrackRewardsSet(RewardsSet set)
     {
@@ -144,6 +146,9 @@ internal static class ContentBanLiveOfferService
 
     internal static IReadOnlyList<EventOption> ReconcileAncientInitial(AncientEventModel ancient, IReadOnlyList<EventOption> options)
     {
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Relic))
+            return options;
+
         List<EventOption> next = options.ToList();
         bool changed = false;
         for (int index = next.Count - 1; index >= 0; index--)
@@ -612,13 +617,8 @@ internal static class ContentBanLiveOfferService
 
     private static void RefreshCardReward(CardReward reward, IReadOnlyList<CardCreationResult> cards)
     {
-        object? screen = CardRewardScreenField.GetValue(reward);
-        if (screen is not null)
-        {
-            AccessTools.Method(screen.GetType(), "RefreshOptions")?.Invoke(
-                screen,
-                [cards, CardRewardAlternative.Generate(reward)]);
-        }
+        if (CardRewardScreenField.GetValue(reward) is NCardRewardSelectionScreen screen)
+            screen.RefreshOptions(cards, CardRewardAlternative.Generate(reward));
     }
 
     private static void RefreshRewardButton(Reward reward)
@@ -632,7 +632,7 @@ internal static class ContentBanLiveOfferService
         Control icon = button.GetNode<Control>("%Icon");
         foreach (Node child in icon.GetChildren())
             child.QueueFree();
-        AccessTools.Method(typeof(NRewardButton), "Reload")?.Invoke(button, null);
+        RewardButtonReloadMethod.Invoke(button, null);
     }
 
     private static void RemoveReward(RewardsSet set, int index, Reward reward)
