@@ -180,15 +180,22 @@ public static class CustomRunAfterRoomEnteredPatch
             return;
         if (CustomRunRuleRuntimeService.UsesTrigger("Loadout2:RoomEntered"))
             CustomRunRuleRuntimeService.Capture("Loadout2:RoomEntered", 0);
-        if (room is EventRoom eventRoom
-            && CustomRunRuleRuntimeService.UsesTrigger("Loadout2:EventEntered"))
-        {
-            CustomRunRuleRuntimeService.Capture(
-                "Loadout2:EventEntered",
-                0,
-                SelectionModelKind.Event,
-                eventRoom.CanonicalEvent.Id.ToString());
-        }
+        if (room is not EventRoom eventRoom)
+            return;
+
+        string eventId = eventRoom.CanonicalEvent.Id.ToString();
+        CaptureEventTrigger("Loadout2:EventEntered", eventId);
+        CaptureEventTrigger(
+            eventRoom.CanonicalEvent is AncientEventModel
+                ? "Loadout2:AncientEventEntered"
+                : "Loadout2:NonAncientEventEntered",
+            eventId);
+    }
+
+    private static void CaptureEventTrigger(string triggerId, string eventId)
+    {
+        if (CustomRunRuleRuntimeService.UsesTrigger(triggerId))
+            CustomRunRuleRuntimeService.Capture(triggerId, 0, SelectionModelKind.Event, eventId);
     }
 }
 

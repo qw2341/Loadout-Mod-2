@@ -132,6 +132,8 @@ public static class CustomRunRegistry
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:RoomEntered", "Room Entered", "Events");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:RoomCompleted", "Room Completed", "Events");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:EventEntered", "Event Entered", "Events");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:NonAncientEventEntered", "Non-Ancient Event Entered", "Events");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:AncientEventEntered", "Ancient Event Entered", "Events");
 
             RuleParameterDescriptor playerTarget = new("target", "Target", RuleParameterKind.PlayerTarget);
             RuleParameterDescriptor amount = new("amount", "Amount", RuleParameterKind.NumericSource);
@@ -256,7 +258,9 @@ public static class CustomRunRegistry
                 "Loadout2:EventMatches",
                 "Event Matches",
                 "Events",
-                new HashSet<string>(["Loadout2:EventEntered"], StringComparer.Ordinal),
+                new HashSet<string>(
+                    ["Loadout2:EventEntered", "Loadout2:NonAncientEventEntered", "Loadout2:AncientEventEntered"],
+                    StringComparer.Ordinal),
                 eventMatcher);
             RegisterBuiltIn(
                 Conditions,

@@ -121,7 +121,10 @@ public static class CustomRunRuntimePatchManager
             typeof(CustomRunRuleRuntimeRunEndPatch), prefix: true);
         PatchTrigger(triggers, "Loadout2:CardPlayed", typeof(Hook), nameof(Hook.AfterCardPlayed),
             typeof(CustomRunAfterCardPlayedPatch), postfix: true);
-        if (triggers.Contains("Loadout2:RoomEntered") || triggers.Contains("Loadout2:EventEntered"))
+        if (triggers.Contains("Loadout2:RoomEntered")
+            || triggers.Contains("Loadout2:EventEntered")
+            || triggers.Contains("Loadout2:NonAncientEventEntered")
+            || triggers.Contains("Loadout2:AncientEventEntered"))
         {
             Patch(RequiredMethod(typeof(Hook), nameof(Hook.AfterRoomEntered)),
                 typeof(CustomRunAfterRoomEnteredPatch), postfix: true);

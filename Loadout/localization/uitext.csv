@@ -674,6 +674,8 @@ CUSTOM_RUN_EVENT_TYPE_ANCIENT,Ancient,先祖事件,Ancien,古代イベント,고
 CUSTOM_RUN_COMPONENT_ROOM_ENTERED,Room Entered,进入房间,Entrée dans une salle,部屋に入った,방 입장,Sala iniciada
 CUSTOM_RUN_COMPONENT_ROOM_COMPLETED,Room Completed,完成房间,Salle terminée,部屋を完了,방 완료,Sala completada
 CUSTOM_RUN_COMPONENT_EVENT_ENTERED,Event Entered,进入事件,Entrée dans un événement,イベントに入った,이벤트 입장,Evento iniciado
+CUSTOM_RUN_COMPONENT_NON_ANCIENT_EVENT_ENTERED,Non-Ancient Event Entered,进入非先祖事件,Entrée dans un événement non ancien,非古代イベントに入った,비고대 이벤트 입장,Evento no antiguo iniciado
+CUSTOM_RUN_COMPONENT_ANCIENT_EVENT_ENTERED,Ancient Event Entered,进入先祖事件,Entrée dans un événement ancien,古代イベントに入った,고대 이벤트 입장,Evento antiguo iniciado
 CUSTOM_RUN_COMPONENT_EVENT_MATCHES,Event Matches,事件匹配,L'événement correspond,イベントが一致,이벤트 일치,El evento coincide
 CUSTOM_RUN_COMPONENT_ADD_CARDS_TO_HAND,Add Cards To Hand From Matcher,从匹配器将卡牌加入手牌,Ajouter à la main les cartes correspondantes,一致するカードを手札に加える,일치하는 카드를 손패에 추가,Añadir cartas coincidentes a la mano
 CUSTOM_RUN_COMPONENT_SET_PLAYER_DAMAGE_MULTIPLIER,Set Player Damage Multiplier,设置玩家伤害倍率,Définir le multiplicateur de dégâts du joueur,プレイヤーのダメージ倍率を設定,플레이어 피해 배율 설정,Definir multiplicador de daño del jugador
