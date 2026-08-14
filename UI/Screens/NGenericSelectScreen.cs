@@ -214,6 +214,10 @@ public partial class NGenericSelectScreen : Control
     private TemporaryConfigurationSession? _temporaryConfigurationSession;
     private Action? _restoreConfiguration;
     private bool _applyingTemporaryConfiguration;
+    private readonly HashSet<ContentBanTarget> _contentBanGestureTargets = [];
+    private ContentBanScope _activeContentBanGestureScope;
+    private ContentBanScope _contentBanGestureApplyScope;
+    private Control? _contentBanGestureHoverView;
 
     public IReadOnlyList<IGenericSelectItem> Items => _items;
     public IReadOnlyList<IGenericSelectItem> VisibleItems => _visibleItems;
@@ -294,6 +298,7 @@ public partial class NGenericSelectScreen : Control
 
         if (!active)
         {
+            EndContentBanGesture();
             UnsubscribeFromLocaleChanges();
             CloseOpenDropdowns();
             ReleaseFocusInsideScreen();
@@ -307,6 +312,7 @@ public partial class NGenericSelectScreen : Control
         if (!IsConfiguredForCurrentLocale)
             OnLocaleChanged();
 
+        RefreshMaterializedContentBanVisuals();
         SetActionButtonsActive(true);
         UpdateConfirmButtonState();
         ScreenOpened?.Invoke();
@@ -345,50 +351,144 @@ public partial class NGenericSelectScreen : Control
 
     private bool TryHandleContentBanShortcut(InputEvent @event)
     {
-        if (@event is not InputEventKey { Pressed: true, Echo: false } keyEvent
-            || !string.IsNullOrWhiteSpace(_query)
-            || !string.IsNullOrWhiteSpace(_searchLineEdit?.Text))
+        if (@event is InputEventMouseMotion mouseMotion
+            && _activeContentBanGestureScope != ContentBanScope.None)
+        {
+            if (!IsContentBanKeyPressed(_activeContentBanGestureScope) || IsContentBanShortcutSuppressed())
+            {
+                EndContentBanGesture();
+                return false;
+            }
+            TryApplyContentBanGesture(mouseMotion.Position);
+            return false;
+        }
+
+        if (@event is not InputEventKey keyEvent)
             return false;
 
         Key key = keyEvent.Keycode != Key.None ? keyEvent.Keycode : keyEvent.PhysicalKeycode;
-        ContentBanScope scope = key switch
+        ContentBanScope scope = GetContentBanScope(key);
+        if (scope == ContentBanScope.None)
+            return false;
+
+        if (!keyEvent.Pressed)
+        {
+            if (_activeContentBanGestureScope != scope)
+                return false;
+            EndContentBanGesture();
+            GetViewport().SetInputAsHandled();
+            return true;
+        }
+
+        if (keyEvent.Echo)
+        {
+            if (_activeContentBanGestureScope != scope)
+                return false;
+            GetViewport().SetInputAsHandled();
+            return true;
+        }
+
+        if (IsContentBanShortcutSuppressed())
+            return false;
+
+        BeginContentBanGesture(scope);
+        TryApplyContentBanGesture();
+        GetViewport().SetInputAsHandled();
+        return true;
+    }
+
+    private static ContentBanScope GetContentBanScope(Key key)
+    {
+        return key switch
         {
             Key.B => ContentBanScope.Permanent,
             Key.N => ContentBanScope.Run,
             _ => ContentBanScope.None
         };
-        if (scope == ContentBanScope.None)
-            return false;
+    }
 
+    private bool IsContentBanShortcutSuppressed()
+    {
+        if (!string.IsNullOrWhiteSpace(_query) || !string.IsNullOrWhiteSpace(_searchLineEdit?.Text))
+            return true;
         Control? focusOwner = GetViewport()?.GuiGetFocusOwner();
-        if (focusOwner is LineEdit or TextEdit)
-            return false;
+        return focusOwner is LineEdit or TextEdit;
+    }
 
+    private static bool IsContentBanKeyPressed(ContentBanScope scope)
+    {
+        return scope switch
+        {
+            ContentBanScope.Permanent => Input.IsKeyPressed(Key.B),
+            ContentBanScope.Run => Input.IsKeyPressed(Key.N),
+            _ => false
+        };
+    }
+
+    private void BeginContentBanGesture(ContentBanScope scope)
+    {
+        if (_activeContentBanGestureScope != ContentBanScope.None)
+            EndContentBanGesture();
+        _activeContentBanGestureScope = scope;
         IGenericSelectItem? hovered = GetHoveredBanItem();
-        if (hovered is not IContentBanSelectItem { BanTarget: { } target } banItem)
+        _contentBanGestureApplyScope = hovered is IContentBanSelectItem { BanTarget: { } target }
+                                       && ContentBanService.GetScope(target) == scope
+            ? ContentBanScope.None
+            : scope;
+        _contentBanGestureTargets.Clear();
+        _contentBanGestureHoverView = null;
+    }
+
+    private void EndContentBanGesture()
+    {
+        if (_activeContentBanGestureScope == ContentBanScope.None)
+            return;
+        _activeContentBanGestureScope = ContentBanScope.None;
+        _contentBanGestureApplyScope = ContentBanScope.None;
+        _contentBanGestureTargets.Clear();
+        _contentBanGestureHoverView = null;
+        ContentBanService.CommitDeferredChanges();
+    }
+
+    private bool TryApplyContentBanGesture(Vector2? pointer = null)
+    {
+        if (pointer is { } currentPointer
+            && _contentBanGestureHoverView is { } currentView
+            && GodotObject.IsInstanceValid(currentView)
+            && ContentBanVisuals.ContainsPoint(currentView, currentPointer))
             return false;
 
-        if (!ContentBanService.Toggle(target, scope))
-            ContentBanVisuals.Wiggle(banItem.BanVisualView ?? hovered.View!);
+        IGenericSelectItem? hovered = GetHoveredBanItem(pointer);
+        if (hovered is not IContentBanSelectItem { BanTarget: { } target } banItem)
+        {
+            _contentBanGestureHoverView = null;
+            return false;
+        }
+        _contentBanGestureHoverView = banItem.BanVisualView ?? hovered.View;
+        if (!_contentBanGestureTargets.Add(target))
+            return false;
 
-        GetViewport().SetInputAsHandled();
+        if (!ContentBanService.SetScope(target, _contentBanGestureApplyScope, deferCommit: true))
+            ContentBanVisuals.Wiggle(banItem.BanVisualView ?? hovered.View!);
         return true;
     }
 
-    private IGenericSelectItem? GetHoveredBanItem()
+    private IGenericSelectItem? GetHoveredBanItem(Vector2? pointerOverride = null)
     {
-        for (Node? node = GetViewport().GuiGetHoveredControl(); node is not null && node != this; node = node.GetParent())
+        if (pointerOverride is null)
         {
-            if (node is Control control
-                && _activationItemsByView.TryGetValue(control, out IGenericSelectItem? item)
-                && item is IContentBanSelectItem { BanTarget: not null })
-                return item;
+            for (Node? node = GetViewport().GuiGetHoveredControl(); node is not null && node != this; node = node.GetParent())
+            {
+                if (node is Control control
+                    && _activationItemsByView.TryGetValue(control, out IGenericSelectItem? item)
+                    && item is IContentBanSelectItem { BanTarget: not null })
+                    return item;
+            }
         }
 
-        Vector2 pointer = GetViewport().GetMousePosition();
-        for (int index = _visibleItems.Count - 1; index >= 0; index--)
+        Vector2 pointer = pointerOverride ?? GetViewport().GetMousePosition();
+        foreach (IGenericSelectItem item in _activationItemsByView.Values)
         {
-            IGenericSelectItem item = _visibleItems[index];
             if (item is not IContentBanSelectItem { BanTarget: not null } banItem)
                 continue;
             Control? visual = banItem.BanVisualView ?? item.View;
@@ -400,10 +500,19 @@ public partial class NGenericSelectScreen : Control
 
     private void OnContentBanChanged(ContentBanChangedEvent change)
     {
-        foreach (IGenericSelectItem item in _visibleItems)
+        foreach (IGenericSelectItem item in _activationItemsByView.Values)
         {
             if (item is IContentBanSelectItem { BanTarget: { } target } banItem
                 && target == change.Target)
+                banItem.RefreshBanVisual();
+        }
+    }
+
+    private void RefreshMaterializedContentBanVisuals()
+    {
+        foreach (IGenericSelectItem item in _activationItemsByView.Values)
+        {
+            if (item is IContentBanSelectItem banItem)
                 banItem.RefreshBanVisual();
         }
     }

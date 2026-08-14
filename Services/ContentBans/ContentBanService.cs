@@ -79,6 +79,8 @@ internal static class ContentBanService
     private static volatile int _effectiveKindMask;
     private static long _revision;
     private static IReadOnlyList<ContentBanOfferReconciliation> _lastOfferReconciliations = [];
+    private static bool _profileSavePending;
+    private static bool _snapshotBroadcastPending;
 
     internal static event Action<ContentBanChangedEvent>? Changed;
 
@@ -97,6 +99,7 @@ internal static class ContentBanService
         if (!_registered)
             return;
 
+        CommitDeferredChanges();
         SaveManager.Instance.ProfileIdChanged -= OnProfileChanged;
         foreach (StartRunLobby lobby in Lobbies.ToList())
             UnregisterLobby(lobby, clearOverlay: false);
@@ -152,9 +155,25 @@ internal static class ContentBanService
     internal static bool IsPermanentlyBanned(ContentBanTarget target)
         => GetScope(target) == ContentBanScope.Permanent;
 
-    internal static bool Toggle(ContentBanTarget target, ContentBanScope requestedScope)
+    internal static bool Toggle(
+        ContentBanTarget target,
+        ContentBanScope requestedScope,
+        bool deferCommit = false)
+        => ChangeScope(target, requestedScope, toggle: true, deferCommit);
+
+    internal static bool SetScope(
+        ContentBanTarget target,
+        ContentBanScope scope,
+        bool deferCommit = false)
+        => ChangeScope(target, scope, toggle: false, deferCommit);
+
+    private static bool ChangeScope(
+        ContentBanTarget target,
+        ContentBanScope requestedScope,
+        bool toggle,
+        bool deferCommit)
     {
-        if (!target.IsValid || requestedScope == ContentBanScope.None || IsGuest())
+        if (!target.IsValid || (toggle && requestedScope == ContentBanScope.None) || IsGuest())
             return false;
         if (requestedScope == ContentBanScope.Run && !TryGetCurrentRunState(out _))
             return false;
@@ -164,7 +183,11 @@ internal static class ContentBanService
         lock (Gate)
         {
             ContentBanScope previous = GetLocalScopeLocked(target);
-            ContentBanScope next = previous == requestedScope ? ContentBanScope.None : requestedScope;
+            ContentBanScope next = toggle && previous == requestedScope
+                ? ContentBanScope.None
+                : requestedScope;
+            if (previous == next)
+                return true;
             bool permanentChanged = Contains(_profile, target) != (next == ContentBanScope.Permanent);
 
             Remove(_profile, target);
@@ -179,19 +202,44 @@ internal static class ContentBanService
             {
                 Add(GetRunState(runState), target);
             }
-            if (permanentChanged)
+            if (permanentChanged && deferCommit)
+                _profileSavePending = true;
+            if (!deferCommit && (permanentChanged || _profileSavePending))
+            {
                 SaveProfileLocked();
+                _profileSavePending = false;
+            }
 
             RecomputeEffectiveKindMaskLocked();
             _revision++;
             change = new ContentBanChangedEvent(target, previous, next);
+            if (deferCommit)
+                _snapshotBroadcastPending = true;
+            else
+                _snapshotBroadcastPending = false;
         }
 
         IReadOnlyList<ContentBanOfferReconciliation> reconciliations = ContentBanLiveOfferService.ReconcileHost(change);
         RecordOfferReconciliations(reconciliations);
         Changed?.Invoke(change);
-        BroadcastSnapshot();
+        if (!deferCommit)
+            BroadcastSnapshot();
         return true;
+    }
+
+    internal static void CommitDeferredChanges()
+    {
+        bool broadcast;
+        lock (Gate)
+        {
+            if (_profileSavePending)
+                SaveProfileLocked();
+            _profileSavePending = false;
+            broadcast = _snapshotBroadcastPending;
+            _snapshotBroadcastPending = false;
+        }
+        if (broadcast)
+            BroadcastSnapshot();
     }
 
     internal static string GetSerializedRunState(RunState runState)
@@ -364,6 +412,8 @@ internal static class ContentBanService
             previousPermanent = Enumerate(_profile).ToList();
             _loaded = false;
             _profile = new ProfileBanSaveData();
+            _profileSavePending = false;
+            _snapshotBroadcastPending = false;
         }
         EnsureLoaded();
         List<ContentBanTarget> currentPermanent;
