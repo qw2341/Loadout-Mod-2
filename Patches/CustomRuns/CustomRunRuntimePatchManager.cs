@@ -141,6 +141,14 @@ public static class CustomRunRuntimePatchManager
                 typeof(CustomRunRoomFadeInPatch),
                 prefix: true);
         }
+        if (snapshot.Rules.Any(rule => rule.Actions.Any(action => action.TypeId == "Loadout2:EnterEvent")))
+        {
+            Patch(
+                AccessTools.PropertySetter(typeof(EventModel), nameof(EventModel.Rng))
+                ?? throw new MissingMethodException(typeof(EventModel).FullName, $"set_{nameof(EventModel.Rng)}"),
+                typeof(CustomRunEventRngPatch),
+                prefix: true);
+        }
         PatchTrigger(triggers, "Loadout2:RoomCompleted", typeof(NMapScreen), nameof(NMapScreen.Open),
             typeof(CustomRunRoomCompletedPatch), prefix: true, postfix: true);
 

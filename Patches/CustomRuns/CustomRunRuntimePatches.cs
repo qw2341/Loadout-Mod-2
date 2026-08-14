@@ -29,6 +29,7 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
@@ -224,6 +225,15 @@ public static class CustomRunRoomFadeInPatch
         {
             Bypass.Value = false;
         }
+    }
+}
+
+public static class CustomRunEventRngPatch
+{
+    public static void Prefix(EventModel __instance, ref Rng __0)
+    {
+        if (CustomRunEventRngScope.TryCreate(__instance, out Rng mixed))
+            __0 = mixed;
     }
 }
 

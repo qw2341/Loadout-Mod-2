@@ -331,7 +331,7 @@ internal static class CustomRunRuleEvaluator
                 break;
             case "Loadout2:EnterEvent":
                 if (decision.ModelIds.FirstOrDefault() is { } eventId)
-                    await EnterEventAsync(eventId);
+                    await EnterEventAsync(eventId, runtimeEvent.EventId);
                 break;
             case "Loadout2:SetNextEvent":
                 if (decision.ModelIds.FirstOrDefault() is { } nextEventId)
@@ -724,7 +724,7 @@ internal static class CustomRunRuleEvaluator
             await CardPileCmd.AddGeneratedCardsToCombat(cards, pile, target);
     }
 
-    private static async Task EnterEventAsync(string eventId)
+    private static async Task EnterEventAsync(string eventId, long occurrence)
     {
         if (!CustomRunCatalogService.TryResolve(SelectionModelKind.Event, eventId, out CustomRunCatalogEntry entry)
             || entry.Model is not EventModel eventModel)
@@ -734,7 +734,10 @@ internal static class CustomRunRuleEvaluator
             && string.Equals(active.CanonicalEvent.Id.ToString(), eventModel.Id.ToString(), StringComparison.Ordinal))
             return;
         if (CreateRoomMethod?.Invoke(RunManager.Instance, [RoomType.Event, MapPointType.Unknown, eventModel]) is AbstractRoom room)
-            await RunManager.Instance.EnterRoom(room);
+        {
+            using (CustomRunEventRngScope.Begin(occurrence))
+                await RunManager.Instance.EnterRoom(room);
+        }
     }
 
     private static TModel? ResolveModel<TModel>(SelectionModelKind kind, string id)
