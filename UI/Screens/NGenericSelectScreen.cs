@@ -5,6 +5,7 @@ using Loadout.UI.Managers;
 namespace Loadout.UI.Screens;
 
 using Godot;
+using Loadout.Services.ContentBans;
 using Loadout.UI;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
@@ -250,12 +251,16 @@ public partial class NGenericSelectScreen : Control
         RebuildFilterButtons();
         ApplyLayoutSettings();
 
+        ContentBanService.Changed -= OnContentBanChanged;
+        ContentBanService.Changed += OnContentBanChanged;
+
         SetProcess(false);
         SetProcessInput(false);
     }
 
     public override void _ExitTree()
     {
+        ContentBanService.Changed -= OnContentBanChanged;
         _reusedSelectionSession?.End(restoreState: false);
         _temporaryConfigurationSession?.End(restoreState: false);
         if (_isScreenActive)
@@ -317,6 +322,9 @@ public partial class NGenericSelectScreen : Control
 
     public override void _Input(InputEvent @event)
     {
+        if (TryHandleContentBanShortcut(@event))
+            return;
+
         if (_scrollMask is null)
             return;
 
@@ -333,6 +341,54 @@ public partial class NGenericSelectScreen : Control
         SetTargetScroll(_targetScrollY - drag * ScrollSpeedMultiplier);
 
         GetViewport().SetInputAsHandled();
+    }
+
+    private bool TryHandleContentBanShortcut(InputEvent @event)
+    {
+        if (@event is not InputEventKey { Pressed: true, Echo: false } keyEvent
+            || !string.IsNullOrWhiteSpace(_query)
+            || !string.IsNullOrWhiteSpace(_searchLineEdit?.Text))
+            return false;
+
+        Key key = keyEvent.Keycode != Key.None ? keyEvent.Keycode : keyEvent.PhysicalKeycode;
+        ContentBanScope scope = key switch
+        {
+            Key.B => ContentBanScope.Permanent,
+            Key.N => ContentBanScope.Run,
+            _ => ContentBanScope.None
+        };
+        if (scope == ContentBanScope.None)
+            return false;
+
+        Control? focusOwner = GetViewport()?.GuiGetFocusOwner();
+        if (focusOwner is LineEdit or TextEdit)
+            return false;
+
+        Vector2 pointer = GetViewport().GetMousePosition();
+        IGenericSelectItem? hovered = _visibleItems.LastOrDefault(item =>
+            item is IContentBanSelectItem { BanTarget: not null }
+            && item.View is { } view
+            && GodotObject.IsInstanceValid(view)
+            && view.IsVisibleInTree()
+            && view.GetGlobalRect().HasPoint(pointer));
+        if (hovered is not IContentBanSelectItem { BanTarget: { } target } banItem)
+            return false;
+
+        if (!ContentBanService.Toggle(target, scope))
+            ContentBanVisuals.Wiggle(banItem.BanVisualView ?? hovered.View!);
+
+        GetViewport().SetInputAsHandled();
+        return true;
+    }
+
+    private void OnContentBanChanged(ContentBanChangedEvent change)
+    {
+        foreach (IGenericSelectItem item in _visibleItems.ToList())
+        {
+            if (item is IContentBanSelectItem { BanTarget: { } target } banItem
+                && target == change.Target)
+                banItem.RefreshBanVisual();
+        }
     }
     
     private void SetActionButtonsActive(bool active)
@@ -3909,6 +3965,13 @@ public partial class NGenericSelectScreen : Control
         if (!TryGetItemForView(view, out IGenericSelectItem item))
             return;
 
+        if (item is IContentBanSelectItem { BanTarget: { } target } banItem
+            && ContentBanService.IsBanned(target))
+        {
+            ContentBanVisuals.Wiggle(banItem.BanVisualView ?? view);
+            return;
+        }
+
         ActivateItem(item);
     }
 
@@ -5265,6 +5328,14 @@ public sealed class SelectItemAdapter<TModel>
     public Func<TModel, string, bool>? MatchesSearch { get; init; }
     public Func<TModel, Control, Action, Action?>? BindActivationWithCleanup { get; init; }
     public Func<TModel, Control, Action, bool>? BindActivation { get; init; }
+    internal Func<TModel, ContentBanTarget?>? GetBanTarget { get; init; }
+}
+
+internal interface IContentBanSelectItem
+{
+    ContentBanTarget? BanTarget { get; }
+    Control? BanVisualView { get; }
+    void RefreshBanVisual();
 }
 
 public interface IGenericSelectItem
@@ -5293,7 +5364,7 @@ internal interface ISelectItemResourcePreloadDescriptor
     IReadOnlyList<string> CapturePreloadResourcePaths();
 }
 
-public sealed class GenericSelectItem<TModel> : IGenericSelectItem, ISelectItemResourcePreloadDescriptor
+public sealed class GenericSelectItem<TModel> : IGenericSelectItem, ISelectItemResourcePreloadDescriptor, IContentBanSelectItem
 {
     private readonly SelectItemAdapter<TModel> _adapter;
     private string? _searchText;
@@ -5315,6 +5386,9 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem, ISelectItemR
     public string SearchText => EnsureSearchText();
     public int OriginalIndex { get; }
     public Control? View { get; private set; }
+    ContentBanTarget? IContentBanSelectItem.BanTarget => _adapter.GetBanTarget?.Invoke(Model);
+    Control? IContentBanSelectItem.BanVisualView => _banVisualView;
+    private Control? _banVisualView;
     public bool HasPreloadResources => _adapter.PreloadResources is not null;
     bool ISelectItemResourcePreloadDescriptor.HasPreloadResourcePaths =>
         _adapter.CapturePreloadResourcePaths is not null;
@@ -5338,11 +5412,24 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem, ISelectItemR
     {
         if (View is not null)
             _adapter.UpdateView?.Invoke(Model, View, state);
+        RefreshBanVisual();
     }
 
     public void NotifyViewReady(Control renderedView)
     {
+        _banVisualView = renderedView;
         _adapter.ViewReady?.Invoke(Model, renderedView);
+        RefreshBanVisual();
+    }
+
+    void IContentBanSelectItem.RefreshBanVisual() => RefreshBanVisual();
+
+    private void RefreshBanVisual()
+    {
+        if (_adapter.GetBanTarget?.Invoke(Model) is { } target
+            && _banVisualView is { } view
+            && GodotObject.IsInstanceValid(view))
+            ContentBanVisuals.Refresh(view, target);
     }
 
     public bool MatchesSearch(string normalizedQuery)
@@ -5413,6 +5500,8 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem, ISelectItemR
     public void SetView(Control? view)
     {
         View = view;
+        if (view is null)
+            _banVisualView = null;
     }
 }
 

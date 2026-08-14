@@ -397,6 +397,8 @@ public static class CustomRunRelicObtainedPatch
     private static async Task<RelicModel> CaptureRelicAsync(Task<RelicModel> nativeTask)
     {
         RelicModel relic = await nativeTask;
+        if (relic is null)
+            return null!;
         CustomRunRuleRuntimeService.Capture("Loadout2:RelicObtained", relic.Owner.NetId,
             SelectionModelKind.Relic, relic.Id.ToString());
         return relic;

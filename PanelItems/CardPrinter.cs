@@ -7,6 +7,7 @@ using Loadout.Helpers;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Services.ContentBans;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.LastActions;
 using Loadout.Services.Targets;
@@ -47,6 +48,7 @@ public class CardPrinter
 		    GetId = card => card.Id.ToString(),
 		    GetName = card => FormatCardTitle(card),
 		    GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.GetDescriptionForPile(PileType.None)}",
+		    GetBanTarget = card => ContentBanTarget.Card(card),
 		    CapturePreloadResourcePaths = card => CardModificationRuntime
 			    .GetPermanentCardForDisplay(card)
 			    .AllPortraitPaths

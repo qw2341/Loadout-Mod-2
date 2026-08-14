@@ -13,6 +13,7 @@ using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
+using Loadout.Services.ContentBans;
 using Loadout.Services.TildeKey;
 using Loadout.UI;
 using MegaCrit.Sts2.Core.Commands;
@@ -484,6 +485,7 @@ public static class StartRunLobbyCardModificationConstructorPatch
     {
         CardModificationNetProtocol.RegisterLobby(__instance);
         RelicModificationMultiplayerSyncService.RegisterLobby(__instance);
+        ContentBanService.RegisterLobby(__instance);
     }
 }
 
@@ -495,6 +497,7 @@ public static class StartRunLobbyCardModificationCleanUpPatch
     {
         CardModificationNetProtocol.UnregisterLobby(__instance, disconnectSession);
         RelicModificationMultiplayerSyncService.UnregisterLobby(__instance, disconnectSession);
+        ContentBanService.UnregisterLobby(__instance, disconnectSession);
     }
 }
 
@@ -506,6 +509,7 @@ public static class RunManagerLaunchCardModificationPatch
     {
         CardModificationNetProtocol.PrepareRunLaunch();
         RelicModificationMultiplayerSyncService.PrepareRunLaunch();
+        ContentBanService.PrepareRunLaunch();
         LoadoutKeywordRuntimePatches.Reconcile();
     }
 
@@ -515,6 +519,7 @@ public static class RunManagerLaunchCardModificationPatch
         LoadoutImmediateMutationService.OnRunLaunched();
         CardModificationNetProtocol.OnRunLaunched();
         RelicModificationMultiplayerSyncService.OnRunLaunched();
+        ContentBanService.OnRunLaunched();
         LoadoutKeywordRuntimePatches.PrepareRunKeywordPatches();
         LoadoutKeywordRuntimePatches.Reconcile();
     }
@@ -533,5 +538,6 @@ public static class RunManagerCleanUpCardModificationPatch
         LoadoutImmediateMutationService.OnRunCleaningUp();
         CardModificationNetProtocol.OnRunCleaningUp();
         RelicModificationMultiplayerSyncService.OnRunCleaningUp();
+        ContentBanService.OnRunCleaningUp();
     }
 }

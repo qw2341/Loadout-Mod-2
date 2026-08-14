@@ -48,6 +48,7 @@ using System.Text.RegularExpressions;
 using HarmonyLib;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
+using Loadout.Services.ContentBans;
 using Loadout.Services.CardModification;
 using Loadout.Services.Compatibility;
 using Loadout.Services.LastActions;
@@ -400,6 +401,7 @@ public partial class NLoadoutPanel : Panel
 				GetId = potion => potion.Id.ToString(),
 				GetName = potion => CommonHelpers.FormatPotionTitle(potion),
 				GetSearchText = potion => $"{potion.Id} {CommonHelpers.FormatPotionTitle(potion)} {potion.DynamicDescription.GetFormattedText()}",
+				GetBanTarget = potion => ContentBanTarget.Potion(potion),
 				CreateView = (potion, _) => CreatePotionGridItem(potion),
 				BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
 			}, builder =>

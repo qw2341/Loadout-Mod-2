@@ -94,6 +94,8 @@ public static class LoadoutNativeRelicObtainContentPatch
     private static async Task<RelicModel> PublishAfterObtainAsync(Task<RelicModel> original, Player player)
     {
         RelicModel result = await original;
+        if (result is null)
+            return null!;
         LoadoutRunContentChangeService.Queue(
             LoadoutRunContentKind.Relics,
             player.NetId,

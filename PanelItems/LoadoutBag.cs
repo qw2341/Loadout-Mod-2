@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
 using Loadout.Services.Compatibility;
+using Loadout.Services.ContentBans;
 using Loadout.Services.LastActions;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
@@ -33,6 +34,7 @@ public class LoadoutBag
 				GetId = relic => relic.Id.ToString(),
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription.GetFormattedText()}",
+				GetBanTarget = relic => ContentBanTarget.Relic(relic),
 				CapturePreloadResourcePaths = relic => [relic.IconPath],
 				CreateView = (relic, state) => CreateRelicGridItem(relic, state),
 				ViewReady = (relic, view) => RefreshRelicGridItem(view, relic),
