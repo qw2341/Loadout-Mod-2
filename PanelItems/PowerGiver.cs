@@ -265,9 +265,20 @@ public class PowerGiver
 
 		CommonHelpers.AttachHoverTips(
 			button,
-			() => CreateSafePowerHoverTips(model, GetLivePowerIcon(model)).ToList(),
+			() => CreateSafePowerHoverTips(model, GetDisplayedPowerAmount(button)).ToList(),
 			cacheResult: false);
 		return button;
+	}
+
+	private static int? GetDisplayedPowerAmount(Control view)
+	{
+		if (view.GetNodeOrNull<MegaLabel>("PowerAmount") is not { Visible: true } amountLabel
+		    || !int.TryParse(amountLabel.Text, out int amount))
+		{
+			return null;
+		}
+
+		return amount;
 	}
 
 	private static Texture2D GetLivePowerIcon(PowerModel model)
@@ -343,27 +354,34 @@ public class PowerGiver
 			: $"{model.Id} {displayName} {description}";
 	}
 
-	private static IEnumerable<IHoverTip> CreateSafePowerHoverTips(PowerModel model, Texture2D icon)
+	private static IEnumerable<IHoverTip> CreateSafePowerHoverTips(PowerModel model, int? amount)
 	{
 		try
 		{
-			if (!model.Title.Exists())
-				return [];
-
-			string description = GetSafeRawPowerDescription(model);
-			HoverTip hoverTip = new(
-				model.Title,
-				string.IsNullOrWhiteSpace(description) ? PowerId(model) : description,
-				icon)
-			{
-				Id = PowerId(model),
-				IsDebuff = GetSafePowerType(model) == PowerType.Debuff
-			};
-			return [hoverTip];
+			return [HoverTipFactory.FromPower(model, amount)];
 		}
 		catch
 		{
-			return [];
+			try
+			{
+				if (!model.Title.Exists())
+					return [];
+
+				string description = GetSafeRawPowerDescription(model);
+				HoverTip hoverTip = new(
+					model.Title,
+					string.IsNullOrWhiteSpace(description) ? PowerId(model) : description,
+					GetLivePowerIcon(model))
+				{
+					Id = PowerId(model),
+					IsDebuff = GetSafePowerType(model) == PowerType.Debuff
+				};
+				return [hoverTip];
+			}
+			catch
+			{
+				return [];
+			}
 		}
 	}
 
