@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 namespace Loadout.Services.ContentBans;
 
@@ -9,9 +9,11 @@ using System.Collections.Generic;
 internal static class ContentBanVisuals
 {
     private const string OverlayName = "LoadoutContentBanSlash";
-    private const string SlashPath = "res://images/atlases/ui_atlas.sprites/card/card_unplayable_icon.tres";
+    private const string NativeSlashPath = "res://images/atlases/ui_atlas.sprites/card/card_unplayable_icon.tres";
+    private const string CardSlashPath = "res://Loadout/images/ui/red_slash_high_res.png";
     private static readonly Dictionary<ulong, WiggleState> WiggleTweens = [];
-    private static Texture2D? _slashTexture;
+    private static Texture2D? _nativeSlashTexture;
+    private static Texture2D? _cardSlashTexture;
     private static ShaderMaterial? _runMaterial;
 
     internal static void Refresh(Control holder, ContentBanTarget target)
@@ -30,7 +32,9 @@ internal static class ContentBanVisuals
 
         overlay ??= CreateOverlay(holder);
         LayoutOverlay(holder, overlay);
-        overlay.Texture = _slashTexture ??= GD.Load<Texture2D>(SlashPath);
+        overlay.Texture = target.Kind == ContentBanKind.Card
+            ? _cardSlashTexture ??= GD.Load<Texture2D>(CardSlashPath)
+            : _nativeSlashTexture ??= GD.Load<Texture2D>(NativeSlashPath);
         overlay.Material = scope == ContentBanScope.Run ? GetRunMaterial() : null;
         overlay.Modulate = Colors.White;
         overlay.Visible = true;
