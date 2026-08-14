@@ -29,6 +29,10 @@ public static class NCustomRunEditorEntry
     internal const string PlayerDropdownNodeName = "LoadoutCustomRunPlayerDropdown";
     internal const string RoleLockButtonNodeName = "LoadoutCustomRunRoleLockButton";
     private const string PlayerRoleLabelNodeName = "LoadoutCustomRunPlayerRoleLabel";
+    private const float RoleControlWidth = 360f;
+    private const float RoleControlHeight = 54f;
+    private const float RoleControlGap = 10f;
+    private const float RoleControlRightMargin = 350f;
     private static readonly Dictionary<Control, ulong> SelectedAssignmentPlayers = [];
     private static readonly HashSet<StartRunLobby> AwaitingRoleLocks = [];
     private static readonly Dictionary<StartRunLobby, string> PendingDefinitionIds = [];
@@ -236,8 +240,8 @@ public static class NCustomRunEditorEntry
             NLoadoutSettingsActionButton roleLock = new()
             {
                 Name = RoleLockButtonNodeName,
-                CustomMinimumSize = new Vector2(360f, 54f),
-                Size = new Vector2(360f, 54f),
+                CustomMinimumSize = new Vector2(RoleControlWidth, RoleControlHeight),
+                Size = new Vector2(RoleControlWidth, RoleControlHeight),
                 ZIndex = 24
             };
             roleLock.Init("custom_run_role_lock", LocMan.Loc("CUSTOM_RUN_LOCK_IN_ROLE", "Lock In Role").ToUpperInvariant());
@@ -556,9 +560,9 @@ public static class NCustomRunEditorEntry
         return new NLoadoutDropdown
         {
             Name = name,
-            CustomMinimumSize = new Vector2(360f, 54f),
-            Size = new Vector2(360f, 54f),
-            DropdownWidth = 360f,
+            CustomMinimumSize = new Vector2(RoleControlWidth, RoleControlHeight),
+            Size = new Vector2(RoleControlWidth, RoleControlHeight),
+            DropdownWidth = RoleControlWidth,
             MaxVisibleItems = 6,
             ExpandToAvailableWidth = false,
             ZIndex = 24
@@ -572,32 +576,30 @@ public static class NCustomRunEditorEntry
         NLoadoutDropdown? roles = screen.GetNodeOrNull<NLoadoutDropdown>(RoleDropdownNodeName);
         if (confirm is null || roles is null)
             return;
-        PositionRoleDropdown(confirm, roles, 2);
+        PositionRoleControl(confirm, roles, 1);
         if (screen.GetNodeOrNull<NLoadoutSettingsActionButton>(RoleLockButtonNodeName) is { } roleLock)
-            PositionRoleDropdown(confirm, roleLock, 1);
+            PositionRoleControl(confirm, roleLock, 0);
         if (screen.GetNodeOrNull<NLoadoutDropdown>(PlayerDropdownNodeName) is { } players)
-            PositionRoleDropdown(confirm, players, 3);
+            PositionRoleControl(confirm, players, 2);
     }
 
-    private static void PositionRoleDropdown(Control confirm, Control dropdown, int rowAboveConfirm)
+    private static void PositionRoleControl(Control confirm, Control control, int rowAboveConfirm)
     {
-        const float width = 360f;
-        const float height = 54f;
-        const float gap = 10f;
-        const float rightMargin = 40f;
-        dropdown.AnchorLeft = 1f;
-        dropdown.AnchorTop = confirm.AnchorTop;
-        dropdown.AnchorRight = 1f;
-        dropdown.AnchorBottom = confirm.AnchorBottom;
-        dropdown.OffsetRight = -rightMargin;
-        dropdown.OffsetLeft = dropdown.OffsetRight - width;
-        dropdown.OffsetBottom = confirm.OffsetTop - gap - rowAboveConfirm * (height + gap);
-        dropdown.OffsetTop = dropdown.OffsetBottom - height;
-        dropdown.CustomMinimumSize = new Vector2(width, height);
-        dropdown.Size = new Vector2(width, height);
-        dropdown.PivotOffset = dropdown.Size * 0.5f;
-        dropdown.GrowHorizontal = Control.GrowDirection.Begin;
-        dropdown.GrowVertical = Control.GrowDirection.Begin;
+        control.AnchorLeft = 1f;
+        control.AnchorTop = confirm.AnchorTop;
+        control.AnchorRight = 1f;
+        control.AnchorBottom = confirm.AnchorBottom;
+        control.OffsetRight = -RoleControlRightMargin;
+        control.OffsetLeft = control.OffsetRight - RoleControlWidth;
+        control.OffsetBottom = confirm.OffsetTop
+                               - RoleControlGap
+                               - rowAboveConfirm * (RoleControlHeight + RoleControlGap);
+        control.OffsetTop = control.OffsetBottom - RoleControlHeight;
+        control.CustomMinimumSize = new Vector2(RoleControlWidth, RoleControlHeight);
+        control.Size = new Vector2(RoleControlWidth, RoleControlHeight);
+        control.PivotOffset = control.Size * 0.5f;
+        control.GrowHorizontal = Control.GrowDirection.Begin;
+        control.GrowVertical = Control.GrowDirection.Begin;
     }
 
     internal static void ShowAttachedStatus(Control? screen, string text, bool error)
