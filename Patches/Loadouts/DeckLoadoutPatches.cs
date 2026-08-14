@@ -29,6 +29,7 @@ using MegaCrit.Sts2.Core.Saves;
 public static class LoadoutPanelAccessRunSavePatch
 {
     private const string EmbeddedSaveKey = "Loadout.panel_access.allow_guests_v1";
+    private const string EmbeddedDebugConsoleSaveKey = "Loadout.panel_access.allow_guest_debug_console_v1";
     private static readonly ConditionalWeakTable<RunState, RunAccessAttachment> RunAccessByState = new();
     private static bool _registered;
 
@@ -53,35 +54,51 @@ public static class LoadoutPanelAccessRunSavePatch
             LoadAttachedAccessFromSave,
             static (allowGuests, writer) => writer.WriteBool(allowGuests),
             static reader => reader.ReadBool());
+        ExtendedSaveHandlers<IRunState, SerializableRun>.RegisterSave<RunState, bool>(
+            EmbeddedDebugConsoleSaveKey,
+            GetAttachedDebugConsoleAccessForSave,
+            LoadAttachedDebugConsoleAccessFromSave,
+            static (allowGuestDebugConsole, writer) => writer.WriteBool(allowGuestDebugConsole),
+            static reader => reader.ReadBool());
     }
 
-    internal static bool TryGetAttachedAccess(RunState runState, out bool allowGuests)
+    internal static bool TryGetAttachedAccess(
+        RunState runState,
+        out bool allowGuests,
+        out bool allowGuestDebugConsole)
     {
         if (RunAccessByState.TryGetValue(runState, out RunAccessAttachment? attachment)
             && attachment.LoadedFromSave)
         {
             allowGuests = attachment.AllowGuests;
+            allowGuestDebugConsole = attachment.AllowGuestDebugConsole;
             return true;
         }
 
         allowGuests = false;
+        allowGuestDebugConsole = true;
         return false;
     }
 
-    internal static void SetAttachedAccess(RunState runState, bool allowGuests, bool loadedFromSave)
+    internal static void SetAttachedAccess(
+        RunState runState,
+        bool allowGuests,
+        bool allowGuestDebugConsole,
+        bool loadedFromSave)
     {
         RunAccessAttachment attachment = RunAccessByState.GetValue(runState, static _ => new RunAccessAttachment());
         attachment.AllowGuests = allowGuests;
+        attachment.AllowGuestDebugConsole = allowGuestDebugConsole;
         attachment.LoadedFromSave |= loadedFromSave;
     }
 
-    internal static void AttachToCurrentRun(bool allowGuests)
+    internal static void AttachToCurrentRun(bool allowGuests, bool allowGuestDebugConsole)
     {
         try
         {
             RunState? runState = RunManager.Instance.DebugOnlyGetState();
             if (runState is not null)
-                SetAttachedAccess(runState, allowGuests, loadedFromSave: false);
+                SetAttachedAccess(runState, allowGuests, allowGuestDebugConsole, loadedFromSave: false);
         }
         catch
         {
@@ -95,14 +112,30 @@ public static class LoadoutPanelAccessRunSavePatch
                && attachment.AllowGuests;
     }
 
+    private static bool GetAttachedDebugConsoleAccessForSave(RunState runState)
+    {
+        return !RunAccessByState.TryGetValue(runState, out RunAccessAttachment? attachment)
+               || attachment.AllowGuestDebugConsole;
+    }
+
     private static void LoadAttachedAccessFromSave(RunState runState, bool allowGuests)
     {
-        SetAttachedAccess(runState, allowGuests, loadedFromSave: true);
+        RunAccessAttachment attachment = RunAccessByState.GetValue(runState, static _ => new RunAccessAttachment());
+        attachment.AllowGuests = allowGuests;
+        attachment.LoadedFromSave = true;
+    }
+
+    private static void LoadAttachedDebugConsoleAccessFromSave(RunState runState, bool allowGuestDebugConsole)
+    {
+        RunAccessAttachment attachment = RunAccessByState.GetValue(runState, static _ => new RunAccessAttachment());
+        attachment.AllowGuestDebugConsole = allowGuestDebugConsole;
+        attachment.LoadedFromSave = true;
     }
 
     private sealed class RunAccessAttachment
     {
         public bool AllowGuests;
+        public bool AllowGuestDebugConsole = true;
         public bool LoadedFromSave;
     }
 }

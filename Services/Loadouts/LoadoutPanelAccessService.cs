@@ -21,7 +21,7 @@ using MegaCrit.Sts2.Core.Runs;
 
 public static class LoadoutPanelAccessService
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const string RunDirectory = "loadout/services/panel_access";
     private const string RunFilePrefix = "panel_access_run";
 
@@ -33,11 +33,14 @@ public static class LoadoutPanelAccessService
     private static RunLobby? _runLobby;
     private static Delegate? _playerRejoinedHandler;
     private static bool _hostAllowsGuests;
+    private static bool _hostAllowsGuestDebugConsole = true;
     private static long? _loadedRunStartTime;
 
     public static event Action? AccessChanged;
+    public static event Action? DebugConsoleAccessChanged;
 
     public static bool HostAllowsGuests => _hostAllowsGuests;
+    public static bool HostAllowsGuestDebugConsole => _hostAllowsGuestDebugConsole;
 
     public static void SetHostAllowsGuests(bool allow)
     {
@@ -45,15 +48,32 @@ public static class LoadoutPanelAccessService
             return;
 
         _hostAllowsGuests = allow;
-        LoadoutPanelAccessRunSavePatch.AttachToCurrentRun(allow);
+        LoadoutPanelAccessRunSavePatch.AttachToCurrentRun(allow, _hostAllowsGuestDebugConsole);
         SaveRunAccessIfActiveHost();
         BroadcastAccess();
         NotifyAccessChanged();
     }
 
+    public static void SetHostAllowsGuestDebugConsole(bool allow)
+    {
+        if (_hostAllowsGuestDebugConsole == allow)
+            return;
+
+        _hostAllowsGuestDebugConsole = allow;
+        LoadoutPanelAccessRunSavePatch.AttachToCurrentRun(_hostAllowsGuests, allow);
+        SaveRunAccessIfActiveHost();
+        BroadcastAccess();
+        NotifyDebugConsoleAccessChanged();
+    }
+
     public static bool CanLocalPlayerUsePanel()
     {
         return TryGetActiveNetType() != NetGameType.Client || _hostAllowsGuests;
+    }
+
+    public static bool CanLocalPlayerUseDebugConsole()
+    {
+        return TryGetActiveNetType() != NetGameType.Client || _hostAllowsGuestDebugConsole;
     }
 
     public static bool CanRequesterUsePanel(ulong requesterNetId)
@@ -81,7 +101,7 @@ public static class LoadoutPanelAccessService
 
         if (lobby.NetService.Type == NetGameType.Host)
         {
-            SetHostAllowsGuestsForNewLobby(false);
+            SetHostAccessForNewLobby(allowGuests: false, allowGuestDebugConsole: true);
 
             Delegate connected = Sts2Compatibility.SubscribeStartRunLobbyPlayerConnected(
                 lobby,
@@ -96,7 +116,7 @@ public static class LoadoutPanelAccessService
         }
         else if (lobby.NetService.Type == NetGameType.Client)
         {
-            SetHostAllowsGuestsForNewLobby(false);
+            SetHostAccessForNewLobby(allowGuests: false, allowGuestDebugConsole: false);
         }
     }
 
@@ -110,7 +130,7 @@ public static class LoadoutPanelAccessService
             Sts2Compatibility.UnsubscribeStartRunLobbyPlayerConnected(lobby, connected);
 
         if (clearClientAccess && lobby.NetService.Type == NetGameType.Client)
-            SetHostAllowsGuestsForNewLobby(false);
+            SetHostAccessForNewLobby(allowGuests: false, allowGuestDebugConsole: true);
     }
 
     public static void RegisterLoadLobby(LoadRunLobby? lobby)
@@ -121,7 +141,7 @@ public static class LoadoutPanelAccessService
         lobby.NetService.RegisterMessageHandler<LoadoutPanelAccessMessage>(HandleAccessMessage);
         if (lobby.NetService.Type == NetGameType.Host)
         {
-            ApplyAccess(false);
+            ApplyAccess(allowGuests: false, allowGuestDebugConsole: true);
             TryLoadRunAccess(lobby.Run.StartTime);
 
             foreach (ulong playerId in Sts2Compatibility.EnumerateLoadRunLobbyPlayerIds(lobby))
@@ -129,7 +149,7 @@ public static class LoadoutPanelAccessService
         }
         else if (lobby.NetService.Type == NetGameType.Client)
         {
-            ApplyAccess(false);
+            ApplyAccess(allowGuests: false, allowGuestDebugConsole: false);
         }
     }
 
@@ -140,7 +160,7 @@ public static class LoadoutPanelAccessService
 
         lobby.NetService.UnregisterMessageHandler<LoadoutPanelAccessMessage>(HandleAccessMessage);
         if (clearClientAccess && lobby.NetService.Type == NetGameType.Client)
-            ApplyAccess(false);
+            ApplyAccess(allowGuests: false, allowGuestDebugConsole: true);
     }
 
     public static void SendAccessToLoadLobbyPlayer(LoadRunLobby? lobby, ulong playerId)
@@ -155,7 +175,8 @@ public static class LoadoutPanelAccessService
 
         lobby.NetService.SendMessage(new LoadoutPanelAccessMessage
         {
-            allowGuests = _hostAllowsGuests
+            allowGuests = _hostAllowsGuests,
+            allowGuestDebugConsole = _hostAllowsGuestDebugConsole
         }, playerId);
     }
 
@@ -170,9 +191,12 @@ public static class LoadoutPanelAccessService
             RegisterRunNetService(netService);
             RunState? runState = RunManager.Instance.DebugOnlyGetState();
             if (runState is not null
-                && LoadoutPanelAccessRunSavePatch.TryGetAttachedAccess(runState, out bool savedAllowGuests))
+                && LoadoutPanelAccessRunSavePatch.TryGetAttachedAccess(
+                    runState,
+                    out bool savedAllowGuests,
+                    out bool savedAllowGuestDebugConsole))
             {
-                ApplyAccess(savedAllowGuests);
+                ApplyAccess(savedAllowGuests, savedAllowGuestDebugConsole);
                 _loadedRunStartTime = SaveUtility.GetCurrentRunStartTime();
                 if (netService.Type == NetGameType.Host)
                     SaveRunAccess();
@@ -182,12 +206,13 @@ public static class LoadoutPanelAccessService
                 LoadOrCreateRunAccess();
             }
             else if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
-                SetHostAllowsGuestsForNewLobby(false);
+                SetHostAccessForNewLobby(allowGuests: false, allowGuestDebugConsole: true);
 
             if (runState is not null)
                 LoadoutPanelAccessRunSavePatch.SetAttachedAccess(
                     runState,
                     _hostAllowsGuests,
+                    _hostAllowsGuestDebugConsole,
                     loadedFromSave: false);
 
             if (netService.Type == NetGameType.Host)
@@ -206,22 +231,23 @@ public static class LoadoutPanelAccessService
         _loadedRunStartTime = null;
     }
 
-    private static void SetHostAllowsGuestsForNewLobby(bool allow)
+    private static void SetHostAccessForNewLobby(bool allowGuests, bool allowGuestDebugConsole)
     {
-        if (_hostAllowsGuests == allow)
-            return;
-
-        _hostAllowsGuests = allow;
-        NotifyAccessChanged();
+        ApplyAccess(allowGuests, allowGuestDebugConsole);
     }
 
-    private static void ApplyAccess(bool allowGuests)
+    private static void ApplyAccess(bool allowGuests, bool allowGuestDebugConsole)
     {
-        if (_hostAllowsGuests == allowGuests)
-            return;
+        bool panelChanged = _hostAllowsGuests != allowGuests;
+        bool debugConsoleChanged = _hostAllowsGuestDebugConsole != allowGuestDebugConsole;
 
         _hostAllowsGuests = allowGuests;
-        NotifyAccessChanged();
+        _hostAllowsGuestDebugConsole = allowGuestDebugConsole;
+
+        if (panelChanged)
+            NotifyAccessChanged();
+        if (debugConsoleChanged)
+            NotifyDebugConsoleAccessChanged();
     }
 
     private static void RegisterRunNetService(INetGameService netService)
@@ -245,7 +271,7 @@ public static class LoadoutPanelAccessService
         _runNetService = null;
 
         if (clearClientAccess && type == NetGameType.Client)
-            SetHostAllowsGuestsForNewLobby(false);
+            SetHostAccessForNewLobby(allowGuests: false, allowGuestDebugConsole: true);
     }
 
     private static void BindRunLobby(RunLobby? runLobby)
@@ -282,7 +308,8 @@ public static class LoadoutPanelAccessService
 
         _runNetService.SendMessage(new LoadoutPanelAccessMessage
         {
-            allowGuests = _hostAllowsGuests
+            allowGuests = _hostAllowsGuests,
+            allowGuestDebugConsole = _hostAllowsGuestDebugConsole
         }, playerId);
     }
 
@@ -290,7 +317,8 @@ public static class LoadoutPanelAccessService
     {
         LoadoutPanelAccessMessage message = new()
         {
-            allowGuests = _hostAllowsGuests
+            allowGuests = _hostAllowsGuests,
+            allowGuestDebugConsole = _hostAllowsGuestDebugConsole
         };
 
         foreach (StartRunLobby lobby in RegisteredLobbies.ToList())
@@ -338,7 +366,8 @@ public static class LoadoutPanelAccessService
 
         lobby.NetService.SendMessage(new LoadoutPanelAccessMessage
         {
-            allowGuests = _hostAllowsGuests
+            allowGuests = _hostAllowsGuests,
+            allowGuestDebugConsole = _hostAllowsGuestDebugConsole
         }, playerId);
     }
 
@@ -347,12 +376,14 @@ public static class LoadoutPanelAccessService
         if (IsHostSession() || !IsExpectedHostSender(senderId))
             return;
 
-        if (_hostAllowsGuests == message.allowGuests)
+        if (_hostAllowsGuests == message.allowGuests
+            && _hostAllowsGuestDebugConsole == message.allowGuestDebugConsole)
             return;
 
-        _hostAllowsGuests = message.allowGuests;
-        LoadoutPanelAccessRunSavePatch.AttachToCurrentRun(message.allowGuests);
-        NotifyAccessChanged();
+        LoadoutPanelAccessRunSavePatch.AttachToCurrentRun(
+            message.allowGuests,
+            message.allowGuestDebugConsole);
+        ApplyAccess(message.allowGuests, message.allowGuestDebugConsole);
     }
 
     private static bool IsHostSession()
@@ -424,6 +455,18 @@ public static class LoadoutPanelAccessService
         }
     }
 
+    private static void NotifyDebugConsoleAccessChanged()
+    {
+        try
+        {
+            DebugConsoleAccessChanged?.Invoke();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"LoadoutPanelAccess: debug console access changed handler failed. {exception.Message}");
+        }
+    }
+
     private static void LoadOrCreateRunAccess()
     {
         long? runStartTime = SaveUtility.GetCurrentRunStartTime();
@@ -446,12 +489,16 @@ public static class LoadoutPanelAccessService
             {
                 SchemaVersion = CurrentSchemaVersion,
                 RunStartTime = runStartTime,
-                AllowGuests = _hostAllowsGuests
+                AllowGuests = _hostAllowsGuests,
+                AllowGuestDebugConsole = _hostAllowsGuestDebugConsole
             });
 
         if (loaded.Loaded && loaded.Value.RunStartTime == runStartTime)
         {
-            ApplyAccess(loaded.Value.AllowGuests);
+            bool allowGuestDebugConsole = loaded.Value.SchemaVersion >= 2
+                ? loaded.Value.AllowGuestDebugConsole
+                : true;
+            ApplyAccess(loaded.Value.AllowGuests, allowGuestDebugConsole);
             return true;
         }
 
@@ -486,7 +533,8 @@ public static class LoadoutPanelAccessService
             {
                 SchemaVersion = CurrentSchemaVersion,
                 RunStartTime = _loadedRunStartTime.Value,
-                AllowGuests = _hostAllowsGuests
+                AllowGuests = _hostAllowsGuests,
+                AllowGuestDebugConsole = _hostAllowsGuestDebugConsole
             });
     }
 
@@ -501,11 +549,15 @@ public static class LoadoutPanelAccessService
         [JsonPropertyName("allowGuests")]
         public bool AllowGuests { get; set; }
 
+        [JsonPropertyName("allowGuestDebugConsole")]
+        public bool AllowGuestDebugConsole { get; set; }
+
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             info.AddValue(nameof(SchemaVersion), CurrentSchemaVersion);
             info.AddValue(nameof(RunStartTime), RunStartTime);
             info.AddValue(nameof(AllowGuests), AllowGuests);
+            info.AddValue(nameof(AllowGuestDebugConsole), AllowGuestDebugConsole);
         }
     }
 
@@ -514,6 +566,7 @@ public static class LoadoutPanelAccessService
 public struct LoadoutPanelAccessMessage : INetMessage, IPacketSerializable
 {
     public bool allowGuests;
+    public bool allowGuestDebugConsole;
 
     public bool ShouldBroadcast => false;
     public NetTransferMode Mode => NetTransferMode.Reliable;
@@ -523,10 +576,12 @@ public struct LoadoutPanelAccessMessage : INetMessage, IPacketSerializable
     public void Serialize(PacketWriter writer)
     {
         writer.WriteBool(allowGuests);
+        writer.WriteBool(allowGuestDebugConsole);
     }
 
     public void Deserialize(PacketReader reader)
     {
         allowGuests = reader.ReadBool();
+        allowGuestDebugConsole = reader.ReadBool();
     }
 }

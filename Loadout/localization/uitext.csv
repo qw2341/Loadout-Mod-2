@@ -230,6 +230,7 @@ QUEST,Quest,任务,Quête,クエスト,퀘스트,Misión
 STATUS,Status,状态,Statut,状態,상태,Estado
 TOKEN,Token,衍生,Jeton,トークン,토큰,Ficha
 ALLOW_GUEST_LOADOUT_PANEL,Allow others to use Loadout panel,允许他人使用Loadout,Autoriser les autres à utiliser le panneau d'équipement,他のプレイヤーによるロードアウトパネルの使用を許可,다른 플레이어의 로드아웃 패널 사용 허용,Permitir que otros usen el panel de equipamiento
+ALLOW_GUEST_DEBUG_CONSOLE,Allow others to use debug console,允许他人使用控制台,Autoriser les autres à utiliser la console de débogage,他のプレイヤーによるデバッグコンソールの使用を許可,다른 플레이어의 디버그 콘솔 사용 허용,Permitir que otros usen la consola de depuración
 MONSTER_CATEGORY_BOSS,Boss,Boss,Boss,ボス,보스,Jefe
 MONSTER_CATEGORY_ELITE,Elite,精英,Élite,エリート,엘리트,Élite
 MONSTER_CATEGORY_MONSTER,Monster,普通,Monstre,モンスター,몬스터,Monstruo
