@@ -71,5 +71,6 @@
   ,"LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "Abandonner les modifications ?",
   "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "Si vous quittez maintenant, les modifications non enregistrées de « {Name} » seront perdues.",
   "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "Annuler",
-  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "Abandonner"
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "Abandonner",
+  "LOADOUT-CUSTOM_RUN-CHOOSE-CARDS.title": "Choisir des cartes"
 }

@@ -63,7 +63,8 @@ internal static class CustomRunRuleEvaluator
     public static async Task<CustomRunResolvedDecision?> ResolveDecisionAsync(
         CustomRunRuntimeEvent runtimeEvent,
         string ruleId,
-        RuleComponentSpec action)
+        RuleComponentSpec action,
+        PlayerChoiceContext playerChoiceContext)
     {
         List<Player> targets = ResolveTargets(GetTarget(action), runtimeEvent);
         CustomRunResolvedDecision decision = new()
@@ -102,7 +103,7 @@ internal static class CustomRunRuleEvaluator
             case "Loadout2:AddCardsToHand":
             case "Loadout2:AddCardsToDrawPile":
             case "Loadout2:AddCardsToDiscardPile":
-                await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision);
+                await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision, playerChoiceContext);
                 decision.Pile = action.TypeId switch
                 {
                     "Loadout2:AddCardsToHand" => PileType.Hand.ToString(),
@@ -112,7 +113,7 @@ internal static class CustomRunRuleEvaluator
                 };
                 break;
             case "Loadout2:GainPowers":
-                await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision);
+                await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision, playerChoiceContext);
                 decision.Amount = ReadNumber(action, "amount", runtimeEvent, ruleId);
                 break;
             case "Loadout2:AddCardToHand":
@@ -617,7 +618,8 @@ internal static class CustomRunRuleEvaluator
         CustomRunRuntimeEvent runtimeEvent,
         string ruleId,
         IReadOnlyList<Player> targets,
-        CustomRunResolvedDecision decision)
+        CustomRunResolvedDecision decision,
+        PlayerChoiceContext playerChoiceContext)
     {
         if (!RuleComponentParameterService.TryGet(action, "matcher", out ModelMatchSpec matcher))
             return;
@@ -644,7 +646,9 @@ internal static class CustomRunRuleEvaluator
                     count,
                     count,
                     canSkip,
-                    CustomRunRuleRuntimeService.ExportState().Revision);
+                    CustomRunRuleRuntimeService.ExportState().Revision,
+                    runtimeEvent.EventId,
+                    playerChoiceContext);
                 if (targetChoice.Count > 0)
                     decision.ModelIdsByPlayer[target.NetId] = targetChoice.ToList();
             }

@@ -11,17 +11,25 @@ using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 
-public sealed class CustomRunRuleEventAction(Player owner, CustomRunRuntimeEvent runtimeEvent) : GameAction
+public sealed class CustomRunRuleEventAction : GameAction
 {
     public override ulong OwnerId => Owner.NetId;
     public override GameActionType ActionType => GameActionType.Any;
 
-    public Player Owner { get; } = owner;
-    public CustomRunRuntimeEvent RuntimeEvent { get; } = runtimeEvent;
+    public Player Owner { get; }
+    public CustomRunRuntimeEvent RuntimeEvent { get; }
+    public GameActionPlayerChoiceContext PlayerChoiceContext { get; }
+
+    public CustomRunRuleEventAction(Player owner, CustomRunRuntimeEvent runtimeEvent)
+    {
+        Owner = owner;
+        RuntimeEvent = runtimeEvent;
+        PlayerChoiceContext = new GameActionPlayerChoiceContext(this);
+    }
 
     protected override Task ExecuteAction()
     {
-        return CustomRunRuleRuntimeService.ExecuteSynchronizedEventAsync(RuntimeEvent);
+        return CustomRunRuleRuntimeService.ExecuteSynchronizedEventAsync(RuntimeEvent, PlayerChoiceContext);
     }
 
     public override INetAction ToNetAction()

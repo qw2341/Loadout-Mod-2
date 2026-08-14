@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Models;
@@ -286,7 +287,9 @@ public static class CustomRunRuleRuntimeService
         }
     }
 
-    public static async Task ExecuteSynchronizedEventAsync(CustomRunRuntimeEvent runtimeEvent)
+    public static async Task ExecuteSynchronizedEventAsync(
+        CustomRunRuntimeEvent runtimeEvent,
+        PlayerChoiceContext playerChoiceContext)
     {
         if (!IsActive
             || runtimeEvent.EventId <= 0
@@ -300,6 +303,7 @@ public static class CustomRunRuleRuntimeService
         Interlocked.Increment(ref _activeActions);
         CustomRunRuntimeEvent? previous = CurrentEvent.Value;
         CurrentEvent.Value = runtimeEvent;
+        CustomRunRuntimeChoiceService.SetActiveContext(runtimeEvent.EventId, playerChoiceContext);
         try
         {
             if (_netService?.Type == NetGameType.Client)
@@ -357,7 +361,8 @@ public static class CustomRunRuleRuntimeService
                                 CustomRunResolvedDecision? decision = await CustomRunRuleEvaluator.ResolveDecisionAsync(
                                     runtimeEvent,
                                     rule.Id,
-                                    action);
+                                    action,
+                                    playerChoiceContext);
                                 if (decision is null)
                                     continue;
                                 try
@@ -394,6 +399,7 @@ public static class CustomRunRuleRuntimeService
         }
         finally
         {
+            CustomRunRuntimeChoiceService.ClearActiveContext(runtimeEvent.EventId, playerChoiceContext);
             CurrentEvent.Value = previous;
             FinishChainEvent(runtimeEvent.ChainId);
             CompleteRoomEntryRedirect(runtimeEvent);

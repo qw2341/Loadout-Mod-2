@@ -171,6 +171,9 @@ public sealed class CustomRunChoiceRequest
     [JsonPropertyName("requestId")]
     public long RequestId { get; set; }
 
+    [JsonPropertyName("eventId")]
+    public long EventId { get; set; }
+
     [JsonPropertyName("revision")]
     public long Revision { get; set; }
 

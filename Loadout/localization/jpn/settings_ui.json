@@ -71,5 +71,6 @@
   ,"LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "変更を破棄しますか？",
   "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "今終了すると、「{Name}」の未保存の変更は失われます。",
   "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "キャンセル",
-  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "変更を破棄"
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "変更を破棄",
+  "LOADOUT-CUSTOM_RUN-CHOOSE-CARDS.title": "カードを選択"
 }
