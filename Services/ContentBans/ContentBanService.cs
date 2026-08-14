@@ -60,6 +60,7 @@ internal static class ContentBanService
     private const int CurrentSchemaVersion = 1;
     private const string ProfilePath = "loadout/content_bans_v1.json";
     private const int MaxSnapshotLength = 512 * 1024;
+    private static readonly string EmptyRunStateJson = JsonSerializer.Serialize(new RunBanSaveData());
     private static readonly object Gate = new();
     private static readonly ConditionalWeakTable<RunState, RunBanState> RunStates = new();
     private static readonly HashSet<StartRunLobby> Lobbies = [];
@@ -112,6 +113,9 @@ internal static class ContentBanService
             return ContentBanScope.None;
 
         EnsureLoaded();
+        if ((_effectiveKindMask & (1 << (int)target.Kind)) == 0)
+            return ContentBanScope.None;
+
         lock (Gate)
         {
             if (IsGuest())
@@ -136,6 +140,12 @@ internal static class ContentBanService
     {
         EnsureLoaded();
         return (_effectiveKindMask & (1 << (int)kind)) != 0;
+    }
+
+    internal static bool HasAnyBans()
+    {
+        EnsureLoaded();
+        return _effectiveKindMask != 0;
     }
 
     internal static bool IsPermanentlyBanned(ContentBanTarget target)
@@ -186,6 +196,9 @@ internal static class ContentBanService
 
     internal static string GetSerializedRunState(RunState runState)
     {
+        if (!HasAnyBans())
+            return EmptyRunStateJson;
+
         lock (Gate)
             return JsonSerializer.Serialize(GetRunState(runState).ToSaveData());
     }

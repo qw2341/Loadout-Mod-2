@@ -84,6 +84,8 @@ internal static class ContentBanLiveOfferService
     private static readonly MethodInfo SetEventStateMethod = AccessTools.Method(typeof(EventModel), "SetEventState");
     private static readonly MethodInfo RewardButtonReloadMethod = AccessTools.Method(typeof(NRewardButton), "Reload");
 
+    internal static bool HasPendingContexts => PendingContextReconciliations.Count > 0;
+
     internal static void TrackRewardsSet(RewardsSet set)
     {
         Prune();

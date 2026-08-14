@@ -485,11 +485,18 @@ internal static class ContentBanStartingInventoryScope
 internal static class ContentBanStartingInventoryPatch
 {
     [HarmonyPrefix]
-    internal static void Prefix() => ContentBanStartingInventoryScope.Enter();
-    [HarmonyFinalizer]
-    internal static Exception? Finalizer(Exception? __exception)
+    internal static void Prefix(out bool __state)
     {
-        ContentBanStartingInventoryScope.Exit();
+        __state = ContentBanService.HasAnyBans();
+        if (__state)
+            ContentBanStartingInventoryScope.Enter();
+    }
+
+    [HarmonyFinalizer]
+    internal static Exception? Finalizer(Exception? __exception, bool __state)
+    {
+        if (__state)
+            ContentBanStartingInventoryScope.Exit();
         return __exception;
     }
 }

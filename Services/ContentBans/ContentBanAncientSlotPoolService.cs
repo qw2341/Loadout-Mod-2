@@ -125,7 +125,7 @@ internal static class ContentBanAncientSlotPoolService
         active.Add(CapturedPool.FromRelics(snapshot, selectedId: null));
     }
 
-    private static bool IsCapturing(Rng rng) => TryGetActive(rng, out _);
+    internal static bool IsCapturing(Rng rng) => TryGetActive(rng, out _);
 
     private static bool TryGetActive(Rng rng, out CaptureContext active)
     {

@@ -28,6 +28,7 @@ internal static class ContentBanVisuals
         }
 
         overlay ??= CreateOverlay(holder);
+        LayoutOverlay(holder, overlay);
         overlay.Texture = _slashTexture ??= GD.Load<Texture2D>(SlashPath);
         overlay.Material = scope == ContentBanScope.Run ? GetRunMaterial() : null;
         overlay.Modulate = Colors.White;
@@ -73,8 +74,22 @@ internal static class ContentBanVisuals
             ShowBehindParent = false
         };
         holder.AddChild(overlay);
-        overlay.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         return overlay;
+    }
+
+    private static void LayoutOverlay(Control holder, TextureRect overlay)
+    {
+        Control? hitbox = holder.GetNodeOrNull<Control>("Hitbox");
+        if (hitbox is not null && hitbox.Size.X > 0f && hitbox.Size.Y > 0f)
+        {
+            overlay.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+            overlay.Position = hitbox.Position;
+            overlay.Size = hitbox.Size;
+            return;
+        }
+
+        if (holder.Size.X > 0f && holder.Size.Y > 0f)
+            overlay.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
     }
 
     private static ShaderMaterial GetRunMaterial()

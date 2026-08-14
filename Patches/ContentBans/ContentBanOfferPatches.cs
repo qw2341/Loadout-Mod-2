@@ -39,7 +39,11 @@ internal static class ContentBanRewardsSetTrackingPatch
 internal static class ContentBanMerchantContextPatch
 {
     [HarmonyPostfix]
-    internal static void Postfix(ref Task __result) => __result = ApplyAfterEnterAsync(__result);
+    internal static void Postfix(ref Task __result)
+    {
+        if (ContentBanService.HasAnyBans() || ContentBanLiveOfferService.HasPendingContexts)
+            __result = ApplyAfterEnterAsync(__result);
+    }
 
     private static async Task ApplyAfterEnterAsync(Task nativeTask)
     {
@@ -52,7 +56,11 @@ internal static class ContentBanMerchantContextPatch
 internal static class ContentBanEventContextPatch
 {
     [HarmonyPostfix]
-    internal static void Postfix(ref Task __result) => __result = ApplyAfterEnterAsync(__result);
+    internal static void Postfix(ref Task __result)
+    {
+        if (ContentBanService.HasAnyBans() || ContentBanLiveOfferService.HasPendingContexts)
+            __result = ApplyAfterEnterAsync(__result);
+    }
 
     private static async Task ApplyAfterEnterAsync(Task nativeTask)
     {
@@ -66,7 +74,10 @@ internal static class ContentBanEmptyRewardRemovalPatch
 {
     [HarmonyPostfix]
     internal static void Postfix(RewardsSet __instance, ref Task __result)
-        => __result = RemoveEmptyContentRewardsAsync(__instance, __result);
+    {
+        if (ContentBanService.HasAnyBans())
+            __result = RemoveEmptyContentRewardsAsync(__instance, __result);
+    }
 
     private static async Task RemoveEmptyContentRewardsAsync(RewardsSet set, Task nativeTask)
     {
@@ -256,20 +267,28 @@ internal static class ContentBanAncientInitialOptionsPatch
            ?? throw new MissingMethodException(typeof(AncientEventModel).FullName, "GenerateInitialOptionsWrapper");
 
     [HarmonyPrefix]
-    internal static void Prefix(AncientEventModel __instance)
-        => ContentBanAncientSlotPoolService.Begin(__instance);
+    internal static void Prefix(AncientEventModel __instance, out bool __state)
+    {
+        __state = ContentBanService.HasAnyBans(ContentBanKind.Relic);
+        if (__state)
+            ContentBanAncientSlotPoolService.Begin(__instance);
+    }
 
     [HarmonyPostfix]
-    internal static void Postfix(AncientEventModel __instance, ref IReadOnlyList<EventOption> __result)
+    internal static void Postfix(AncientEventModel __instance, ref IReadOnlyList<EventOption> __result, bool __state)
     {
+        if (!__state)
+            return;
+
         ContentBanAncientSlotPoolService.Complete(__instance, __result);
         __result = ContentBanLiveOfferService.ReconcileAncientInitial(__instance, __result);
     }
 
     [HarmonyFinalizer]
-    internal static Exception? Finalizer(AncientEventModel __instance, Exception? __exception)
+    internal static Exception? Finalizer(AncientEventModel __instance, Exception? __exception, bool __state)
     {
-        ContentBanAncientSlotPoolService.Cancel(__instance);
+        if (__state)
+            ContentBanAncientSlotPoolService.Cancel(__instance);
         return __exception;
     }
 }
@@ -344,6 +363,9 @@ internal static class ContentBanAncientCandidatePoolCapturePatch
 
     private static T? CaptureNext<T>(Rng rng, IEnumerable<T> candidates)
     {
+        if (!ContentBanAncientSlotPoolService.IsCapturing(rng))
+            return rng.NextItem(candidates);
+
         if (typeof(T) == typeof(EventOption))
         {
             IEnumerable<EventOption> options = (IEnumerable<EventOption>)(object)candidates;
@@ -377,6 +399,9 @@ internal static class ContentBanAncientCandidatePoolCapturePatch
 
     private static void RecordShuffle<T>(Rng rng, IEnumerable<T> candidates)
     {
+        if (!ContentBanAncientSlotPoolService.IsCapturing(rng))
+            return;
+
         if (typeof(T) == typeof(EventOption))
             ContentBanAncientSlotPoolService.RecordShuffle(rng, (IEnumerable<EventOption>)(object)candidates);
         else if (typeof(T) == typeof(RelicModel))
@@ -403,7 +428,9 @@ internal static class ContentBanEventOptionClickPatch
     [HarmonyPrefix]
     internal static bool Prefix(NEventRoom __instance, EventOption option)
     {
-        if (option.Relic is not { } relic || !ContentBanService.IsBanned(relic))
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Relic)
+            || option.Relic is not { } relic
+            || !ContentBanService.IsBanned(relic))
             return true;
         NEventOptionButton? button = __instance.Layout?.OptionButtons.FirstOrDefault(candidate => ReferenceEquals(candidate.Option, option));
         if (button is not null)
@@ -418,7 +445,9 @@ internal static class ContentBanEventOptionChosenPatch
     [HarmonyPrefix]
     internal static bool Prefix(EventOption __instance, ref System.Threading.Tasks.Task __result)
     {
-        if (__instance.Relic is not { } relic || !ContentBanService.IsBanned(relic))
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Relic)
+            || __instance.Relic is not { } relic
+            || !ContentBanService.IsBanned(relic))
             return true;
         __result = System.Threading.Tasks.Task.CompletedTask;
         return false;
@@ -431,6 +460,9 @@ internal static class ContentBanRewardSelectionPatch
     [HarmonyPrefix]
     internal static bool Prefix(Reward __instance, ref System.Threading.Tasks.Task<bool> __result)
     {
+        if (!ContentBanService.HasAnyBans())
+            return true;
+
         bool blocked = __instance switch
         {
             RelicReward { Relic: { } relic } => ContentBanService.IsBanned(relic),
@@ -450,6 +482,9 @@ internal static class ContentBanMerchantPurchasePatch
     [HarmonyPrefix]
     internal static bool Prefix(MerchantEntry __instance, ref System.Threading.Tasks.Task<bool> __result)
     {
+        if (!ContentBanService.HasAnyBans())
+            return true;
+
         bool blocked = __instance switch
         {
             MerchantCardEntry { CreationResult.Card: { } card } => ContentBanService.IsBanned(card),
