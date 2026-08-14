@@ -32,7 +32,7 @@ using System.Threading.Tasks;
 internal static class ContentBanRewardsSetTrackingPatch
 {
     [HarmonyPostfix]
-    internal static void Postfix(RewardsSet set) => ContentBanLiveOfferService.TrackRewardsSet(set);
+    internal static void Postfix(RewardsSet set) => ContentBanService.OnRewardsSetTracked(set);
 }
 
 [HarmonyPatch(typeof(MerchantRoom), nameof(MerchantRoom.EnterInternal))]

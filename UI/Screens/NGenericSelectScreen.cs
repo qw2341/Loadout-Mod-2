@@ -364,13 +364,7 @@ public partial class NGenericSelectScreen : Control
         if (focusOwner is LineEdit or TextEdit)
             return false;
 
-        Vector2 pointer = GetViewport().GetMousePosition();
-        IGenericSelectItem? hovered = _visibleItems.LastOrDefault(item =>
-            item is IContentBanSelectItem { BanTarget: not null }
-            && item.View is { } view
-            && GodotObject.IsInstanceValid(view)
-            && view.IsVisibleInTree()
-            && view.GetGlobalRect().HasPoint(pointer));
+        IGenericSelectItem? hovered = GetHoveredBanItem();
         if (hovered is not IContentBanSelectItem { BanTarget: { } target } banItem)
             return false;
 
@@ -379,6 +373,29 @@ public partial class NGenericSelectScreen : Control
 
         GetViewport().SetInputAsHandled();
         return true;
+    }
+
+    private IGenericSelectItem? GetHoveredBanItem()
+    {
+        for (Node? node = GetViewport().GuiGetHoveredControl(); node is not null && node != this; node = node.GetParent())
+        {
+            if (node is Control control
+                && _activationItemsByView.TryGetValue(control, out IGenericSelectItem? item)
+                && item is IContentBanSelectItem { BanTarget: not null })
+                return item;
+        }
+
+        Vector2 pointer = GetViewport().GetMousePosition();
+        for (int index = _visibleItems.Count - 1; index >= 0; index--)
+        {
+            IGenericSelectItem item = _visibleItems[index];
+            if (item is not IContentBanSelectItem { BanTarget: not null } banItem)
+                continue;
+            Control? visual = banItem.BanVisualView ?? item.View;
+            if (visual is not null && visual.IsVisibleInTree() && ContentBanVisuals.ContainsPoint(visual, pointer))
+                return item;
+        }
+        return null;
     }
 
     private void OnContentBanChanged(ContentBanChangedEvent change)

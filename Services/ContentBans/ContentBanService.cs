@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
+using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using System;
@@ -187,8 +188,7 @@ internal static class ContentBanService
         }
 
         IReadOnlyList<ContentBanOfferReconciliation> reconciliations = ContentBanLiveOfferService.ReconcileHost(change);
-        lock (Gate)
-            _lastOfferReconciliations = reconciliations;
+        RecordOfferReconciliations(reconciliations);
         Changed?.Invoke(change);
         BroadcastSnapshot();
         return true;
@@ -225,8 +225,24 @@ internal static class ContentBanService
             state.Cards.ExceptWith(_profile.Cards);
             state.Relics.ExceptWith(_profile.Relics);
             state.Potions.ExceptWith(_profile.Potions);
+            _lastOfferReconciliations = [];
             RecomputeEffectiveKindMaskLocked();
         }
+        ReconcileTrackedRewardsAfterRestore();
+    }
+
+    internal static void OnRewardsSetTracked(RewardsSet set)
+    {
+        ContentBanLiveOfferService.TrackRewardsSet(set);
+        if (!HasAnyBans() || IsGuest())
+            return;
+
+        IReadOnlyList<ContentBanOfferReconciliation> reconciliations =
+            ContentBanLiveOfferService.ReconcileTrackedRewardsSet(set);
+        if (reconciliations.Count == 0)
+            return;
+        RecordOfferReconciliations(reconciliations);
+        BroadcastSnapshot();
     }
 
     internal static void RegisterLobby(StartRunLobby lobby)
@@ -372,6 +388,24 @@ internal static class ContentBanService
     {
         _profile.SchemaVersion = CurrentSchemaVersion;
         SaveUtility.SaveProfileJson(ProfilePath, _profile);
+    }
+
+    private static void ReconcileTrackedRewardsAfterRestore()
+    {
+        if (!HasAnyBans() || IsGuest())
+            return;
+        IReadOnlyList<ContentBanOfferReconciliation> reconciliations =
+            ContentBanLiveOfferService.ReconcileTrackedRewards();
+        RecordOfferReconciliations(reconciliations);
+    }
+
+    private static void RecordOfferReconciliations(
+        IReadOnlyList<ContentBanOfferReconciliation> reconciliations)
+    {
+        if (reconciliations.Count == 0)
+            return;
+        lock (Gate)
+            _lastOfferReconciliations = [.. _lastOfferReconciliations, .. reconciliations];
     }
 
     private static ContentBanScope GetLocalScopeLocked(ContentBanTarget target)

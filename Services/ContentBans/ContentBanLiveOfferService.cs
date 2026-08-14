@@ -97,6 +97,27 @@ internal static class ContentBanLiveOfferService
     internal static void TrackRewardButton(Reward reward, NRewardButton button)
         => RewardButtons[reward] = new WeakReference<NRewardButton>(button);
 
+    internal static IReadOnlyList<ContentBanOfferReconciliation> ReconcileTrackedRewardsSet(RewardsSet set)
+    {
+        if (IsCompleted(set))
+            return [];
+        List<ContentBanOfferReconciliation> reconciliations = [];
+        ReconcileBannedRewards(set, reconciliations);
+        return reconciliations;
+    }
+
+    internal static IReadOnlyList<ContentBanOfferReconciliation> ReconcileTrackedRewards()
+    {
+        Prune();
+        List<ContentBanOfferReconciliation> reconciliations = [];
+        foreach (WeakReference<RewardsSet> reference in RewardSets.ToList())
+        {
+            if (reference.TryGetTarget(out RewardsSet? set) && !IsCompleted(set))
+                ReconcileBannedRewards(set, reconciliations);
+        }
+        return reconciliations;
+    }
+
     internal static void Reset()
     {
         RewardSets.Clear();
@@ -196,6 +217,44 @@ internal static class ContentBanLiveOfferService
                 else if (reward is PotionReward potionReward && target.Kind == ContentBanKind.Potion
                          && potionReward.Potion is { } potion && Matches(target, potion.Id))
                     ReconcilePotionReward(set, rewardIndex, potionReward, output);
+            }
+        }
+    }
+
+    private static void ReconcileBannedRewards(
+        RewardsSet set,
+        ICollection<ContentBanOfferReconciliation> output)
+    {
+        for (int rewardIndex = set.Rewards.Count - 1; rewardIndex >= 0; rewardIndex--)
+        {
+            Reward reward = set.Rewards[rewardIndex];
+            if (reward.SuccessfullySelected)
+                continue;
+
+            if (reward is CardReward cardReward)
+            {
+                ContentBanTarget[] banned = ((List<CardCreationResult>)CardRewardCardsField.GetValue(cardReward)!)
+                    .Select(result => result.Card)
+                    .Where(ContentBanService.IsBanned)
+                    .Select(ContentBanTarget.Card)
+                    .Distinct()
+                    .ToArray();
+                foreach (ContentBanTarget target in banned)
+                {
+                    if (!set.Rewards.Contains(cardReward))
+                        break;
+                    ReconcileCardReward(set, rewardIndex, cardReward, target, output);
+                }
+            }
+            else if (reward is RelicReward { Relic: { } relic } relicReward
+                     && ContentBanService.IsBanned(relic))
+            {
+                ReconcileRelicReward(set, rewardIndex, relicReward, output);
+            }
+            else if (reward is PotionReward { Potion: { } potion } potionReward
+                     && ContentBanService.IsBanned(potion))
+            {
+                ReconcilePotionReward(set, rewardIndex, potionReward, output);
             }
         }
     }
