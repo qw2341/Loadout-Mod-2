@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Events;
+using MegaCrit.Sts2.Core.Extensions;
 using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -17,12 +18,14 @@ using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Threading.Tasks;
 
 [HarmonyPatch(typeof(RewardsSetSynchronizer), nameof(RewardsSetSynchronizer.BeginRewardsSet))]
@@ -252,9 +255,146 @@ internal static class ContentBanAncientInitialOptionsPatch
         => AccessTools.Method(typeof(AncientEventModel), "GenerateInitialOptionsWrapper")
            ?? throw new MissingMethodException(typeof(AncientEventModel).FullName, "GenerateInitialOptionsWrapper");
 
+    [HarmonyPrefix]
+    internal static void Prefix(AncientEventModel __instance)
+        => ContentBanAncientSlotPoolService.Begin(__instance);
+
     [HarmonyPostfix]
     internal static void Postfix(AncientEventModel __instance, ref IReadOnlyList<EventOption> __result)
-        => __result = ContentBanLiveOfferService.ReconcileAncientInitial(__instance, __result);
+    {
+        ContentBanAncientSlotPoolService.Complete(__instance, __result);
+        __result = ContentBanLiveOfferService.ReconcileAncientInitial(__instance, __result);
+    }
+
+    [HarmonyFinalizer]
+    internal static Exception? Finalizer(AncientEventModel __instance, Exception? __exception)
+    {
+        ContentBanAncientSlotPoolService.Cancel(__instance);
+        return __exception;
+    }
+}
+
+[HarmonyPatch]
+internal static class ContentBanAncientCandidatePoolCapturePatch
+{
+    private static readonly MethodInfo NextItemMethod = AccessTools.GetDeclaredMethods(typeof(Rng))
+        .Single(method => method.Name == nameof(Rng.NextItem)
+                          && method.IsGenericMethodDefinition
+                          && method.GetParameters().Length == 1);
+    private static readonly MethodInfo UnstableShuffleMethod = AccessTools.GetDeclaredMethods(typeof(ListExtensions))
+        .Single(method => method.Name == nameof(ListExtensions.UnstableShuffle)
+                          && method.IsGenericMethodDefinition);
+    private static readonly MethodInfo RngShuffleMethod = AccessTools.GetDeclaredMethods(typeof(Rng))
+        .Single(method => method.Name == nameof(Rng.Shuffle)
+                          && method.IsGenericMethodDefinition);
+    private static readonly MethodInfo CaptureNextMethod = AccessTools.Method(
+        typeof(ContentBanAncientCandidatePoolCapturePatch),
+        nameof(CaptureNext));
+    private static readonly MethodInfo CaptureUnstableShuffleMethod = AccessTools.Method(
+        typeof(ContentBanAncientCandidatePoolCapturePatch),
+        nameof(CaptureUnstableShuffle));
+    private static readonly MethodInfo CaptureRngShuffleMethod = AccessTools.Method(
+        typeof(ContentBanAncientCandidatePoolCapturePatch),
+        nameof(CaptureRngShuffle));
+
+    internal static IEnumerable<MethodBase> TargetMethods()
+    {
+        HashSet<MethodBase> targets = [];
+        foreach (Type ancientType in ModelDb.AllAbstractModelSubtypes
+                     .Where(type => typeof(AncientEventModel).IsAssignableFrom(type)))
+        {
+            foreach (Type type in GetTypeAndNestedTypes(ancientType))
+            {
+                foreach (MethodInfo method in type.GetMethods(AccessTools.allDeclared))
+                {
+                    if (!method.IsAbstract && !method.ContainsGenericParameters
+                        && (method.Name == "GenerateInitialOptions"
+                            || method.Name.StartsWith("<GenerateInitialOptions>", StringComparison.Ordinal)))
+                        targets.Add(method);
+                }
+            }
+        }
+        return targets;
+    }
+
+    [HarmonyTranspiler]
+    internal static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        foreach (CodeInstruction instruction in instructions)
+        {
+            if (instruction.operand is MethodInfo called && called.IsGenericMethod)
+            {
+                MethodInfo definition = called.GetGenericMethodDefinition();
+                MethodInfo? replacement = definition == NextItemMethod
+                    ? CaptureNextMethod
+                    : definition == UnstableShuffleMethod
+                        ? CaptureUnstableShuffleMethod
+                        : definition == RngShuffleMethod
+                            ? CaptureRngShuffleMethod
+                            : null;
+                if (replacement is not null)
+                {
+                    instruction.opcode = OpCodes.Call;
+                    instruction.operand = replacement.MakeGenericMethod(called.GetGenericArguments());
+                }
+            }
+            yield return instruction;
+        }
+    }
+
+    private static T? CaptureNext<T>(Rng rng, IEnumerable<T> candidates)
+    {
+        if (typeof(T) == typeof(EventOption))
+        {
+            IEnumerable<EventOption> options = (IEnumerable<EventOption>)(object)candidates;
+            EventOption[]? snapshot = ContentBanAncientSlotPoolService.PrepareNextEventOptions(rng, ref options);
+            T? result = rng.NextItem((IEnumerable<T>)(object)options);
+            ContentBanAncientSlotPoolService.RecordNext(rng, snapshot, result as EventOption);
+            return result;
+        }
+        if (typeof(T) == typeof(RelicModel))
+        {
+            IEnumerable<RelicModel> relics = (IEnumerable<RelicModel>)(object)candidates;
+            RelicModel[]? snapshot = ContentBanAncientSlotPoolService.PrepareNextRelics(rng, ref relics);
+            T? result = rng.NextItem((IEnumerable<T>)(object)relics);
+            ContentBanAncientSlotPoolService.RecordNext(rng, snapshot, result as RelicModel);
+            return result;
+        }
+        return rng.NextItem(candidates);
+    }
+
+    private static List<T> CaptureUnstableShuffle<T>(List<T> list, Rng rng)
+    {
+        RecordShuffle(rng, list);
+        return list.UnstableShuffle(rng);
+    }
+
+    private static void CaptureRngShuffle<T>(Rng rng, IList<T> list)
+    {
+        RecordShuffle(rng, list);
+        rng.Shuffle(list);
+    }
+
+    private static void RecordShuffle<T>(Rng rng, IEnumerable<T> candidates)
+    {
+        if (typeof(T) == typeof(EventOption))
+            ContentBanAncientSlotPoolService.RecordShuffle(rng, (IEnumerable<EventOption>)(object)candidates);
+        else if (typeof(T) == typeof(RelicModel))
+            ContentBanAncientSlotPoolService.RecordShuffle(rng, (IEnumerable<RelicModel>)(object)candidates);
+    }
+
+    private static IEnumerable<Type> GetTypeAndNestedTypes(Type root)
+    {
+        Stack<Type> pending = new();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            Type type = pending.Pop();
+            yield return type;
+            foreach (Type nested in type.GetNestedTypes(AccessTools.allDeclared))
+                pending.Push(nested);
+        }
+    }
 }
 
 [HarmonyPatch(typeof(NEventRoom), nameof(NEventRoom.OptionButtonClicked))]

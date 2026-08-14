@@ -157,7 +157,7 @@ internal static class ContentBanLiveOfferService
             if (relic is null || !ContentBanService.IsBanned(relic))
                 continue;
 
-            EventOption? replacement = FindAncientReplacement(ancient, next);
+            EventOption? replacement = FindAncientReplacement(ancient, index, next);
             if (replacement is null)
                 next.RemoveAt(index);
             else
@@ -405,7 +405,7 @@ internal static class ContentBanLiveOfferService
                 RelicModel? relic = generated[index].Relic;
                 if (relic is null || !Matches(target, relic.Id))
                     continue;
-                EventOption? replacement = FindAncientReplacement(ancient, generated);
+                EventOption? replacement = FindAncientReplacement(ancient, index, generated);
                 string replacementId = replacement?.Relic?.Id.ToString() ?? string.Empty;
                 if (replacement is null)
                     generated.RemoveAt(index);
@@ -606,13 +606,44 @@ internal static class ContentBanLiveOfferService
         PendingContextReconciliations.Add(reconciliation);
     }
 
-    private static EventOption? FindAncientReplacement(AncientEventModel ancient, IReadOnlyCollection<EventOption> current)
+    private static EventOption? FindAncientReplacement(
+        AncientEventModel ancient,
+        int slotIndex,
+        IReadOnlyList<EventOption> current)
     {
-        HashSet<string> used = current.Select(option => option.Relic?.Id.ToString())
+        HashSet<string> used = current.Where((_, index) => index != slotIndex)
+            .Select(option => option.Relic?.Id.ToString())
             .OfType<string>().ToHashSet(StringComparer.Ordinal);
-        return ancient.AllPossibleOptions.FirstOrDefault(option => option.Relic is { } relic
-            && !ContentBanService.IsBanned(relic)
-            && !used.Contains(relic.Id.ToString()));
+        List<EventOption> candidates = FilterAncientCandidates(
+            used,
+            ContentBanAncientSlotPoolService.GetSlotCandidates(ancient, slotIndex)
+            ?? ancient.AllPossibleOptions);
+        if (candidates.Count == 0)
+        {
+            candidates = FilterAncientCandidates(
+                used,
+                ContentBanAncientSlotPoolService.GetAllCandidates(ancient)
+                ?? ancient.AllPossibleOptions);
+        }
+        return candidates.Count == 0 ? null : ancient.Rng.NextItem(candidates);
+    }
+
+    private static List<EventOption> FilterAncientCandidates(
+        IReadOnlySet<string> used,
+        IEnumerable<EventOption> source)
+    {
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        List<EventOption> candidates = [];
+        foreach (EventOption option in source)
+        {
+            if (option.Relic is not { } relic)
+                continue;
+            string id = relic.Id.ToString();
+            if (used.Contains(id) || !seen.Add(id) || ContentBanService.IsBanned(relic))
+                continue;
+            candidates.Add(option);
+        }
+        return candidates;
     }
 
     private static void RefreshCardReward(CardReward reward, IReadOnlyList<CardCreationResult> cards)
