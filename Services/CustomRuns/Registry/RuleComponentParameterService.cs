@@ -14,6 +14,14 @@ public static class RuleComponentParameterService
         ArgumentNullException.ThrowIfNull(component);
         ArgumentNullException.ThrowIfNull(descriptor);
 
+        NumericValueSpec? legacySelectionCount = string.Equals(
+                GetString(component, "selectionMode"),
+                "Choose",
+                StringComparison.Ordinal)
+            && TryGet(component, "count", out NumericValueSpec existingCount)
+                ? existingCount
+                : null;
+
         foreach (RuleParameterDescriptor parameter in descriptor.Parameters)
         {
             if (component.Parameters.ContainsKey(parameter.Key))
@@ -34,12 +42,16 @@ public static class RuleComponentParameterService
                     Set(component, parameter.Key, new RuleTargetSpec());
                     break;
                 case RuleParameterKind.NumericSource:
-                    Set(component, parameter.Key, new NumericValueSpec
-                    {
-                        Source = NumericValueSourceKind.Constant,
-                        Constant = parameter.DefaultNumeric,
-                        ConstantKind = parameter.DefaultConstantKind
-                    });
+                    NumericValueSpec numeric = parameter.Key is "minimumCount" or "maximumCount"
+                                               && legacySelectionCount is not null
+                        ? CloneNumericValue(legacySelectionCount)
+                        : new NumericValueSpec
+                        {
+                            Source = NumericValueSourceKind.Constant,
+                            Constant = parameter.DefaultNumeric,
+                            ConstantKind = parameter.DefaultConstantKind
+                        };
+                    Set(component, parameter.Key, numeric);
                     break;
                 case RuleParameterKind.ModelFilter:
                     if (component.Parameters.TryGetValue("filter", out JsonElement legacyFilter))
@@ -61,6 +73,17 @@ public static class RuleComponentParameterService
                     break;
             }
         }
+    }
+
+    private static NumericValueSpec CloneNumericValue(NumericValueSpec value)
+    {
+        return new NumericValueSpec
+        {
+            Source = value.Source,
+            Constant = value.Constant,
+            ConstantKind = value.ConstantKind,
+            ReferenceId = value.ReferenceId
+        };
     }
 
     public static void Set<T>(RuleComponentSpec component, string key, T value)

@@ -194,6 +194,9 @@ public sealed class CustomRunChoiceRequest
 
     [JsonPropertyName("canSkip")]
     public bool CanSkip { get; set; }
+
+    [JsonPropertyName("destinationPile")]
+    public string DestinationPile { get; set; } = string.Empty;
 }
 
 public sealed class CustomRunChoiceResponse

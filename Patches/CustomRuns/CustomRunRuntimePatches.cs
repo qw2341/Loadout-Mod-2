@@ -18,6 +18,7 @@ using Loadout.Services.CustomRuns.Runtime;
 using static Loadout.Patches.CustomRuns.CustomRunTriggerCapture;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -29,6 +30,7 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -533,6 +535,19 @@ internal static class CustomRunTriggerCapture
     {
         await nativeTask;
         CustomRunRuleRuntimeService.Capture(triggerId, playerId, kind, modelId, amount);
+    }
+}
+
+[HarmonyPatch(
+    typeof(NSimpleCardSelectScreen),
+    nameof(NSimpleCardSelectScreen.Create),
+    [typeof(IReadOnlyList<CardModel>), typeof(CardSelectorPrefs)])]
+public static class CustomRunNativeCardChoicePromptPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(CardSelectorPrefs prefs)
+    {
+        CustomRunRuntimeChoiceService.InstallNativeCardChoicePrompt(prefs);
     }
 }
 

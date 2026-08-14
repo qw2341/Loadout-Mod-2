@@ -12,10 +12,13 @@ using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Persistence;
 using Loadout.Services.Networking;
+using Loadout.Services.Targets;
 using Loadout.UI;
 using Loadout.UI.CustomRuns;
+using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Localization;
@@ -26,6 +29,7 @@ using MegaCrit.Sts2.Core.Runs;
 
 internal static class CustomRunRuntimeChoiceService
 {
+    private const string NativeCardChoicePromptKeyPrefix = "LOADOUT_CUSTOM_RUN_CARD_CHOICE";
     private static readonly object Gate = new();
     private static readonly Dictionary<long, PendingHostChoice> PendingHostChoices = [];
     private static INetGameService? _netService;
@@ -35,6 +39,7 @@ internal static class CustomRunRuntimeChoiceService
     private static long _localChoiceRequestId;
     private static readonly Dictionary<long, CustomRunChoiceRequest> PendingNativeCardChoices = [];
     private static readonly HashSet<long> RunningNativeCardChoices = [];
+    private static readonly Dictionary<string, string> NativeCardChoicePrompts = new(StringComparer.Ordinal);
     private static PlayerChoiceContext? _activeContext;
     private static long _activeContextEventId;
 
@@ -80,6 +85,7 @@ internal static class CustomRunRuntimeChoiceService
         {
             PendingNativeCardChoices.Clear();
             RunningNativeCardChoices.Clear();
+            NativeCardChoicePrompts.Clear();
             _activeContext = null;
             _activeContextEventId = 0;
         }
@@ -123,6 +129,7 @@ internal static class CustomRunRuntimeChoiceService
         bool canSkip,
         long revision,
         long eventId,
+        string destinationPile,
         PlayerChoiceContext playerChoiceContext)
     {
         if (_netService is null || _netService.Type == NetGameType.Client)
@@ -139,7 +146,8 @@ internal static class CustomRunRuntimeChoiceService
             AllowedModelIds = allowedModelIds.Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToList(),
             Minimum = minimum,
             Maximum = maximum,
-            CanSkip = canSkip
+            CanSkip = canSkip,
+            DestinationPile = destinationPile
         };
         if (kind == SelectionModelKind.Card)
             return await RequestNativeCardChoiceAsync(request, playerChoiceContext);
@@ -294,13 +302,17 @@ internal static class CustomRunRuntimeChoiceService
                 : null)
             .Where(card => card is not null)
             .Cast<CardModel>()
+            .Select(card => player.RunState.CreateCard(card, player))
             .ToList();
+        int maximum = Math.Min(request.Maximum, cards.Count);
+        int minimum = request.CanSkip ? 0 : Math.Min(request.Minimum, maximum);
         CardSelectorPrefs prefs = new(
-            new LocString("settings_ui", "LOADOUT-CUSTOM_RUN-CHOOSE-CARDS.title"),
-            Math.Min(request.Minimum, cards.Count),
-            Math.Min(request.Maximum, cards.Count))
+            CreateNativeCardChoicePrompt(request, minimum, maximum),
+            minimum,
+            maximum)
         {
-            Cancelable = request.CanSkip
+            Cancelable = request.CanSkip,
+            RequireManualConfirmation = request.CanSkip || minimum != maximum
         };
         IEnumerable<CardModel> selected = await CardSelectCmd.FromSimpleGrid(
             playerChoiceContext,
@@ -310,6 +322,55 @@ internal static class CustomRunRuntimeChoiceService
         return selected
             .Select(card => card.Id.ToString())
             .ToList();
+    }
+
+    private static LocString CreateNativeCardChoicePrompt(
+        CustomRunChoiceRequest request,
+        int minimum,
+        int maximum)
+    {
+        PileType pile = Enum.TryParse(request.DestinationPile, out PileType parsedPile)
+            ? parsedPile
+            : PileType.Deck;
+        string pileName = LoadoutCardPileTargets.FromPileType(pile).ToDropdownOption().Label;
+        string prompt = request.CanSkip
+            ? LocMan.Loc(
+                "CUSTOM_RUN_CHOOSE_UP_TO_CARDS_TO_ADD",
+                "Choose up to {0} cards to add to {1}.",
+                maximum,
+                pileName)
+            : minimum == maximum
+                ? LocMan.Loc(
+                    "CUSTOM_RUN_CHOOSE_CARDS_TO_ADD",
+                    "Choose {0} cards to add to {1}.",
+                    maximum,
+                    pileName)
+                : LocMan.Loc(
+                    "CUSTOM_RUN_CHOOSE_CARD_RANGE_TO_ADD",
+                    "Choose {0} to {1} cards to add to {2}.",
+                    minimum,
+                    maximum,
+                    pileName);
+        string key = $"{NativeCardChoicePromptKeyPrefix}_{pile}_{minimum}_{maximum}_{request.CanSkip}";
+        lock (Gate)
+            NativeCardChoicePrompts[key] = prompt;
+        return new LocString("card_selection", key);
+    }
+
+    internal static void InstallNativeCardChoicePrompt(CardSelectorPrefs prefs)
+    {
+        string key = prefs.Prompt.LocEntryKey;
+        if (!key.StartsWith(NativeCardChoicePromptKeyPrefix, StringComparison.Ordinal))
+            return;
+        string? prompt;
+        lock (Gate)
+            NativeCardChoicePrompts.TryGetValue(key, out prompt);
+        if (prompt is null)
+            return;
+        LocManager.Instance.GetTable(prefs.Prompt.LocTable).MergeWith(new Dictionary<string, string>
+        {
+            [key] = prompt
+        });
     }
 
     private static void HandleResponse(CustomRunChoiceResponseMessage message, ulong senderId)

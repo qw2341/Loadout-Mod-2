@@ -71,6 +71,5 @@
   ,"LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "¿Descartar los cambios?",
   "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "Si sales ahora, se perderán los cambios no guardados de '{Name}'.",
   "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "Cancelar",
-  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "Descartar cambios",
-  "LOADOUT-CUSTOM_RUN-CHOOSE-CARDS.title": "Elegir cartas"
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "Descartar cambios"
 }

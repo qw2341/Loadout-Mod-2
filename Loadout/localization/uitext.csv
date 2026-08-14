@@ -685,9 +685,14 @@ CUSTOM_RUN_COMPONENT_SET_NEXT_EVENT,Set Next Event,设置下一个事件,Défini
 CUSTOM_RUN_PARAMETER_EVENT,Event,事件,Événement,イベント,이벤트,Evento
 CUSTOM_RUN_PARAMETER_EVENT_MATCHER,Event matcher,事件匹配器,Filtre d'événements,イベント照合,이벤트 일치 조건,Filtro de eventos
 CUSTOM_RUN_PARAMETER_NUMBER_TO_SELECT,Number to select,选择数量,Nombre à sélectionner,選択する数,선택할 수,Número a seleccionar
+CUSTOM_RUN_PARAMETER_MINIMUM_NUMBER_TO_SELECT,Minimum number to select,最少选择数量,Nombre minimum à sélectionner,選択する最小数,최소 선택 수,Número mínimo a seleccionar
+CUSTOM_RUN_PARAMETER_MAXIMUM_NUMBER_TO_SELECT,Maximum number to select,最多选择数量,Nombre maximum à sélectionner,選択する最大数,최대 선택 수,Número máximo a seleccionar
 CUSTOM_RUN_PARAMETER_MAXIMUM_EXECUTIONS,Maximum executions,最大执行次数,Exécutions maximales,最大実行回数,최대 실행 횟수,Ejecuciones máximas
 CUSTOM_RUN_LEGACY_COMPONENT,  (legacy),  （旧版）,  (hérité),  （旧式）,  (레거시),  (heredado)
 CUSTOM_RUN_CHOICE_TIMED_OUT,Loadout Custom Run: choice {0} timed out for player {1}.,Loadout 自定义游戏：玩家 {1} 的选择 {0} 已超时。,Partie personnalisée Loadout : le choix {0} a expiré pour le joueur {1}.,Loadout カスタムラン：プレイヤー {1} の選択 {0} がタイムアウトしました。,Loadout 커스텀 런: 플레이어 {1}의 선택 {0} 시간이 초과되었습니다.,Partida personalizada de Loadout: la elección {0} agotó el tiempo para el jugador {1}.
+CUSTOM_RUN_CHOOSE_CARDS_TO_ADD,Choose {0} cards to add to {1}.,选择 {0} 张要加入{1}的牌。,Choisissez {0} cartes. Destination : {1}.,{1}に加えるカードを{0}枚選んでください。,{1}에 추가할 카드 {0}장을 선택하세요.,Elige {0} cartas para añadir a {1}.
+CUSTOM_RUN_CHOOSE_UP_TO_CARDS_TO_ADD,Choose up to {0} cards to add to {1}.,选择最多 {0} 张要加入{1}的牌。,Choisissez jusqu'à {0} cartes. Destination : {1}.,{1}に加えるカードを最大{0}枚選んでください。,{1}에 추가할 카드를 최대 {0}장 선택하세요.,Elige hasta {0} cartas para añadir a {1}.
+CUSTOM_RUN_CHOOSE_CARD_RANGE_TO_ADD,Choose {0} to {1} cards to add to {2}.,选择 {0} 到 {1} 张要加入{2}的牌。,Choisissez entre {0} et {1} cartes. Destination : {2}.,{2}に加えるカードを{0}～{1}枚選んでください。,{2}에 추가할 카드를 {0}장에서 {1}장까지 선택하세요.,Elige entre {0} y {1} cartas para añadir a {2}.
 CUSTOM_RUN_COMPONENT_ADD_CARDS_TO_DRAW_PILE,Add Cards To Draw Pile From Matcher,从匹配器将卡牌加入抽牌堆,Ajouter à la pioche les cartes correspondantes,一致するカードを山札に加える,일치하는 카드를 뽑기 더미에 추가,Añadir cartas coincidentes a la pila de robo
 CUSTOM_RUN_COMPONENT_ADD_CARDS_TO_DISCARD_PILE,Add Cards To Discard Pile From Matcher,从匹配器将卡牌加入弃牌堆,Ajouter à la défausse les cartes correspondantes,一致するカードを捨て札に加える,일치하는 카드를 버린 카드 더미에 추가,Añadir cartas coincidentes a la pila de descarte
 CUSTOM_RUN_COMPONENT_MODIFY_VARIABLE,Modify Variable,修改变量,Modifier la variable,変数を変更,변수 수정,Modificar variable

@@ -103,14 +103,15 @@ internal static class CustomRunRuleEvaluator
             case "Loadout2:AddCardsToHand":
             case "Loadout2:AddCardsToDrawPile":
             case "Loadout2:AddCardsToDiscardPile":
-                await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision, playerChoiceContext);
                 decision.Pile = action.TypeId switch
                 {
+                    "Loadout2:ObtainCards" => PileType.Deck.ToString(),
                     "Loadout2:AddCardsToHand" => PileType.Hand.ToString(),
                     "Loadout2:AddCardsToDrawPile" => PileType.Draw.ToString(),
                     "Loadout2:AddCardsToDiscardPile" => PileType.Discard.ToString(),
                     _ => decision.Pile
                 };
+                await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision, playerChoiceContext);
                 break;
             case "Loadout2:GainPowers":
                 await ResolveMatcherSelectionAsync(action, runtimeEvent, ruleId, targets, decision, playerChoiceContext);
@@ -627,33 +628,55 @@ internal static class CustomRunRuleEvaluator
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToList();
-        int count = ToTruncatedInt(
+        int legacyCount = ToTruncatedInt(
             ReadNumber(action, "count", runtimeEvent, ruleId),
             0,
             Math.Min(50, available.Count));
-        if (count == 0)
-            return;
-        if (string.Equals(RuleComponentParameterService.GetString(action, "selectionMode"), "Choose", StringComparison.Ordinal)
+        bool playerChooses = string.Equals(
+            RuleComponentParameterService.GetString(action, "selectionMode"),
+            "Choose",
+            StringComparison.Ordinal);
+        if (playerChooses
             && targets.Count > 0)
         {
             bool canSkip = RuleComponentParameterService.GetBoolean(action, "canSkip");
+            int maximum = ReadSelectionCount(
+                action,
+                "maximumCount",
+                legacyCount,
+                runtimeEvent,
+                ruleId,
+                available.Count);
+            int minimum = ReadSelectionCount(
+                action,
+                "minimumCount",
+                legacyCount,
+                runtimeEvent,
+                ruleId,
+                maximum);
+            if (maximum == 0)
+                return;
             foreach (Player target in targets.OrderBy(GetLobbySlot).ThenBy(player => player.NetId))
             {
                 IReadOnlyList<string> targetChoice = await CustomRunRuntimeChoiceService.RequestChoiceAsync(
                     target.NetId,
                     matcher.ModelKind,
                     available,
-                    count,
-                    count,
+                    minimum,
+                    maximum,
                     canSkip,
                     CustomRunRuleRuntimeService.ExportState().Revision,
                     runtimeEvent.EventId,
+                    decision.Pile,
                     playerChoiceContext);
                 if (targetChoice.Count > 0)
                     decision.ModelIdsByPlayer[target.NetId] = targetChoice.ToList();
             }
             return;
         }
+        int count = legacyCount;
+        if (count == 0)
+            return;
         List<string> selected = [];
         for (int i = 0; i < count && available.Count > 0; i++)
         {
@@ -664,6 +687,19 @@ internal static class CustomRunRuleEvaluator
             available.RemoveAt(index);
         }
         decision.ModelIds = selected;
+    }
+
+    private static int ReadSelectionCount(
+        RuleComponentSpec action,
+        string key,
+        int fallback,
+        CustomRunRuntimeEvent runtimeEvent,
+        string ruleId,
+        int maximum)
+    {
+        return RuleComponentParameterService.TryGet(action, key, out NumericValueSpec _)
+            ? ToTruncatedInt(ReadNumber(action, key, runtimeEvent, ruleId), 0, Math.Min(50, maximum))
+            : Math.Clamp(fallback, 0, Math.Min(50, maximum));
     }
 
     private static IReadOnlyList<string> GetModelsForPlayer(CustomRunResolvedDecision decision, ulong playerId)

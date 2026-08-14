@@ -71,6 +71,5 @@
   "LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "Discard Changes?",
   "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "If you exit now, your unsaved changes to '{Name}' will be lost.",
   "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "Cancel",
-  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "Discard Changes",
-  "LOADOUT-CUSTOM_RUN-CHOOSE-CARDS.title": "Choose cards"
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "Discard Changes"
 }

@@ -71,6 +71,5 @@
   ,"LOADOUT-CUSTOM_RUN_UNSAVED_TITLE.title": "放弃更改？",
   "LOADOUT-CUSTOM_RUN_UNSAVED_BODY.title": "如果现在退出，“{Name}”的未保存更改将会丢失。",
   "LOADOUT-CUSTOM_RUN_UNSAVED_CANCEL.title": "取消",
-  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "放弃更改",
-  "LOADOUT-CUSTOM_RUN-CHOOSE-CARDS.title": "选择卡牌"
+  "LOADOUT-CUSTOM_RUN_UNSAVED_DISCARD.title": "放弃更改"
 }

@@ -178,7 +178,23 @@ public static class CustomRunRegistry
             RuleParameterDescriptor count = new("count", "Number to select", RuleParameterKind.NumericSource)
             {
                 Minimum = 0,
-                Maximum = 50
+                Maximum = 50,
+                VisibleWhenParameterKey = "selectionMode",
+                VisibleWhenParameterValue = "Random"
+            };
+            RuleParameterDescriptor minimumSelectionCount = new("minimumCount", "Minimum number to select", RuleParameterKind.NumericSource)
+            {
+                Minimum = 0,
+                Maximum = 50,
+                VisibleWhenParameterKey = "selectionMode",
+                VisibleWhenParameterValue = "Choose"
+            };
+            RuleParameterDescriptor maximumSelectionCount = new("maximumCount", "Maximum number to select", RuleParameterKind.NumericSource)
+            {
+                Minimum = 0,
+                Maximum = 50,
+                VisibleWhenParameterKey = "selectionMode",
+                VisibleWhenParameterValue = "Choose"
             };
             RuleParameterDescriptor minimumMatches = new("minimumMatches", "At least this many", RuleParameterKind.NumericSource)
             {
@@ -348,17 +364,17 @@ public static class CustomRunRegistry
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainCard", "Obtain Card", "Cards", true, card, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainRelic", "Obtain Relic", "Relics", true, relic, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainPotion", "Obtain Potion", "Potions", true, potion, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainCards", "Obtain Cards From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainRelics", "Obtain Relics From Matcher", "Relics", relicMatcher, selectionMode, count, canSkip, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainPotions", "Obtain Potions From Matcher", "Potions", potionMatcher, selectionMode, count, canSkip, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainPowers", "Gain Powers From Matcher", "Powers", powerMatcher, selectionMode, count, canSkip, amount, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SpawnMonsters", "Spawn Monsters From Matcher", "Monsters", monsterMatcher, selectionMode, count, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainCards", "Obtain Cards From Matcher", "Cards", cardMatcher, selectionMode, count, minimumSelectionCount, maximumSelectionCount, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainRelics", "Obtain Relics From Matcher", "Relics", relicMatcher, selectionMode, count, minimumSelectionCount, maximumSelectionCount, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ObtainPotions", "Obtain Potions From Matcher", "Potions", potionMatcher, selectionMode, count, minimumSelectionCount, maximumSelectionCount, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:GainPowers", "Gain Powers From Matcher", "Powers", powerMatcher, selectionMode, count, minimumSelectionCount, maximumSelectionCount, canSkip, amount, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SpawnMonsters", "Spawn Monsters From Matcher", "Monsters", monsterMatcher, selectionMode, count, minimumSelectionCount, maximumSelectionCount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToHand", "Add Card To Hand", "Cards", true, card, amount, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToHand", "Add Cards To Hand From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToHand", "Add Cards To Hand From Matcher", "Cards", cardMatcher, selectionMode, count, minimumSelectionCount, maximumSelectionCount, canSkip, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToDrawPile", "Add Card To Draw Pile", "Cards", true, card, amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardToDiscardPile", "Add Card To Discard Pile", "Cards", true, card, amount, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToDrawPile", "Add Cards To Draw Pile From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
-            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToDiscardPile", "Add Cards To Discard Pile From Matcher", "Cards", cardMatcher, selectionMode, count, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToDrawPile", "Add Cards To Draw Pile From Matcher", "Cards", cardMatcher, selectionMode, count, minimumSelectionCount, maximumSelectionCount, canSkip, playerTarget);
+            RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddCardsToDiscardPile", "Add Cards To Discard Pile From Matcher", "Cards", cardMatcher, selectionMode, count, minimumSelectionCount, maximumSelectionCount, canSkip, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetVariable", "Set Variable", "Variables", true, variable, amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:AddToVariable", "Add To Variable", "Variables", true, variable, amount, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SubtractFromVariable", "Subtract From Variable", "Variables", true, variable, amount, playerTarget);

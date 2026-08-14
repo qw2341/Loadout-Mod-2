@@ -394,6 +394,8 @@ public static class CustomRunValidator
             }
         }
 
+        ValidateSelectionRange(rule, component, descriptor, result);
+
         if (descriptor.Validate is null)
         {
             ValidateTypedVariableUsage(definition, rule, component, descriptor, result);
@@ -409,6 +411,32 @@ public static class CustomRunValidator
             Error(result, "Rules", rule.Id, $"Rule '{rule.Name}', {descriptor.DisplayName}: validation failed ({exception.Message}).");
         }
         ValidateTypedVariableUsage(definition, rule, component, descriptor, result);
+    }
+
+    private static void ValidateSelectionRange(
+        RuleDefinition rule,
+        RuleComponentSpec component,
+        RuleComponentDescriptor descriptor,
+        CustomRunValidationResult result)
+    {
+        if (!string.Equals(
+                RuleComponentParameterService.GetString(component, "selectionMode"),
+                "Choose",
+                StringComparison.Ordinal)
+            || !RuleComponentParameterService.TryGet(component, "minimumCount", out NumericValueSpec minimum)
+            || !RuleComponentParameterService.TryGet(component, "maximumCount", out NumericValueSpec maximum)
+            || minimum.Source != NumericValueSourceKind.Constant
+            || maximum.Source != NumericValueSourceKind.Constant
+            || maximum.Constant >= minimum.Constant)
+        {
+            return;
+        }
+
+        Error(
+            result,
+            "Rules",
+            rule.Id,
+            $"Rule '{rule.Name}', {descriptor.DisplayName}: maximum number to select is below its minimum.");
     }
 
     private static void ValidateTypedVariableUsage(
