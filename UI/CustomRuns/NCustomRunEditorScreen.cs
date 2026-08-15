@@ -86,6 +86,8 @@ public partial class NCustomRunEditorScreen : Control
     private HBoxContainer? _startingPotionHolders;
     private string? _activeSetupRoleId;
     private string? _activeLoadoutCharacterId;
+    private ScrollContainer? _characterLoadoutScroll;
+    private int _characterLoadoutScrollOffset;
 
     public static void OpenFromLibrary(
         Control libraryScreen,
@@ -153,6 +155,8 @@ public partial class NCustomRunEditorScreen : Control
         _dirty = false;
         _activeTab = TabNames[0];
         _activeSetupRoleId = null;
+        _characterLoadoutScroll = null;
+        _characterLoadoutScrollOffset = 0;
 
         if (IsNodeReady())
             RefreshForLobby();
@@ -197,6 +201,17 @@ public partial class NCustomRunEditorScreen : Control
             : GetViewport().GetMousePosition();
         if (NLoadoutDropdown.IsOpenDropdownAt(pointer))
             return;
+        if (_characterLoadoutScroll is not null
+            && GodotObject.IsInstanceValid(_characterLoadoutScroll)
+            && _characterLoadoutScroll.GetGlobalRect().HasPoint(pointer))
+        {
+            _characterLoadoutScroll.ScrollHorizontal = Math.Max(
+                0,
+                _characterLoadoutScroll.ScrollHorizontal - Mathf.RoundToInt(drag));
+            _characterLoadoutScrollOffset = _characterLoadoutScroll.ScrollHorizontal;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (!_contentScroll.GetGlobalRect().HasPoint(pointer))
             return;
 
@@ -471,6 +486,7 @@ public partial class NCustomRunEditorScreen : Control
         _startingDeckPreview = null;
         _startingRelicPreview = null;
         _startingPotionHolders = null;
+        _characterLoadoutScroll = null;
         ClearChildren(_contentHost);
 
         if (_workingDefinition is null)
@@ -984,6 +1000,27 @@ public partial class NCustomRunEditorScreen : Control
         CharacterModel activeCharacter = ResolveActiveLoadoutCharacter(characters);
         HBoxContainer categories = CreateRow();
         categories.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_CHARACTER_LOADOUT", "Character Loadout")));
+        ScrollContainer categoryScroll = new()
+        {
+            Name = "CharacterLoadoutScroll",
+            CustomMinimumSize = new Vector2(0f, 54f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.ShowNever,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            FollowFocus = true,
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        HBoxContainer categoryButtons = new()
+        {
+            Name = "CharacterLoadoutButtons",
+            Alignment = BoxContainer.AlignmentMode.Begin,
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            MouseFilter = MouseFilterEnum.Pass
+        };
+        categoryButtons.AddThemeConstantOverride("separation", 12);
+        categoryScroll.AddChild(categoryButtons);
+        categories.AddChild(categoryScroll);
+        _characterLoadoutScroll = categoryScroll;
         foreach (CharacterModel character in characters)
         {
             Button category = CreateCompactButton(GetCharacterDisplayName(character), 19, 46f);
@@ -997,9 +1034,16 @@ public partial class NCustomRunEditorScreen : Control
                 _activeLoadoutCharacterId = character.Id.ToString();
                 RebuildContent();
             };
-            categories.AddChild(category);
+            categoryButtons.AddChild(category);
         }
-        AddToolSpacer(categories);
+        categoryScroll.GetHScrollBar().ValueChanged += value =>
+        {
+            if (ReferenceEquals(_characterLoadoutScroll, categoryScroll))
+                _characterLoadoutScrollOffset = Mathf.RoundToInt(value);
+        };
+        categoryScroll.SetDeferred(
+            ScrollContainer.PropertyName.ScrollHorizontal,
+            _characterLoadoutScrollOffset);
         _contentHost.AddChild(categories);
         _contentHost.AddChild(CreateSectionTitle(
             LocMan.Loc("CUSTOM_RUN_NAMED_LOADOUT", "{0} Loadout", GetCharacterDisplayName(activeCharacter)).ToUpperInvariant()));
