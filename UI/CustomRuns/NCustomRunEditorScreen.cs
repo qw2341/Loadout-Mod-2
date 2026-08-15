@@ -999,7 +999,11 @@ public partial class NCustomRunEditorScreen : Control
 
         CharacterModel activeCharacter = ResolveActiveLoadoutCharacter(characters);
         HBoxContainer categories = CreateRow();
-        categories.AddChild(CreateRowLabel(LocMan.Loc("CUSTOM_RUN_CHARACTER_LOADOUT", "Character Loadout")));
+        MegaLabel categoryLabel = CreateRowLabel(
+            LocMan.Loc("CUSTOM_RUN_CHARACTER_LOADOUT", "Character Loadout"));
+        categoryLabel.CustomMinimumSize = new Vector2(300f, 50f);
+        categoryLabel.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        categories.AddChild(categoryLabel);
         ScrollContainer categoryScroll = new()
         {
             Name = "CharacterLoadoutScroll",
