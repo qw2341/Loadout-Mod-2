@@ -207,6 +207,7 @@ public partial class NGenericSelectScreen : Control
     private Task? _hiddenPrewarmTask;
     private bool _hiddenPrewarmCompleted;
     private bool _hiddenPrewarmEnabled = true;
+    private bool _hiddenPrewarmMaterializeViews = true;
     private bool _hiddenPrewarmAllItems;
     private ulong _activeEagerMaterializationGeneration = ulong.MaxValue;
     private bool _isScreenActive;
@@ -968,6 +969,24 @@ public partial class NGenericSelectScreen : Control
                 }
             }
 
+            if (!_hiddenPrewarmMaterializeViews)
+            {
+                if (generation != _layoutGeneration
+                    || !IsInsideTree()
+                    || IsVisibleInTree())
+                {
+                    return;
+                }
+
+                _hiddenPrewarmCompleted = true;
+
+                Log.Info(
+                    $"[Loadout] Select screen '{Name}' resource-only hidden prewarm complete: " +
+                    $"items={warmItems.Count}, preloadItems={preloadItems.Length}.");
+
+                return;
+            }
+            
             int maxItemsPerFrame = Math.Max(1, GetHiddenPrewarmBatchSize());
             double frameBudgetMsec = Math.Max(0.1d, GetHiddenPrewarmFrameBudgetMsec());
             int materializedThisFrame = 0;
@@ -1316,6 +1335,7 @@ public partial class NGenericSelectScreen : Control
         _pendingScrollRestore = null;
         _hiddenPrewarmCompleted = false;
         _hiddenPrewarmEnabled = true;
+        _hiddenPrewarmMaterializeViews = true;
         _lastMeasuredItemWidth = -1f;
 
         if (_searchLineEdit is not null)
@@ -1354,6 +1374,11 @@ public partial class NGenericSelectScreen : Control
     public void SetHiddenPrewarmEnabled(bool enabled)
     {
         _hiddenPrewarmEnabled = enabled;
+    }
+    
+    public void SetHiddenPrewarmMaterializeViews(bool enabled)
+    {
+        _hiddenPrewarmMaterializeViews = enabled;
     }
 
     internal void SetHiddenPrewarmAllItems(bool enabled)
@@ -5268,6 +5293,12 @@ public sealed class SelectScreenBuilder<TModel>
     public SelectScreenBuilder<TModel> HiddenPrewarm(bool enabled)
     {
         _screen.SetHiddenPrewarmEnabled(enabled);
+        return this;
+    }
+    
+    public SelectScreenBuilder<TModel> HiddenPrewarmViews(bool enabled)
+    {
+        _screen.SetHiddenPrewarmMaterializeViews(enabled);
         return this;
     }
 

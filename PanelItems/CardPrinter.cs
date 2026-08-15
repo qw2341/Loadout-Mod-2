@@ -71,6 +71,10 @@ public class CardPrinter
 
 		    builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
 		    builder.Materialization(SelectMaterializationMode.Lazy);
+		    
+		    builder.HiddenPrewarm(true);
+		    builder.HiddenPrewarmViews(false);
+		    
 		    builder.Layout(5, NCard.defaultSize * NCardHolder.smallScale, 32, 40, paddingLeft: 0f, paddingTop: 200f, paddingRight: 0f);
 		    builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 		    AddCardPoolFilters(builder);
