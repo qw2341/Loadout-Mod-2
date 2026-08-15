@@ -130,6 +130,7 @@ public static partial class TildeKey
         {
             TildeKeyStateService.EnsureLoaded();
             AddSidebarControls(target);
+            target.RefreshCurrentItemStates();
         };
         item.QuickAction = () =>
         {
