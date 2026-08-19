@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Keywords;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.Compatibility;
@@ -76,7 +77,8 @@ public enum LoadoutImmediateMutationKind
     RemoveAllRelics,
     RelicModification,
     AddOwnedRelicCopies,
-    TildeRelicCounterSet
+    TildeRelicCounterSet,
+    DowngradeCard
 }
 
 public static class LoadoutImmediateMutationService
@@ -250,6 +252,28 @@ public static class LoadoutImmediateMutationService
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.UpgradeCard,
+            ModelId = item.Model.Id,
+            Amount = amount,
+            Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
+            OwnedItemIndex = item.Index,
+            ExpectedModelId = item.Model.Id,
+            CardPileTarget = LoadoutCardPileTargets.FromPileType(item.CardPileType ?? PileType.Deck),
+            CombatCardIndex = item.CombatCardIndex ?? 0
+        });
+    }
+
+    public static bool RequestDowngradeCard(LoadoutOwnedItem<CardModel> item, int amount)
+    {
+        if (amount <= 0
+            || amount > MaxSynchronizedCardUpgradeCount
+            || item.CardPileType is not null and not PileType.Deck && !item.CombatCardIndex.HasValue)
+        {
+            return false;
+        }
+
+        return Request(new LoadoutImmediateMutationPayload
+        {
+            Kind = LoadoutImmediateMutationKind.DowngradeCard,
             ModelId = item.Model.Id,
             Amount = amount,
             Target = LoadoutTargetSelection.ForPlayer(item.OwnerNetId),
@@ -1208,6 +1232,9 @@ public static class LoadoutImmediateMutationService
             case LoadoutImmediateMutationKind.UpgradeCard:
                 ApplyUpgradeCard(payload, requester);
                 break;
+            case LoadoutImmediateMutationKind.DowngradeCard:
+                ApplyDowngradeCard(payload, requester);
+                break;
             case LoadoutImmediateMutationKind.UpgradeAllDeckCards:
                 ApplyUpgradeAllDeckCards(payload, requester);
                 break;
@@ -1613,6 +1640,108 @@ public static class LoadoutImmediateMutationService
 
         if (UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount)))
             CardModificationRuntime.NotifyCombatCardUpdated(item);
+    }
+
+    private static void ApplyDowngradeCard(LoadoutImmediateMutationPayload payload, Player requester)
+    {
+        if (payload.Amount <= 0
+            || payload.Amount > MaxSynchronizedCardUpgradeCount
+            || TryGetOwnedCard(payload, requester) is not { } item)
+        {
+            return;
+        }
+
+        CardModificationSpec state = CardModificationRuntime.GetEffectiveSpec(item.Model);
+        bool? useInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state);
+        if (!useInfiniteUpgradeValues.HasValue
+            && ResolveCanonicalCard(item.Model.Id) is { } canonical
+            && LoadoutKeywords.Has(canonical, LoadoutKeywords.InfiniteUpgrade))
+        {
+            useInfiniteUpgradeValues = true;
+        }
+        bool? useUpgradedInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state.UpgradeModification);
+        if (useInfiniteUpgradeValues == true
+            || useUpgradedInfiniteUpgradeValues == true)
+        {
+            LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
+        }
+
+        bool changed = false;
+        for (int i = 0; i < payload.Amount && item.Model.CurrentUpgradeLevel > 0; i++)
+        {
+            bool completed = DowngradeCardOneLevel(
+                item.Model,
+                state.UpgradeModification,
+                useInfiniteUpgradeValues,
+                useUpgradedInfiniteUpgradeValues,
+                out bool cardChanged);
+            changed |= cardChanged;
+            if (!completed)
+                break;
+        }
+
+        if (!changed)
+            return;
+
+        if (item.CardPileType is null or PileType.Deck)
+            LoadoutRunContentChangeService.NotifyCardUpdated(item);
+        else
+            CardModificationRuntime.NotifyCombatCardUpdated(item);
+    }
+
+    private static bool DowngradeCardOneLevel(
+        CardModel card,
+        CardUpgradeModificationSpec upgradeModification,
+        bool? useInfiniteUpgradeValues,
+        bool? useUpgradedInfiniteUpgradeValues,
+        out bool changed)
+    {
+        changed = false;
+        int previousUpgradeLevel = card.CurrentUpgradeLevel;
+        if (previousUpgradeLevel <= 0)
+            return false;
+
+        int targetUpgradeLevel = previousUpgradeLevel - 1;
+        InfiniteUpgradeDeserializationState upgradeState =
+            InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
+                targetUpgradeLevel,
+                useInfiniteUpgradeValues,
+                useUpgradedInfiniteUpgradeValues);
+        IDisposable upgradeModificationScope =
+            CardUpgradeModificationRuntimePatches.BeginOverride(
+                upgradeModification);
+        try
+        {
+            CardCmd.Downgrade(card);
+            if (card.CurrentUpgradeLevel != 0)
+            {
+                changed = card.CurrentUpgradeLevel != previousUpgradeLevel;
+                return false;
+            }
+
+            for (int i = 0; i < targetUpgradeLevel && card.IsUpgradable; i++)
+            {
+                card.UpgradeInternal();
+                card.FinalizeUpgradeInternal();
+            }
+
+            CardModificationRuntime.ReapplyTemporaryDelta(card);
+            changed = card.CurrentUpgradeLevel != previousUpgradeLevel;
+            return card.CurrentUpgradeLevel == targetUpgradeLevel;
+        }
+        catch (Exception exception)
+        {
+            changed = card.CurrentUpgradeLevel != previousUpgradeLevel;
+            GD.PushWarning($"LoadoutImmediateMutation: failed downgrading card '{card.Id}'. {exception.Message}");
+            return false;
+        }
+        finally
+        {
+            upgradeModificationScope.Dispose();
+            InfiniteUpgradeMaxLevelPatch.EndDeserialization(upgradeState);
+        }
     }
 
     private static void ApplyUpgradeAllDeckCards(LoadoutImmediateMutationPayload payload, Player requester)
@@ -2030,6 +2159,7 @@ public static class LoadoutImmediateMutationService
             or LoadoutImmediateMutationKind.AddPotion
             or LoadoutImmediateMutationKind.RemoveCard
             or LoadoutImmediateMutationKind.UpgradeCard
+            or LoadoutImmediateMutationKind.DowngradeCard
             or LoadoutImmediateMutationKind.UpgradeAllDeckCards
             or LoadoutImmediateMutationKind.RemoveRelic
             or LoadoutImmediateMutationKind.CardModification
@@ -2193,6 +2323,7 @@ public struct LoadoutImmediateMutationPayload
             ? CardPileTarget.NormalizeForCreation()
             : Kind is LoadoutImmediateMutationKind.RemoveCard
                 or LoadoutImmediateMutationKind.UpgradeCard
+                or LoadoutImmediateMutationKind.DowngradeCard
                 or LoadoutImmediateMutationKind.UpgradeAllDeckCards
                 or LoadoutImmediateMutationKind.AddDeckCardCopies
                 or LoadoutImmediateMutationKind.RemoveAllCards

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -41,7 +42,7 @@ public class CardModifier
             },
             BindActivationWithCleanup = (item, view, activate) => CardPrinter.BindCardActivationWithCleanup(
                 view,
-                activate,
+                () => HandleCardActivated(modifierScreen, item, view, activate),
                 () => OpenCardModificationScreen(modifierScreen, item, view))
         };
 
@@ -162,6 +163,37 @@ public class CardModifier
             CommonHelpers.PlayCardSmithFeedback(view);
 
         return Task.FromResult<IReadOnlyList<LastActionEntry>>([]);
+    }
+
+    private static void HandleCardActivated(
+        NGenericSelectScreen screen,
+        LoadoutOwnedItem<CardModel> fallbackItem,
+        Control sourceView,
+        Action upgrade)
+    {
+        if (!Input.IsKeyPressed(Key.Alt))
+        {
+            upgrade();
+            return;
+        }
+
+        HandleDowngradeCardActivated(
+            screen,
+            ResolveCurrentItem(screen, sourceView, fallbackItem));
+    }
+
+    public static void HandleDowngradeCardActivated(
+        NGenericSelectScreen screen,
+        LoadoutOwnedItem<CardModel> item)
+    {
+        if (screen is null || item.Model.CurrentUpgradeLevel <= 0)
+        {
+            return;
+        }
+
+        LoadoutImmediateMutationService.RequestDowngradeCard(
+            item,
+            screen.GetCurrentActivationMultiplier());
     }
 
     public static void HandleUpgradeAllDeckCards(NGenericSelectScreen screen)
