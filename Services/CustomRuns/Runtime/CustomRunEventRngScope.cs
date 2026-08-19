@@ -5,6 +5,7 @@ namespace Loadout.Services.CustomRuns.Runtime;
 using System;
 using System.Linq;
 using System.Threading;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Random;
@@ -31,7 +32,7 @@ internal static class CustomRunEventRngScope
         Player seedPlayer = owner;
         if (eventModel.IsShared && owner.RunState.Players.FirstOrDefault() is { } firstPlayer)
             seedPlayer = firstPlayer;
-        mixed = new Rng(seedPlayer, eventModel.Id, mixin);
+        mixed = Sts2Compatibility.CreateEventRng(seedPlayer, eventModel.Id, mixin);
         return true;
     }
 

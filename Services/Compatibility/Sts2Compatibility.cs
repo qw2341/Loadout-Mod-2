@@ -29,6 +29,7 @@ using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.ValueProps;
 
@@ -90,6 +91,11 @@ internal static class Sts2Compatibility
     private delegate void CustomRunModifierSetter(
         NCustomRunModifiersList modifierList,
         IReadOnlyList<ModifierModel> modifiers);
+
+    private delegate Rng EventRngInvoker(
+        Player player,
+        ModelId modelId,
+        ulong mixin);
 
     private static readonly Type AbstractModelEnumerableByRef =
         typeof(IEnumerable<AbstractModel>).MakeByRefType();
@@ -161,6 +167,11 @@ internal static class Sts2Compatibility
 
     private static readonly CustomRunModifierSetter? SetCustomRunModifiers =
         CreateCustomRunModifierSetter();
+
+    private static readonly ConstructorInfo EventRngConstructor = ResolveEventRngConstructor();
+    private static readonly EventRngInvoker CreateEventRngInvoker = CompileEventRngInvoker();
+    internal static bool UsesWideEventRngMixin =>
+        EventRngConstructor.GetParameters()[2].ParameterType == typeof(ulong);
 
     internal static MethodInfo BatchCardAddMethod { get; } = ResolveBatchCardAddMethod();
     internal static bool UsesNewBatchCardAdd { get; } = BatchCardAddMethod.GetParameters().Length == 6;
@@ -263,6 +274,7 @@ internal static class Sts2Compatibility
             $"mod assemblies={(NewModAssembliesField is not null ? "0.110" : "0.107")}, " +
             $"ModelDb monsters={(AllModelsGetter is not null ? "All (0.110)" : "Monsters (0.107)")}, " +
             $"ModelDb encounters={(EventEncountersGetter is not null ? "acts + EventEncounters (0.110)" : "AllEncounters (0.107)")}, " +
+            $"event RNG mixin={(UsesWideEventRngMixin ? "ulong (beta)" : "uint (release)")}, " +
             $"start lobby players={(StartRunLobbyPlayerType.Name == "StartRunLobbyPlayer" ? "0.110" : "0.107")}, " +
             $"run lobby rejoin={(RunLobbyPlayerRejoinedPayloadType == typeof(ulong) ? "0.107" : "0.110")}, " +
             $"load lobby player ids={(LoadRunLobbyPlayerIdsProperty.Name == "PlayerIds" ? "0.110" : "0.107")}.");
@@ -492,6 +504,12 @@ internal static class Sts2Compatibility
         return CloneCardForPlayer(source, player);
     }
 
+    internal static Rng CreateEventRng(Player player, ModelId modelId, ulong mixin)
+    {
+        ArgumentNullException.ThrowIfNull(player);
+        return CreateEventRngInvoker(player, modelId, mixin);
+    }
+
     internal static bool MatchesAttackCardPlay(
         AttackCommand command,
         CardModel source)
@@ -623,6 +641,49 @@ internal static class Sts2Compatibility
             "SetTickedModifiers",
             [typeof(IReadOnlyList<ModifierModel>)]);
         return method?.CreateDelegate<CustomRunModifierSetter>();
+    }
+
+    private static ConstructorInfo ResolveEventRngConstructor()
+    {
+        ConstructorInfo? constructor = typeof(Rng)
+            .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .FirstOrDefault(candidate =>
+            {
+                ParameterInfo[] parameters = candidate.GetParameters();
+                return parameters.Length >= 3
+                       && parameters[0].ParameterType == typeof(Player)
+                       && parameters[1].ParameterType == typeof(ModelId)
+                       && (parameters[2].ParameterType == typeof(uint)
+                           || parameters[2].ParameterType == typeof(ulong))
+                       && parameters.Skip(3).All(parameter => parameter.HasDefaultValue);
+            });
+        return constructor
+               ?? throw new MissingMethodException(
+                   typeof(Rng).FullName,
+                   ".ctor(Player, ModelId, uint/ulong mixin, ...)");
+    }
+
+    private static EventRngInvoker CompileEventRngInvoker()
+    {
+        ParameterExpression player = Expression.Parameter(typeof(Player), "player");
+        ParameterExpression modelId = Expression.Parameter(typeof(ModelId), "modelId");
+        ParameterExpression mixin = Expression.Parameter(typeof(ulong), "mixin");
+        ParameterInfo[] parameters = EventRngConstructor.GetParameters();
+        Expression[] arguments = new Expression[parameters.Length];
+        arguments[0] = player;
+        arguments[1] = modelId;
+        arguments[2] = Expression.Convert(mixin, parameters[2].ParameterType);
+        for (int i = 3; i < parameters.Length; i++)
+        {
+            object? defaultValue = parameters[i].DefaultValue;
+            arguments[i] = Expression.Constant(defaultValue, parameters[i].ParameterType);
+        }
+
+        return Expression.Lambda<EventRngInvoker>(
+            Expression.New(EventRngConstructor, arguments),
+            player,
+            modelId,
+            mixin).Compile();
     }
 
     private static MethodInfo ResolveBatchCardAddMethod()

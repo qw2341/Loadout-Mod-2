@@ -7,9 +7,10 @@ using Loadout.UI;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Localization;
-using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 
-public partial class NLoadoutMapShareButton : NMapShareButton
+// NMapShareButton is beta-only; this keeps its behavior on the stable clickable base.
+public partial class NLoadoutMapShareButton : NClickableControl
 {
     public const string DefaultButtonTexturePath = "res://images/packed/statistics_screen/share_button.png";
     public const string DefaultIconTexturePath = "res://images/packed/statistics_screen/share_stats.png";
@@ -167,11 +168,12 @@ public partial class NLoadoutMapShareButton : NMapShareButton
         CustomMinimumSize = new Vector2(180f, 64f);
         Size = CustomMinimumSize;
         PivotOffset = Size * 0.5f;
+        Texture2D buttonTexture = LoadTexture(DefaultButtonTexturePath) ?? CreateFallbackButtonTexture();
 
         _buttonImage = new TextureRect
         {
             Name = "ButtonImage",
-            Texture = LoadTexture(DefaultButtonTexturePath),
+            Texture = buttonTexture,
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -296,5 +298,12 @@ public partial class NLoadoutMapShareButton : NMapShareButton
     private static Font? LoadFont(string path)
     {
         return ResourceLoader.Exists(path) ? GD.Load<Font>(path) : null;
+    }
+
+    private static Texture2D CreateFallbackButtonTexture()
+    {
+        Image image = Image.CreateEmpty(2, 2, false, Image.Format.Rgba8);
+        image.Fill(Colors.White);
+        return ImageTexture.CreateFromImage(image);
     }
 }
