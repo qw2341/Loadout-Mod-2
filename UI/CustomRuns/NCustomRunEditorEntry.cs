@@ -62,6 +62,8 @@ public static class NCustomRunEditorEntry
                 Name = NodeName,
                 IconTexture = GD.Load<Texture2D>(CustomRunsIconPath),
                 UseRainbowHoverColor = true,
+                UnfocusedBackgroundAlpha = 0.45f,
+                HoveredBackgroundAlpha = 0.75f,
                 ZIndex = 24
             };
             button.Init(LocMan.Loc("CUSTOM_RUNS", "Custom Runs").ToUpperInvariant());

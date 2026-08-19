@@ -16,7 +16,7 @@ public partial class NLoadoutMapShareButton : NClickableControl
     public const string DefaultIconTexturePath = "res://images/packed/statistics_screen/share_stats.png";
 
     public static readonly Color NativeHoverColor = new(0.482353f, 0.105882f, 0.082353f);
-    public static readonly Color NativeDefaultColor = new(0f, 0f, 0f, 0.7529412f);
+    public static readonly Color NativeDefaultColor = Colors.Black;
     public static readonly Color NativeTextColor = new(1f, 0.964706f, 0.886275f);
     public static readonly Color NativeTextOutlineColor = new(0f, 0f, 0f, 0.5019608f);
 
@@ -31,6 +31,8 @@ public partial class NLoadoutMapShareButton : NClickableControl
     private Color _defaultColor = NativeDefaultColor;
     private Color _textColor = NativeTextColor;
     private Color _textOutlineColor = NativeTextOutlineColor;
+    private float _unfocusedBackgroundAlpha = 1f;
+    private float _hoveredBackgroundAlpha = 1f;
     private float _rainbowPhase;
     private bool _hasCustomText;
     private bool _useRainbowHoverColor;
@@ -97,6 +99,26 @@ public partial class NLoadoutMapShareButton : NClickableControl
         }
     }
 
+    public float UnfocusedBackgroundAlpha
+    {
+        get => _unfocusedBackgroundAlpha;
+        set
+        {
+            _unfocusedBackgroundAlpha = Mathf.Clamp(value, 0f, 1f);
+            RefreshCurrentColors();
+        }
+    }
+
+    public float HoveredBackgroundAlpha
+    {
+        get => _hoveredBackgroundAlpha;
+        set
+        {
+            _hoveredBackgroundAlpha = Mathf.Clamp(value, 0f, 1f);
+            RefreshCurrentColors();
+        }
+    }
+
     public bool UseRainbowHoverColor
     {
         get => _useRainbowHoverColor;
@@ -133,7 +155,9 @@ public partial class NLoadoutMapShareButton : NClickableControl
         _rainbowPhase = Mathf.PosMod(
             _rainbowPhase + (float)delta * NLoadoutPanelButton.RainbowSpeed * Mathf.Tau,
             Mathf.Tau);
-        _buttonImage.Modulate = NLoadoutPanelButton.GetSineRainbowColor(_rainbowPhase);
+        _buttonImage.Modulate = WithAlpha(
+            NLoadoutPanelButton.GetSineRainbowColor(_rainbowPhase),
+            HoveredBackgroundAlpha);
     }
 
     public override void _ExitTree()
@@ -150,13 +174,21 @@ public partial class NLoadoutMapShareButton : NClickableControl
         Color color = UseRainbowHoverColor
             ? NLoadoutPanelButton.GetSineRainbowColor(_rainbowPhase)
             : HoverColor;
-        AnimateState(Vector2.One * 1.05f, color, Colors.White, 0.05);
+        AnimateState(
+            Vector2.One * 1.05f,
+            WithAlpha(color, HoveredBackgroundAlpha),
+            Colors.White,
+            0.05);
     }
 
     protected override void OnUnfocus()
     {
         SetProcess(false);
-        AnimateState(Vector2.One, DefaultColor, new Color(1f, 1f, 1f, 0.5019608f), 0.1);
+        AnimateState(
+            Vector2.One,
+            WithAlpha(DefaultColor, UnfocusedBackgroundAlpha),
+            new Color(1f, 1f, 1f, 0.5019608f),
+            0.1);
     }
 
     protected override void OnRelease()
@@ -266,14 +298,15 @@ public partial class NLoadoutMapShareButton : NClickableControl
 
         if (IsFocused)
         {
-            _buttonImage.Modulate = UseRainbowHoverColor
+            Color color = UseRainbowHoverColor
                 ? NLoadoutPanelButton.GetSineRainbowColor(_rainbowPhase)
                 : HoverColor;
+            _buttonImage.Modulate = WithAlpha(color, HoveredBackgroundAlpha);
             _labelContainer.Modulate = Colors.White;
         }
         else
         {
-            _buttonImage.Modulate = DefaultColor;
+            _buttonImage.Modulate = WithAlpha(DefaultColor, UnfocusedBackgroundAlpha);
             _labelContainer.Modulate = new Color(1f, 1f, 1f, 0.5019608f);
         }
     }
@@ -305,5 +338,11 @@ public partial class NLoadoutMapShareButton : NClickableControl
         Image image = Image.CreateEmpty(2, 2, false, Image.Format.Rgba8);
         image.Fill(Colors.White);
         return ImageTexture.CreateFromImage(image);
+    }
+
+    private static Color WithAlpha(Color color, float alpha)
+    {
+        color.A = alpha;
+        return color;
     }
 }
