@@ -23,6 +23,7 @@ using MegaCrit.Sts2.Core.Platform;
 
 public static class NCustomRunEditorEntry
 {
+    private const string CustomRunsIconPath = "res://images/packed/map/drawing_quill.png";
     internal const string NodeName = "LoadoutCustomRunEditorEntry";
     internal const string OverlayNodeName = "LoadoutCustomRunStateOverlay";
     internal const string StatusNodeName = "LoadoutCustomRunStatus";
@@ -48,7 +49,7 @@ public static class NCustomRunEditorEntry
         }
 
         bool canManageCustomRuns = lobby.NetService.Type != NetGameType.Client;
-        NLoadoutSettingsActionButton? button = screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName);
+        NLoadoutMapShareButton? button = screen.GetNodeOrNull<NLoadoutMapShareButton>(NodeName);
         if (!canManageCustomRuns)
         {
             button?.QueueFree();
@@ -56,14 +57,14 @@ public static class NCustomRunEditorEntry
         }
         else if (button is null)
         {
-            button = new NLoadoutSettingsActionButton
+            button = new NLoadoutMapShareButton
             {
                 Name = NodeName,
-                CustomMinimumSize = new Vector2(360f, 64f),
-                UseRainbowColor = true,
+                IconTexture = GD.Load<Texture2D>(CustomRunsIconPath),
+                UseRainbowHoverColor = true,
                 ZIndex = 24
             };
-            button.Init("custom_run_editor", LocMan.Loc("CUSTOM_RUNS", "Custom Runs").ToUpperInvariant());
+            button.Init(LocMan.Loc("CUSTOM_RUNS", "Custom Runs").ToUpperInvariant());
             screen.AddChild(button);
             button.Connect(
                 NClickableControl.SignalName.Released,
@@ -109,7 +110,7 @@ public static class NCustomRunEditorEntry
             LoadoutConfigService.CustomRunsButtonVisibilityChanged -= handler;
         if (screen is not null)
             ClearPlayerRoleLabels(screen);
-        screen?.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName)?.QueueFree();
+        screen?.GetNodeOrNull<NLoadoutMapShareButton>(NodeName)?.QueueFree();
         screen?.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(OverlayNodeName)?.QueueFree();
         screen?.GetNodeOrNull<MegaLabel>(StatusNodeName)?.QueueFree();
         screen?.GetNodeOrNull<NLoadoutDropdown>(RoleDropdownNodeName)?.QueueFree();
@@ -174,10 +175,10 @@ public static class NCustomRunEditorEntry
         }
 
         bool loaded = definition is not null;
-        NLoadoutSettingsActionButton? entryButton = screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName);
+        NLoadoutMapShareButton? entryButton = screen.GetNodeOrNull<NLoadoutMapShareButton>(NodeName);
         if (entryButton is not null)
             UpdateButtonVisibilityAndFocus(screen, entryButton);
-        entryButton?.Init("custom_run_editor", loaded
+        entryButton?.Init(loaded
             ? LocMan.Loc("CUSTOM_RUN_CANCEL_RUN", "Cancel Run").ToUpperInvariant()
             : LocMan.Loc("CUSTOM_RUNS", "Custom Runs").ToUpperInvariant());
         if (lobby is not null)
@@ -206,7 +207,7 @@ public static class NCustomRunEditorEntry
             if (!GodotObject.IsInstanceValid(screen))
                 return;
 
-            if (screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName) is { } button)
+            if (screen.GetNodeOrNull<NLoadoutMapShareButton>(NodeName) is { } button)
                 UpdateButtonVisibilityAndFocus(screen, button);
         };
         VisibilityChangedHandlers[screen] = handler;
@@ -215,7 +216,7 @@ public static class NCustomRunEditorEntry
 
     private static void UpdateButtonVisibilityAndFocus(
         Control screen,
-        NLoadoutSettingsActionButton button)
+        NLoadoutMapShareButton button)
     {
         button.Visible = LoadoutConfigService.EnableCustomRuns;
         if (screen.GetNodeOrNull<Control>("ConfirmButton") is not { } confirmButton)
@@ -662,13 +663,13 @@ public static class NCustomRunEditorEntry
         button.AnchorTop = 1f;
         button.AnchorRight = 1f;
         button.AnchorBottom = 1f;
-        button.OffsetLeft = -400f;
-        button.OffsetTop = -226f;
-        button.OffsetRight = -40f;
-        button.OffsetBottom = -162f;
+        button.OffsetLeft = -228f;
+        button.OffsetTop = -64f;
+        button.OffsetRight = -48f;
+        button.OffsetBottom = 0f;
         button.GrowHorizontal = Control.GrowDirection.Begin;
         button.GrowVertical = Control.GrowDirection.Begin;
-        button.PivotOffset = button.Size * 0.5f;
+        button.PivotOffset = new Vector2(90f, 32f);
     }
 
     private static MegaLabel CreateStatusLabel()
