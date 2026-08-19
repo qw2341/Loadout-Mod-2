@@ -12,7 +12,9 @@ using MegaCrit.Sts2.Core.Models;
 [HarmonyPatch(typeof(Hook), nameof(Hook.ShouldAddToDeck))]
 public static class LoadoutShouldAddToDeckPatch
 {
-    private static readonly ContentBanDeckPreventer BanPreventer = new();
+    private static ContentBanDeckPreventer BanPreventer =>
+        ModelDb.GetById<ContentBanDeckPreventer>(
+            ModelDb.GetId(typeof(ContentBanDeckPreventer)));
 
     [HarmonyPrefix]
     public static bool Prefix(CardModel card, ref AbstractModel? preventer, ref bool __result)
