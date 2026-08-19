@@ -215,7 +215,8 @@ internal static class CanonicalCardModificationRegistry
     {
         CardModificationPermanentPatches.Configure(
             PermanentCardModificationStore.HasAnyCreationResidual,
-            CanonicalStarCosts.Count > 0);
+            CanonicalStarCosts.Count > 0,
+            PermanentCardModificationStore.HasAnyUpgradeModifications);
     }
 
     private static CardModel? ResolveCanonical(ModelId cardId) =>

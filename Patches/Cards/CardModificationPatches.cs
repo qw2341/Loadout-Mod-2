@@ -75,6 +75,14 @@ public static class CardModelDowngradePermanentStarCostPatch
     }
 }
 
+public static class CardModelDowngradePermanentUpgradeModificationPatch
+{
+    public static void Postfix(CardModel __instance)
+    {
+        CardModificationRuntime.ReapplyPermanentUpgradeAfterDowngrade(__instance);
+    }
+}
+
 public static class CardCmdUpgradeCardModificationPatch
 {
     [HarmonyPrefix]

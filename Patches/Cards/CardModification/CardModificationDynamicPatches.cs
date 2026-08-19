@@ -171,9 +171,14 @@ internal static class CardModificationPermanentPatches
     private static readonly Harmony Harmony = new(HarmonyId);
     private static int _configuration;
 
-    public static void Configure(bool creationResidual, bool canonicalStarGetter)
+    public static void Configure(
+        bool creationResidual,
+        bool canonicalStarGetter,
+        bool downgradeUpgradeModification)
     {
-        int next = (creationResidual ? 1 : 0) | (canonicalStarGetter ? 2 : 0);
+        int next = (creationResidual ? 1 : 0)
+                   | (canonicalStarGetter ? 2 : 0)
+                   | (downgradeUpgradeModification ? 4 : 0);
         if (next == _configuration)
             return;
 
@@ -196,6 +201,15 @@ internal static class CardModificationPermanentPatches
                 AccessTools.Method(typeof(CardModel), "DowngradeInternal")
                 ?? throw new MissingMethodException(typeof(CardModel).FullName, "DowngradeInternal"),
                 postfix: new HarmonyMethod(typeof(CardModelDowngradePermanentStarCostPatch), nameof(CardModelDowngradePermanentStarCostPatch.Postfix)));
+        }
+        if (downgradeUpgradeModification)
+        {
+            Harmony.Patch(
+                AccessTools.Method(typeof(CardModel), "DowngradeInternal")
+                ?? throw new MissingMethodException(typeof(CardModel).FullName, "DowngradeInternal"),
+                postfix: new HarmonyMethod(
+                    typeof(CardModelDowngradePermanentUpgradeModificationPatch),
+                    nameof(CardModelDowngradePermanentUpgradeModificationPatch.Postfix)));
         }
     }
 

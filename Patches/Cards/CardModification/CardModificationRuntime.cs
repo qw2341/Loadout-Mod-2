@@ -468,6 +468,33 @@ public static class CardModificationRuntime
         ApplySpecToCard(card, desired);
     }
 
+    internal static void ReapplyPermanentUpgradeAfterDowngrade(CardModel card)
+    {
+        if (card.IsCanonical || CardModificationFields.TryGet(card, out _))
+            return;
+
+        CardModificationSpec permanent = PermanentCardModificationStore.Get(card.Id);
+        if (permanent.UpgradeModification.IsEmpty)
+            return;
+
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(card.Id);
+        if (canonical is null)
+            return;
+
+        CardModel baseline = CreateBaseline(
+            canonical,
+            0,
+            LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(permanent),
+            permanent.UpgradeModification,
+            permanent.KeywordOverrides);
+        CardModificationSpec upgradeFields = new()
+        {
+            UpgradeModification = permanent.UpgradeModification.Clone()
+        };
+        CopyNativeFields(baseline, card, upgradeFields, upgradeFields);
+        card.FinalizeUpgradeInternal();
+    }
+
     public static CardUpgradeModificationSpec ResolveUpgradeModification(
         CardModificationSpec? permanent,
         CardModificationDelta? temporary,
