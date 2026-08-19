@@ -117,6 +117,7 @@ public partial class NGenericSelectScreen : Control
     private readonly Dictionary<string, SelectFilterDefinition> _filtersById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SelectFilterGroupDefinition> _filterGroupsById = new(StringComparer.Ordinal);
     private readonly List<string> _filterGroupOrder = new();
+    private readonly List<Func<IGenericSelectItem, bool>[]> _activeFilterPlan = new();
 
     private readonly List<SelectSorterDefinition> _sorters = new();
     private readonly Dictionary<string, SelectSorterDefinition> _sortersById = new(StringComparer.Ordinal);
@@ -180,6 +181,10 @@ public partial class NGenericSelectScreen : Control
     private SelectScreenOptions _options = new();
     private SelectLayoutDefinition _layout = SelectLayoutDefinition.Default;
     private string _query = string.Empty;
+    private string _normalizedQuery = string.Empty;
+    private bool _hasSearchQuery;
+    private ulong _filterStateVersion;
+    private ulong _compiledFilterStateVersion;
     private bool _isSyncingFilterDropdowns;
     private bool _isConfigured;
     private float _lastMeasuredItemWidth = -1f;
@@ -1076,6 +1081,7 @@ public partial class NGenericSelectScreen : Control
         CancelPendingMaterialization();
         CancelPendingSearchRefresh();
         CancelRelayoutAnimations(applyFinalPositions: false);
+        RebuildActiveFilterPlan();
 
         _visibleItems.Clear();
         _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
@@ -1232,7 +1238,7 @@ public partial class NGenericSelectScreen : Control
 
     public void RestoreUiState(SelectScreenUiState state)
     {
-        _query = state.Query ?? string.Empty;
+        SetQuery(state.Query);
         if (_searchLineEdit is not null)
             _searchLineEdit.Text = _query;
 
@@ -1241,6 +1247,7 @@ public partial class NGenericSelectScreen : Control
             if (_filterGroupsById.ContainsKey(groupId))
                 ApplyExclusiveFilterSelection(groupId, selectedFilterId == AllFilterOptionId ? null : selectedFilterId);
         }
+        RebuildActiveFilterPlan();
 
         foreach ((string toggleId, bool isChecked) in state.ToggleStates)
         {
@@ -1310,10 +1317,17 @@ public partial class NGenericSelectScreen : Control
         _items.Clear();
         _visibleItems.Clear();
         ClearLayoutTracking();
+        foreach (SelectFilterDefinition filter in _filters)
+            filter.EnabledChanged -= MarkFilterPlanDirty;
+
+        bool hadFilters = _filters.Count > 0;
         _filters.Clear();
         _filtersById.Clear();
         _filterGroupsById.Clear();
         _filterGroupOrder.Clear();
+        if (hadFilters)
+            MarkFilterPlanDirty();
+        RebuildActiveFilterPlan();
         _sorters.Clear();
         _sortersById.Clear();
         _sortPriority.Clear();
@@ -1330,7 +1344,7 @@ public partial class NGenericSelectScreen : Control
         _layout = SelectLayoutDefinition.Default;
         _materializationMode = SelectMaterializationMode.Eager;
         _customVisibilityPredicate = null;
-        _query = string.Empty;
+        SetQuery(string.Empty);
         _isConfigured = false;
         _pendingScrollRestore = null;
         _hiddenPrewarmCompleted = false;
@@ -1405,12 +1419,15 @@ public partial class NGenericSelectScreen : Control
 
         _filters.Add(filter);
         _filtersById[filter.Id] = filter;
+        filter.EnabledChanged += MarkFilterPlanDirty;
+        MarkFilterPlanDirty();
 
         if (filter.Enabled)
             EnforceSingleFilterSelection(filter.GroupId, filter.Id);
         else
             EnsureFilterSelectionIsValid(filter.GroupId);
 
+        RebuildActiveFilterPlan();
         RebuildFilterButtons();
     }
 
@@ -1614,6 +1631,7 @@ public partial class NGenericSelectScreen : Control
 
         CancelPendingMaterialization();
         CancelPendingSearchRefresh();
+        RebuildActiveFilterPlan();
 
         _visibleItems.Clear();
         _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
@@ -1659,6 +1677,7 @@ public partial class NGenericSelectScreen : Control
         if (!_isConfigured || _itemGrid is null || !IsVisibleInTree())
             return;
 
+        RebuildActiveFilterPlan();
         _visibleItems.Clear();
         _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
         _visibleItems.Sort(CompareItems);
@@ -1978,6 +1997,7 @@ public partial class NGenericSelectScreen : Control
         if (!ApplyExclusiveFilterSelection(groupId, selectedFilterId))
             return false;
 
+        RebuildActiveFilterPlan();
         RefreshNow(resetScroll);
         return true;
     }
@@ -2299,7 +2319,7 @@ public partial class NGenericSelectScreen : Control
     {
         if (_searchLineEdit is not null)
         {
-            _query = _searchLineEdit.Text;
+            SetQuery(_searchLineEdit.Text);
             _searchLineEdit.TextChanged += OnSearchTextChanged;
             _searchLineEdit.TextSubmitted += OnSearchTextSubmitted;
         }
@@ -2332,7 +2352,7 @@ public partial class NGenericSelectScreen : Control
 
     private void OnSearchTextChanged(string text)
     {
-        _query = text ?? string.Empty;
+        SetQuery(text);
 
         if (SearchDelayMsec <= 0)
         {
@@ -2363,7 +2383,7 @@ public partial class NGenericSelectScreen : Control
 
     private void OnSearchTextSubmitted(string text)
     {
-        _query = text ?? string.Empty;
+        SetQuery(text);
         RefreshNow();
     }
 
@@ -2372,7 +2392,7 @@ public partial class NGenericSelectScreen : Control
         if (_searchLineEdit is not null)
             _searchLineEdit.Text = string.Empty;
 
-        _query = string.Empty;
+        SetQuery(string.Empty);
         RefreshNow(resetScroll: true);
     }
 
@@ -2740,6 +2760,8 @@ public partial class NGenericSelectScreen : Control
             dropdown.SetItems(group.Label, options, selectedOptionId);
             _filterDropdownsByGroupId[groupId] = dropdown;
         }
+
+        RebuildActiveFilterPlan();
     }
 
     private void OnFilterDropdownSelected(string groupId, string selectedOptionId)
@@ -2853,36 +2875,77 @@ public partial class NGenericSelectScreen : Control
 
     private bool PassesSearchAndFilters(IGenericSelectItem item)
     {
-        if (!string.IsNullOrWhiteSpace(_query))
-        {
-            string normalizedQuery = SelectText.Normalize(_query);
-            if (!item.MatchesSearch(normalizedQuery))
-                return false;
-        }
+        if (_hasSearchQuery && !item.MatchesSearch(_normalizedQuery))
+            return false;
 
         if (_customVisibilityPredicate is not null && !_customVisibilityPredicate(item))
             return false;
 
-        foreach (string groupId in _filters.Select(filter => filter.GroupId).Distinct(StringComparer.Ordinal))
+        foreach (Func<IGenericSelectItem, bool>[] activeGroup in _activeFilterPlan)
         {
-            List<SelectFilterDefinition> active = _filters
-                .Where(filter => string.Equals(filter.GroupId, groupId, StringComparison.Ordinal) && filter.Enabled)
-                .ToList();
-
-            if (active.Count == 0)
+            bool matchesGroup = false;
+            foreach (Func<IGenericSelectItem, bool> predicate in activeGroup)
             {
-                if (GroupRequiresSelection(groupId))
-                    return false;
+                if (!predicate(item))
+                    continue;
 
-                continue;
+                matchesGroup = true;
+                break;
             }
 
-            bool matchesGroup = active.Any(filter => filter.Predicate(item));
             if (!matchesGroup)
                 return false;
         }
 
         return true;
+    }
+
+    private void SetQuery(string? query)
+    {
+        string nextQuery = query ?? string.Empty;
+        if (string.Equals(_query, nextQuery, StringComparison.Ordinal))
+            return;
+
+        _query = nextQuery;
+        _hasSearchQuery = !string.IsNullOrWhiteSpace(_query);
+        _normalizedQuery = _hasSearchQuery ? SelectText.Normalize(_query) : string.Empty;
+    }
+
+    private void MarkFilterPlanDirty()
+    {
+        _filterStateVersion++;
+    }
+
+    private void RebuildActiveFilterPlan()
+    {
+        if (_compiledFilterStateVersion == _filterStateVersion)
+            return;
+
+        _activeFilterPlan.Clear();
+        Dictionary<string, List<Func<IGenericSelectItem, bool>>> activePredicatesByGroup = new(StringComparer.Ordinal);
+        List<string> groupOrder = new();
+
+        foreach (SelectFilterDefinition filter in _filters)
+        {
+            if (!activePredicatesByGroup.TryGetValue(filter.GroupId, out List<Func<IGenericSelectItem, bool>>? predicates))
+            {
+                predicates = new List<Func<IGenericSelectItem, bool>>();
+                activePredicatesByGroup.Add(filter.GroupId, predicates);
+                groupOrder.Add(filter.GroupId);
+            }
+
+            if (filter.Enabled)
+                predicates.Add(filter.Predicate);
+        }
+
+        foreach (string groupId in groupOrder)
+        {
+            List<Func<IGenericSelectItem, bool>> predicates = activePredicatesByGroup[groupId];
+            if (predicates.Count > 0 || GroupRequiresSelection(groupId))
+                _activeFilterPlan.Add(predicates.ToArray());
+        }
+
+        _compiledFilterStateVersion = _filterStateVersion;
     }
 
     private int CompareItems(IGenericSelectItem left, IGenericSelectItem right)
@@ -5966,6 +6029,8 @@ public sealed class SelectFilterGroupDefinition
 
 public sealed class SelectFilterDefinition
 {
+    private bool _enabled;
+
     public SelectFilterDefinition(
         string id,
         string label,
@@ -5977,14 +6042,27 @@ public sealed class SelectFilterDefinition
         Label = label;
         GroupId = groupId;
         Predicate = predicate;
-        Enabled = enabled;
+        _enabled = enabled;
     }
 
     public string Id { get; }
     public string Label { get; }
     public string GroupId { get; }
     public Func<IGenericSelectItem, bool> Predicate { get; }
-    public bool Enabled { get; set; }
+    public bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            if (_enabled == value)
+                return;
+
+            _enabled = value;
+            EnabledChanged?.Invoke();
+        }
+    }
+
+    internal event Action? EnabledChanged;
 }
 
 public sealed class SelectSorterDefinition
