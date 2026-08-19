@@ -95,6 +95,7 @@ public static class LoadoutSummonMonsterService
         CombatSide side,
         string? slotName)
     {
+        LoadoutMonsterSpawnRules.ApplyBeforeSpawn(monster, combatState);
         MarkAsLoadoutSummoned(monster);
         MonsterModel? previous = IntentFallbackMonster.Value;
         IntentFallbackMonster.Value = monster;

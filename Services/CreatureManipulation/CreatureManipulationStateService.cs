@@ -624,11 +624,13 @@ public static class CreatureManipulationStateService
             SlotName = slotName,
             PositionX = position.X,
             PositionY = position.Y,
-            Powers = target.Powers.Select(power => new CreaturePowerSnapshot
-            {
-                ModelId = power.Id.ToString(),
-                Amount = power.Amount
-            }).ToList()
+            Powers = target.Powers
+                .Where(power => LoadoutMonsterSpawnRules.CopySourcePowerWhenDuplicating(monster, power))
+                .Select(power => new CreaturePowerSnapshot
+                {
+                    ModelId = power.Id.ToString(),
+                    Amount = power.Amount
+                }).ToList()
         };
     }
 
@@ -704,7 +706,10 @@ public static class CreatureManipulationStateService
         SetBlock(duplicate, snapshot.Block);
 
         foreach (PowerModel power in duplicate.Powers.ToList())
-            power.RemoveInternal();
+        {
+            if (!LoadoutMonsterSpawnRules.PreserveSpawnedPowerWhenDuplicating(canonical, power))
+                power.RemoveInternal();
+        }
 
         foreach (CreaturePowerSnapshot powerSnapshot in snapshot.Powers)
         {
