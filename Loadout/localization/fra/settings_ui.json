@@ -35,6 +35,7 @@
   "LOADOUT-LOADOUT_PANEL_SECTION.title": "Panneau d’équipement",
   "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "Activer l’écran des équipements de deck",
   "LOADOUT-ENABLE_CREATURE_MANIPULATION_PANEL.title": "Activer le panneau de manipulation des créatures",
+  "LOADOUT-ENABLE_CUSTOM_RUNS.title": "Activer le bouton des parties personnalisées",
   "LOADOUT-PANEL_SKIN.title": "Apparence du panneau d’équipement",
   "LOADOUT-PANEL_SKIN.Default": "Par défaut",
   "LOADOUT-PANEL_SKIN.Isaac": "Isaac",

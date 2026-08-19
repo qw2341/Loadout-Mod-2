@@ -35,6 +35,7 @@
   "LOADOUT-LOADOUT_PANEL_SECTION.title": "ロードアウトパネル",
   "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "デッキロードアウト画面を有効化",
   "LOADOUT-ENABLE_CREATURE_MANIPULATION_PANEL.title": "クリーチャー操作パネルを有効化",
+  "LOADOUT-ENABLE_CUSTOM_RUNS.title": "カスタムランボタンを有効化",
   "LOADOUT-PANEL_SKIN.title": "ロードアウトパネルのスキン",
   "LOADOUT-PANEL_SKIN.Default": "デフォルト",
   "LOADOUT-PANEL_SKIN.Isaac": "Isaac",

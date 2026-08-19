@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using Loadout.Services.Compatibility;
+using Loadout.Services.Configuration;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Networking;
 using Loadout.UI.Managers;
@@ -34,6 +35,7 @@ public static class NCustomRunEditorEntry
     private const float RoleControlGap = 10f;
     private const float RoleControlRightMargin = 350f;
     private static readonly Dictionary<Control, ulong> SelectedAssignmentPlayers = [];
+    private static readonly Dictionary<Control, Action> VisibilityChangedHandlers = [];
     private static readonly HashSet<StartRunLobby> AwaitingRoleLocks = [];
     private static readonly Dictionary<StartRunLobby, string> PendingDefinitionIds = [];
 
@@ -68,7 +70,11 @@ public static class NCustomRunEditorEntry
                 Callable.From<NClickableControl>(_ => OnButtonPressed(screen, lobby)));
         }
         if (button is not null)
+        {
+            AttachVisibilityChangedHandler(screen);
+            UpdateButtonVisibilityAndFocus(screen, button);
             PositionButton(button);
+        }
 
         MegaLabel? statusLabel = screen.GetNodeOrNull<MegaLabel>(StatusNodeName);
         if (statusLabel is null)
@@ -95,15 +101,12 @@ public static class NCustomRunEditorEntry
 
         RefreshAttachedState(screen, lobby, CustomRunLobbyService.GetLoadedDefinition(lobby));
 
-        if (button is not null && screen.GetNodeOrNull<Control>("ConfirmButton") is { } confirmButton)
-        {
-            button.FocusNeighborTop = confirmButton.GetPath();
-            confirmButton.FocusNeighborBottom = button.GetPath();
-        }
     }
 
     public static void DetachFrom(Control? screen, StartRunLobby? lobby)
     {
+        if (screen is not null && VisibilityChangedHandlers.Remove(screen, out Action? handler))
+            LoadoutConfigService.CustomRunsButtonVisibilityChanged -= handler;
         if (screen is not null)
             ClearPlayerRoleLabels(screen);
         screen?.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName)?.QueueFree();
@@ -172,6 +175,8 @@ public static class NCustomRunEditorEntry
 
         bool loaded = definition is not null;
         NLoadoutSettingsActionButton? entryButton = screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName);
+        if (entryButton is not null)
+            UpdateButtonVisibilityAndFocus(screen, entryButton);
         entryButton?.Init("custom_run_editor", loaded
             ? LocMan.Loc("CUSTOM_RUN_CANCEL_RUN", "Cancel Run").ToUpperInvariant()
             : LocMan.Loc("CUSTOM_RUNS", "Custom Runs").ToUpperInvariant());
@@ -189,6 +194,42 @@ public static class NCustomRunEditorEntry
         statusLabel.AddThemeColorOverride("font_color", StsColors.gold);
         if (lobby is not null)
             RefreshRoleControls(screen, lobby, definition);
+    }
+
+    private static void AttachVisibilityChangedHandler(Control screen)
+    {
+        if (VisibilityChangedHandlers.ContainsKey(screen))
+            return;
+
+        Action handler = () =>
+        {
+            if (!GodotObject.IsInstanceValid(screen))
+                return;
+
+            if (screen.GetNodeOrNull<NLoadoutSettingsActionButton>(NodeName) is { } button)
+                UpdateButtonVisibilityAndFocus(screen, button);
+        };
+        VisibilityChangedHandlers[screen] = handler;
+        LoadoutConfigService.CustomRunsButtonVisibilityChanged += handler;
+    }
+
+    private static void UpdateButtonVisibilityAndFocus(
+        Control screen,
+        NLoadoutSettingsActionButton button)
+    {
+        button.Visible = LoadoutConfigService.EnableCustomRuns;
+        if (screen.GetNodeOrNull<Control>("ConfirmButton") is not { } confirmButton)
+            return;
+
+        if (button.Visible)
+        {
+            button.FocusNeighborTop = confirmButton.GetPath();
+            confirmButton.FocusNeighborBottom = button.GetPath();
+        }
+        else if (confirmButton.FocusNeighborBottom == button.GetPath())
+        {
+            confirmButton.FocusNeighborBottom = default;
+        }
     }
 
     private static void EnsureRoleControls(Control screen, StartRunLobby lobby)

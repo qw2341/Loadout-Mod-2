@@ -65,6 +65,12 @@ public sealed class LoadoutModConfig : SimpleModConfig
         set => LoadoutConfigService.EnableCreatureManipulationPanel = value;
     }
 
+    public static bool EnableCustomRuns
+    {
+        get => LoadoutConfigService.EnableCustomRuns;
+        set => LoadoutConfigService.EnableCustomRuns = value;
+    }
+
     public static LoadoutSkin PanelSkin
     {
         get => LoadoutConfigService.ActiveSkinId.ToLowerInvariant() switch
@@ -108,6 +114,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         optionContainer.AddChild(CreateSectionHeader(GetLabelText("LoadoutPanelSection"), alignToTop: true));
         AddOptionRow(optionContainer, nameof(EnableDeckLoadoutScreen), CreateRawTickboxControl);
         AddOptionRow(optionContainer, nameof(EnableCreatureManipulationPanel), CreateRawTickboxControl);
+        AddOptionRow(optionContainer, nameof(EnableCustomRuns), CreateRawTickboxControl);
         AddOptionRow(optionContainer, nameof(PanelSkin), CreateRawDropdownControl);
         AddOptionRow(optionContainer, nameof(PanelAnimation), CreateRawDropdownControl);
         AddOptionRow(optionContainer, nameof(Companion), CreateCompanionDropdownControl);

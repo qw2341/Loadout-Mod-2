@@ -35,6 +35,7 @@
   "LOADOUT-LOADOUT_PANEL_SECTION.title": "Loadout Panel",
   "LOADOUT-ENABLE_DECK_LOADOUT_SCREEN.title": "Enable deck loadout screen",
   "LOADOUT-ENABLE_CREATURE_MANIPULATION_PANEL.title": "Enable creature manipulation panel",
+  "LOADOUT-ENABLE_CUSTOM_RUNS.title": "Enable Custom Runs button",
   "LOADOUT-PANEL_SKIN.title": "Loadout panel skin",
   "LOADOUT-PANEL_SKIN.Default": "Default",
   "LOADOUT-PANEL_SKIN.Isaac": "Isaac",

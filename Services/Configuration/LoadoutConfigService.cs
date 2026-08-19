@@ -12,9 +12,11 @@ public static class LoadoutConfigService
 {
     private static bool _enableDeckLoadoutScreen = true;
     private static bool _enableCreatureManipulationPanel = true;
+    private static bool _enableCustomRuns = true;
 
     public static event Action? DeckLoadoutScreenVisibilityChanged;
     public static event Action? CreatureManipulationPanelVisibilityChanged;
+    public static event Action? CustomRunsButtonVisibilityChanged;
 
     public static bool EnableDeckLoadoutScreen
     {
@@ -39,6 +41,19 @@ public static class LoadoutConfigService
 
             _enableCreatureManipulationPanel = value;
             CreatureManipulationPanelVisibilityChanged?.Invoke();
+        }
+    }
+
+    public static bool EnableCustomRuns
+    {
+        get => _enableCustomRuns;
+        set
+        {
+            if (_enableCustomRuns == value)
+                return;
+
+            _enableCustomRuns = value;
+            CustomRunsButtonVisibilityChanged?.Invoke();
         }
     }
 
