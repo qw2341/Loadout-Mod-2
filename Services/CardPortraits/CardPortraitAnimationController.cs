@@ -130,7 +130,8 @@ internal partial class CardPortraitAnimationController : Node
 
     private void RestartTimer()
     {
-        if (_card is null
+        if (!IsInsideTree()
+            || _card is null
             || !_card.IsVisibleInTree()
             || _sequence is not { Frames.Count: > 1 } sequence)
         {
