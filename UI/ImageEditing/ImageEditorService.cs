@@ -1,4 +1,6 @@
-#nullable enable
+﻿#nullable enable
+
+using MegaCrit.Sts2.Core.Helpers;
 
 namespace Loadout.UI.ImageEditing;
 
@@ -171,7 +173,7 @@ public static class ImageEditorService
         dialog.CloseRequested += () => Complete(null);
         try
         {
-            tree.Root.AddChild(dialog);
+            tree.Root.AddChildSafely(dialog);
             dialog.PopupCentered(new Vector2I(960, 720));
         }
         catch

@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using Loadout.UI.CreatureManipulation;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 
 namespace Loadout.UI;
@@ -799,7 +800,7 @@ public partial class NLoadoutPanelRoot : Control
 		{
 			_overlayLayer.Layer = OverlayLayer;
 			if (_overlayLayer.GetParent() == null)
-				tree.Root.AddChild(_overlayLayer);
+				tree.Root.AddChildSafely(_overlayLayer);
 
 			return _overlayLayer;
 		}
@@ -823,7 +824,7 @@ public partial class NLoadoutPanelRoot : Control
 		};
 
 		SetOverlayLayer(overlayLayer);
-		tree.Root.AddChild(overlayLayer);
+		tree.Root.AddChildSafely(overlayLayer);
 		return overlayLayer;
 	}
 
