@@ -13,6 +13,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class CardPortraitDynamicPatches
@@ -44,10 +45,16 @@ internal static class CardPortraitDynamicPatches
             ?? throw new MissingMethodException(typeof(CardModel).FullName, $"get_{nameof(CardModel.Portrait)}");
         MethodInfo beginDragMethod = AccessTools.Method(typeof(NHandCardHolder), nameof(NHandCardHolder.BeginDrag))
             ?? throw new MissingMethodException(typeof(NHandCardHolder).FullName, nameof(NHandCardHolder.BeginDrag));
+        MethodInfo returnHolderMethod = AccessTools.Method(
+            typeof(NPlayerHand),
+            "ReturnHolderToHand",
+            [typeof(NHandCardHolder)])
+            ?? throw new MissingMethodException(typeof(NPlayerHand).FullName, "ReturnHolderToHand");
         VisualHarmony.Patch(portraitGetter, postfix: LastPostfix(portraitGetter, nameof(PortraitPostfix)));
         VisualHarmony.Patch(ReloadMethod, postfix: LastPostfix(ReloadMethod, nameof(ReloadPostfix)));
         VisualHarmony.Patch(UpdateVisualsMethod, postfix: LastPostfix(UpdateVisualsMethod, nameof(UpdateVisualsPostfix)));
         VisualHarmony.Patch(beginDragMethod, postfix: LastPostfix(beginDragMethod, nameof(BeginDragPostfix)));
+        VisualHarmony.Patch(returnHolderMethod, postfix: LastPostfix(returnHolderMethod, nameof(ReturnHolderToHandPostfix)));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnReturnedFromPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnFreedToPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(AbstractModel), nameof(AbstractModel.MutableClone), nameof(ClonePostfix));
@@ -192,6 +199,12 @@ internal static class CardPortraitDynamicPatches
     private static void BeginDragPostfix(NHandCardHolder __instance)
     {
         if (__instance.CardNode is { } card)
+            ReapplyOverride(card);
+    }
+
+    private static void ReturnHolderToHandPostfix(NHandCardHolder holder)
+    {
+        if (holder.CardNode is { } card)
             ReapplyOverride(card);
     }
 
