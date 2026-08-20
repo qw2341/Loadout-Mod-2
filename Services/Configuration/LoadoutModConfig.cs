@@ -107,6 +107,12 @@ public sealed class LoadoutModConfig : SimpleModConfig
         set => LoadoutConfigService.ActiveCompanionId = value;
     }
 
+    public static PermanentCardCustomizationScope CardCustomizationScope
+    {
+        get => PermanentCardCustomizationScopeService.ConfiguredScope;
+        set => PermanentCardCustomizationScopeService.ConfiguredScope = value;
+    }
+
     public override void SetupConfigUI(Control optionContainer)
     {
         AddPreviewLifetime(optionContainer);
@@ -121,6 +127,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         AddCompanionActions(optionContainer);
 
         optionContainer.AddChild(CreateSectionHeader(GetLabelText("CardModificationsSection")));
+        AddOptionRow(optionContainer, nameof(CardCustomizationScope), CreateRawDropdownControl);
         var resetStatus = CreateRawLabelControl(GetLabelText("ResetStatusReady"), 22);
         resetStatus.Name = "PermanentCardModificationResetStatus";
         resetStatus.CustomMinimumSize = new Vector2(0f, 44f);

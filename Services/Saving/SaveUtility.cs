@@ -61,12 +61,17 @@ public static class SaveUtility
 
     public static void SaveProfileJson<T>(string relativePath, T data) where T:ISerializable
     {
+        _ = TrySaveProfileJson(relativePath, data);
+    }
+
+    public static bool TrySaveProfileJson<T>(string relativePath, T data) where T : ISerializable
+    {
         try
         {
             if (!TryGetProfileScopedPath(relativePath, out string? profilePath))
             {
                 GD.PushWarning($"Loadout: profile is not initialized; skipped saving profile JSON '{relativePath}'.");
-                return;
+                return false;
             }
 
             string globalPath = ProjectSettings.GlobalizePath(profilePath);
@@ -76,21 +81,33 @@ public static class SaveUtility
 
             string json = JsonSerializer.Serialize(data, JsonOptions);
             string tempPath = $"{globalPath}.tmp";
-            File.WriteAllText(tempPath, json);
-            if (File.Exists(globalPath))
-                File.Delete(globalPath);
-
-            File.Move(tempPath, globalPath);
+            try
+            {
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, globalPath, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            return true;
         }
         catch (Exception exception)
         {
             GD.PushWarning($"Loadout: failed to save profile JSON '{relativePath}'. {exception.Message}");
+            return false;
         }
     }
 
     public static void SaveGlobalJson<T>(string relativePath, T data) where T : ISerializable
     {
-        SaveJson(GetGlobalPath(relativePath), relativePath, data);
+        _ = TrySaveGlobalJson(relativePath, data);
+    }
+
+    public static bool TrySaveGlobalJson<T>(string relativePath, T data) where T : ISerializable
+    {
+        return SaveJson(GetGlobalPath(relativePath), relativePath, data);
     }
 
     public static bool TryGetProfileScopedPath(string relativePath, out string? profilePath)
@@ -136,9 +153,8 @@ public static class SaveUtility
 
             return RunManager.Instance.ToSave(null).StartTime;
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            // GD.PushWarning($"Loadout: could not determine current run start time. {exception.Message}");
             return null;
         }
     }
@@ -192,7 +208,7 @@ public static class SaveUtility
         }
     }
 
-    private static void SaveJson<T>(string globalPath, string displayPath, T data) where T : ISerializable
+    private static bool SaveJson<T>(string globalPath, string displayPath, T data) where T : ISerializable
     {
         try
         {
@@ -202,14 +218,22 @@ public static class SaveUtility
 
             string json = JsonSerializer.Serialize(data, JsonOptions);
             string tempPath = $"{globalPath}.tmp";
-            File.WriteAllText(tempPath, json);
-            if (File.Exists(globalPath))
-                File.Delete(globalPath);
-            File.Move(tempPath, globalPath);
+            try
+            {
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, globalPath, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            return true;
         }
         catch (Exception exception)
         {
             GD.PushWarning($"Loadout: failed to save JSON '{displayPath}'. {exception.Message}");
+            return false;
         }
     }
 }

@@ -3,7 +3,9 @@
 namespace Loadout.UI.ImageEditing;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.UI.Managers;
@@ -115,13 +117,18 @@ public static class ImageEditorService
 
         try
         {
-            string savedPath = SaveDocumentAtomically(session.Document, request.DestinationDirectory, request.OutputFileName);
+            ImageEditSaveOption saveOption = ResolveSaveOption(request, session.SaveOptionId);
+            string savedPath = SaveDocumentAtomically(
+                session.Document,
+                saveOption.DestinationDirectory,
+                saveOption.OutputFileName);
             return new ImageEditResult(
                 ImageEditStatus.Saved,
                 savedPath,
                 session.Document.FirstImage,
                 session.DisplayName,
-                OutputDocument: session.Document);
+                OutputDocument: session.Document,
+                SaveOptionId: saveOption.Id);
         }
         catch (Exception exception)
         {
@@ -205,11 +212,52 @@ public static class ImageEditorService
             return "The image output size must be positive.";
         if (request.Frame.OutputSize.X > 8192 || request.Frame.OutputSize.Y > 8192)
             return "The image output size cannot exceed 8192 pixels per side.";
-        if (string.IsNullOrWhiteSpace(request.DestinationDirectory))
-            return "An output directory is required.";
-        if (string.IsNullOrWhiteSpace(request.OutputFileName))
-            return "An output filename is required.";
+        IReadOnlyList<ImageEditSaveOption> saveOptions = GetSaveOptions(request);
+        if (saveOptions.Count == 0)
+            return "At least one image save action is required.";
+        HashSet<string> ids = new(StringComparer.Ordinal);
+        foreach (ImageEditSaveOption option in saveOptions)
+        {
+            if (string.IsNullOrWhiteSpace(option.Id)
+                || string.IsNullOrWhiteSpace(option.Label)
+                || string.IsNullOrWhiteSpace(option.DestinationDirectory)
+                || string.IsNullOrWhiteSpace(option.OutputFileName))
+            {
+                return "Every image save action requires an id, label, directory, and filename.";
+            }
+            if (!ids.Add(option.Id))
+                return $"Duplicate image save action id '{option.Id}'.";
+        }
         return null;
+    }
+
+    internal static IReadOnlyList<ImageEditSaveOption> GetSaveOptions(ImageEditRequest request)
+    {
+        if (request.SaveOptions is { Count: > 0 })
+            return request.SaveOptions;
+
+        return
+        [
+            new ImageEditSaveOption(
+                "save",
+                LocMan.GameLoc("settings_ui", "LOADOUT-IMAGE_EDITOR_SAVE.title", "Save image"),
+                request.DestinationDirectory,
+                request.OutputFileName)
+        ];
+    }
+
+    private static ImageEditSaveOption ResolveSaveOption(ImageEditRequest request, string? selectedId)
+    {
+        IReadOnlyList<ImageEditSaveOption> options = GetSaveOptions(request);
+        if (!string.IsNullOrWhiteSpace(selectedId))
+        {
+            ImageEditSaveOption? selected = options.FirstOrDefault(option =>
+                string.Equals(option.Id, selectedId, StringComparison.Ordinal));
+            if (selected is not null)
+                return selected;
+        }
+
+        return options[0];
     }
 
     private static string SaveDocumentAtomically(

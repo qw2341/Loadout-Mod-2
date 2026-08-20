@@ -4,15 +4,20 @@ namespace Loadout.UI.Screens;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Godot;
 using Loadout.PanelItems;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Services.CardPortraits;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Keywords;
 using Loadout.Services.Targets;
 using Loadout.Services.Compatibility;
+using Loadout.Services.Saving;
+using Loadout.UI.ImageEditing;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
@@ -42,6 +47,7 @@ public partial class NCardModificationScreen : Control
     private const float SidePanelWidth = 438f;
     private const float ActionButtonWidth = 318f;
     private const float CardEditButtonWidth = 246f;
+    private const float CardEditThreeButtonWidth = 172f;
     private const float ActionButtonHeight = 42f;
     private const float KeywordPanelTopMargin = 24f;
     private const float HoverTipCardGap = 22f;
@@ -690,15 +696,131 @@ public partial class NCardModificationScreen : Control
         if (_cardEditActions is null)
             return;
 
+        float buttonWidth = _customRunAuthoringMode ? CardEditButtonWidth : CardEditThreeButtonWidth;
         NLoadoutActionButton nameButton = CreateActionButton("modify_name", LocMan.Loc("CARD_MOD_MODIFY_NAME", "Modify Name"));
-        nameButton.CustomMinimumSize = new Vector2(CardEditButtonWidth, ActionButtonHeight);
+        nameButton.CustomMinimumSize = new Vector2(buttonWidth, ActionButtonHeight);
         ConnectActionButton(nameButton, () => OpenTextEditor(TextEditTarget.Name));
         _cardEditActions.AddChild(nameButton);
 
         NLoadoutActionButton descriptionButton = CreateActionButton("modify_description", LocMan.Loc("CARD_MOD_MODIFY_DESCRIPTION", "Modify Description"));
-        descriptionButton.CustomMinimumSize = new Vector2(CardEditButtonWidth, ActionButtonHeight);
+        descriptionButton.CustomMinimumSize = new Vector2(buttonWidth, ActionButtonHeight);
         ConnectActionButton(descriptionButton, () => OpenTextEditor(TextEditTarget.Description));
         _cardEditActions.AddChild(descriptionButton);
+
+        if (!_customRunAuthoringMode)
+        {
+            NLoadoutActionButton portraitButton = CreateActionButton(
+                "change_portrait",
+                LocMan.Loc("CARD_MOD_CHANGE_PORTRAIT", "Change Portrait"));
+            portraitButton.CustomMinimumSize = new Vector2(buttonWidth, ActionButtonHeight);
+            ConnectActionButton(portraitButton, () => TaskHelper.RunSafely(ChangePortraitAsync()));
+            _cardEditActions.AddChild(portraitButton);
+        }
+    }
+
+    private async Task ChangePortraitAsync()
+    {
+        if (_item is null || _isClosing || ImageEditorService.IsBusy)
+            return;
+
+        CommitPendingTemporaryModification();
+        LoadoutOwnedItem<CardModel> selected = _item;
+        CardModel frameCard = _previewDisplayModel ?? selected.Model;
+        ImageEditFrameDefinition frame = ImageEditFramePresets.ForCard(
+            frameCard.Type,
+            frameCard.Rarity == CardRarity.Ancient);
+        CardPortraitSaveTarget permanentTarget = CardPortraitStore.CreatePermanentSaveTarget(frameCard.Id);
+        CardPortraitSaveTarget? temporaryTarget = CardPortraitStore.CreateTemporarySaveTarget(
+            frameCard.Id,
+            SaveUtility.GetCurrentRunStartTime());
+
+        List<ImageEditSaveOption> saveOptions = [];
+        if (temporaryTarget is { } temporaryOptionTarget)
+        {
+            saveOptions.Add(new ImageEditSaveOption(
+                "temporary",
+                LocMan.Loc("CARD_PORTRAIT_SAVE_TEMPORARY", "Save Temporary"),
+                temporaryOptionTarget.Directory,
+                temporaryOptionTarget.FileName));
+        }
+        saveOptions.Add(new ImageEditSaveOption(
+            "permanent",
+            LocMan.Loc("CARD_PORTRAIT_SAVE_PERMANENT", "Save Permanent"),
+            permanentTarget.Directory,
+            permanentTarget.FileName));
+
+        ImageEditSaveOption defaultOption = saveOptions[0];
+        ImageEditRequest request = new(
+            frame,
+            defaultOption.DestinationDirectory,
+            defaultOption.OutputFileName,
+            LocMan.Loc("CARD_PORTRAIT_EDITOR_TITLE", "Change Card Portrait"),
+            AllowAlphaEditing: false,
+            AllowRotation: true,
+            SaveOptions: saveOptions);
+        ImageEditResult result = await ImageEditorService.PickAndEditAsync(request);
+        if (result.Status == ImageEditStatus.Cancelled)
+            return;
+        if (!result.Saved
+            || string.IsNullOrWhiteSpace(result.SavedPath)
+            || result.OutputDocument is null)
+        {
+            if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+                GD.PushWarning($"CardPortrait: image editing failed. {result.ErrorMessage}");
+            return;
+        }
+
+        if (_isClosing
+            || !IsInsideTree()
+            || !TryResolveCurrentLocation(selected, out LoadoutOwnedItem<CardModel>? resolved)
+            || resolved is null)
+        {
+            TryDeletePortraitOutput(result.SavedPath);
+            return;
+        }
+
+        bool saved = result.SaveOptionId switch
+        {
+            "temporary" when temporaryTarget is { } selectedTemporaryTarget => CardPortraitRuntime.SaveTemporary(
+                resolved.Model,
+                selectedTemporaryTarget,
+                frame,
+                result.OutputDocument,
+                result.SavedPath),
+            "permanent" => CardPortraitRuntime.SavePermanent(
+                resolved.Model,
+                permanentTarget,
+                frame,
+                result.OutputDocument,
+                result.SavedPath),
+            _ => false
+        };
+        if (!saved)
+        {
+            TryDeletePortraitOutput(result.SavedPath);
+            GD.PushWarning("CardPortrait: the edited portrait could not be attached because its card, run, profile, or customization scope changed.");
+            return;
+        }
+
+        _item = resolved;
+        if (_itemIndex >= 0 && _itemIndex < _items.Count)
+            _items[_itemIndex] = resolved;
+        LoadItem(resolved);
+        RebuildControls();
+        RefreshPreview(forceReload: true);
+    }
+
+    private static void TryDeletePortraitOutput(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardPortrait: failed to remove unused edited image '{path}'. {exception.Message}");
+        }
     }
 
     private void AddNumericControls()
@@ -1470,6 +1592,12 @@ public partial class NCardModificationScreen : Control
             RefreshPreview(forceReload: true);
             return;
         }
+        CardPortraitRuntime.ResetTemporary(_item.Model);
+        if (_previewDisplayModel is { } temporaryPreview
+            && !ReferenceEquals(temporaryPreview, _item.Model))
+        {
+            CardPortraitRuntime.ResetTemporary(temporaryPreview);
+        }
         _awaitingResetConfirmation = true;
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetTemporaryToBasic, _item);
         if (!requested)
@@ -1486,6 +1614,12 @@ public partial class NCardModificationScreen : Control
         {
             ResetTemporary();
             return;
+        }
+        CardPortraitRuntime.ResetPermanent(_item.Model);
+        if (_previewDisplayModel is { } permanentPreview
+            && !ReferenceEquals(permanentPreview, _item.Model))
+        {
+            CardPortraitRuntime.ResetTemporary(permanentPreview);
         }
         _awaitingResetConfirmation = true;
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);

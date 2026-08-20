@@ -13,6 +13,7 @@ using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
+using Loadout.Services.CardPortraits;
 using Loadout.Services.Compatibility;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Commands;
@@ -87,6 +88,7 @@ public static class CardModificationRuntime
         PermanentCardModificationStore.CardChanged += OnPermanentCardChanged;
         PermanentCardModificationStore.Reloaded += OnPermanentStoreReloaded;
         PermanentCardModificationStore.Register();
+        CardPortraitRuntime.Register();
         _customTextOverridesMayExist = PermanentCardModificationStore.HasAnyCustomText;
         LoadoutKeywordRuntimePatches.Reconcile();
         if (_customTextOverridesMayExist) CardModificationDynamicPatches.EnableTextPatches();
@@ -101,6 +103,7 @@ public static class CardModificationRuntime
             return;
 
         CardModificationNetProtocol.Unregister();
+        CardPortraitRuntime.Unregister();
         PermanentCardModificationStore.Unregister();
         PermanentCardModificationStore.CardChanged -= OnPermanentCardChanged;
         PermanentCardModificationStore.Reloaded -= OnPermanentStoreReloaded;
@@ -855,6 +858,7 @@ public static class CardModificationRuntime
                 if (temporary.HasCustomText) MarkCustomTextOverridesPresent();
                 if (temporary.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
             }
+            CardPortraitFields.Copy(source, preview);
             return preview;
         }
         catch (Exception exception)

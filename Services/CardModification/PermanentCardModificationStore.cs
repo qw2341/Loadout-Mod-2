@@ -4,6 +4,7 @@ namespace Loadout.Services.CardModification;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Text.Json;
@@ -15,7 +16,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Saves;
 
 /// <summary>
-/// Durable profile state only: one immutable modification spec per card ModelId.
+/// Durable local state: one immutable modification spec per card ModelId.
 /// Published dictionaries are never mutated, so rendering/creation hooks read without
 /// locks and without creating per-card cache entries.
 /// </summary>
@@ -23,6 +24,7 @@ public static class PermanentCardModificationStore
 {
     private const int CurrentSchemaVersion = 3;
     private const string PermanentPath = "loadout/services/card_modifications/permanent.json";
+    private const string MigrationPath = "loadout/services/card_modifications/scope_migration_v1.json";
 
     private static readonly object Gate = new();
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -40,6 +42,7 @@ public static class PermanentCardModificationStore
     private static bool _loaded;
     private static bool _registered;
     private static bool _saveQueued;
+    private static PermanentCardCustomizationScope _loadedScope = PermanentCardCustomizationScope.Global;
 
     public static event Action<ModelId>? CardChanged;
     public static event Action? Reloaded;
@@ -51,6 +54,7 @@ public static class PermanentCardModificationStore
 
         _registered = true;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
+        PermanentCardCustomizationScopeService.EffectiveScopeChanged += OnEffectiveScopeChanged;
         Reload();
     }
 
@@ -61,6 +65,7 @@ public static class PermanentCardModificationStore
 
         FlushPendingSave();
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
+        PermanentCardCustomizationScopeService.EffectiveScopeChanged -= OnEffectiveScopeChanged;
         _registered = false;
     }
 
@@ -320,7 +325,10 @@ public static class PermanentCardModificationStore
             };
         }
 
-        SaveUtility.SaveProfileJson(PermanentPath, snapshot.Value);
+        if (_loadedScope == PermanentCardCustomizationScope.Global)
+            SaveUtility.SaveGlobalJson(PermanentPath, snapshot.Value);
+        else
+            SaveUtility.SaveProfileJson(PermanentPath, snapshot.Value);
     }
 
     private static void Reload()
@@ -339,8 +347,11 @@ public static class PermanentCardModificationStore
 
     private static void LoadProfileLocked()
     {
-        SaveUtility.LoadResult<PermanentRawData> loaded =
-            SaveUtility.LoadProfileJson(PermanentPath, new PermanentRawData());
+        _loadedScope = PermanentCardCustomizationScopeService.EffectiveScope;
+        EnsureLegacyMigrationLocked();
+        SaveUtility.LoadResult<PermanentRawData> loaded = _loadedScope == PermanentCardCustomizationScope.Global
+            ? SaveUtility.LoadGlobalJson(PermanentPath, new PermanentRawData())
+            : SaveUtility.LoadProfileJson(PermanentPath, new PermanentRawData());
         _profileCards = DeserializeCards(loaded.Value);
         _profileLookup = BuildLookup(_profileCards);
         _loaded = true;
@@ -361,6 +372,48 @@ public static class PermanentCardModificationStore
     {
         FlushPendingSave();
         Reload();
+    }
+
+    private static void OnEffectiveScopeChanged(PermanentCardCustomizationScope _)
+    {
+        FlushPendingSave();
+        Reload();
+    }
+
+    private static void EnsureLegacyMigrationLocked()
+    {
+        if (_loadedScope != PermanentCardCustomizationScope.Global
+            || !SaveManager.Instance.IsProfileInitialized)
+        {
+            return;
+        }
+
+        SaveUtility.LoadResult<ScopeMigrationData> migration =
+            SaveUtility.LoadGlobalJson(MigrationPath, new ScopeMigrationData());
+        if (migration.Loaded && migration.Value.Completed)
+            return;
+        if (File.Exists(ProjectSettings.GlobalizePath($"user://{MigrationPath}")))
+            return;
+
+        if (!File.Exists(ProjectSettings.GlobalizePath($"user://{PermanentPath}")))
+        {
+            SaveUtility.LoadResult<PermanentRawData> profile =
+                SaveUtility.LoadProfileJson(PermanentPath, new PermanentRawData());
+            if (profile.Loaded)
+            {
+                SaveUtility.SaveGlobalJson(PermanentPath, new PermanentSaveData
+                {
+                    SchemaVersion = CurrentSchemaVersion,
+                    Cards = DeserializeCards(profile.Value)
+                });
+            }
+        }
+
+        SaveUtility.SaveGlobalJson(MigrationPath, new ScopeMigrationData
+        {
+            Completed = true,
+            SourceProfileId = SaveManager.Instance.CurrentProfileId
+        });
     }
 
     private static bool SetInDictionary(
@@ -509,6 +562,21 @@ public static class PermanentCardModificationStore
 
         [JsonPropertyName("cards")]
         public Dictionary<string, JsonElement> Cards { get; set; }
+    }
+
+    private struct ScopeMigrationData : ISerializable
+    {
+        [JsonPropertyName("completed")]
+        public bool Completed { get; set; }
+
+        [JsonPropertyName("sourceProfileId")]
+        public int SourceProfileId { get; set; }
+
+        public void GetObjectData(SerializationInfo info, StreamingContext context)
+        {
+            info.AddValue(nameof(Completed), Completed);
+            info.AddValue(nameof(SourceProfileId), SourceProfileId);
+        }
     }
 
     private static bool TryResolveId(string key, out ModelId id)

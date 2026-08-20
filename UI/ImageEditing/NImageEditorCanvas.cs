@@ -53,18 +53,21 @@ public partial class NImageEditorCanvas : Control
     private bool _strokeStarted;
     private bool _pointerInside;
     private bool _backgroundPreviewActive;
+    private bool _allowAlphaEditing = true;
     private int _currentFrameIndex;
     private Vector2 _lastPointer;
     private Vector2 _pointerPosition;
     private Vector2 _offset;
     private float _zoom;
     private float _fitZoom;
+    private float _rotationRadians;
     private float _brushSize = 42f;
     private float _backgroundTolerance = 0.14f;
     private ImageEditorTool _tool = ImageEditorTool.Pan;
     private ImageEditorBrushMode _brushMode = ImageEditorBrushMode.Brush;
 
     public event Action<float>? RelativeZoomChanged;
+    public event Action<float>? RotationDegreesChanged;
     public event Action<bool, bool>? HistoryAvailabilityChanged;
 
     public ImageEditorTool Tool
@@ -112,6 +115,8 @@ public partial class NImageEditorCanvas : Control
     }
 
     public float RelativeZoom => _fitZoom <= 0f ? 1f : _zoom / _fitZoom;
+
+    public float ImageRotationDegrees => Mathf.RadToDeg(_rotationRadians);
 
     public override void _Ready()
     {
@@ -232,6 +237,7 @@ public partial class NImageEditorCanvas : Control
         {
             if (mouseButton.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown && mouseButton.Pressed)
             {
+                BeginTransformEdit();
                 float factor = mouseButton.ButtonIndex == MouseButton.WheelUp ? 1.12f : 1f / 1.12f;
                 ZoomAt(mouseButton.Position, RelativeZoom * factor);
                 AcceptEvent();
@@ -243,7 +249,11 @@ public partial class NImageEditorCanvas : Control
                 _dragging = mouseButton.Pressed;
                 _lastPointer = mouseButton.Position;
                 _strokeStarted = false;
-                if (_dragging && _tool != ImageEditorTool.Pan)
+                if (_dragging && _tool == ImageEditorTool.Pan)
+                {
+                    BeginTransformEdit();
+                }
+                else if (_dragging && _allowAlphaEditing)
                 {
                     CancelBackgroundPreview();
                     if (_brushMode == ImageEditorBrushMode.Fill)
@@ -291,10 +301,15 @@ public partial class NImageEditorCanvas : Control
 
     public void Initialize(Image source, ImageEditFrameDefinition frame)
     {
-        Initialize(ImageMediaDocument.FromImage(source), frame);
+        Initialize(ImageMediaDocument.FromImage(source), frame, allowAlphaEditing: true);
     }
 
     public void Initialize(ImageMediaDocument source, ImageEditFrameDefinition frame)
+    {
+        Initialize(source, frame, allowAlphaEditing: true);
+    }
+
+    public void Initialize(ImageMediaDocument source, ImageEditFrameDefinition frame, bool allowAlphaEditing)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(frame);
@@ -302,6 +317,7 @@ public partial class NImageEditorCanvas : Control
             throw new ArgumentException("The output frame size must be positive.", nameof(frame));
 
         _frame = frame;
+        _allowAlphaEditing = allowAlphaEditing;
         _frameDurations = new double[source.Frames.Count];
         for (int i = 0; i < source.Frames.Count; i++)
         {
@@ -333,19 +349,40 @@ public partial class NImageEditorCanvas : Control
         SetRelativeZoom(relativeZoom, null);
     }
 
+    public void SetImageRotationDegrees(float degrees)
+    {
+        if (!_initialized)
+            return;
+
+        float normalized = Mathf.Wrap(degrees, -180f, 180f);
+        if (Mathf.IsEqualApprox(normalized, ImageRotationDegrees))
+            return;
+        _rotationRadians = Mathf.DegToRad(normalized);
+        UpdatePreviewParameters();
+        RotationDegreesChanged?.Invoke(normalized);
+    }
+
+    public void BeginTransformEdit()
+    {
+        if (_initialized)
+            PushUndo(includeAlpha: false);
+    }
+
     public void FitToFrame()
     {
         if (!_initialized)
             return;
 
         Image first = _workingFrames[0];
+        float cosine = Mathf.Abs(Mathf.Cos(_rotationRadians));
+        float sine = Mathf.Abs(Mathf.Sin(_rotationRadians));
         _fitZoom = Mathf.Max(
-            (float)_frame.OutputSize.X / first.GetWidth(),
-            (float)_frame.OutputSize.Y / first.GetHeight());
+            (_frame.OutputSize.X * cosine + _frame.OutputSize.Y * sine) / first.GetWidth(),
+            (_frame.OutputSize.X * sine + _frame.OutputSize.Y * cosine) / first.GetHeight());
         _zoom = _fitZoom;
-        _offset = new Vector2(
-            (_frame.OutputSize.X - first.GetWidth() * _zoom) * 0.5f,
-            (_frame.OutputSize.Y - first.GetHeight() * _zoom) * 0.5f);
+        Vector2 sourceCenter = new(first.GetWidth() * 0.5f, first.GetHeight() * 0.5f);
+        Vector2 outputCenter = new(_frame.OutputSize.X * 0.5f, _frame.OutputSize.Y * 0.5f);
+        _offset = outputCenter - sourceCenter * _zoom;
         UpdatePreviewParameters();
         RelativeZoomChanged?.Invoke(1f);
     }
@@ -356,11 +393,13 @@ public partial class NImageEditorCanvas : Control
             return;
 
         CancelBackgroundPreview();
-        PushUndo();
+        PushUndo(includeAlpha: _allowAlphaEditing);
         for (int i = 0; i < _workingFrames.Count; i++)
             _workingFrames[i] = _originalFrames[i].Duplicate() as Image ?? _originalFrames[i];
         RefreshWorkingTextures();
+        _rotationRadians = 0f;
         FitToFrame();
+        RotationDegreesChanged?.Invoke(0f);
     }
 
     public void Undo()
@@ -373,8 +412,8 @@ public partial class NImageEditorCanvas : Control
         if (_undo.Count == 0)
             return;
 
-        AddSnapshot(_redo, CaptureSnapshot());
         EditorSnapshot snapshot = TakeLast(_undo);
+        AddSnapshot(_redo, CaptureSnapshot(snapshot.AlphaByFrame is not null));
         RestoreSnapshot(snapshot);
         NotifyHistoryAvailability();
     }
@@ -385,8 +424,8 @@ public partial class NImageEditorCanvas : Control
         if (_redo.Count == 0)
             return;
 
-        AddSnapshot(_undo, CaptureSnapshot());
         EditorSnapshot snapshot = TakeLast(_redo);
+        AddSnapshot(_undo, CaptureSnapshot(snapshot.AlphaByFrame is not null));
         RestoreSnapshot(snapshot);
         NotifyHistoryAvailability();
     }
@@ -435,13 +474,17 @@ public partial class NImageEditorCanvas : Control
         Image output = Image.CreateEmpty(outputWidth, outputHeight, false, Image.Format.Rgba8);
         output.Fill(Colors.Transparent);
         Image? mask = _frame.BakeMaskIntoOutput ? _frame.AlphaMask : null;
+        Vector2 sourceCenter = new(source.GetWidth() * 0.5f, source.GetHeight() * 0.5f);
+        Vector2 imageCenter = _offset + sourceCenter * _zoom;
 
         for (int y = 0; y < outputHeight; y++)
         {
             for (int x = 0; x < outputWidth; x++)
             {
-                float sourceX = (x + 0.5f - _offset.X) / _zoom - 0.5f;
-                float sourceY = (y + 0.5f - _offset.Y) / _zoom - 0.5f;
+                Vector2 outputPoint = new(x + 0.5f, y + 0.5f);
+                Vector2 sourcePoint = Rotate(outputPoint - imageCenter, -_rotationRadians) / _zoom + sourceCenter;
+                float sourceX = sourcePoint.X - 0.5f;
+                float sourceY = sourcePoint.Y - 0.5f;
                 if (sourceX < 0f || sourceY < 0f || sourceX > source.GetWidth() - 1 || sourceY > source.GetHeight() - 1)
                     continue;
 
@@ -527,9 +570,13 @@ public partial class NImageEditorCanvas : Control
             outputAnchor = (local - frameRect.Position) / GetDisplayScale();
         }
 
-        Vector2 sourceAnchor = (outputAnchor - _offset) / _zoom;
+        Image first = _workingFrames[0];
+        Vector2 sourceCenter = new(first.GetWidth() * 0.5f, first.GetHeight() * 0.5f);
+        Vector2 imageCenter = _offset + sourceCenter * _zoom;
+        Vector2 sourceAnchor = Rotate(outputAnchor - imageCenter, -_rotationRadians) / _zoom + sourceCenter;
         _zoom = nextZoom;
-        _offset = outputAnchor - sourceAnchor * _zoom;
+        imageCenter = outputAnchor - Rotate((sourceAnchor - sourceCenter) * _zoom, _rotationRadians);
+        _offset = imageCenter - sourceCenter * _zoom;
         UpdatePreviewParameters();
         RelativeZoomChanged?.Invoke(relativeZoom);
     }
@@ -541,6 +588,7 @@ public partial class NImageEditorCanvas : Control
 
         _previewMaterial.SetShaderParameter("image_scale", _zoom);
         _previewMaterial.SetShaderParameter("image_offset", _offset);
+        _previewMaterial.SetShaderParameter("image_rotation", _rotationRadians);
         RefreshBrushCursor();
     }
 
@@ -767,50 +815,58 @@ public partial class NImageEditorCanvas : Control
         }
     }
 
-    private void PushUndo()
+    private void PushUndo(bool includeAlpha = true)
     {
-        AddSnapshot(_undo, CaptureSnapshot());
+        AddSnapshot(_undo, CaptureSnapshot(includeAlpha));
         _redo.Clear();
         NotifyHistoryAvailability();
     }
 
-    private EditorSnapshot CaptureSnapshot()
+    private EditorSnapshot CaptureSnapshot(bool includeAlpha)
     {
-        byte[][] alphaByFrame = new byte[_workingFrames.Count][];
+        byte[][]? alphaByFrame = includeAlpha ? new byte[_workingFrames.Count][] : null;
         long bytes = 0;
-        for (int i = 0; i < _workingFrames.Count; i++)
+        if (alphaByFrame is not null)
         {
-            byte[] rgba = _workingFrames[i].GetData();
-            byte[] alpha = new byte[rgba.Length / 4];
-            for (int pixel = 0; pixel < alpha.Length; pixel++)
-                alpha[pixel] = rgba[pixel * 4 + 3];
-            alphaByFrame[i] = alpha;
-            bytes += alpha.Length;
+            for (int i = 0; i < _workingFrames.Count; i++)
+            {
+                byte[] rgba = _workingFrames[i].GetData();
+                byte[] alpha = new byte[rgba.Length / 4];
+                for (int pixel = 0; pixel < alpha.Length; pixel++)
+                    alpha[pixel] = rgba[pixel * 4 + 3];
+                alphaByFrame[i] = alpha;
+                bytes += alpha.Length;
+            }
         }
-        return new EditorSnapshot(alphaByFrame, _zoom, _offset, bytes);
+        return new EditorSnapshot(alphaByFrame, _zoom, _offset, _rotationRadians, bytes);
     }
 
     private void RestoreSnapshot(EditorSnapshot snapshot)
     {
-        for (int i = 0; i < _workingFrames.Count; i++)
+        if (snapshot.AlphaByFrame is not null)
         {
-            Image current = _workingFrames[i];
-            byte[] rgba = current.GetData();
-            byte[] alpha = snapshot.AlphaByFrame[i];
-            for (int pixel = 0; pixel < alpha.Length; pixel++)
-                rgba[pixel * 4 + 3] = alpha[pixel];
-            _workingFrames[i] = Image.CreateFromData(
-                current.GetWidth(),
-                current.GetHeight(),
-                false,
-                Image.Format.Rgba8,
-                rgba);
+            for (int i = 0; i < _workingFrames.Count; i++)
+            {
+                Image current = _workingFrames[i];
+                byte[] rgba = current.GetData();
+                byte[] alpha = snapshot.AlphaByFrame[i];
+                for (int pixel = 0; pixel < alpha.Length; pixel++)
+                    rgba[pixel * 4 + 3] = alpha[pixel];
+                _workingFrames[i] = Image.CreateFromData(
+                    current.GetWidth(),
+                    current.GetHeight(),
+                    false,
+                    Image.Format.Rgba8,
+                    rgba);
+            }
+            RefreshWorkingTextures();
         }
         _zoom = snapshot.Zoom;
         _offset = snapshot.Offset;
-        RefreshWorkingTextures();
+        _rotationRadians = snapshot.RotationRadians;
         UpdatePreviewParameters();
         RelativeZoomChanged?.Invoke(RelativeZoom);
+        RotationDegreesChanged?.Invoke(ImageRotationDegrees);
     }
 
     private static EditorSnapshot TakeLast(List<EditorSnapshot> snapshots)
@@ -885,7 +941,10 @@ public partial class NImageEditorCanvas : Control
     {
         Rect2 frameRect = GetFrameRect();
         Vector2 output = (localPosition - frameRect.Position) / GetDisplayScale();
-        return (output - _offset) / _zoom;
+        Image first = _workingFrames[0];
+        Vector2 sourceCenter = new(first.GetWidth() * 0.5f, first.GetHeight() * 0.5f);
+        Vector2 imageCenter = _offset + sourceCenter * _zoom;
+        return Rotate(output - imageCenter, -_rotationRadians) / _zoom + sourceCenter;
     }
 
     private float GetSourceBrushRadius()
@@ -928,7 +987,7 @@ public partial class NImageEditorCanvas : Control
     {
         if (_brushCursor is null || !GodotObject.IsInstanceValid(_brushCursor))
             return;
-        bool visible = _initialized && _pointerInside && _tool != ImageEditorTool.Pan;
+        bool visible = _initialized && _allowAlphaEditing && _pointerInside && _tool != ImageEditorTool.Pan;
         _brushCursor.Visible = visible;
         if (!visible)
             return;
@@ -979,6 +1038,15 @@ public partial class NImageEditorCanvas : Control
         return top.Lerp(bottom, ty);
     }
 
+    private static Vector2 Rotate(Vector2 point, float radians)
+    {
+        float cosine = Mathf.Cos(radians);
+        float sine = Mathf.Sin(radians);
+        return new Vector2(
+            point.X * cosine - point.Y * sine,
+            point.X * sine + point.Y * cosine);
+    }
+
     private static void DownscaleWorkingFrames(IReadOnlyList<Image> frames)
     {
         int width = frames[0].GetWidth();
@@ -1010,11 +1078,20 @@ public partial class NImageEditorCanvas : Control
                 uniform float display_scale = 1.0;
                 uniform float image_scale = 1.0;
                 uniform vec2 image_offset = vec2(0.0);
+                uniform float image_rotation = 0.0;
 
                 void fragment() {
                     vec2 canvas_pixel = UV * canvas_size;
                     vec2 output_pixel = (canvas_pixel - frame_position) / display_scale;
-                    vec2 source_pixel = (output_pixel - image_offset) / image_scale;
+                    vec2 source_center = source_size * 0.5;
+                    vec2 image_center = image_offset + source_center * image_scale;
+                    vec2 delta = output_pixel - image_center;
+                    float cosine = cos(-image_rotation);
+                    float sine = sin(-image_rotation);
+                    vec2 unrotated = vec2(
+                        delta.x * cosine - delta.y * sine,
+                        delta.x * sine + delta.y * cosine);
+                    vec2 source_pixel = unrotated / image_scale + source_center;
                     vec2 source_uv = source_pixel / source_size;
                     vec4 color = vec4(0.0);
                     if (source_uv.x >= 0.0 && source_uv.y >= 0.0 && source_uv.x <= 1.0 && source_uv.y <= 1.0) {
@@ -1040,5 +1117,10 @@ public partial class NImageEditorCanvas : Control
         };
     }
 
-    private sealed record EditorSnapshot(byte[][] AlphaByFrame, float Zoom, Vector2 Offset, long ByteCount);
+    private sealed record EditorSnapshot(
+        byte[][]? AlphaByFrame,
+        float Zoom,
+        Vector2 Offset,
+        float RotationRadians,
+        long ByteCount);
 }

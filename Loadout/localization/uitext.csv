@@ -711,3 +711,7 @@ CUSTOM_RUN_VARIABLE_NAME,Variable Name,变量名称,Nom de la variable,変数名
 CUSTOM_RUN_SCOPE_TURN,Turn,回合,Tour,ターン,턴,Turno
 CUSTOM_RUN_SCOPE_ROLE,Role,职责,Rôle,ロール,역할,Rol
 CUSTOM_RUN_SCOPE_RULE,Rule,规则,Règle,ルール,규칙,Regla
+CARD_MOD_CHANGE_PORTRAIT,Change Portrait,更换卡图,Modifier l’illustration,カード画像を変更,카드 초상화 변경,Cambiar ilustración
+CARD_PORTRAIT_EDITOR_TITLE,Change Card Portrait,更换卡牌图片,Modifier l’illustration de la carte,カード画像を変更,카드 초상화 변경,Cambiar ilustración de la carta
+CARD_PORTRAIT_SAVE_TEMPORARY,Save Temporary,临时保存,Enregistrer temporairement,一時保存,임시 저장,Guardar temporalmente
+CARD_PORTRAIT_SAVE_PERMANENT,Save Permanent,永久保存,Enregistrer définitivement,永久保存,영구 저장,Guardar permanentemente

@@ -2,6 +2,7 @@
 
 namespace Loadout.UI.ImageEditing;
 
+using System.Collections.Generic;
 using Godot;
 
 public enum ImageEditStatus
@@ -24,6 +25,12 @@ public sealed record ImageEditFrameDefinition(
     }
 }
 
+public sealed record ImageEditSaveOption(
+    string Id,
+    string Label,
+    string DestinationDirectory,
+    string OutputFileName);
+
 public sealed record ImageEditRequest(
     ImageEditFrameDefinition Frame,
     string DestinationDirectory,
@@ -31,7 +38,10 @@ public sealed record ImageEditRequest(
     string Title,
     string? InitialDisplayName = null,
     bool AllowDisplayNameEditing = false,
-    string? InitialOpenDirectory = null);
+    string? InitialOpenDirectory = null,
+    bool AllowAlphaEditing = true,
+    bool AllowRotation = false,
+    IReadOnlyList<ImageEditSaveOption>? SaveOptions = null);
 
 public sealed record ImageEditResult(
     ImageEditStatus Status,
@@ -39,7 +49,8 @@ public sealed record ImageEditResult(
     Image? OutputImage = null,
     string? DisplayName = null,
     string? ErrorMessage = null,
-    ImageMediaDocument? OutputDocument = null)
+    ImageMediaDocument? OutputDocument = null,
+    string? SaveOptionId = null)
 {
     public bool Saved => Status == ImageEditStatus.Saved;
 
