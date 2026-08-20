@@ -98,6 +98,8 @@ internal static class CardPortraitDynamicPatches
             return;
 
         ReloadMethod.Invoke(card, null);
+        if (card.Model is not null && card.IsNodeReady())
+            card.UpdateVisuals(card.DisplayingPile, CardPreviewMode.Normal);
     }
 
     public static void RefreshTemporary(CardModel card)

@@ -1594,6 +1594,14 @@ public partial class NCardModificationScreen : Control
             RefreshPreview(forceReload: true);
             return;
         }
+        if (!TryResolveCurrentLocation(_item, out LoadoutOwnedItem<CardModel>? current)
+            || current is null)
+        {
+            return;
+        }
+        _item = current;
+        if (_itemIndex >= 0 && _itemIndex < _items.Count)
+            _items[_itemIndex] = current;
         CardPortraitRuntime.ResetTemporary(_item.Model);
         if (_previewDisplayModel is { } temporaryPreview
             && !ReferenceEquals(temporaryPreview, _item.Model))
@@ -1619,6 +1627,14 @@ public partial class NCardModificationScreen : Control
             ResetTemporary();
             return;
         }
+        if (!TryResolveCurrentLocation(_item, out LoadoutOwnedItem<CardModel>? current)
+            || current is null)
+        {
+            return;
+        }
+        _item = current;
+        if (_itemIndex >= 0 && _itemIndex < _items.Count)
+            _items[_itemIndex] = current;
         CardPortraitRuntime.ResetPermanent(_item.Model);
         if (_previewDisplayModel is { } permanentPreview
             && !ReferenceEquals(permanentPreview, _item.Model))
@@ -2321,10 +2337,25 @@ public partial class NCardModificationScreen : Control
         PileType pileType = item.CardPileType ?? PileType.Deck;
         if (pileType == PileType.Deck)
         {
+            IReadOnlyList<CardModel> deckCards = item.Owner.Deck.Cards;
+            for (int deckIndex = 0; deckIndex < deckCards.Count; deckIndex++)
+            {
+                if (!ReferenceEquals(deckCards[deckIndex], item.Model))
+                    continue;
+
+                resolved = new LoadoutOwnedItem<CardModel>(
+                    item.Owner,
+                    deckIndex,
+                    deckCards[deckIndex],
+                    PileType.Deck,
+                    null);
+                return true;
+            }
+
             if (item.Index < 0 || item.Index >= item.Owner.Deck.Cards.Count)
                 return false;
-            CardModel card = item.Owner.Deck.Cards[item.Index];
-            if (!ReferenceEquals(card, item.Model) && !card.Id.Equals(item.Model.Id))
+            CardModel card = deckCards[item.Index];
+            if (!card.Id.Equals(item.Model.Id))
                 return false;
             resolved = new LoadoutOwnedItem<CardModel>(item.Owner, item.Index, card, PileType.Deck, null);
             return true;

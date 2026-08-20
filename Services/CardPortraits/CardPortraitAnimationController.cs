@@ -22,6 +22,9 @@ internal partial class CardPortraitAnimationController : Node
     public override void _EnterTree()
     {
         _card = GetParentOrNull<NCard>();
+        Reapply();
+        if (_sequence is { Frames.Count: > 0 })
+            Callable.From(Reapply).CallDeferred();
         if (_sequence is { Frames.Count: > 1 })
             Callable.From(RestartTimer).CallDeferred();
     }

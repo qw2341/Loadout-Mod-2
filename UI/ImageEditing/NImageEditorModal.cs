@@ -32,6 +32,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     private Control _saveButton = null!;
     private NCard? _cardPreview;
     private TextureRect? _cardPreviewPortrait;
+    private Texture2D? _cardPreviewOriginalTexture;
     private Material? _cardPreviewOriginalMaterial;
     private ShaderMaterial? _cardPreviewMaterial;
     private bool _initialized;
@@ -439,7 +440,15 @@ public partial class NImageEditorModal : Control, IScreenContext
         if (_cardPreviewPortrait is null)
             return;
 
+        _cardPreviewOriginalTexture = _cardPreviewPortrait.Texture;
         _cardPreviewOriginalMaterial = _cardPreviewPortrait.Material;
+        Image previewSurface = Image.CreateEmpty(
+            _request.Frame.OutputSize.X,
+            _request.Frame.OutputSize.Y,
+            false,
+            Image.Format.Rgba8);
+        previewSurface.Fill(Colors.White);
+        _cardPreviewPortrait.Texture = ImageTexture.CreateFromImage(previewSurface);
         _cardPreviewMaterial = _canvas.CreateOutputPreviewMaterial();
         _cardPreviewPortrait.Material = _cardPreviewMaterial;
         _canvas.PreviewChanged += RefreshCardPreviewMaterial;
@@ -465,13 +474,17 @@ public partial class NImageEditorModal : Control, IScreenContext
             _canvas.PreviewChanged -= RefreshCardPreviewMaterial;
 
         if (_cardPreviewPortrait is not null && GodotObject.IsInstanceValid(_cardPreviewPortrait))
+        {
+            _cardPreviewPortrait.Texture = _cardPreviewOriginalTexture;
             _cardPreviewPortrait.Material = _cardPreviewOriginalMaterial;
+        }
 
         if (_cardPreview is not null && GodotObject.IsInstanceValid(_cardPreview))
             _cardPreview.QueueFreeSafely();
 
         _cardPreview = null;
         _cardPreviewPortrait = null;
+        _cardPreviewOriginalTexture = null;
         _cardPreviewOriginalMaterial = null;
         _cardPreviewMaterial = null;
     }
