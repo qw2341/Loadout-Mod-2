@@ -757,7 +757,8 @@ public partial class NCardModificationScreen : Control
             AllowAlphaEditing: false,
             AllowRotation: true,
             SaveOptions: saveOptions,
-            UseLoadoutScreen: true);
+            UseLoadoutScreen: true,
+            CardPreviewModel: frameCard);
         ImageEditResult result = await ImageEditorService.PickAndEditAsync(request);
         if (result.Status == ImageEditStatus.Cancelled)
             return;

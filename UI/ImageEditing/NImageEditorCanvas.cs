@@ -69,6 +69,7 @@ public partial class NImageEditorCanvas : Control
     public event Action<float>? RelativeZoomChanged;
     public event Action<float>? RotationDegreesChanged;
     public event Action<bool, bool>? HistoryAvailabilityChanged;
+    public event Action? PreviewChanged;
 
     public ImageEditorTool Tool
     {
@@ -117,6 +118,43 @@ public partial class NImageEditorCanvas : Control
     public float RelativeZoom => _fitZoom <= 0f ? 1f : _zoom / _fitZoom;
 
     public float ImageRotationDegrees => Mathf.RadToDeg(_rotationRadians);
+
+    public ShaderMaterial CreateOutputPreviewMaterial()
+    {
+        ShaderMaterial material = new()
+        {
+            Shader = _previewMaterial.Shader,
+            ResourceLocalToScene = true
+        };
+        UpdateOutputPreviewMaterial(material);
+        return material;
+    }
+
+    public void UpdateOutputPreviewMaterial(ShaderMaterial material)
+    {
+        ArgumentNullException.ThrowIfNull(material);
+        if (!_initialized || _workingTextures.Count == 0)
+            return;
+
+        material.SetShaderParameter("source_texture", GetDisplayedFrameTexture());
+        material.SetShaderParameter("has_mask", _maskTexture is not null);
+        if (_maskTexture is not null)
+            material.SetShaderParameter("mask_texture", _maskTexture);
+        material.SetShaderParameter("source_size", new Vector2(
+            _workingFrames[0].GetWidth(),
+            _workingFrames[0].GetHeight()));
+        material.SetShaderParameter("output_size", new Vector2(
+            _frame.OutputSize.X,
+            _frame.OutputSize.Y));
+        material.SetShaderParameter("canvas_size", new Vector2(
+            _frame.OutputSize.X,
+            _frame.OutputSize.Y));
+        material.SetShaderParameter("frame_position", Vector2.Zero);
+        material.SetShaderParameter("display_scale", 1f);
+        material.SetShaderParameter("image_scale", _zoom);
+        material.SetShaderParameter("image_offset", _offset);
+        material.SetShaderParameter("image_rotation", _rotationRadians);
+    }
 
     public override void _Ready()
     {
@@ -590,6 +628,7 @@ public partial class NImageEditorCanvas : Control
         _previewMaterial.SetShaderParameter("image_offset", _offset);
         _previewMaterial.SetShaderParameter("image_rotation", _rotationRadians);
         RefreshBrushCursor();
+        PreviewChanged?.Invoke();
     }
 
     private void ApplyBrush(Vector2 fromLocal, Vector2 toLocal)
@@ -900,6 +939,7 @@ public partial class NImageEditorCanvas : Control
     {
         for (int i = 0; i < _workingFrames.Count; i++)
             _workingTextures[i].Update(_workingFrames[i]);
+        PreviewChanged?.Invoke();
     }
 
     private static void CreateFrameTextures(IReadOnlyList<Image> frames, List<ImageTexture> frameTextures)
@@ -930,11 +970,17 @@ public partial class NImageEditorCanvas : Control
     {
         if (_workingTextures.Count == 0)
             return;
-        int index = Mathf.Clamp(_currentFrameIndex, 0, _workingTextures.Count - 1);
+        _previewMaterial.SetShaderParameter("source_texture", GetDisplayedFrameTexture());
+        PreviewChanged?.Invoke();
+    }
+
+    private ImageTexture GetDisplayedFrameTexture()
+    {
         IReadOnlyList<ImageTexture> textures = _backgroundPreviewActive
             ? _backgroundPreviewTextures
             : _workingTextures;
-        _previewMaterial.SetShaderParameter("source_texture", textures[index]);
+        int index = Mathf.Clamp(_currentFrameIndex, 0, textures.Count - 1);
+        return textures[index];
     }
 
     private Vector2 LocalToSource(Vector2 localPosition)

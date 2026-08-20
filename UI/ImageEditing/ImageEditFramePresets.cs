@@ -31,7 +31,7 @@ public static class ImageEditFramePresets
     public static ImageEditFrameDefinition AncientCard => GetOrCreate("card_ancient", () =>
     {
         Texture2D? maskTexture = LoadTexture(AncientMaskPath);
-        Image? mask = maskTexture?.GetImage();
+        Image? mask = ExtractReadableImage(maskTexture);
         mask = NormalizeMask(mask, new Vector2I(606, 852));
         return new ImageEditFrameDefinition(
             "card_ancient",
@@ -76,7 +76,7 @@ public static class ImageEditFramePresets
         return GetOrCreate(id, () =>
         {
             Texture2D? border = LoadTexture(borderPath);
-            Image? mask = CreateInteriorMask(border?.GetImage(), new Vector2I(1000, 760));
+            Image? mask = CreateInteriorMask(ExtractReadableImage(border), new Vector2I(1000, 760));
             return new ImageEditFrameDefinition(
                 id,
                 new Vector2I(1000, 760),
@@ -102,6 +102,75 @@ public static class ImageEditFramePresets
         return ResourceLoader.Exists(path)
             ? ResourceLoader.Load<Texture2D>(path, null, ResourceLoader.CacheMode.Reuse)
             : null;
+    }
+
+    private static Image? ExtractReadableImage(Texture2D? texture)
+    {
+        if (texture is null)
+            return null;
+
+        try
+        {
+            if (texture is AtlasTexture atlasTexture && atlasTexture.Atlas is { } atlas)
+            {
+                Image? atlasImage = MakeReadable(atlas.GetImage());
+                if (atlasImage is null)
+                    return null;
+
+                Rect2 region = atlasTexture.Region;
+                Rect2I sourceRect = new(
+                    Mathf.RoundToInt(region.Position.X),
+                    Mathf.RoundToInt(region.Position.Y),
+                    Mathf.RoundToInt(region.Size.X),
+                    Mathf.RoundToInt(region.Size.Y));
+                Rect2I atlasBounds = new(Vector2I.Zero, atlasImage.GetSize());
+                sourceRect = sourceRect.Intersection(atlasBounds);
+                if (sourceRect.Size.X <= 0 || sourceRect.Size.Y <= 0)
+                    return null;
+
+                Image regionImage = atlasImage.GetRegion(sourceRect);
+                Rect2 margin = atlasTexture.Margin;
+                Vector2I destination = new(
+                    Mathf.RoundToInt(margin.Position.X),
+                    Mathf.RoundToInt(margin.Position.Y));
+                Vector2I outputSize = new(
+                    Mathf.Max(1, sourceRect.Size.X + Mathf.RoundToInt(margin.Size.X)),
+                    Mathf.Max(1, sourceRect.Size.Y + Mathf.RoundToInt(margin.Size.Y)));
+                if (destination == Vector2I.Zero && outputSize == sourceRect.Size)
+                    return regionImage;
+
+                Image output = Image.CreateEmpty(outputSize.X, outputSize.Y, false, Image.Format.Rgba8);
+                output.Fill(Colors.Transparent);
+                output.BlitRect(regionImage, new Rect2I(Vector2I.Zero, regionImage.GetSize()), destination);
+                return output;
+            }
+
+            return MakeReadable(texture.GetImage());
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Loadout: could not read native image-edit frame texture '{texture.ResourcePath}'. {exception.Message}");
+            return null;
+        }
+    }
+
+    private static Image? MakeReadable(Image? image)
+    {
+        if (image is null || image.IsEmpty())
+            return null;
+
+        if (image.IsCompressed())
+        {
+            Error error = image.Decompress();
+            if (error != Error.Ok)
+            {
+                GD.PushWarning($"Loadout: could not decompress a native image-edit frame texture ({error}).");
+                return null;
+            }
+        }
+
+        image.Convert(Image.Format.Rgba8);
+        return image;
     }
 
     private static Image? CreateInteriorMask(Image? borderImage, Vector2I outputSize)

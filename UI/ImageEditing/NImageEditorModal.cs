@@ -9,7 +9,9 @@ using Godot;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
@@ -28,6 +30,10 @@ public partial class NImageEditorModal : Control, IScreenContext
     private HSlider? _rotationSlider;
     private MegaLabel? _rotationLabel;
     private Control _saveButton = null!;
+    private NCard? _cardPreview;
+    private TextureRect? _cardPreviewPortrait;
+    private Material? _cardPreviewOriginalMaterial;
+    private ShaderMaterial? _cardPreviewMaterial;
     private bool _initialized;
     private bool _uiBuilt;
     private bool _completed;
@@ -71,6 +77,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     public override void _ExitTree()
     {
         Resized -= LayoutEditorPanel;
+        ReleaseCardPreview();
         if (!_completed)
         {
             _completed = true;
@@ -103,12 +110,12 @@ public partial class NImageEditorModal : Control, IScreenContext
         };
         StyleBoxFlat panelStyle = new()
         {
-            BgColor = new Color("171A22F5"),
-            BorderColor = new Color("B88B38"),
-            BorderWidthLeft = 3,
-            BorderWidthTop = 3,
-            BorderWidthRight = 3,
-            BorderWidthBottom = 3,
+            BgColor = UseLoadoutScreenChrome ? new Color("10141CC2") : new Color("171A22F5"),
+            BorderColor = UseLoadoutScreenChrome ? new Color("B88B3860") : new Color("B88B38"),
+            BorderWidthLeft = UseLoadoutScreenChrome ? 1 : 3,
+            BorderWidthTop = UseLoadoutScreenChrome ? 1 : 3,
+            BorderWidthRight = UseLoadoutScreenChrome ? 1 : 3,
+            BorderWidthBottom = UseLoadoutScreenChrome ? 1 : 3,
             CornerRadiusTopLeft = 8,
             CornerRadiusTopRight = 8,
             CornerRadiusBottomLeft = 8,
@@ -152,7 +159,10 @@ public partial class NImageEditorModal : Control, IScreenContext
         body.AddChild(_canvas);
         body.AddChild(CreateToolsPanel());
         if (UseLoadoutScreenChrome)
+        {
+            BuildCardPreview();
             BuildLoadoutScreenActions();
+        }
         else
             root.AddChild(CreateBottomButtons());
 
@@ -395,6 +405,70 @@ public partial class NImageEditorModal : Control, IScreenContext
         }
     }
 
+    private void BuildCardPreview()
+    {
+        if (_request.CardPreviewModel is not { } model)
+            return;
+
+        Control? mount = GetNodeOrNull<Control>("%CardPreviewMount");
+        if (mount is null)
+            throw new InvalidOperationException("The card portrait editor screen is missing its card preview mount.");
+
+        NCard? card = NCard.Create(model);
+        if (card is null)
+            return;
+
+        _cardPreview = card;
+        mount.AddChild(card);
+        card.SetAnchorsPreset(LayoutPreset.Center);
+        card.Position = Vector2.Zero;
+        card.Scale = Vector2.One * 1.25f;
+        card.MouseFilter = MouseFilterEnum.Ignore;
+        card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+
+        _cardPreviewPortrait = model.Rarity == CardRarity.Ancient
+            ? card.GetNodeOrNull<TextureRect>("%AncientPortrait")
+            : card.GetNodeOrNull<TextureRect>("%Portrait");
+        if (_cardPreviewPortrait is null)
+            return;
+
+        _cardPreviewOriginalMaterial = _cardPreviewPortrait.Material;
+        _cardPreviewMaterial = _canvas.CreateOutputPreviewMaterial();
+        _cardPreviewPortrait.Material = _cardPreviewMaterial;
+        _canvas.PreviewChanged += RefreshCardPreviewMaterial;
+        Callable.From(RefreshCardPreviewMaterial).CallDeferred();
+    }
+
+    private void RefreshCardPreviewMaterial()
+    {
+        if (_cardPreviewMaterial is null
+            || _cardPreviewPortrait is null
+            || !GodotObject.IsInstanceValid(_cardPreviewPortrait))
+        {
+            return;
+        }
+
+        _canvas.UpdateOutputPreviewMaterial(_cardPreviewMaterial);
+        _cardPreviewPortrait.Material = _cardPreviewMaterial;
+    }
+
+    private void ReleaseCardPreview()
+    {
+        if (_canvas is not null && GodotObject.IsInstanceValid(_canvas))
+            _canvas.PreviewChanged -= RefreshCardPreviewMaterial;
+
+        if (_cardPreviewPortrait is not null && GodotObject.IsInstanceValid(_cardPreviewPortrait))
+            _cardPreviewPortrait.Material = _cardPreviewOriginalMaterial;
+
+        if (_cardPreview is not null && GodotObject.IsInstanceValid(_cardPreview))
+            _cardPreview.QueueFreeSafely();
+
+        _cardPreview = null;
+        _cardPreviewPortrait = null;
+        _cardPreviewOriginalMaterial = null;
+        _cardPreviewMaterial = null;
+    }
+
     private void AddRotationControls(VBoxContainer tools)
     {
         string rotationText = EditorText("IMAGE_EDITOR_ROTATION", "Rotation");
@@ -572,6 +646,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         _completed = true;
         try
         {
+            ReleaseCardPreview();
             if (UseLoadoutScreenChrome)
             {
                 NLoadoutPanelRoot.Instance?.RemoveScreen(this);

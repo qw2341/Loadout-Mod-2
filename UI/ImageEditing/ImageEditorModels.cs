@@ -4,6 +4,7 @@ namespace Loadout.UI.ImageEditing;
 
 using System.Collections.Generic;
 using Godot;
+using MegaCrit.Sts2.Core.Models;
 
 public enum ImageEditStatus
 {
@@ -42,7 +43,8 @@ public sealed record ImageEditRequest(
     bool AllowAlphaEditing = true,
     bool AllowRotation = false,
     IReadOnlyList<ImageEditSaveOption>? SaveOptions = null,
-    bool UseLoadoutScreen = false);
+    bool UseLoadoutScreen = false,
+    CardModel? CardPreviewModel = null);
 
 public sealed record ImageEditResult(
     ImageEditStatus Status,

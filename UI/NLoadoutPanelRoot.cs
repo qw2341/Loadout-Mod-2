@@ -361,7 +361,7 @@ public partial class NLoadoutPanelRoot : Control
 		RemoveFromHistory(screen);
 		SetScreenActive(screen, false);
 
-		if (wasTop && TryPeekScreen(out var previousScreen))
+		if (wasTop && TryPeekHistoryScreen(out var previousScreen))
 			SetScreenActive(previousScreen, true);
 
 		UpdateModalInputState();
@@ -384,7 +384,7 @@ public partial class NLoadoutPanelRoot : Control
 		if (screen.GetParent() == _screenContainer)
 			_screenContainer.RemoveChild(screen);
 
-		if (wasTop && TryPeekScreen(out var previousScreen))
+		if (wasTop && TryPeekHistoryScreen(out var previousScreen))
 			SetScreenActive(previousScreen, true);
 
 		UpdateModalInputState();
@@ -683,6 +683,21 @@ public partial class NLoadoutPanelRoot : Control
 			}
 
 			return true;
+		}
+
+		screen = null;
+		return false;
+	}
+
+	private bool TryPeekHistoryScreen(out Control screen)
+	{
+		while (_screenHistory.Count > 0)
+		{
+			screen = _screenHistory.Peek();
+			if (IsInstanceValid(screen))
+				return true;
+
+			_screenHistory.Pop();
 		}
 
 		screen = null;
