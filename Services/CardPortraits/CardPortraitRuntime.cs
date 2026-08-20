@@ -15,7 +15,7 @@ using MegaCrit.Sts2.Core.Models;
 
 internal sealed record CardPortraitTextureSequence(
     string PortraitId,
-    string CardModelId,
+    ModelId CardModelId,
     string FrameId,
     long? RunStartTime,
     IReadOnlyList<Texture2D> Frames,
@@ -186,7 +186,7 @@ internal static class CardPortraitRuntime
         CardModel temporaryOwner = GetTemporaryOwner(card);
         CardPortraitFields.TryGet(temporaryOwner, out CardPortraitReference? previousTemporary);
         CardPortraitFields.Clear(temporaryOwner);
-        RemoveCachedSequences(card.Id.ToString());
+        RemoveCachedSequences(card.Id);
         if (previousTemporary is not null)
             RemoveCachedPortrait(previousTemporary.PortraitId);
         if (CardPortraitStore.TryGetPermanent(card.Id, out CardPortraitAsset asset))
@@ -222,7 +222,7 @@ internal static class CardPortraitRuntime
         bool permanentChanged = CardPortraitStore.ResetPermanent(card.Id);
         if (!permanentChanged)
         {
-            RemoveCachedSequences(card.Id.ToString());
+            RemoveCachedSequences(card.Id);
             CardPortraitDynamicPatches.RefreshPermanent(card.Id);
             CardModificationRuntime.NotifyPermanentCardVisualChanged(card.Id);
         }
@@ -341,7 +341,7 @@ internal static class CardPortraitRuntime
 
         return new CardPortraitTextureSequence(
             asset.Record.PortraitId,
-            asset.Record.CardModelId,
+            card.Id,
             frame.Id,
             asset.Record.RunStartTime,
             textures,
@@ -431,7 +431,7 @@ internal static class CardPortraitRuntime
 
     private static void OnPermanentChanged(ModelId cardId)
     {
-        RemoveCachedSequences(cardId.ToString());
+        RemoveCachedSequences(cardId);
         CardPortraitDynamicPatches.RefreshPermanent(cardId);
         CardModificationRuntime.NotifyPermanentCardVisualChanged(cardId);
         ReconcilePatches();
@@ -443,7 +443,7 @@ internal static class CardPortraitRuntime
             CardPortraitDynamicPatches.EnsureVisualInstalled();
         foreach (ModelId cardId in changedIds)
         {
-            RemoveCachedSequences(cardId.ToString());
+            RemoveCachedSequences(cardId);
             CardPortraitDynamicPatches.RefreshPermanent(cardId);
             CardModificationRuntime.NotifyPermanentCardVisualChanged(cardId);
         }
@@ -456,10 +456,9 @@ internal static class CardPortraitRuntime
             CardPortraitDynamicPatches.Clear();
     }
 
-    private static void RemoveCachedSequences(string cardModelId)
+    private static void RemoveCachedSequences(ModelId cardModelId)
     {
-        RemoveCachedSequences(sequence =>
-            string.Equals(sequence.CardModelId, cardModelId, StringComparison.Ordinal));
+        RemoveCachedSequences(sequence => sequence.CardModelId.Equals(cardModelId));
     }
 
     private static void RemoveCachedSequences(Func<CardPortraitTextureSequence, bool> predicate)

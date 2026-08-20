@@ -74,7 +74,6 @@ internal static class CardPortraitStore
 
     public static bool HasPermanent(ModelId cardId)
     {
-        EnsurePermanentLoaded();
         return PermanentAssets.ContainsKey(cardId);
     }
 
@@ -231,13 +230,20 @@ internal static class CardPortraitStore
 
     public static bool TryGetPermanent(ModelId cardId, out CardPortraitAsset asset)
     {
-        EnsurePermanentLoaded();
         return PermanentAssets.TryGetValue(cardId, out asset);
     }
 
     public static bool TryGetTemporary(CardPortraitReference reference, out CardPortraitAsset asset)
     {
+        if (TryGetTemporaryCached(reference, out asset))
+            return true;
+
         _ = GetTemporaryIndex(reference.RunStartTime);
+        return TryGetTemporaryCached(reference, out asset);
+    }
+
+    private static bool TryGetTemporaryCached(CardPortraitReference reference, out CardPortraitAsset asset)
+    {
         if (TemporaryAssetsByRun.TryGetValue(
                 reference.RunStartTime,
                 out Dictionary<string, CardPortraitAsset>? assets)

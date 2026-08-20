@@ -25,6 +25,7 @@ public partial class NImageEditorCanvas : Control
     private const long HistoryByteBudget = 96L * 1024L * 1024L;
     private const int MaxWorkingDimension = 1280;
     private const float CheckerSize = 18f;
+    private const float SnapDistance = 12f;
 
     private static readonly Color CheckerLight = new("4A4A4A");
     private static readonly Color CheckerDark = new("303030");
@@ -325,6 +326,7 @@ public partial class NImageEditorCanvas : Control
             if (displayScale > 0f)
             {
                 _offset += (mouseMotion.Position - _lastPointer) / displayScale;
+                SnapImageToFrame(displayScale);
                 UpdatePreviewParameters();
             }
         }
@@ -629,6 +631,43 @@ public partial class NImageEditorCanvas : Control
         _previewMaterial.SetShaderParameter("image_rotation", _rotationRadians);
         RefreshBrushCursor();
         PreviewChanged?.Invoke();
+    }
+
+    private void SnapImageToFrame(float displayScale)
+    {
+        Image first = _workingFrames[0];
+        float cosine = Mathf.Abs(Mathf.Cos(_rotationRadians));
+        float sine = Mathf.Abs(Mathf.Sin(_rotationRadians));
+        Vector2 halfSize = new(
+            (first.GetWidth() * cosine + first.GetHeight() * sine) * _zoom * 0.5f,
+            (first.GetWidth() * sine + first.GetHeight() * cosine) * _zoom * 0.5f);
+        Vector2 sourceCenter = new(first.GetWidth() * 0.5f, first.GetHeight() * 0.5f);
+        Vector2 center = _offset + sourceCenter * _zoom;
+        float threshold = SnapDistance / Mathf.Max(displayScale, 0.01f);
+
+        center.X = SnapAxis(center.X, halfSize.X, _frame.OutputSize.X, threshold);
+        center.Y = SnapAxis(center.Y, halfSize.Y, _frame.OutputSize.Y, threshold);
+        _offset = center - sourceCenter * _zoom;
+    }
+
+    private static float SnapAxis(float center, float halfExtent, float frameExtent, float threshold)
+    {
+        float bestAdjustment = 0f;
+        float bestDistance = threshold + 1f;
+        TrySnap(-center + halfExtent);
+        TrySnap(frameExtent - center - halfExtent);
+        TrySnap(frameExtent * 0.5f - center);
+        return center + bestAdjustment;
+
+        void TrySnap(float adjustment)
+        {
+            float distance = Mathf.Abs(adjustment);
+            if (distance <= threshold && distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestAdjustment = adjustment;
+            }
+        }
     }
 
     private void ApplyBrush(Vector2 fromLocal, Vector2 toLocal)

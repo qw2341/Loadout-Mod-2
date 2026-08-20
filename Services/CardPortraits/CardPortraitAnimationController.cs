@@ -18,6 +18,7 @@ internal partial class CardPortraitAnimationController : Node
     private Timer? _timer;
     private CardPortraitTextureSequence? _sequence;
     private int _frameIndex;
+    private bool _visibilityConnected;
 
     public override void _EnterTree()
     {
@@ -47,6 +48,7 @@ internal partial class CardPortraitAnimationController : Node
         _card = card;
         _portrait = card.GetNodeOrNull<TextureRect>("%Portrait");
         _ancientPortrait = card.GetNodeOrNull<TextureRect>("%AncientPortrait");
+        ConnectVisibility(card);
         Stop();
         if (sequence is not { Frames.Count: > 0 })
             return;
@@ -66,13 +68,37 @@ internal partial class CardPortraitAnimationController : Node
 
     public bool IsBoundTo(CardModel model) =>
         _sequence is not null
-        && string.Equals(_sequence.CardModelId, model.Id.ToString(), StringComparison.Ordinal);
+        && _sequence.CardModelId.Equals(model.Id);
 
     public void Stop()
     {
         _timer?.Stop();
         _sequence = null;
         _frameIndex = 0;
+    }
+
+    public void Release()
+    {
+        Stop();
+        if (_visibilityConnected && _card is not null && GodotObject.IsInstanceValid(_card))
+            _card.VisibilityChanged -= OnCardVisibilityChanged;
+        _visibilityConnected = false;
+    }
+
+    private void ConnectVisibility(NCard card)
+    {
+        if (_visibilityConnected)
+            return;
+        card.VisibilityChanged += OnCardVisibilityChanged;
+        _visibilityConnected = true;
+    }
+
+    private void OnCardVisibilityChanged()
+    {
+        if (_card?.IsVisibleInTree() == true && _sequence is { Frames.Count: > 1 })
+            RestartTimer();
+        else
+            _timer?.Stop();
     }
 
     private void AdvanceFrame()
@@ -93,10 +119,10 @@ internal partial class CardPortraitAnimationController : Node
         Texture2D texture = _sequence.Frames[_frameIndex];
         if (model.Rarity == CardRarity.Ancient)
         {
-            if (_ancientPortrait is not null)
+            if (_ancientPortrait is not null && !ReferenceEquals(_ancientPortrait.Texture, texture))
                 _ancientPortrait.Texture = texture;
         }
-        else if (_portrait is not null)
+        else if (_portrait is not null && !ReferenceEquals(_portrait.Texture, texture))
         {
             _portrait.Texture = texture;
         }

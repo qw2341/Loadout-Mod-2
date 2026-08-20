@@ -3,6 +3,7 @@
 namespace Loadout.Services.CardPortraits;
 
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Godot;
@@ -11,6 +12,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class CardPortraitDynamicPatches
@@ -38,12 +40,14 @@ internal static class CardPortraitDynamicPatches
         if (_visualInstalled)
             return;
 
-        VisualHarmony.Patch(
-            AccessTools.PropertyGetter(typeof(CardModel), nameof(CardModel.Portrait))
-            ?? throw new MissingMethodException(typeof(CardModel).FullName, $"get_{nameof(CardModel.Portrait)}"),
-            postfix: LastPostfix(nameof(PortraitPostfix)));
-        VisualHarmony.Patch(ReloadMethod, postfix: LastPostfix(nameof(ReloadPostfix)));
-        VisualHarmony.Patch(UpdateVisualsMethod, postfix: LastPostfix(nameof(UpdateVisualsPostfix)));
+        MethodInfo portraitGetter = AccessTools.PropertyGetter(typeof(CardModel), nameof(CardModel.Portrait))
+            ?? throw new MissingMethodException(typeof(CardModel).FullName, $"get_{nameof(CardModel.Portrait)}");
+        MethodInfo beginDragMethod = AccessTools.Method(typeof(NHandCardHolder), nameof(NHandCardHolder.BeginDrag))
+            ?? throw new MissingMethodException(typeof(NHandCardHolder).FullName, nameof(NHandCardHolder.BeginDrag));
+        VisualHarmony.Patch(portraitGetter, postfix: LastPostfix(portraitGetter, nameof(PortraitPostfix)));
+        VisualHarmony.Patch(ReloadMethod, postfix: LastPostfix(ReloadMethod, nameof(ReloadPostfix)));
+        VisualHarmony.Patch(UpdateVisualsMethod, postfix: LastPostfix(UpdateVisualsMethod, nameof(UpdateVisualsPostfix)));
+        VisualHarmony.Patch(beginDragMethod, postfix: LastPostfix(beginDragMethod, nameof(BeginDragPostfix)));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnReturnedFromPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnFreedToPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(AbstractModel), nameof(AbstractModel.MutableClone), nameof(ClonePostfix));
@@ -112,16 +116,20 @@ internal static class CardPortraitDynamicPatches
         RefreshLoadedCards(model => model.Id.Equals(cardId));
     }
 
-    private static HarmonyMethod LastPostfix(string methodName) =>
+    private static HarmonyMethod LastPostfix(MethodBase target, string methodName) =>
         new(typeof(CardPortraitDynamicPatches), methodName)
         {
-            priority = Priority.Last
+            priority = Priority.Last,
+            after = Harmony.GetPatchInfo(target)?.Owners
+                .Where(owner => !string.Equals(owner, VisualHarmonyId, StringComparison.Ordinal)
+                                && !string.Equals(owner, TemporaryHarmonyId, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray() ?? []
         };
 
     private static void PortraitPostfix(CardModel __instance, ref Texture2D __result)
     {
-        if (CardPortraitRuntime.HasOverride(__instance)
-            && CardPortraitRuntime.TryResolve(__instance, out CardPortraitTextureSequence sequence)
+        if (CardPortraitRuntime.TryResolve(__instance, out CardPortraitTextureSequence sequence)
             && sequence.Frames.Count > 0)
         {
             __result = sequence.Frames[0];
@@ -136,8 +144,7 @@ internal static class CardPortraitDynamicPatches
             return;
         }
 
-        if (!CardPortraitRuntime.HasOverride(model)
-            || !CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
+        if (!CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
             || sequence.Frames.Count == 0)
         {
             ReleaseController(__instance);
@@ -156,7 +163,6 @@ internal static class CardPortraitDynamicPatches
         if (Controllers.TryGetValue(__instance, out CardPortraitAnimationController? controller))
         {
             if (__instance.Model is CardModel currentModel
-                && CardPortraitRuntime.HasOverride(currentModel)
                 && controller.IsBoundTo(currentModel))
             {
                 controller.Reapply();
@@ -167,7 +173,6 @@ internal static class CardPortraitDynamicPatches
         }
 
         if (__instance.Model is not CardModel model
-            || !CardPortraitRuntime.HasOverride(model)
             || !CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
             || sequence.Frames.Count == 0)
         {
@@ -182,6 +187,12 @@ internal static class CardPortraitDynamicPatches
     private static void PoolPostfix(NCard __instance)
     {
         ReleaseController(__instance);
+    }
+
+    private static void BeginDragPostfix(NHandCardHolder __instance)
+    {
+        if (__instance.CardNode is { } card)
+            ReapplyOverride(card);
     }
 
     private static void ClonePostfix(AbstractModel __instance, AbstractModel __result)
@@ -250,7 +261,7 @@ internal static class CardPortraitDynamicPatches
             return;
 
         Controllers.Remove(card);
-        controller.Stop();
+        controller.Release();
         if (controller.GetParent() == card)
             card.RemoveChild(controller);
         controller.QueueFree();
@@ -261,8 +272,24 @@ internal static class CardPortraitDynamicPatches
         TextureRect? portrait = card.Model?.Rarity == CardRarity.Ancient
             ? card.GetNodeOrNull<TextureRect>("%AncientPortrait")
             : card.GetNodeOrNull<TextureRect>("%Portrait");
-        if (portrait is not null)
+        if (portrait is not null && !ReferenceEquals(portrait.Texture, texture))
             portrait.Texture = texture;
+    }
+
+    private static void ReapplyOverride(NCard card)
+    {
+        if (Controllers.TryGetValue(card, out CardPortraitAnimationController? controller))
+        {
+            controller.Reapply();
+            return;
+        }
+
+        if (card.Model is CardModel model
+            && CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
+            && sequence.Frames.Count > 0)
+        {
+            ApplyPortrait(card, sequence.Frames[0]);
+        }
     }
 
     private static void ApplyOverridesToLoadedCards()
