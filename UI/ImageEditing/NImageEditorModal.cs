@@ -110,12 +110,12 @@ public partial class NImageEditorModal : Control, IScreenContext
         };
         StyleBoxFlat panelStyle = new()
         {
-            BgColor = UseLoadoutScreenChrome ? new Color("10141CC2") : new Color("171A22F5"),
-            BorderColor = UseLoadoutScreenChrome ? new Color("B88B3860") : new Color("B88B38"),
-            BorderWidthLeft = UseLoadoutScreenChrome ? 1 : 3,
-            BorderWidthTop = UseLoadoutScreenChrome ? 1 : 3,
-            BorderWidthRight = UseLoadoutScreenChrome ? 1 : 3,
-            BorderWidthBottom = UseLoadoutScreenChrome ? 1 : 3,
+            BgColor = UseLoadoutScreenChrome ? Colors.Transparent : new Color("171A22F5"),
+            BorderColor = UseLoadoutScreenChrome ? Colors.Transparent : new Color("B88B38"),
+            BorderWidthLeft = UseLoadoutScreenChrome ? 0 : 3,
+            BorderWidthTop = UseLoadoutScreenChrome ? 0 : 3,
+            BorderWidthRight = UseLoadoutScreenChrome ? 0 : 3,
+            BorderWidthBottom = UseLoadoutScreenChrome ? 0 : 3,
             CornerRadiusTopLeft = 8,
             CornerRadiusTopRight = 8,
             CornerRadiusBottomLeft = 8,
@@ -157,14 +157,21 @@ public partial class NImageEditorModal : Control, IScreenContext
         _canvas.RelativeZoomChanged += OnCanvasZoomChanged;
         _canvas.RotationDegreesChanged += OnCanvasRotationChanged;
         body.AddChild(_canvas);
-        body.AddChild(CreateToolsPanel());
         if (UseLoadoutScreenChrome)
         {
+            Control toolsMount = GetNodeOrNull<Control>("%ToolsMount")
+                ?? throw new InvalidOperationException("The card portrait editor screen is missing its tools mount.");
+            Control tools = CreateToolsPanel();
+            tools.SetAnchorsPreset(LayoutPreset.FullRect);
+            toolsMount.AddChild(tools);
             BuildCardPreview();
             BuildLoadoutScreenActions();
         }
         else
+        {
+            body.AddChild(CreateToolsPanel());
             root.AddChild(CreateBottomButtons());
+        }
 
         LayoutEditorPanel();
         Callable.From(() => _saveButton.GrabFocus()).CallDeferred();
@@ -374,9 +381,9 @@ public partial class NImageEditorModal : Control, IScreenContext
             NConfirmButton button = NLoadoutConfirmButtonFactory.Create();
             button.Name = $"SaveButton{index}";
             button.OverrideHotkeys([]);
-            float shiftLeft = (saveOptions.Count - 1 - index) * 330f;
-            button.OffsetLeft += shiftLeft;
-            button.OffsetRight += shiftLeft;
+            float shiftUp = (saveOptions.Count - 1 - index) * 180f;
+            button.OffsetTop -= shiftUp;
+            button.OffsetBottom -= shiftUp;
             button.Connect(
                 NClickableControl.SignalName.Released,
                 Callable.From<NClickableControl>(_ => Save(option.Id)));

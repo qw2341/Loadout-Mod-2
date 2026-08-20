@@ -21,8 +21,9 @@ internal partial class CardPortraitAnimationController : Node
 
     public override void _EnterTree()
     {
-        CardPortraitRuntime.TemporaryChanged += OnTemporaryChanged;
-        CardPortraitRuntime.PermanentChanged += OnPermanentChanged;
+        _card = GetParentOrNull<NCard>();
+        if (_sequence is { Frames.Count: > 1 })
+            Callable.From(RestartTimer).CallDeferred();
     }
 
     public override void _Ready()
@@ -31,25 +32,19 @@ internal partial class CardPortraitAnimationController : Node
         _portrait = _card?.GetNodeOrNull<TextureRect>("%Portrait");
         _ancientPortrait = _card?.GetNodeOrNull<TextureRect>("%AncientPortrait");
         EnsureTimer();
-        if (_card is not null)
-            _card.VisibilityChanged += OnVisibilityChanged;
     }
 
     public override void _ExitTree()
     {
-        CardPortraitRuntime.TemporaryChanged -= OnTemporaryChanged;
-        CardPortraitRuntime.PermanentChanged -= OnPermanentChanged;
-        if (_card is not null)
-            _card.VisibilityChanged -= OnVisibilityChanged;
-        Stop();
+        _timer?.Stop();
         base._ExitTree();
     }
 
     public void Bind(NCard card, CardPortraitTextureSequence? sequence)
     {
-        _card ??= card;
-        _portrait ??= card.GetNodeOrNull<TextureRect>("%Portrait");
-        _ancientPortrait ??= card.GetNodeOrNull<TextureRect>("%AncientPortrait");
+        _card = card;
+        _portrait = card.GetNodeOrNull<TextureRect>("%Portrait");
+        _ancientPortrait = card.GetNodeOrNull<TextureRect>("%AncientPortrait");
         Stop();
         if (sequence is not { Frames.Count: > 1 })
             return;
@@ -121,26 +116,6 @@ internal partial class CardPortraitAnimationController : Node
         _timer.Timeout += AdvanceFrame;
         AddChild(_timer);
         return _timer;
-    }
-
-    private void OnVisibilityChanged()
-    {
-        if (_card?.IsVisibleInTree() == true)
-            RestartTimer();
-        else
-            _timer?.Stop();
-    }
-
-    private void OnTemporaryChanged(CardModel card)
-    {
-        if (_card?.Model is CardModel model && ReferenceEquals(model, card))
-            CardPortraitDynamicPatches.ReloadCard(_card);
-    }
-
-    private void OnPermanentChanged(ModelId cardId)
-    {
-        if (_card?.Model is CardModel model && model.Id.Equals(cardId))
-            CardPortraitDynamicPatches.ReloadCard(_card);
     }
 
 }

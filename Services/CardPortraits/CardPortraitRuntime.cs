@@ -62,9 +62,6 @@ internal static class CardPortraitRuntime
     private static readonly HashSet<string> WarnedAssets = new(StringComparer.OrdinalIgnoreCase);
     private static bool _registered;
 
-    public static event Action<CardModel>? TemporaryChanged;
-    public static event Action<ModelId>? PermanentChanged;
-
     public static void Register()
     {
         if (_registered)
@@ -95,7 +92,14 @@ internal static class CardPortraitRuntime
     public static bool TryResolve(CardModel card, out CardPortraitTextureSequence sequence)
     {
         Register();
-        if (CardPortraitFields.TryGet(card, out CardPortraitReference? reference)
+        CardPortraitReference? reference = null;
+        if (!CardPortraitFields.TryGet(card, out reference)
+            && card.DeckVersion is CardModel deckCard)
+        {
+            CardPortraitFields.TryGet(deckCard, out reference);
+        }
+
+        if (reference is not null
             && CardPortraitStore.TryGetTemporary(reference, out CardPortraitAsset temporary)
             && TryLoadSequence(temporary, card, out sequence))
         {
@@ -133,7 +137,7 @@ internal static class CardPortraitRuntime
 
         CardPortraitFields.Set(card, reference);
         CardPortraitDynamicPatches.EnsureInstalled();
-        TemporaryChanged?.Invoke(card);
+        CardPortraitDynamicPatches.RefreshTemporary(card);
         return true;
     }
 
@@ -151,7 +155,7 @@ internal static class CardPortraitRuntime
         bool temporaryChanged = CardPortraitFields.Clear(card);
         CardPortraitDynamicPatches.EnsureInstalled();
         if (temporaryChanged)
-            TemporaryChanged?.Invoke(card);
+            CardPortraitDynamicPatches.RefreshTemporary(card);
         return true;
     }
 
@@ -161,7 +165,7 @@ internal static class CardPortraitRuntime
         if (!CardPortraitFields.Clear(card))
             return false;
 
-        TemporaryChanged?.Invoke(card);
+        CardPortraitDynamicPatches.RefreshTemporary(card);
         return true;
     }
 
@@ -171,7 +175,7 @@ internal static class CardPortraitRuntime
         bool temporaryChanged = CardPortraitFields.Clear(card);
         bool permanentChanged = CardPortraitStore.ResetPermanent(card.Id);
         if (temporaryChanged)
-            TemporaryChanged?.Invoke(card);
+            CardPortraitDynamicPatches.RefreshTemporary(card);
         return temporaryChanged || permanentChanged;
     }
 
@@ -202,9 +206,6 @@ internal static class CardPortraitRuntime
 
         try
         {
-            if (frame.AlphaMask is null || frame.AlphaMask.IsEmpty())
-                throw new InvalidDataException($"The native mask '{frame.Id}' is unavailable.");
-
             ImageMediaMetadata metadata = ImageMediaLoader.ReadMetadata(asset.GlobalPath);
             long decodedPixels = (long)metadata.Width * metadata.Height * metadata.FrameCount;
             if (metadata.Width != asset.Record.Width
@@ -232,8 +233,8 @@ internal static class CardPortraitRuntime
             List<double> durations = new(source.Frames.Count);
             foreach (ImageMediaFrame mediaFrame in source.Frames)
             {
-                Image masked = PrepareMaskedFrame(mediaFrame.Image, frame);
-                textures.Add(ImageTexture.CreateFromImage(masked));
+                Image fitted = CenterCover(mediaFrame.Image, frame.OutputSize);
+                textures.Add(ImageTexture.CreateFromImage(fitted));
                 durations.Add(Math.Clamp(mediaFrame.DurationSeconds, 0.02, 10.0));
             }
 
@@ -253,30 +254,6 @@ internal static class CardPortraitRuntime
             sequence = null!;
             return false;
         }
-    }
-
-    private static Image PrepareMaskedFrame(Image source, ImageEditFrameDefinition frame)
-    {
-        Image fitted = CenterCover(source, frame.OutputSize);
-        Image mask = frame.AlphaMask!.Duplicate() as Image
-            ?? throw new InvalidOperationException("Could not duplicate the portrait mask.");
-        if (mask.GetWidth() != frame.OutputSize.X || mask.GetHeight() != frame.OutputSize.Y)
-        {
-            mask.Resize(frame.OutputSize.X, frame.OutputSize.Y, Image.Interpolation.Lanczos);
-        }
-
-        fitted.Convert(Image.Format.Rgba8);
-        mask.Convert(Image.Format.Rgba8);
-        byte[] pixels = fitted.GetData();
-        byte[] maskPixels = mask.GetData();
-        for (int index = 3; index < pixels.Length; index += 4)
-            pixels[index] = (byte)((pixels[index] * maskPixels[index] + 127) / 255);
-        return Image.CreateFromData(
-            fitted.GetWidth(),
-            fitted.GetHeight(),
-            false,
-            Image.Format.Rgba8,
-            pixels);
     }
 
     private static Image CenterCover(Image source, Vector2I outputSize)
@@ -309,7 +286,7 @@ internal static class CardPortraitRuntime
     {
         RemoveCachedSequences(cardId.ToString());
         CardPortraitDynamicPatches.EnsureInstalled();
-        PermanentChanged?.Invoke(cardId);
+        CardPortraitDynamicPatches.RefreshPermanent(cardId);
     }
 
     private static void OnPermanentReloaded(IReadOnlyList<ModelId> changedIds)
@@ -319,7 +296,7 @@ internal static class CardPortraitRuntime
         if (CardPortraitStore.HasAnyPermanent)
             CardPortraitDynamicPatches.EnsureInstalled();
         foreach (ModelId cardId in changedIds)
-            PermanentChanged?.Invoke(cardId);
+            CardPortraitDynamicPatches.RefreshPermanent(cardId);
     }
 
     private static void RemoveCachedSequences(string cardModelId)

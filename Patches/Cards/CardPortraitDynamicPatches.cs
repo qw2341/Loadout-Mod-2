@@ -88,6 +88,18 @@ internal static class CardPortraitDynamicPatches
         ReloadMethod.Invoke(card, null);
     }
 
+    public static void RefreshTemporary(CardModel card)
+    {
+        RefreshLoadedCards(model =>
+            ReferenceEquals(model, card)
+            || ReferenceEquals(model.DeckVersion, card));
+    }
+
+    public static void RefreshPermanent(ModelId cardId)
+    {
+        RefreshLoadedCards(model => model.Id.Equals(cardId));
+    }
+
     private static void PortraitPostfix(CardModel __instance, ref Texture2D __result)
     {
         if (CardPortraitRuntime.TryResolve(__instance, out CardPortraitTextureSequence sequence)
@@ -102,10 +114,17 @@ internal static class CardPortraitDynamicPatches
         if (__instance.Model is not CardModel model)
             return;
 
-        CardPortraitAnimationController controller = GetOrCreateController(__instance);
-
-        CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence);
-        controller.Bind(__instance, sequence);
+        CardPortraitAnimationController? controller =
+            __instance.GetNodeOrNull<CardPortraitAnimationController>(CardPortraitAnimationController.NodeName);
+        if (CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
+            && sequence.Frames.Count > 1)
+        {
+            (controller ?? GetOrCreateController(__instance)).Bind(__instance, sequence);
+        }
+        else if (controller is not null)
+        {
+            ReleaseController(__instance, controller);
+        }
     }
 
     private static void PoolPostfix(NCard __instance)
@@ -115,9 +134,7 @@ internal static class CardPortraitDynamicPatches
         if (controller is null)
             return;
 
-        controller.Stop();
-        __instance.RemoveChild(controller);
-        controller.QueueFree();
+        ReleaseController(__instance, controller);
     }
 
     private static void ClonePostfix(AbstractModel __instance, AbstractModel __result)
@@ -173,6 +190,14 @@ internal static class CardPortraitDynamicPatches
         return controller;
     }
 
+    private static void ReleaseController(NCard card, CardPortraitAnimationController controller)
+    {
+        controller.Stop();
+        if (controller.GetParent() == card)
+            card.RemoveChild(controller);
+        controller.QueueFree();
+    }
+
     private static void AttachControllersToLoadedCards()
     {
         if (Engine.GetMainLoop() is not SceneTree tree || tree.Root is null)
@@ -183,10 +208,12 @@ internal static class CardPortraitDynamicPatches
 
         static void Visit(Node node)
         {
-            if (node is NCard { Model: CardModel } card)
+            if (node is NCard { Model: CardModel model } card
+                && CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
+                && sequence.Frames.Count > 1)
             {
                 CardPortraitAnimationController controller = GetOrCreateController(card);
-                controller.Bind(card, null);
+                controller.Bind(card, sequence);
             }
 
             foreach (Node child in node.GetChildren())
@@ -215,9 +242,25 @@ internal static class CardPortraitDynamicPatches
             if (controller is null)
                 return;
 
-            controller.Stop();
-            card.RemoveChild(controller);
-            controller.QueueFree();
+            ReleaseController(card, controller);
+        }
+    }
+
+    private static void RefreshLoadedCards(Func<CardModel, bool> predicate)
+    {
+        if (!_installed || Engine.GetMainLoop() is not SceneTree tree || tree.Root is null)
+            return;
+
+        Visit(tree.Root);
+        return;
+
+        void Visit(Node node)
+        {
+            foreach (Node child in node.GetChildren())
+                Visit(child);
+
+            if (node is NCard { Model: CardModel model } card && predicate(model))
+                ReloadCard(card);
         }
     }
 }
