@@ -731,7 +731,6 @@ public partial class NCardModificationScreen : Control
             frameCard.Rarity == CardRarity.Ancient);
         CardPortraitSaveTarget permanentTarget = CardPortraitStore.CreatePermanentSaveTarget(frameCard.Id);
         CardPortraitSaveTarget? temporaryTarget = CardPortraitStore.CreateTemporarySaveTarget(
-            frameCard.Id,
             SaveUtility.GetCurrentRunStartTime());
 
         List<ImageEditSaveOption> saveOptions = [];
@@ -757,7 +756,8 @@ public partial class NCardModificationScreen : Control
             LocMan.Loc("CARD_PORTRAIT_EDITOR_TITLE", "Change Card Portrait"),
             AllowAlphaEditing: false,
             AllowRotation: true,
-            SaveOptions: saveOptions);
+            SaveOptions: saveOptions,
+            UseLoadoutScreen: true);
         ImageEditResult result = await ImageEditorService.PickAndEditAsync(request);
         if (result.Status == ImageEditStatus.Cancelled)
             return;

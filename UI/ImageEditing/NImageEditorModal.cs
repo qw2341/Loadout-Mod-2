@@ -27,9 +27,13 @@ public partial class NImageEditorModal : Control, IScreenContext
     private HSlider _zoomSlider = null!;
     private HSlider? _rotationSlider;
     private MegaLabel? _rotationLabel;
-    private NLoadoutActionButton _saveButton = null!;
+    private Control _saveButton = null!;
     private bool _initialized;
+    private bool _uiBuilt;
     private bool _completed;
+
+    [Export]
+    public bool UseLoadoutScreenChrome { get; set; }
 
     public Control? DefaultFocusedControl => _saveButton;
 
@@ -86,8 +90,9 @@ public partial class NImageEditorModal : Control, IScreenContext
 
     private void BuildUi()
     {
-        if (GetChildCount() > 0)
+        if (_uiBuilt)
             return;
+        _uiBuilt = true;
 
         _editorPanel = new PanelContainer
         {
@@ -110,8 +115,12 @@ public partial class NImageEditorModal : Control, IScreenContext
             CornerRadiusBottomRight = 8
         };
         _editorPanel.AddThemeStyleboxOverride("panel", panelStyle);
-        _editorPanel.SetAnchorsPreset(LayoutPreset.Center);
-        AddChild(_editorPanel);
+        Control editorMount = UseLoadoutScreenChrome
+            ? GetNodeOrNull<Control>("%EditorMount") ?? this
+            : this;
+        _editorPanel.SetAnchorsPreset(
+            UseLoadoutScreenChrome ? LayoutPreset.FullRect : LayoutPreset.Center);
+        editorMount.AddChild(_editorPanel);
 
         MarginContainer contentMargin = new();
         contentMargin.AddThemeConstantOverride("margin_left", 24);
@@ -142,7 +151,10 @@ public partial class NImageEditorModal : Control, IScreenContext
         _canvas.RotationDegreesChanged += OnCanvasRotationChanged;
         body.AddChild(_canvas);
         body.AddChild(CreateToolsPanel());
-        root.AddChild(CreateBottomButtons());
+        if (UseLoadoutScreenChrome)
+            BuildLoadoutScreenActions();
+        else
+            root.AddChild(CreateBottomButtons());
 
         LayoutEditorPanel();
         Callable.From(() => _saveButton.GrabFocus()).CallDeferred();
@@ -152,6 +164,16 @@ public partial class NImageEditorModal : Control, IScreenContext
     {
         if (_editorPanel is null || !GodotObject.IsInstanceValid(_editorPanel))
             return;
+
+        if (UseLoadoutScreenChrome)
+        {
+            _editorPanel.SetAnchorsPreset(LayoutPreset.FullRect);
+            _editorPanel.OffsetLeft = 0f;
+            _editorPanel.OffsetTop = 0f;
+            _editorPanel.OffsetRight = 0f;
+            _editorPanel.OffsetBottom = 0f;
+            return;
+        }
 
         Vector2 availableSize = new(
             Mathf.Max(1f, Size.X - 108f),
@@ -238,7 +260,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         }
 
         tools.AddChild(CreateSliderLabel(EditorText("IMAGE_EDITOR_ZOOM", "Zoom")));
-        _zoomSlider = CreateSlider(0.1, 12.0, 0.05, 1.0);
+        _zoomSlider = CreateSlider(0.1, 12.0, 0.01, 1.0);
         _zoomSlider.DragStarted += _canvas.BeginTransformEdit;
         _zoomSlider.ValueChanged += value => _canvas.SetRelativeZoom((float)value);
         tools.AddChild(_zoomSlider);
@@ -317,6 +339,60 @@ public partial class NImageEditorModal : Control, IScreenContext
             _saveButton ??= save;
         }
         return row;
+    }
+
+    private void BuildLoadoutScreenActions()
+    {
+        Control? backMount = GetNodeOrNull<Control>("%BackButtonMount");
+        Control? saveMount = GetNodeOrNull<Control>("%SaveButtonMount");
+        if (backMount is null || saveMount is null)
+            throw new InvalidOperationException("The card portrait editor screen is missing its navigation mounts.");
+
+        NBackButton back = NLoadoutBackButtonFactory.Create();
+        back.Name = "BackButton";
+        back.Connect(
+            NClickableControl.SignalName.Released,
+            Callable.From<NClickableControl>(_ => Cancel()));
+        backMount.AddChild(back);
+        Callable.From(back.Enable).CallDeferred();
+
+        IReadOnlyList<ImageEditSaveOption> saveOptions = ImageEditorService.GetSaveOptions(_request);
+        List<NConfirmButton> buttons = [];
+        for (int index = 0; index < saveOptions.Count; index++)
+        {
+            ImageEditSaveOption option = saveOptions[index];
+            NConfirmButton button = NLoadoutConfirmButtonFactory.Create();
+            button.Name = $"SaveButton{index}";
+            button.OverrideHotkeys([]);
+            float shiftLeft = (saveOptions.Count - 1 - index) * 330f;
+            button.OffsetLeft += shiftLeft;
+            button.OffsetRight += shiftLeft;
+            button.Connect(
+                NClickableControl.SignalName.Released,
+                Callable.From<NClickableControl>(_ => Save(option.Id)));
+
+            MegaLabel label = CreateLabel(option.Label, 22, StsColors.cream, HorizontalAlignment.Center);
+            label.Name = "ActionLabel";
+            label.Position = new Vector2(-60f, -42f);
+            label.Size = new Vector2(320f, 42f);
+            button.AddChild(label);
+
+            saveMount.AddChild(button);
+            buttons.Add(button);
+            Callable.From(button.Enable).CallDeferred();
+            _saveButton ??= button;
+        }
+
+        if (buttons.Count == 0)
+            throw new InvalidOperationException("The card portrait editor screen requires a save action.");
+
+        back.FocusNeighborRight = back.GetPathTo(buttons[0]);
+        buttons[0].FocusNeighborLeft = buttons[0].GetPathTo(back);
+        for (int index = 1; index < buttons.Count; index++)
+        {
+            buttons[index - 1].FocusNeighborRight = buttons[index - 1].GetPathTo(buttons[index]);
+            buttons[index].FocusNeighborLeft = buttons[index].GetPathTo(buttons[index - 1]);
+        }
     }
 
     private void AddRotationControls(VBoxContainer tools)
@@ -496,8 +572,12 @@ public partial class NImageEditorModal : Control, IScreenContext
         _completed = true;
         try
         {
-            NModalContainer? modalContainer = NModalContainer.Instance;
-            if (modalContainer is not null
+            if (UseLoadoutScreenChrome)
+            {
+                NLoadoutPanelRoot.Instance?.RemoveScreen(this);
+                QueueFree();
+            }
+            else if (NModalContainer.Instance is { } modalContainer
                 && GodotObject.IsInstanceValid(modalContainer)
                 && ReferenceEquals(modalContainer.OpenModal, this))
             {

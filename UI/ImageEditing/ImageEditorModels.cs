@@ -41,7 +41,8 @@ public sealed record ImageEditRequest(
     string? InitialOpenDirectory = null,
     bool AllowAlphaEditing = true,
     bool AllowRotation = false,
-    IReadOnlyList<ImageEditSaveOption>? SaveOptions = null);
+    IReadOnlyList<ImageEditSaveOption>? SaveOptions = null,
+    bool UseLoadoutScreen = false);
 
 public sealed record ImageEditResult(
     ImageEditStatus Status,

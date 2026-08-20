@@ -238,7 +238,7 @@ public partial class NImageEditorCanvas : Control
             if (mouseButton.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown && mouseButton.Pressed)
             {
                 BeginTransformEdit();
-                float factor = mouseButton.ButtonIndex == MouseButton.WheelUp ? 1.12f : 1f / 1.12f;
+                float factor = mouseButton.ButtonIndex == MouseButton.WheelUp ? 1.04f : 1f / 1.04f;
                 ZoomAt(mouseButton.Position, RelativeZoom * factor);
                 AcceptEvent();
                 return;

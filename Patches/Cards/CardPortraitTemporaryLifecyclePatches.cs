@@ -25,28 +25,32 @@ internal static class CardPortraitTemporaryRunLifecycle
 
     public static CardPortraitRunDeletion PrepareDeletion(bool multiplayer)
     {
-        if (!SaveManager.Instance.IsProfileInitialized)
-            return default;
-
-        int profileId = SaveManager.Instance.CurrentProfileId;
-        Dictionary<int, long> source = multiplayer ? MultiplayerRunByProfile : SingleplayerRunByProfile;
         long? runStartTime = SaveUtility.GetCurrentRunStartTime();
-        if (!runStartTime.HasValue && source.TryGetValue(profileId, out long rememberedStartTime))
-            runStartTime = rememberedStartTime;
+        int? profileId = null;
+        if (SaveManager.Instance.IsProfileInitialized)
+        {
+            profileId = SaveManager.Instance.CurrentProfileId;
+            Dictionary<int, long> source = multiplayer ? MultiplayerRunByProfile : SingleplayerRunByProfile;
+            if (!runStartTime.HasValue && source.TryGetValue(profileId.Value, out long rememberedStartTime))
+                runStartTime = rememberedStartTime;
+        }
         return new CardPortraitRunDeletion(profileId, runStartTime);
     }
 
     public static void Deleted(bool multiplayer, CardPortraitRunDeletion deletion)
     {
         if (deletion.RunStartTime.HasValue)
-            CardPortraitRuntime.DeleteTemporaryRun(deletion.RunStartTime.Value, deletion.ProfileId);
+            CardPortraitRuntime.DeleteTemporaryRun(deletion.RunStartTime.Value);
 
-        Dictionary<int, long> source = multiplayer ? MultiplayerRunByProfile : SingleplayerRunByProfile;
-        source.Remove(deletion.ProfileId);
+        if (deletion.ProfileId.HasValue)
+        {
+            Dictionary<int, long> source = multiplayer ? MultiplayerRunByProfile : SingleplayerRunByProfile;
+            source.Remove(deletion.ProfileId.Value);
+        }
     }
 }
 
-internal readonly record struct CardPortraitRunDeletion(int ProfileId, long? RunStartTime);
+internal readonly record struct CardPortraitRunDeletion(int? ProfileId, long? RunStartTime);
 
 [HarmonyPatch(typeof(SaveManager), nameof(SaveManager.LoadRunSave))]
 internal static class CardPortraitRememberSingleplayerRunPatch
@@ -92,9 +96,6 @@ internal static class CardPortraitDeleteMultiplayerRunPatch
 internal static class CardPortraitEndedRunPatch
 {
     [HarmonyPostfix]
-    public static void Postfix(SerializableRun __result)
-    {
-        if (SaveManager.Instance.IsProfileInitialized)
-            CardPortraitRuntime.DeleteTemporaryRun(__result.StartTime, SaveManager.Instance.CurrentProfileId);
-    }
+    public static void Postfix(SerializableRun __result) =>
+        CardPortraitRuntime.DeleteTemporaryRun(__result.StartTime);
 }

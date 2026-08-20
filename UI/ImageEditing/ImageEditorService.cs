@@ -11,10 +11,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.UI.Managers;
+using Loadout.UI;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 
 public static class ImageEditorService
 {
+    private const string LoadoutScreenScenePath = "res://UI/ImageEditing/CardPortraitEditorScreen.tscn";
+
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase
         : StringComparison.Ordinal;
@@ -88,29 +91,9 @@ public static class ImageEditorService
         if (validationError is not null)
             return ImageEditResult.Failed(validationError);
 
-        NModalContainer? modalContainer = NModalContainer.Instance;
-        if (modalContainer is null || !GodotObject.IsInstanceValid(modalContainer))
-            return ImageEditResult.Failed("The game's modal UI is not available.");
-
-        if (modalContainer.OpenModal is not null)
-            return ImageEditResult.Failed("Another modal window is already open.");
-
-        NImageEditorModal modal = new() { Name = "LoadoutImageEditor" };
-        NImageEditorModal.EditorSessionResult session;
-        try
-        {
-            modal.Initialize(source, request);
-            modalContainer.Add(modal);
-            session = await modal.Completion;
-        }
-        catch
-        {
-            if (ReferenceEquals(modalContainer.OpenModal, modal))
-                modalContainer.Clear();
-            else if (GodotObject.IsInstanceValid(modal))
-                modal.QueueFree();
-            throw;
-        }
+        NImageEditorModal.EditorSessionResult session = request.UseLoadoutScreen
+            ? await OpenLoadoutScreenEditorAsync(source, request)
+            : await OpenModalEditorAsync(source, request);
 
         if (!string.IsNullOrWhiteSpace(session.ErrorMessage))
             return ImageEditResult.Failed(session.ErrorMessage);
@@ -136,6 +119,86 @@ public static class ImageEditorService
         {
             GD.PushError($"Loadout: failed to save edited image. {exception}");
             return ImageEditResult.Failed(exception.Message);
+        }
+    }
+
+    private static async Task<NImageEditorModal.EditorSessionResult> OpenModalEditorAsync(
+        ImageMediaDocument source,
+        ImageEditRequest request)
+    {
+        NModalContainer? modalContainer = NModalContainer.Instance;
+        if (modalContainer is null || !GodotObject.IsInstanceValid(modalContainer))
+            return new NImageEditorModal.EditorSessionResult(
+                false,
+                null,
+                null,
+                null,
+                "The game's modal UI is not available.");
+
+        if (modalContainer.OpenModal is not null)
+            return new NImageEditorModal.EditorSessionResult(
+                false,
+                null,
+                null,
+                null,
+                "Another modal window is already open.");
+
+        NImageEditorModal modal = new() { Name = "LoadoutImageEditor" };
+        try
+        {
+            modal.Initialize(source, request);
+            modalContainer.Add(modal);
+            return await modal.Completion;
+        }
+        catch
+        {
+            if (ReferenceEquals(modalContainer.OpenModal, modal))
+                modalContainer.Clear();
+            else if (GodotObject.IsInstanceValid(modal))
+                modal.QueueFree();
+            throw;
+        }
+    }
+
+    private static async Task<NImageEditorModal.EditorSessionResult> OpenLoadoutScreenEditorAsync(
+        ImageMediaDocument source,
+        ImageEditRequest request)
+    {
+        NLoadoutPanelRoot? root = NLoadoutPanelRoot.Instance;
+        if (root is null || !GodotObject.IsInstanceValid(root))
+        {
+            return new NImageEditorModal.EditorSessionResult(
+                false,
+                null,
+                null,
+                null,
+                "The Loadout screen stack is not available.");
+        }
+        if (!ResourceLoader.Exists(LoadoutScreenScenePath)
+            || GD.Load<PackedScene>(LoadoutScreenScenePath) is not { } scene
+            || scene.Instantiate<NImageEditorModal>() is not { } editor)
+        {
+            return new NImageEditorModal.EditorSessionResult(
+                false,
+                null,
+                null,
+                null,
+                "The card portrait editor screen could not be loaded.");
+        }
+
+        try
+        {
+            editor.UseLoadoutScreenChrome = true;
+            editor.Initialize(source, request);
+            root.OpenScreen(editor);
+            return await editor.Completion;
+        }
+        catch
+        {
+            root.RemoveScreen(editor);
+            if (GodotObject.IsInstanceValid(editor))
+                editor.QueueFree();
+            throw;
         }
     }
 
@@ -188,7 +251,7 @@ public static class ImageEditorService
     private static string? ResolveInitialOpenDirectory(string? requestedDirectory)
     {
         if (string.IsNullOrWhiteSpace(requestedDirectory))
-            return null;
+            requestedDirectory = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyPictures);
 
         try
         {

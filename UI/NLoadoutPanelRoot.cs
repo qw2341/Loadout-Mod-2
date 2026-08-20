@@ -367,6 +367,29 @@ public partial class NLoadoutPanelRoot : Control
 		UpdateModalInputState();
 	}
 
+	public void RemoveScreen(Control screen)
+	{
+		if (!IsInstanceValid(screen))
+			return;
+
+		bool wasTop = TryPeekScreen(out var activeScreen) && activeScreen == screen;
+		RemoveFromHistory(screen);
+		SetScreenActive(screen, false);
+
+		if (_screens.TryGetValue(screen.Name, out var trackedScreen) && trackedScreen == screen)
+			_screens.Remove(screen.Name);
+		_screenProcessModes.Remove(screen);
+		_screenMouseFilters.Remove(screen);
+
+		if (screen.GetParent() == _screenContainer)
+			_screenContainer.RemoveChild(screen);
+
+		if (wasTop && TryPeekScreen(out var previousScreen))
+			SetScreenActive(previousScreen, true);
+
+		UpdateModalInputState();
+	}
+
 	public bool CloseTopScreen()
 	{
 		if (_screenHistory.TryPeek(out var currentScreen)

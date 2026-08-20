@@ -23,13 +23,14 @@ internal sealed record CardPortraitRecord(
     int Width,
     int Height,
     bool Animated,
+    long? RunStartTime,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
 internal sealed record CardPortraitReference(
     string PortraitId,
     long RunStartTime,
-    int ProfileId);
+    string RelativeFile);
 
 internal readonly record struct CardPortraitSaveTarget(
     string PortraitId,
@@ -45,7 +46,7 @@ internal readonly record struct CardPortraitAsset(
 
 internal static class CardPortraitStore
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const string PermanentDirectory = "loadout/card_portraits/permanent";
     private const string TemporaryDirectory = "loadout/card_portraits/temporary";
     private const string IndexFileName = "index.json";
@@ -82,19 +83,18 @@ internal static class CardPortraitStore
             _loadedPermanentScope);
     }
 
-    public static CardPortraitSaveTarget? CreateTemporarySaveTarget(ModelId cardId, long? runStartTime)
+    public static CardPortraitSaveTarget? CreateTemporarySaveTarget(long? runStartTime)
     {
-        if (!runStartTime.HasValue || !SaveManager.Instance.IsProfileInitialized)
+        if (!runStartTime.HasValue)
             return null;
 
         string portraitId = Guid.NewGuid().ToString("N");
-        int profileId = SaveManager.Instance.CurrentProfileId;
         return new CardPortraitSaveTarget(
             portraitId,
             GetTemporaryImagesDirectory(runStartTime.Value),
-            $"{SanitizeCardId(cardId)}--{portraitId}.png",
+            $"{portraitId}.png",
             runStartTime,
-            profileId,
+            0,
             null);
     }
 
@@ -123,6 +123,7 @@ internal static class CardPortraitStore
             document.Width,
             document.Height,
             document.IsAnimated,
+            null,
             now,
             now);
         string? previousFile = null;
@@ -164,7 +165,6 @@ internal static class CardPortraitStore
     {
         reference = null!;
         if (!target.RunStartTime.HasValue
-            || target.ProfileId != GetCurrentProfileId()
             || SaveUtility.GetCurrentRunStartTime() != target.RunStartTime
             || !TryValidateSavedFile(target.Directory, savedPath, out string fileName))
         {
@@ -172,30 +172,32 @@ internal static class CardPortraitStore
         }
 
         long runStartTime = target.RunStartTime.Value;
+        string relativeFile = $"images/{fileName}";
         PortraitIndex index = GetTemporaryIndex(runStartTime);
         DateTimeOffset now = DateTimeOffset.UtcNow;
         CardPortraitRecord record = new(
             target.PortraitId,
             cardId.ToString(),
-            fileName,
+            relativeFile,
             frame.Id,
             document.Width,
             document.Height,
             document.IsAnimated,
+            runStartTime,
             now,
             now);
         lock (Gate)
         {
             index.Assignments ??= new Dictionary<string, CardPortraitRecord>(StringComparer.Ordinal);
             index.Assignments[target.PortraitId] = record;
-            if (!SaveUtility.TrySaveProfileJson(GetTemporaryIndexPath(runStartTime), index))
+            if (!SaveUtility.TrySaveGlobalJson(GetTemporaryIndexPath(runStartTime), index))
             {
                 index.Assignments.Remove(target.PortraitId);
                 return false;
             }
         }
 
-        reference = new CardPortraitReference(target.PortraitId, runStartTime, target.ProfileId);
+        reference = new CardPortraitReference(target.PortraitId, runStartTime, relativeFile);
         return true;
     }
 
@@ -216,16 +218,12 @@ internal static class CardPortraitStore
 
     public static bool TryGetTemporary(CardPortraitReference reference, out CardPortraitAsset asset)
     {
-        if (reference.ProfileId != GetCurrentProfileId())
-        {
-            asset = default;
-            return false;
-        }
-
         PortraitIndex index = GetTemporaryIndex(reference.RunStartTime);
         if (index.Assignments is not null
             && index.Assignments.TryGetValue(reference.PortraitId, out CardPortraitRecord? record)
-            && TryResolveImagePath(GetTemporaryImagesDirectory(reference.RunStartTime), record.File, out string path))
+            && record.RunStartTime == reference.RunStartTime
+            && string.Equals(record.File, reference.RelativeFile, StringComparison.Ordinal)
+            && TryResolveImagePath($"user://{GetTemporaryRunDirectory(reference.RunStartTime)}", record.File, out string path))
         {
             asset = new CardPortraitAsset(record, path);
             return true;
@@ -260,20 +258,15 @@ internal static class CardPortraitStore
         return true;
     }
 
-    public static void DeleteTemporaryRun(long runStartTime, int profileId)
+    public static void DeleteTemporaryRun(long runStartTime)
     {
-        if (!SaveManager.Instance.IsProfileInitialized || SaveManager.Instance.CurrentProfileId != profileId)
-            return;
-
         lock (Gate)
             TemporaryByRun.Remove(runStartTime);
 
         try
         {
-            string directory = ResolveDirectory(
-                SaveUtility.GetProfileScopedPath(GetTemporaryRunDirectory(runStartTime)));
-            string root = Path.GetFullPath(ResolveDirectory(
-                    SaveUtility.GetProfileScopedPath(TemporaryDirectory)))
+            string directory = ResolveDirectory($"user://{GetTemporaryRunDirectory(runStartTime)}");
+            string root = Path.GetFullPath(ResolveDirectory($"user://{TemporaryDirectory}"))
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                 + Path.DirectorySeparatorChar;
             string target = Path.GetFullPath(directory);
@@ -343,7 +336,7 @@ internal static class CardPortraitStore
             if (TemporaryByRun.TryGetValue(runStartTime, out PortraitIndex? cached))
                 return cached;
 
-            SaveUtility.LoadResult<PortraitIndex> loaded = SaveUtility.LoadProfileJson(
+            SaveUtility.LoadResult<PortraitIndex> loaded = SaveUtility.LoadGlobalJson(
                 GetTemporaryIndexPath(runStartTime),
                 NewIndex());
             PortraitIndex index = NormalizeIndex(loaded.Value);
@@ -408,7 +401,7 @@ internal static class CardPortraitStore
             : index.Assignments
                 .Where(pair => !string.IsNullOrWhiteSpace(pair.Key)
                                && pair.Value is not null
-                               && IsSafeFileName(pair.Value.File)
+                               && IsSafeRelativeFile(pair.Value.File)
                                && !string.IsNullOrWhiteSpace(pair.Value.PortraitId))
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         return index;
@@ -438,7 +431,7 @@ internal static class CardPortraitStore
     private static string GetTemporaryIndexPath(long runStartTime) => $"{GetTemporaryRunDirectory(runStartTime)}/{IndexFileName}";
 
     private static string GetTemporaryImagesDirectory(long runStartTime) =>
-        SaveUtility.GetProfileScopedPath($"{GetTemporaryRunDirectory(runStartTime)}/images");
+        $"user://{GetTemporaryRunDirectory(runStartTime)}/images";
 
     private static int GetCurrentProfileId() =>
         SaveManager.Instance.IsProfileInitialized ? SaveManager.Instance.CurrentProfileId : 0;
@@ -455,7 +448,7 @@ internal static class CardPortraitStore
     private static bool TryValidateSavedFile(string directory, string savedPath, out string fileName)
     {
         fileName = Path.GetFileName(savedPath);
-        if (!IsSafeFileName(fileName))
+        if (!IsSafeRelativeFile(fileName))
             return false;
 
         string expectedRoot = Path.GetFullPath(ResolveDirectory(directory))
@@ -468,7 +461,7 @@ internal static class CardPortraitStore
     private static bool TryResolveImagePath(string directory, string fileName, out string path)
     {
         path = string.Empty;
-        if (!IsSafeFileName(fileName))
+        if (!IsSafeRelativeFile(fileName))
             return false;
 
         string root = Path.GetFullPath(ResolveDirectory(directory))
@@ -492,6 +485,23 @@ internal static class CardPortraitStore
         && string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal)
         && (fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
             || fileName.EndsWith(ImageAnimationPackage.Extension, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsSafeRelativeFile(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || Path.IsPathFullyQualified(fileName))
+            return false;
+
+        string normalized = fileName.Replace('\\', '/');
+        if (normalized.StartsWith("/", StringComparison.Ordinal)
+            || normalized.Contains("://", StringComparison.Ordinal)
+            || normalized.Split('/').Any(part => part is "" or "." or ".."))
+        {
+            return false;
+        }
+
+        return normalized.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(ImageAnimationPackage.Extension, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static void TryDeleteImage(string directory, string? fileName)
     {

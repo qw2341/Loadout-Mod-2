@@ -177,10 +177,10 @@ internal static class CardPortraitRuntime
 
     public static bool HasTemporary(CardModel card) => CardPortraitFields.TryGet(card, out _);
 
-    public static void DeleteTemporaryRun(long runStartTime, int profileId)
+    public static void DeleteTemporaryRun(long runStartTime)
     {
         SequenceCache.Clear();
-        CardPortraitStore.DeleteTemporaryRun(runStartTime, profileId);
+        CardPortraitStore.DeleteTemporaryRun(runStartTime);
     }
 
     private static bool TryLoadSequence(
