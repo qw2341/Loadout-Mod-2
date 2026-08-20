@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
@@ -436,7 +437,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         card.MouseFilter = MouseFilterEnum.Ignore;
         card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
 
-        _cardPreviewPortrait = model.Rarity == CardRarity.Ancient
+        _cardPreviewPortrait = CardModificationRuntime.ShouldUseAncientRendering(model)
             ? card.GetNodeOrNull<TextureRect>("%AncientPortrait")
             : card.GetNodeOrNull<TextureRect>("%Portrait");
         if (_cardPreviewPortrait is null)

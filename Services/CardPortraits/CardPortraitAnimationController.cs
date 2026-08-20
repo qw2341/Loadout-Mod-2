@@ -4,6 +4,7 @@ namespace Loadout.Services.CardPortraits;
 
 using System;
 using Godot;
+using Loadout.Patches.Cards.CardModification;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -117,7 +118,7 @@ internal partial class CardPortraitAnimationController : Node
             return;
 
         Texture2D texture = _sequence.Frames[_frameIndex];
-        if (model.Rarity == CardRarity.Ancient)
+        if (CardModificationRuntime.ShouldUseAncientRendering(model))
         {
             if (_ancientPortrait is not null && !ReferenceEquals(_ancientPortrait.Texture, texture))
                 _ancientPortrait.Texture = texture;

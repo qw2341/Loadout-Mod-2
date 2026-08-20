@@ -252,7 +252,7 @@ internal static class CardPortraitRuntime
     {
         ImageEditFrameDefinition frame = ImageEditFramePresets.ForCard(
             card.Type,
-            card.Rarity == CardRarity.Ancient);
+            CardModificationRuntime.ShouldUseAncientRendering(card));
         CardPortraitCacheKey cacheKey = new(asset.Record.PortraitId, frame.Id, asset.GlobalPath);
         if (TryGetCachedSequence(cacheKey, out CardPortraitTextureSequence? cachedSequence))
         {
@@ -301,7 +301,7 @@ internal static class CardPortraitRuntime
         {
             ImageEditFrameDefinition frame = ImageEditFramePresets.ForCard(
                 card.Type,
-                card.Rarity == CardRarity.Ancient);
+                CardModificationRuntime.ShouldUseAncientRendering(card));
             CardPortraitCacheKey key = new(asset.Record.PortraitId, frame.Id, asset.GlobalPath);
             AddCachedSequence(key, CreateSequence(asset, card, frame, document));
             WarnedAssets.Remove(key);

@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Godot;
 using HarmonyLib;
+using Loadout.Patches.Cards.CardModification;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -282,7 +283,8 @@ internal static class CardPortraitDynamicPatches
 
     private static void ApplyPortrait(NCard card, Texture2D texture)
     {
-        TextureRect? portrait = card.Model?.Rarity == CardRarity.Ancient
+        TextureRect? portrait = card.Model is { } model
+                                && CardModificationRuntime.ShouldUseAncientRendering(model)
             ? card.GetNodeOrNull<TextureRect>("%AncientPortrait")
             : card.GetNodeOrNull<TextureRect>("%Portrait");
         if (portrait is not null && !ReferenceEquals(portrait.Texture, texture))

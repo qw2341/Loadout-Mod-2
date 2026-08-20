@@ -98,6 +98,7 @@ internal static class CardModificationFields
             CardUpgradeModificationRuntimePatches.Enable();
         if (normalized.HasCustomText) CardModificationRuntime.MarkCustomTextOverridesPresent();
         if (normalized.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+        if (normalized.HasAncientRenderingOverride) CardModificationDynamicPatches.EnableAncientRenderingPatches();
         return true;
     }
 
@@ -201,6 +202,7 @@ internal static class CardModificationCodec
                || serialized.Contains("\"keywordOverrides\":", StringComparison.Ordinal)
                || serialized.Contains("\"upgradeModification\":", StringComparison.Ordinal)
                || serialized.Contains("\"customDescription\":", StringComparison.Ordinal)
+               || serialized.Contains("\"forceAncientPortraitRendering\":", StringComparison.Ordinal)
                || serialized.Contains("\"enchantment\":", StringComparison.Ordinal)
                || serialized.Contains("\"affliction\":", StringComparison.Ordinal);
     }
@@ -240,6 +242,9 @@ internal static class CardModificationCodec
         [JsonPropertyName("b")]
         public string? BetaPortraitPath { get; set; }
 
+        [JsonPropertyName("a")]
+        public bool? ForceAncientPortraitRendering { get; set; }
+
         [JsonPropertyName("k")]
         public SortedDictionary<string, bool>? KeywordOverrides { get; set; }
 
@@ -270,6 +275,7 @@ internal static class CardModificationCodec
                 CustomDescription = spec.CustomDescription,
                 PortraitPath = spec.PortraitPath,
                 BetaPortraitPath = spec.BetaPortraitPath,
+                ForceAncientPortraitRendering = spec.ForceAncientPortraitRendering,
                 KeywordOverrides = spec.KeywordOverrides.Count == 0
                     ? null
                     : new SortedDictionary<string, bool>(spec.KeywordOverrides, StringComparer.Ordinal),
@@ -304,6 +310,7 @@ internal static class CardModificationCodec
                 CustomDescription = CustomDescription,
                 PortraitPath = PortraitPath,
                 BetaPortraitPath = BetaPortraitPath,
+                ForceAncientPortraitRendering = ForceAncientPortraitRendering,
                 KeywordOverrides = KeywordOverrides is null
                     ? new Dictionary<string, bool>(StringComparer.Ordinal)
                     : new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),

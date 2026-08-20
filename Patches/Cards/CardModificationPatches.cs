@@ -420,6 +420,37 @@ public static class CardModelBetaPortraitPathCardModificationPatch
     }
 }
 
+public static class NCardAncientRenderingCardModificationPatch
+{
+    private static readonly FieldInfo? CardRarityField =
+        AccessTools.Field(typeof(CardModel), "<Rarity>k__BackingField");
+
+    public static void Prefix(NCard __instance, out (CardModel? Model, CardRarity Rarity) __state)
+    {
+        __state = default;
+        CardModel? model = __instance.Model;
+        if (model is null
+            || model.Rarity == CardRarity.Ancient
+            || CardRarityField is null
+            || !CardModificationRuntime.ShouldUseAncientRendering(model))
+        {
+            return;
+        }
+
+        __state = (model, model.Rarity);
+        CardRarityField.SetValue(model, CardRarity.Ancient);
+    }
+
+    public static Exception? Finalizer(
+        (CardModel? Model, CardRarity Rarity) __state,
+        Exception? __exception)
+    {
+        if (__state.Model is not null)
+            CardRarityField?.SetValue(__state.Model, __state.Rarity);
+        return __exception;
+    }
+}
+
 public static class CardCmdDowngradeCardModificationPatch
 {
     public static void Postfix(CardModel card)

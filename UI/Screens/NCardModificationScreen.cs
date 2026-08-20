@@ -728,7 +728,7 @@ public partial class NCardModificationScreen : Control
         CardModel frameCard = _previewDisplayModel ?? selected.Model;
         ImageEditFrameDefinition frame = ImageEditFramePresets.ForCard(
             frameCard.Type,
-            frameCard.Rarity == CardRarity.Ancient);
+            CardModificationRuntime.ShouldUseAncientRendering(frameCard));
         CardPortraitSaveTarget permanentTarget = CardPortraitStore.CreatePermanentSaveTarget(frameCard.Id);
         CardPortraitSaveTarget? temporaryTarget = CardPortraitStore.CreateTemporarySaveTarget(
             SaveUtility.GetCurrentRunStartTime());
@@ -944,6 +944,18 @@ public partial class NCardModificationScreen : Control
                 ApplyWorkingState();
                 Callable.From(RebuildControls).CallDeferred();
             });
+
+        NLoadoutToggle forceAncientRendering = CreateToggle(
+            "force_ancient_portrait_rendering",
+            LocMan.Loc("CARD_MOD_FORCE_ANCIENT_PORTRAIT_RENDERING", "Force Ancient Portrait Rendering"),
+            _workingState.ForceAncientPortraitRendering == true,
+            enabled =>
+            {
+                _workingState.ForceAncientPortraitRendering = enabled;
+                _temporaryState.ForceAncientPortraitRendering = enabled;
+                ApplyWorkingState();
+            });
+        _leftControls.AddChild(forceAncientRendering);
     }
 
     private void AddAttachmentControls()
@@ -1522,6 +1534,18 @@ public partial class NCardModificationScreen : Control
         dropdown.SetItems(label, options, selectedId);
         dropdown.SelectedItemChanged += onChanged;
         container.AddChild(dropdown);
+    }
+
+    private static NLoadoutToggle CreateToggle(string id, string label, bool value, Action<bool> changed)
+    {
+        NLoadoutToggle toggle = new()
+        {
+            CustomMinimumSize = new Vector2(426f, 44f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin
+        };
+        toggle.Init(CommonHelpers.MakeSafeNodeName(id), label, value);
+        toggle.Toggled += state => changed(state.IsChecked);
+        return toggle;
     }
 
     private static Control CreateRow(string label, Control input)

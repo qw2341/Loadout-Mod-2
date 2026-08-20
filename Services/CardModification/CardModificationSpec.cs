@@ -258,6 +258,9 @@ public sealed class CardModificationSpec
     [JsonPropertyName("betaPortraitPath")]
     public string? BetaPortraitPath { get; set; }
 
+    [JsonPropertyName("forceAncientPortraitRendering")]
+    public bool? ForceAncientPortraitRendering { get; set; }
+
     [JsonPropertyName("keywordOverrides")]
     public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
 
@@ -284,6 +287,7 @@ public sealed class CardModificationSpec
         && string.IsNullOrWhiteSpace(CustomDescription)
         && string.IsNullOrWhiteSpace(PortraitPath)
         && string.IsNullOrWhiteSpace(BetaPortraitPath)
+        && ForceAncientPortraitRendering is null
         && KeywordOverrides.Count == 0
         && Enchantments is null
         && (Affliction is null || Affliction.IsEmpty)
@@ -314,6 +318,9 @@ public sealed class CardModificationSpec
         || !string.IsNullOrWhiteSpace(BetaPortraitPath)
         || !string.IsNullOrWhiteSpace(PoolId);
 
+    [JsonIgnore]
+    public bool HasAncientRenderingOverride => ForceAncientPortraitRendering.HasValue;
+
     public CardModificationSpec Clone()
     {
         return new CardModificationSpec
@@ -329,6 +336,7 @@ public sealed class CardModificationSpec
             CustomDescription = CustomDescription,
             PortraitPath = PortraitPath,
             BetaPortraitPath = BetaPortraitPath,
+            ForceAncientPortraitRendering = ForceAncientPortraitRendering,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             Enchantments = CardAttachmentSpec.CloneList(Enchantments),
             Affliction = Affliction?.Clone(),
@@ -363,6 +371,8 @@ public sealed class CardModificationSpec
             PortraitPath = other.PortraitPath;
         if (!string.IsNullOrWhiteSpace(other.BetaPortraitPath))
             BetaPortraitPath = other.BetaPortraitPath;
+        if (other.ForceAncientPortraitRendering.HasValue)
+            ForceAncientPortraitRendering = other.ForceAncientPortraitRendering;
         foreach ((string key, bool value) in other.KeywordOverrides)
             KeywordOverrides[key] = value;
         if (other.Enchantments is not null)
@@ -463,6 +473,9 @@ public sealed class CardModificationDelta
     [JsonPropertyName("b")]
     public string? BetaPortraitPath { get; set; }
 
+    [JsonPropertyName("a")]
+    public bool? ForceAncientPortraitRendering { get; set; }
+
     [JsonPropertyName("k")]
     public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
 
@@ -490,6 +503,7 @@ public sealed class CardModificationDelta
         && string.IsNullOrWhiteSpace(CustomDescription)
         && string.IsNullOrWhiteSpace(PortraitPath)
         && string.IsNullOrWhiteSpace(BetaPortraitPath)
+        && ForceAncientPortraitRendering is null
         && KeywordOverrides.Count == 0
         && Enchantments is null
         && (Affliction is null || Affliction.IsEmpty)
@@ -521,6 +535,9 @@ public sealed class CardModificationDelta
         || !string.IsNullOrWhiteSpace(BetaPortraitPath)
         || !string.IsNullOrWhiteSpace(PoolId);
 
+    [JsonIgnore]
+    public bool HasAncientRenderingOverride => ForceAncientPortraitRendering.HasValue;
+
     public CardModificationDelta Clone()
     {
         return new CardModificationDelta
@@ -537,6 +554,7 @@ public sealed class CardModificationDelta
             CustomDescription = CustomDescription,
             PortraitPath = PortraitPath,
             BetaPortraitPath = BetaPortraitPath,
+            ForceAncientPortraitRendering = ForceAncientPortraitRendering,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             Enchantments = CardAttachmentSpec.CloneList(Enchantments),
             Affliction = Affliction?.Clone(),

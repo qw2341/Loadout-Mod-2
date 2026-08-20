@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 
 /// <summary>
@@ -27,6 +28,7 @@ internal static class CardModificationDynamicPatches
     private static bool _temporaryEnabled;
     private static bool _textEnabled;
     private static bool _portraitEnabled;
+    private static bool _ancientRenderingEnabled;
 
     public static void EnableTemporaryPatches()
     {
@@ -76,12 +78,35 @@ internal static class CardModificationDynamicPatches
             typeof(CardModelBetaPortraitPathCardModificationPatch), nameof(CardModelBetaPortraitPathCardModificationPatch.Postfix));
     }
 
+    public static void EnableAncientRenderingPatches()
+    {
+        if (_ancientRenderingEnabled) return;
+        _ancientRenderingEnabled = true;
+        PatchPrefixFinalizer(
+            typeof(NCard),
+            "Reload",
+            typeof(NCardAncientRenderingCardModificationPatch),
+            nameof(NCardAncientRenderingCardModificationPatch.Prefix),
+            nameof(NCardAncientRenderingCardModificationPatch.Finalizer));
+        PatchPrefixFinalizer(
+            AccessTools.Method(
+                typeof(NCard),
+                nameof(NCard.UpdateVisuals),
+                [typeof(PileType), typeof(CardPreviewMode)])
+            ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.UpdateVisuals)),
+            typeof(NCardAncientRenderingCardModificationPatch),
+            nameof(NCardAncientRenderingCardModificationPatch.Prefix),
+            nameof(NCardAncientRenderingCardModificationPatch.Finalizer));
+    }
+
     public static void ResetRunPatches()
     {
         Harmony.UnpatchAll(HarmonyId);
         _temporaryEnabled = false;
         _portraitEnabled = false;
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) EnablePortraitPatches();
+        _ancientRenderingEnabled = false;
+        if (PermanentCardModificationStore.HasAnyAncientRenderingOverrides) EnableAncientRenderingPatches();
     }
 
     public static void ClearAll()
@@ -91,6 +116,7 @@ internal static class CardModificationDynamicPatches
         _temporaryEnabled = false;
         _textEnabled = false;
         _portraitEnabled = false;
+        _ancientRenderingEnabled = false;
     }
 
     private static void PatchPostfix(Harmony harmony, Type targetType, string targetName, Type patchType, string patchName) =>

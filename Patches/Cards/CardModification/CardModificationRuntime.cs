@@ -101,6 +101,7 @@ public static class CardModificationRuntime
         LoadoutKeywordRuntimePatches.Reconcile();
         if (_customTextOverridesMayExist) CardModificationDynamicPatches.EnableTextPatches();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
+        if (PermanentCardModificationStore.HasAnyAncientRenderingOverrides) CardModificationDynamicPatches.EnableAncientRenderingPatches();
         if (PermanentCardModificationStore.HasAnyUpgradeModifications) CardUpgradeModificationRuntimePatches.Enable();
         CardModificationNetProtocol.Register();
     }
@@ -183,6 +184,25 @@ public static class CardModificationRuntime
 
         return PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? permanent)
                && permanent.HasPortraitOverride;
+    }
+
+    public static bool ShouldUseAncientRendering(CardModel card)
+    {
+        if (card.Rarity == CardRarity.Ancient)
+            return true;
+        if (PreviewDeltas.TryGetValue(card, out CardModificationDelta? preview)
+            && preview.ForceAncientPortraitRendering.HasValue)
+        {
+            return preview.ForceAncientPortraitRendering.Value;
+        }
+        if (CardModificationFields.TryGet(card, out CardModificationCardData data)
+            && data.Delta.ForceAncientPortraitRendering.HasValue)
+        {
+            return data.Delta.ForceAncientPortraitRendering.Value;
+        }
+
+        return PermanentCardModificationStore.TryGetDelta(card.Id, out CardModificationDelta? permanent)
+               && permanent.ForceAncientPortraitRendering == true;
     }
 
     public static void PushLocStringContext(CardModel card)
@@ -280,6 +300,7 @@ public static class CardModificationRuntime
                && SameStructuralValue(previous?.Rarity, next?.Rarity)
                && SameStructuralValue(previous?.PortraitPath, next?.PortraitPath)
                && SameStructuralValue(previous?.BetaPortraitPath, next?.BetaPortraitPath)
+               && previous?.ForceAncientPortraitRendering == next?.ForceAncientPortraitRendering
                && KeywordOverridesEquivalent(previous?.KeywordOverrides, next?.KeywordOverrides)
                && KeywordOverridesEquivalent(
                    previous?.UpgradeModification.KeywordOverrides,
@@ -611,6 +632,12 @@ public static class CardModificationRuntime
         if (!SameStructuralValue(desired.CustomDescription, structuralBaseline?.CustomDescription)) delta.CustomDescription = desired.CustomDescription;
         if (!SameStructuralValue(desired.PortraitPath, structuralBaseline?.PortraitPath)) delta.PortraitPath = desired.PortraitPath;
         if (!SameStructuralValue(desired.BetaPortraitPath, structuralBaseline?.BetaPortraitPath)) delta.BetaPortraitPath = desired.BetaPortraitPath;
+        bool baselineAncientRendering = structuralBaseline?.ForceAncientPortraitRendering ?? false;
+        if (desired.ForceAncientPortraitRendering.HasValue
+            && desired.ForceAncientPortraitRendering.Value != baselineAncientRendering)
+        {
+            delta.ForceAncientPortraitRendering = desired.ForceAncientPortraitRendering.Value;
+        }
         foreach ((string key, bool value) in desired.KeywordOverrides)
         {
             if (structuralBaseline?.KeywordOverrides.TryGetValue(key, out bool baselineValue) != true || baselineValue != value)
@@ -731,6 +758,7 @@ public static class CardModificationRuntime
         delta.CustomDescription = desired.CustomDescription;
         delta.PortraitPath = desired.PortraitPath;
         delta.BetaPortraitPath = desired.BetaPortraitPath;
+        delta.ForceAncientPortraitRendering = desired.ForceAncientPortraitRendering == true ? true : null;
         delta.KeywordOverrides = new Dictionary<string, bool>(desired.KeywordOverrides, StringComparer.Ordinal);
         delta.Enchantments = CardAttachmentSpec.CloneList(desired.Enchantments);
         delta.Affliction = desired.Affliction?.Clone();
@@ -782,6 +810,7 @@ public static class CardModificationRuntime
             CustomDescription = delta.CustomDescription,
             PortraitPath = delta.PortraitPath,
             BetaPortraitPath = delta.BetaPortraitPath,
+            ForceAncientPortraitRendering = delta.ForceAncientPortraitRendering,
             KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
             Enchantments = CardAttachmentSpec.CloneList(delta.Enchantments),
             Affliction = delta.Affliction?.Clone(),
@@ -824,6 +853,7 @@ public static class CardModificationRuntime
             CustomDescription = delta.CustomDescription,
             PortraitPath = delta.PortraitPath,
             BetaPortraitPath = delta.BetaPortraitPath,
+            ForceAncientPortraitRendering = delta.ForceAncientPortraitRendering,
             KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
             Enchantments = CardAttachmentSpec.CloneList(delta.Enchantments),
             Affliction = delta.Affliction?.Clone(),
@@ -860,11 +890,12 @@ public static class CardModificationRuntime
                 state.KeywordOverrides);
             CardModificationDelta temporary = CreateDelta(preview, state, permanent);
             ApplyDeltaToCard(preview, temporary);
-            if (temporary.HasCustomText || temporary.HasPortraitOverride)
+            if (temporary.HasCustomText || temporary.HasPortraitOverride || temporary.HasAncientRenderingOverride)
             {
                 PreviewDeltas.Add(preview, temporary);
                 if (temporary.HasCustomText) MarkCustomTextOverridesPresent();
                 if (temporary.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+                if (temporary.HasAncientRenderingOverride) CardModificationDynamicPatches.EnableAncientRenderingPatches();
             }
             CardPortraitFields.Copy(source, preview);
             return preview;
@@ -912,12 +943,13 @@ public static class CardModificationRuntime
 
         CardModificationDelta previewDelta =
             CreateTemporaryDelta(scratch, state);
-        if (previewDelta.HasCustomText || previewDelta.HasPortraitOverride)
+        if (previewDelta.HasCustomText || previewDelta.HasPortraitOverride || previewDelta.HasAncientRenderingOverride)
         {
             PreviewDeltas.Remove(scratch);
             PreviewDeltas.Add(scratch, previewDelta);
             if (previewDelta.HasCustomText) MarkCustomTextOverridesPresent();
             if (previewDelta.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+            if (previewDelta.HasAncientRenderingOverride) CardModificationDynamicPatches.EnableAncientRenderingPatches();
         }
         return scratch;
     }
@@ -2415,6 +2447,7 @@ public static class CardModificationRuntime
         {
             if (delta.HasCustomText) MarkCustomTextOverridesPresent();
             if (delta.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+            if (delta.HasAncientRenderingOverride) CardModificationDynamicPatches.EnableAncientRenderingPatches();
             if (!delta.UpgradeModification.IsEmpty) CardUpgradeModificationRuntimePatches.Enable();
         }
         AttachmentDisplayCards.Remove(cardId);
@@ -2432,6 +2465,7 @@ public static class CardModificationRuntime
         AttachmentDisplayCards.Clear();
         if (PermanentCardModificationStore.HasAnyCustomText) MarkCustomTextOverridesPresent();
         if (PermanentCardModificationStore.HasAnyPortraitOverrides) CardModificationDynamicPatches.EnablePortraitPatches();
+        if (PermanentCardModificationStore.HasAnyAncientRenderingOverrides) CardModificationDynamicPatches.EnableAncientRenderingPatches();
         if (PermanentCardModificationStore.HasAnyUpgradeModifications) CardUpgradeModificationRuntimePatches.Enable();
         // Profile swaps replace the whole durable snapshot, so there is no old
         // per-field spec left to drive a selective copy. Rebuild all fields owned

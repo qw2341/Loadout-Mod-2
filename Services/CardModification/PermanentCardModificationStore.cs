@@ -22,7 +22,7 @@ using MegaCrit.Sts2.Core.Saves;
 /// </summary>
 public static class PermanentCardModificationStore
 {
-    private const int CurrentSchemaVersion = 3;
+    private const int CurrentSchemaVersion = 4;
     private const string PermanentPath = "loadout/services/card_modifications/permanent.json";
     private const string MigrationPath = "loadout/services/card_modifications/scope_migration_v1.json";
 
@@ -131,6 +131,16 @@ public static class PermanentCardModificationStore
         {
             EnsureLoaded();
             return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta => delta.HasPortraitOverride);
+        }
+    }
+
+    public static bool HasAnyAncientRenderingOverrides
+    {
+        get
+        {
+            EnsureLoaded();
+            return (_useHostCards ? _hostCards : _profileCards).Values.Any(
+                delta => delta.HasAncientRenderingOverride);
         }
     }
 
