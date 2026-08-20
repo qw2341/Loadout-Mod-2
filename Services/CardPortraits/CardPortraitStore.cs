@@ -54,6 +54,8 @@ internal static class CardPortraitStore
     private static readonly object Gate = new();
     private static PortraitIndex _permanent = NewIndex();
     private static readonly Dictionary<long, PortraitIndex> TemporaryByRun = new();
+    private static readonly Dictionary<ModelId, CardPortraitAsset> PermanentAssets = [];
+    private static readonly Dictionary<long, Dictionary<string, CardPortraitAsset>> TemporaryAssetsByRun = new();
     private static bool _registered;
     private static bool _permanentLoaded;
     private static PermanentCardCustomizationScope _loadedPermanentScope;
@@ -66,8 +68,14 @@ internal static class CardPortraitStore
         get
         {
             EnsurePermanentLoaded();
-            return _permanent.Assignments is { Count: > 0 };
+            return PermanentAssets.Count > 0;
         }
+    }
+
+    public static bool HasPermanent(ModelId cardId)
+    {
+        EnsurePermanentLoaded();
+        return PermanentAssets.ContainsKey(cardId);
     }
 
     public static CardPortraitSaveTarget CreatePermanentSaveTarget(ModelId cardId)
@@ -144,6 +152,14 @@ internal static class CardPortraitStore
                     _permanent.Assignments.Remove(cardId.ToString());
                 return false;
             }
+
+            if (TryResolveImagePath(
+                    GetPermanentImagesDirectory(_loadedPermanentScope),
+                    record.File,
+                    out string path))
+            {
+                PermanentAssets[cardId] = new CardPortraitAsset(record, path);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(previousFile)
@@ -151,7 +167,6 @@ internal static class CardPortraitStore
         {
             TryDeleteImage(GetPermanentImagesDirectory(_loadedPermanentScope), previousFile);
         }
-        PermanentChanged?.Invoke(cardId);
         return true;
     }
 
@@ -195,6 +210,19 @@ internal static class CardPortraitStore
                 index.Assignments.Remove(target.PortraitId);
                 return false;
             }
+
+            if (TryResolveImagePath(
+                    $"user://{GetTemporaryRunDirectory(runStartTime)}",
+                    record.File,
+                    out string path))
+            {
+                if (!TemporaryAssetsByRun.TryGetValue(runStartTime, out Dictionary<string, CardPortraitAsset>? assets))
+                {
+                    assets = new Dictionary<string, CardPortraitAsset>(StringComparer.Ordinal);
+                    TemporaryAssetsByRun[runStartTime] = assets;
+                }
+                assets[record.PortraitId] = new CardPortraitAsset(record, path);
+            }
         }
 
         reference = new CardPortraitReference(target.PortraitId, runStartTime, relativeFile);
@@ -204,28 +232,20 @@ internal static class CardPortraitStore
     public static bool TryGetPermanent(ModelId cardId, out CardPortraitAsset asset)
     {
         EnsurePermanentLoaded();
-        if (_permanent.Assignments is not null
-            && _permanent.Assignments.TryGetValue(cardId.ToString(), out CardPortraitRecord? record)
-            && TryResolveImagePath(GetPermanentImagesDirectory(_loadedPermanentScope), record.File, out string path))
-        {
-            asset = new CardPortraitAsset(record, path);
-            return true;
-        }
-
-        asset = default;
-        return false;
+        return PermanentAssets.TryGetValue(cardId, out asset);
     }
 
     public static bool TryGetTemporary(CardPortraitReference reference, out CardPortraitAsset asset)
     {
-        PortraitIndex index = GetTemporaryIndex(reference.RunStartTime);
-        if (index.Assignments is not null
-            && index.Assignments.TryGetValue(reference.PortraitId, out CardPortraitRecord? record)
+        _ = GetTemporaryIndex(reference.RunStartTime);
+        if (TemporaryAssetsByRun.TryGetValue(
+                reference.RunStartTime,
+                out Dictionary<string, CardPortraitAsset>? assets)
+            && assets.TryGetValue(reference.PortraitId, out asset)
+            && asset.Record is { } record
             && record.RunStartTime == reference.RunStartTime
-            && string.Equals(record.File, reference.RelativeFile, StringComparison.Ordinal)
-            && TryResolveImagePath($"user://{GetTemporaryRunDirectory(reference.RunStartTime)}", record.File, out string path))
+            && string.Equals(record.File, reference.RelativeFile, StringComparison.Ordinal))
         {
-            asset = new CardPortraitAsset(record, path);
             return true;
         }
 
@@ -251,6 +271,7 @@ internal static class CardPortraitStore
                 _permanent.Assignments[cardId.ToString()] = previous;
                 return false;
             }
+            PermanentAssets.Remove(cardId);
         }
 
         TryDeleteImage(GetPermanentImagesDirectory(_loadedPermanentScope), previousFile);
@@ -261,7 +282,10 @@ internal static class CardPortraitStore
     public static void DeleteTemporaryRun(long runStartTime)
     {
         lock (Gate)
+        {
             TemporaryByRun.Remove(runStartTime);
+            TemporaryAssetsByRun.Remove(runStartTime);
+        }
 
         try
         {
@@ -300,7 +324,9 @@ internal static class CardPortraitStore
         {
             _permanentLoaded = false;
             _permanent = NewIndex();
+            PermanentAssets.Clear();
             TemporaryByRun.Clear();
+            TemporaryAssetsByRun.Clear();
         }
         _registered = false;
     }
@@ -322,6 +348,7 @@ internal static class CardPortraitStore
                 ? SaveUtility.LoadGlobalJson(GetPermanentIndexPath(), NewIndex())
                 : SaveUtility.LoadProfileJson(GetPermanentIndexPath(), NewIndex());
             _permanent = NormalizeIndex(loaded.Value);
+            RebuildPermanentAssetsLocked();
             _permanentLoaded = true;
             if (loaded.Loaded && loaded.Value.SchemaVersion != CurrentSchemaVersion)
                 _ = SavePermanentLocked();
@@ -341,6 +368,9 @@ internal static class CardPortraitStore
                 NewIndex());
             PortraitIndex index = NormalizeIndex(loaded.Value);
             TemporaryByRun[runStartTime] = index;
+            TemporaryAssetsByRun[runStartTime] = BuildAssetMap(
+                index,
+                $"user://{GetTemporaryRunDirectory(runStartTime)}");
             return index;
         }
     }
@@ -363,6 +393,7 @@ internal static class CardPortraitStore
         lock (Gate)
         {
             TemporaryByRun.Clear();
+            TemporaryAssetsByRun.Clear();
         }
         ReloadPermanentAndNotify();
     }
@@ -414,6 +445,39 @@ internal static class CardPortraitStore
             SchemaVersion = CurrentSchemaVersion,
             Assignments = new Dictionary<string, CardPortraitRecord>(StringComparer.Ordinal)
         };
+    }
+
+    private static void RebuildPermanentAssetsLocked()
+    {
+        PermanentAssets.Clear();
+        if (_permanent.Assignments is null)
+            return;
+
+        string directory = GetPermanentImagesDirectory(_loadedPermanentScope);
+        foreach (CardModel card in ModelDb.AllCards)
+        {
+            if (_permanent.Assignments.TryGetValue(card.Id.ToString(), out CardPortraitRecord? record)
+                && TryResolveImagePath(directory, record.File, out string path))
+            {
+                PermanentAssets[card.Id] = new CardPortraitAsset(record, path);
+            }
+        }
+    }
+
+    private static Dictionary<string, CardPortraitAsset> BuildAssetMap(
+        PortraitIndex index,
+        string directory)
+    {
+        Dictionary<string, CardPortraitAsset> assets = new(StringComparer.Ordinal);
+        if (index.Assignments is null)
+            return assets;
+
+        foreach ((string key, CardPortraitRecord record) in index.Assignments)
+        {
+            if (TryResolveImagePath(directory, record.File, out string path))
+                assets[key] = new CardPortraitAsset(record, path);
+        }
+        return assets;
     }
 
     private static string GetPermanentIndexPath() => $"{PermanentDirectory}/{IndexFileName}";

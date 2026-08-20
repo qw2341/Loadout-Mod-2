@@ -31,9 +31,11 @@ public partial class NImageEditorModal : Control, IScreenContext
     private MegaLabel? _rotationLabel;
     private Control _saveButton = null!;
     private NCard? _cardPreview;
+    private Control? _cardPreviewMount;
     private TextureRect? _cardPreviewPortrait;
     private Texture2D? _cardPreviewOriginalTexture;
-    private Material? _cardPreviewOriginalMaterial;
+    private SubViewport? _cardPreviewViewport;
+    private ColorRect? _cardPreviewSurface;
     private ShaderMaterial? _cardPreviewMaterial;
     private bool _initialized;
     private bool _uiBuilt;
@@ -182,6 +184,8 @@ public partial class NImageEditorModal : Control, IScreenContext
     {
         if (_editorPanel is null || !GodotObject.IsInstanceValid(_editorPanel))
             return;
+
+        LayoutCardPreview();
 
         if (UseLoadoutScreenChrome)
         {
@@ -418,8 +422,8 @@ public partial class NImageEditorModal : Control, IScreenContext
         if (_request.CardPreviewModel is not { } model)
             return;
 
-        Control? mount = GetNodeOrNull<Control>("%CardPreviewMount");
-        if (mount is null)
+        _cardPreviewMount = GetNodeOrNull<Control>("%CardPreviewMount");
+        if (_cardPreviewMount is null)
             throw new InvalidOperationException("The card portrait editor screen is missing its card preview mount.");
 
         NCard? card = NCard.Create(model);
@@ -427,10 +431,8 @@ public partial class NImageEditorModal : Control, IScreenContext
             return;
 
         _cardPreview = card;
-        mount.AddChild(card);
-        card.SetAnchorsPreset(LayoutPreset.Center);
-        card.Position = Vector2.Zero;
-        card.Scale = Vector2.One;
+        _cardPreviewMount.AddChild(card);
+        card.SetAnchorsPreset(LayoutPreset.TopLeft);
         card.MouseFilter = MouseFilterEnum.Ignore;
         card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
 
@@ -441,31 +443,61 @@ public partial class NImageEditorModal : Control, IScreenContext
             return;
 
         _cardPreviewOriginalTexture = _cardPreviewPortrait.Texture;
-        _cardPreviewOriginalMaterial = _cardPreviewPortrait.Material;
-        Image previewSurface = Image.CreateEmpty(
-            _request.Frame.OutputSize.X,
-            _request.Frame.OutputSize.Y,
-            false,
-            Image.Format.Rgba8);
-        previewSurface.Fill(Colors.White);
-        _cardPreviewPortrait.Texture = ImageTexture.CreateFromImage(previewSurface);
+        _cardPreviewViewport = new SubViewport
+        {
+            Name = "PortraitPreviewViewport",
+            Size = _request.Frame.OutputSize,
+            TransparentBg = true,
+            Disable3D = true,
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Once
+        };
+        AddChild(_cardPreviewViewport);
         _cardPreviewMaterial = _canvas.CreateOutputPreviewMaterial();
-        _cardPreviewPortrait.Material = _cardPreviewMaterial;
+        _cardPreviewSurface = new ColorRect
+        {
+            Name = "PortraitPreviewSurface",
+            Position = Vector2.Zero,
+            Size = _request.Frame.OutputSize,
+            MouseFilter = MouseFilterEnum.Ignore,
+            Material = _cardPreviewMaterial,
+            Color = Colors.White
+        };
+        _cardPreviewViewport.AddChild(_cardPreviewSurface);
+        _cardPreviewPortrait.Texture = _cardPreviewViewport.GetTexture();
         _canvas.PreviewChanged += RefreshCardPreviewMaterial;
+        LayoutCardPreview();
         Callable.From(RefreshCardPreviewMaterial).CallDeferred();
     }
 
     private void RefreshCardPreviewMaterial()
     {
         if (_cardPreviewMaterial is null
-            || _cardPreviewPortrait is null
-            || !GodotObject.IsInstanceValid(_cardPreviewPortrait))
+            || _cardPreviewViewport is null
+            || !GodotObject.IsInstanceValid(_cardPreviewViewport))
         {
             return;
         }
 
         _canvas.UpdateOutputPreviewMaterial(_cardPreviewMaterial);
-        _cardPreviewPortrait.Material = _cardPreviewMaterial;
+        _cardPreviewViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
+    }
+
+    private void LayoutCardPreview()
+    {
+        if (_cardPreview is null
+            || !GodotObject.IsInstanceValid(_cardPreview)
+            || _cardPreviewMount is null
+            || !GodotObject.IsInstanceValid(_cardPreviewMount))
+        {
+            return;
+        }
+
+        Vector2 viewport = Size;
+        float horizontalScale = Mathf.Max(0.75f, Mathf.Min(420f, viewport.X * 0.22f) / NCard.defaultSize.X);
+        float verticalScale = Mathf.Max(0.75f, (viewport.Y - 160f) / NCard.defaultSize.Y);
+        float scale = Mathf.Min(1.25f, Mathf.Min(horizontalScale, verticalScale));
+        _cardPreview.Scale = Vector2.One * scale;
+        _cardPreview.Position = new Vector2(48f, 48f) + NCard.defaultSize * scale * 0.5f;
     }
 
     private void ReleaseCardPreview()
@@ -474,18 +506,20 @@ public partial class NImageEditorModal : Control, IScreenContext
             _canvas.PreviewChanged -= RefreshCardPreviewMaterial;
 
         if (_cardPreviewPortrait is not null && GodotObject.IsInstanceValid(_cardPreviewPortrait))
-        {
             _cardPreviewPortrait.Texture = _cardPreviewOriginalTexture;
-            _cardPreviewPortrait.Material = _cardPreviewOriginalMaterial;
-        }
+
+        if (_cardPreviewViewport is not null && GodotObject.IsInstanceValid(_cardPreviewViewport))
+            _cardPreviewViewport.QueueFree();
 
         if (_cardPreview is not null && GodotObject.IsInstanceValid(_cardPreview))
             _cardPreview.QueueFreeSafely();
 
         _cardPreview = null;
+        _cardPreviewMount = null;
         _cardPreviewPortrait = null;
         _cardPreviewOriginalTexture = null;
-        _cardPreviewOriginalMaterial = null;
+        _cardPreviewViewport = null;
+        _cardPreviewSurface = null;
         _cardPreviewMaterial = null;
     }
 

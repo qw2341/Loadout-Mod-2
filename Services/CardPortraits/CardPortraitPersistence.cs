@@ -83,10 +83,19 @@ internal static class CardPortraitPersistence
         if (strings is null)
             return default;
 
+        bool containsPortraitField = false;
+        foreach (SavedProperties.SavedProperty<string> entry in strings)
+        {
+            if (!IsPortraitField(entry.name))
+                continue;
+            containsPortraitField = true;
+            break;
+        }
+        if (!containsPortraitField)
+            return default;
+
         List<SavedProperties.SavedProperty<string>> filtered = strings
             .FindAll(entry => !IsPortraitField(entry.name));
-        if (filtered.Count == strings.Count)
-            return default;
 
         props!.strings = filtered.Count == 0 ? null : filtered;
 
@@ -163,6 +172,6 @@ internal static class CardPortraitFromSerializablePatch
             return;
 
         CardPortraitFields.Set(__result, reference);
-        CardPortraitDynamicPatches.EnsureInstalled();
+        CardPortraitDynamicPatches.EnsureTemporaryInstalled();
     }
 }

@@ -34,7 +34,6 @@ internal partial class CardPortraitAnimationController : Node
         _card = GetParentOrNull<NCard>();
         _portrait = _card?.GetNodeOrNull<TextureRect>("%Portrait");
         _ancientPortrait = _card?.GetNodeOrNull<TextureRect>("%AncientPortrait");
-        EnsureTimer();
     }
 
     public override void _ExitTree()
@@ -64,6 +63,10 @@ internal partial class CardPortraitAnimationController : Node
         if (_sequence is { Frames.Count: > 0 })
             ApplyCurrentFrame();
     }
+
+    public bool IsBoundTo(CardModel model) =>
+        _sequence is not null
+        && string.Equals(_sequence.CardModelId, model.Id.ToString(), StringComparison.Ordinal);
 
     public void Stop()
     {

@@ -30,34 +30,26 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(1, 1, 1, 1)
 
-[node name="Backdrop" type="ColorRect" parent="."]
+[node name="CardPreviewMount" type="Control" parent="."]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 0
-color = Color(0.015, 0.02, 0.035, 0.72)
-
-[node name="CardPreviewMount" type="Control" parent="."]
-unique_name_in_owner = true
-layout_mode = 0
-offset_left = 240.0
-offset_top = 315.0
-offset_right = 240.0
-offset_bottom = 315.0
 mouse_filter = 2
 
 [node name="EditorMount" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = 510.0
+offset_left = -520.0
 offset_top = 54.0
-offset_right = -520.0
+offset_right = 360.0
 offset_bottom = -90.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -66,13 +58,14 @@ mouse_filter = 2
 [node name="ToolsMount" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 11
+anchor_left = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 1510.0
-offset_top = 135.0
-offset_right = -55.0
-offset_bottom = -285.0
+offset_left = -770.0
+offset_top = 110.0
+offset_right = -390.0
+offset_bottom = -220.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2

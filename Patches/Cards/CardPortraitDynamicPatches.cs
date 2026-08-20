@@ -4,6 +4,7 @@ namespace Loadout.Services.CardPortraits;
 
 using System;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -14,8 +15,11 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class CardPortraitDynamicPatches
 {
-    private const string HarmonyId = "Loadout.CardPortraits.Dynamic";
-    private static readonly Harmony Harmony = new(HarmonyId);
+    private const string VisualHarmonyId = "Loadout.CardPortraits.Visual";
+    private const string TemporaryHarmonyId = "Loadout.CardPortraits.Temporary";
+    private static readonly Harmony VisualHarmony = new(VisualHarmonyId);
+    private static readonly Harmony TemporaryHarmony = new(TemporaryHarmonyId);
+    private static readonly ConditionalWeakTable<NCard, CardPortraitAnimationController> Controllers = new();
     private static readonly MethodInfo ReloadMethod =
         AccessTools.Method(typeof(NCard), "Reload")
         ?? throw new MissingMethodException(typeof(NCard).FullName, "Reload");
@@ -26,70 +30,64 @@ internal static class CardPortraitDynamicPatches
             [typeof(PileType), typeof(CardPreviewMode)])
         ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.UpdateVisuals));
 
-    private static bool _installed;
+    private static bool _visualInstalled;
+    private static bool _temporaryInstalled;
 
-    public static void EnsureInstalled()
+    public static void EnsureVisualInstalled()
     {
-        if (_installed)
+        if (_visualInstalled)
             return;
 
-        HarmonyMethod lastPortraitPostfix = new(
-            typeof(CardPortraitDynamicPatches),
-            nameof(PortraitPostfix))
-        {
-            priority = Priority.Last
-        };
-        HarmonyMethod lastReloadPostfix = new(
-            typeof(CardPortraitDynamicPatches),
-            nameof(ReloadPostfix))
-        {
-            priority = Priority.Last
-        };
-
-        Harmony.Patch(
+        VisualHarmony.Patch(
             AccessTools.PropertyGetter(typeof(CardModel), nameof(CardModel.Portrait))
             ?? throw new MissingMethodException(typeof(CardModel).FullName, $"get_{nameof(CardModel.Portrait)}"),
-            postfix: lastPortraitPostfix);
-        Harmony.Patch(ReloadMethod, postfix: lastReloadPostfix);
-        Harmony.Patch(
-            UpdateVisualsMethod,
-            postfix: new HarmonyMethod(
-                typeof(CardPortraitDynamicPatches),
-                nameof(UpdateVisualsPostfix))
-            {
-                priority = Priority.Last
-            });
-        Harmony.Patch(
-            AccessTools.Method(typeof(NCard), nameof(NCard.OnReturnedFromPool))
-            ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.OnReturnedFromPool)),
-            postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(PoolPostfix)));
-        Harmony.Patch(
-            AccessTools.Method(typeof(NCard), nameof(NCard.OnFreedToPool))
-            ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.OnFreedToPool)),
-            postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(PoolPostfix)));
-        PatchPostfix(typeof(CardModel), nameof(CardModel.ToSerializable), nameof(ToSerializablePostfix));
-        Harmony.Patch(
+            postfix: LastPostfix(nameof(PortraitPostfix)));
+        VisualHarmony.Patch(ReloadMethod, postfix: LastPostfix(nameof(ReloadPostfix)));
+        VisualHarmony.Patch(UpdateVisualsMethod, postfix: LastPostfix(nameof(UpdateVisualsPostfix)));
+        PatchVisualPostfix(typeof(NCard), nameof(NCard.OnReturnedFromPool), nameof(PoolPostfix));
+        PatchVisualPostfix(typeof(NCard), nameof(NCard.OnFreedToPool), nameof(PoolPostfix));
+        PatchVisualPostfix(typeof(AbstractModel), nameof(AbstractModel.MutableClone), nameof(ClonePostfix));
+        PatchVisualPostfix(
+            typeof(AbstractModel),
+            nameof(AbstractModel.ClonePreservingMutability),
+            nameof(ClonePostfix));
+        _visualInstalled = true;
+        ApplyOverridesToLoadedCards();
+    }
+
+    public static void EnsureTemporaryInstalled()
+    {
+        EnsureVisualInstalled();
+        if (_temporaryInstalled)
+            return;
+
+        PatchTemporaryPostfix(typeof(CardModel), nameof(CardModel.ToSerializable), nameof(ToSerializablePostfix));
+        TemporaryHarmony.Patch(
             AccessTools.Method(typeof(ChecksumTracker), "ObtainAndTrackChecksum")
             ?? throw new MissingMethodException(typeof(ChecksumTracker).FullName, "ObtainAndTrackChecksum"),
             prefix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(ChecksumPrefix)),
             finalizer: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(ChecksumFinalizer)));
-        Harmony.Patch(
+        TemporaryHarmony.Patch(
             AccessTools.Method(typeof(SerializableCard), nameof(SerializableCard.Serialize))
             ?? throw new MissingMethodException(typeof(SerializableCard).FullName, nameof(SerializableCard.Serialize)),
             prefix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(PacketPrefix)),
             finalizer: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(PacketFinalizer)));
-        _installed = true;
-        AttachControllersToLoadedCards();
+        _temporaryInstalled = true;
     }
 
     public static void Clear()
     {
-        if (!_installed)
-            return;
-
-        ReleaseControllersFromLoadedCards();
-        Harmony.UnpatchAll(HarmonyId);
-        _installed = false;
+        if (_visualInstalled)
+        {
+            ReleaseControllersFromLoadedCards();
+            VisualHarmony.UnpatchAll(VisualHarmonyId);
+            _visualInstalled = false;
+        }
+        if (_temporaryInstalled)
+        {
+            TemporaryHarmony.UnpatchAll(TemporaryHarmonyId);
+            _temporaryInstalled = false;
+        }
     }
 
     public static void ReloadCard(NCard card)
@@ -114,9 +112,16 @@ internal static class CardPortraitDynamicPatches
         RefreshLoadedCards(model => model.Id.Equals(cardId));
     }
 
+    private static HarmonyMethod LastPostfix(string methodName) =>
+        new(typeof(CardPortraitDynamicPatches), methodName)
+        {
+            priority = Priority.Last
+        };
+
     private static void PortraitPostfix(CardModel __instance, ref Texture2D __result)
     {
-        if (CardPortraitRuntime.TryResolve(__instance, out CardPortraitTextureSequence sequence)
+        if (CardPortraitRuntime.HasOverride(__instance)
+            && CardPortraitRuntime.TryResolve(__instance, out CardPortraitTextureSequence sequence)
             && sequence.Frames.Count > 0)
         {
             __result = sequence.Frames[0];
@@ -126,36 +131,63 @@ internal static class CardPortraitDynamicPatches
     private static void ReloadPostfix(NCard __instance)
     {
         if (__instance.Model is not CardModel model)
+        {
+            ReleaseController(__instance);
             return;
+        }
 
-        CardPortraitAnimationController? controller =
-            __instance.GetNodeOrNull<CardPortraitAnimationController>(CardPortraitAnimationController.NodeName);
-        if (CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
-            && sequence.Frames.Count > 0)
+        if (!CardPortraitRuntime.HasOverride(model)
+            || !CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
+            || sequence.Frames.Count == 0)
         {
-            (controller ?? GetOrCreateController(__instance)).Bind(__instance, sequence);
+            ReleaseController(__instance);
+            return;
         }
-        else if (controller is not null)
-        {
-            ReleaseController(__instance, controller);
-        }
+
+        ApplyPortrait(__instance, sequence.Frames[0]);
+        if (sequence.Frames.Count > 1)
+            GetOrCreateController(__instance).Bind(__instance, sequence);
+        else
+            ReleaseController(__instance);
     }
 
     private static void UpdateVisualsPostfix(NCard __instance)
     {
-        __instance
-            .GetNodeOrNull<CardPortraitAnimationController>(CardPortraitAnimationController.NodeName)
-            ?.Reapply();
+        if (Controllers.TryGetValue(__instance, out CardPortraitAnimationController? controller))
+        {
+            if (__instance.Model is CardModel currentModel
+                && CardPortraitRuntime.HasOverride(currentModel)
+                && controller.IsBoundTo(currentModel))
+            {
+                controller.Reapply();
+                return;
+            }
+
+            ReleaseController(__instance);
+        }
+
+        if (__instance.Model is not CardModel model
+            || !CardPortraitRuntime.HasOverride(model)
+            || !CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
+            || sequence.Frames.Count == 0)
+        {
+            return;
+        }
+
+        ApplyPortrait(__instance, sequence.Frames[0]);
+        if (sequence.Frames.Count > 1)
+            GetOrCreateController(__instance).Bind(__instance, sequence);
     }
 
     private static void PoolPostfix(NCard __instance)
     {
-        CardPortraitAnimationController? controller =
-            __instance.GetNodeOrNull<CardPortraitAnimationController>(CardPortraitAnimationController.NodeName);
-        if (controller is null)
-            return;
+        ReleaseController(__instance);
+    }
 
-        ReleaseController(__instance, controller);
+    private static void ClonePostfix(AbstractModel __instance, AbstractModel __result)
+    {
+        if (__instance is CardModel source && __result is CardModel destination)
+            CardPortraitFields.Copy(source, destination);
     }
 
     private static void ToSerializablePostfix(CardModel __instance, SerializableCard __result) =>
@@ -182,9 +214,17 @@ internal static class CardPortraitDynamicPatches
         return __exception;
     }
 
-    private static void PatchPostfix(Type targetType, string methodName, string patchName)
+    private static void PatchVisualPostfix(Type targetType, string methodName, string patchName)
     {
-        Harmony.Patch(
+        VisualHarmony.Patch(
+            AccessTools.Method(targetType, methodName)
+            ?? throw new MissingMethodException(targetType.FullName, methodName),
+            postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), patchName));
+    }
+
+    private static void PatchTemporaryPostfix(Type targetType, string methodName, string patchName)
+    {
+        TemporaryHarmony.Patch(
             AccessTools.Method(targetType, methodName)
             ?? throw new MissingMethodException(targetType.FullName, methodName),
             postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), patchName));
@@ -192,28 +232,40 @@ internal static class CardPortraitDynamicPatches
 
     private static CardPortraitAnimationController GetOrCreateController(NCard card)
     {
-        CardPortraitAnimationController? controller =
-            card.GetNodeOrNull<CardPortraitAnimationController>(CardPortraitAnimationController.NodeName);
-        if (controller is not null)
+        if (Controllers.TryGetValue(card, out CardPortraitAnimationController? controller))
             return controller;
 
         controller = new CardPortraitAnimationController
         {
             Name = CardPortraitAnimationController.NodeName
         };
+        Controllers.Add(card, controller);
         card.AddChild(controller);
         return controller;
     }
 
-    private static void ReleaseController(NCard card, CardPortraitAnimationController controller)
+    private static void ReleaseController(NCard card)
     {
+        if (!Controllers.TryGetValue(card, out CardPortraitAnimationController? controller))
+            return;
+
+        Controllers.Remove(card);
         controller.Stop();
         if (controller.GetParent() == card)
             card.RemoveChild(controller);
         controller.QueueFree();
     }
 
-    private static void AttachControllersToLoadedCards()
+    private static void ApplyPortrait(NCard card, Texture2D texture)
+    {
+        TextureRect? portrait = card.Model?.Rarity == CardRarity.Ancient
+            ? card.GetNodeOrNull<TextureRect>("%AncientPortrait")
+            : card.GetNodeOrNull<TextureRect>("%Portrait");
+        if (portrait is not null)
+            portrait.Texture = texture;
+    }
+
+    private static void ApplyOverridesToLoadedCards()
     {
         if (Engine.GetMainLoop() is not SceneTree tree || tree.Root is null)
             return;
@@ -224,11 +276,13 @@ internal static class CardPortraitDynamicPatches
         static void Visit(Node node)
         {
             if (node is NCard { Model: CardModel model } card
+                && CardPortraitRuntime.HasOverride(model)
                 && CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
                 && sequence.Frames.Count > 0)
             {
-                CardPortraitAnimationController controller = GetOrCreateController(card);
-                controller.Bind(card, sequence);
+                ApplyPortrait(card, sequence.Frames[0]);
+                if (sequence.Frames.Count > 1)
+                    GetOrCreateController(card).Bind(card, sequence);
             }
 
             foreach (Node child in node.GetChildren())
@@ -248,22 +302,14 @@ internal static class CardPortraitDynamicPatches
         {
             foreach (Node child in node.GetChildren())
                 Visit(child);
-
-            if (node is not NCard card)
-                return;
-
-            CardPortraitAnimationController? controller =
-                card.GetNodeOrNull<CardPortraitAnimationController>(CardPortraitAnimationController.NodeName);
-            if (controller is null)
-                return;
-
-            ReleaseController(card, controller);
+            if (node is NCard card)
+                ReleaseController(card);
         }
     }
 
     private static void RefreshLoadedCards(Func<CardModel, bool> predicate)
     {
-        if (!_installed || Engine.GetMainLoop() is not SceneTree tree || tree.Root is null)
+        if (!_visualInstalled || Engine.GetMainLoop() is not SceneTree tree || tree.Root is null)
             return;
 
         Visit(tree.Root);
