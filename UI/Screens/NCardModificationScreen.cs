@@ -809,6 +809,7 @@ public partial class NCardModificationScreen : Control
         LoadItem(resolved);
         RebuildControls();
         RefreshPreview(forceReload: true);
+        NotifyPortraitChanged(resolved);
     }
 
     private static void TryDeletePortraitOutput(string path)
@@ -1599,6 +1600,8 @@ public partial class NCardModificationScreen : Control
         {
             CardPortraitRuntime.ResetTemporary(temporaryPreview);
         }
+        RefreshPreview(forceReload: true);
+        NotifyPortraitChanged(_item);
         _awaitingResetConfirmation = true;
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetTemporaryToBasic, _item);
         if (!requested)
@@ -1622,6 +1625,8 @@ public partial class NCardModificationScreen : Control
         {
             CardPortraitRuntime.ResetTemporary(permanentPreview);
         }
+        RefreshPreview(forceReload: true);
+        NotifyPortraitChanged(_item);
         _awaitingResetConfirmation = true;
         bool requested = LoadoutImmediateMutationService.RequestCardModification(CardModificationOperation.ResetPermanentToBasic, _item);
         if (!requested)
@@ -2197,6 +2202,21 @@ public partial class NCardModificationScreen : Control
             card.Model = null;
 
         card.Model = model;
+    }
+
+    private static void NotifyPortraitChanged(LoadoutOwnedItem<CardModel> item)
+    {
+        if (item.CardPileType is null or PileType.Deck)
+        {
+            LoadoutRunContentChangeService.NotifyCardUpdated(
+                item,
+                LoadoutCardVisualRefreshKind.Reload);
+            return;
+        }
+
+        CardModificationRuntime.NotifyCombatCardUpdated(
+            item,
+            LoadoutCardVisualRefreshKind.Reload);
     }
 
     private CardModel GetPreviewCardModel(CardModel fallback)

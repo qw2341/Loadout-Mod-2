@@ -66,13 +66,21 @@ public static class CardModificationRuntime
 
     public static long PermanentDisplayRevision => Interlocked.Read(ref _permanentDisplayRevision);
 
-    public static void NotifyCombatCardUpdated(LoadoutOwnedItem<CardModel> item)
+    public static void NotifyCombatCardUpdated(
+        LoadoutOwnedItem<CardModel> item,
+        LoadoutCardVisualRefreshKind refreshKind = LoadoutCardVisualRefreshKind.Lightweight)
     {
         if (item.CardPileType is null or PileType.Deck)
             return;
 
-        RefreshLiveCardVisuals(item.Model, LoadoutCardVisualRefreshKind.Lightweight);
-        OwnedCardChanged?.Invoke(item, LoadoutCardVisualRefreshKind.Lightweight);
+        RefreshLiveCardVisuals(item.Model, refreshKind);
+        OwnedCardChanged?.Invoke(item, refreshKind);
+    }
+
+    public static void NotifyPermanentCardVisualChanged(ModelId cardId)
+    {
+        Interlocked.Increment(ref _permanentDisplayRevision);
+        PermanentCardDisplayChanged?.Invoke(cardId);
     }
 
     public static bool IsPermanentApplicationSuppressed => _suppressPermanentApplyDepth > 0;

@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Godot;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.UI.ImageEditing;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
@@ -40,8 +41,12 @@ internal static class CardPortraitFields
 
     public static void Copy(CardModel source, CardModel destination)
     {
-        if (!References.TryGetValue(source, out CardPortraitReference? reference))
+        if (!References.TryGetValue(source, out CardPortraitReference? reference)
+            && (source.DeckVersion is not CardModel deckCard
+                || !References.TryGetValue(deckCard, out reference)))
+        {
             return;
+        }
 
         References.Remove(destination);
         References.Add(destination, reference);
@@ -93,11 +98,7 @@ internal static class CardPortraitRuntime
     {
         Register();
         CardPortraitReference? reference = null;
-        if (!CardPortraitFields.TryGet(card, out reference)
-            && card.DeckVersion is CardModel deckCard)
-        {
-            CardPortraitFields.TryGet(deckCard, out reference);
-        }
+        CardPortraitFields.TryGet(GetTemporaryOwner(card), out reference);
 
         if (reference is not null
             && CardPortraitStore.TryGetTemporary(reference, out CardPortraitAsset temporary)
@@ -135,9 +136,10 @@ internal static class CardPortraitRuntime
             return false;
         }
 
-        CardPortraitFields.Set(card, reference);
+        CardModel temporaryOwner = GetTemporaryOwner(card);
+        CardPortraitFields.Set(temporaryOwner, reference);
         CardPortraitDynamicPatches.EnsureInstalled();
-        CardPortraitDynamicPatches.RefreshTemporary(card);
+        CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner);
         return true;
     }
 
@@ -152,34 +154,46 @@ internal static class CardPortraitRuntime
         if (!CardPortraitStore.RegisterPermanent(card.Id, target, frame, document, savedPath))
             return false;
 
-        bool temporaryChanged = CardPortraitFields.Clear(card);
+        CardModel temporaryOwner = GetTemporaryOwner(card);
+        bool temporaryChanged = CardPortraitFields.Clear(temporaryOwner);
         CardPortraitDynamicPatches.EnsureInstalled();
         if (temporaryChanged)
-            CardPortraitDynamicPatches.RefreshTemporary(card);
+            CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner);
         return true;
     }
 
     public static bool ResetTemporary(CardModel card)
     {
         Register();
-        if (!CardPortraitFields.Clear(card))
+        CardModel temporaryOwner = GetTemporaryOwner(card);
+        if (!CardPortraitFields.Clear(temporaryOwner))
             return false;
 
-        CardPortraitDynamicPatches.RefreshTemporary(card);
+        CardPortraitDynamicPatches.EnsureInstalled();
+        CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner);
         return true;
     }
 
     public static bool ResetPermanent(CardModel card)
     {
         Register();
-        bool temporaryChanged = CardPortraitFields.Clear(card);
+        CardModel temporaryOwner = GetTemporaryOwner(card);
+        bool temporaryChanged = CardPortraitFields.Clear(temporaryOwner);
         bool permanentChanged = CardPortraitStore.ResetPermanent(card.Id);
+        CardPortraitDynamicPatches.EnsureInstalled();
+        if (!permanentChanged)
+        {
+            RemoveCachedSequences(card.Id.ToString());
+            CardPortraitDynamicPatches.RefreshPermanent(card.Id);
+            CardModificationRuntime.NotifyPermanentCardVisualChanged(card.Id);
+        }
         if (temporaryChanged)
-            CardPortraitDynamicPatches.RefreshTemporary(card);
+            CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner);
         return temporaryChanged || permanentChanged;
     }
 
-    public static bool HasTemporary(CardModel card) => CardPortraitFields.TryGet(card, out _);
+    public static bool HasTemporary(CardModel card) =>
+        CardPortraitFields.TryGet(GetTemporaryOwner(card), out _);
 
     public static void DeleteTemporaryRun(long runStartTime)
     {
@@ -287,6 +301,7 @@ internal static class CardPortraitRuntime
         RemoveCachedSequences(cardId.ToString());
         CardPortraitDynamicPatches.EnsureInstalled();
         CardPortraitDynamicPatches.RefreshPermanent(cardId);
+        CardModificationRuntime.NotifyPermanentCardVisualChanged(cardId);
     }
 
     private static void OnPermanentReloaded(IReadOnlyList<ModelId> changedIds)
@@ -296,7 +311,10 @@ internal static class CardPortraitRuntime
         if (CardPortraitStore.HasAnyPermanent)
             CardPortraitDynamicPatches.EnsureInstalled();
         foreach (ModelId cardId in changedIds)
+        {
             CardPortraitDynamicPatches.RefreshPermanent(cardId);
+            CardModificationRuntime.NotifyPermanentCardVisualChanged(cardId);
+        }
     }
 
     private static void RemoveCachedSequences(string cardModelId)
@@ -313,4 +331,6 @@ internal static class CardPortraitRuntime
             WarnedAssets.Remove(key);
         }
     }
+
+    private static CardModel GetTemporaryOwner(CardModel card) => card.DeckVersion ?? card;
 }

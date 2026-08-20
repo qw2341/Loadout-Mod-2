@@ -19,6 +19,12 @@ internal static class CardPortraitDynamicPatches
     private static readonly MethodInfo ReloadMethod =
         AccessTools.Method(typeof(NCard), "Reload")
         ?? throw new MissingMethodException(typeof(NCard).FullName, "Reload");
+    private static readonly MethodInfo UpdateVisualsMethod =
+        AccessTools.Method(
+            typeof(NCard),
+            nameof(NCard.UpdateVisuals),
+            [typeof(PileType), typeof(CardPreviewMode)])
+        ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.UpdateVisuals));
 
     private static bool _installed;
 
@@ -46,6 +52,14 @@ internal static class CardPortraitDynamicPatches
             postfix: lastPortraitPostfix);
         Harmony.Patch(ReloadMethod, postfix: lastReloadPostfix);
         Harmony.Patch(
+            UpdateVisualsMethod,
+            postfix: new HarmonyMethod(
+                typeof(CardPortraitDynamicPatches),
+                nameof(UpdateVisualsPostfix))
+            {
+                priority = Priority.Last
+            });
+        Harmony.Patch(
             AccessTools.Method(typeof(NCard), nameof(NCard.OnReturnedFromPool))
             ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.OnReturnedFromPool)),
             postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(PoolPostfix)));
@@ -53,8 +67,6 @@ internal static class CardPortraitDynamicPatches
             AccessTools.Method(typeof(NCard), nameof(NCard.OnFreedToPool))
             ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.OnFreedToPool)),
             postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(PoolPostfix)));
-        PatchPostfix(typeof(AbstractModel), nameof(AbstractModel.MutableClone), nameof(ClonePostfix));
-        PatchPostfix(typeof(AbstractModel), nameof(AbstractModel.ClonePreservingMutability), nameof(ClonePostfix));
         PatchPostfix(typeof(CardModel), nameof(CardModel.ToSerializable), nameof(ToSerializablePostfix));
         Harmony.Patch(
             AccessTools.Method(typeof(ChecksumTracker), "ObtainAndTrackChecksum")
@@ -117,7 +129,7 @@ internal static class CardPortraitDynamicPatches
         CardPortraitAnimationController? controller =
             __instance.GetNodeOrNull<CardPortraitAnimationController>(CardPortraitAnimationController.NodeName);
         if (CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
-            && sequence.Frames.Count > 1)
+            && sequence.Frames.Count > 0)
         {
             (controller ?? GetOrCreateController(__instance)).Bind(__instance, sequence);
         }
@@ -125,6 +137,13 @@ internal static class CardPortraitDynamicPatches
         {
             ReleaseController(__instance, controller);
         }
+    }
+
+    private static void UpdateVisualsPostfix(NCard __instance)
+    {
+        __instance
+            .GetNodeOrNull<CardPortraitAnimationController>(CardPortraitAnimationController.NodeName)
+            ?.Reapply();
     }
 
     private static void PoolPostfix(NCard __instance)
@@ -135,12 +154,6 @@ internal static class CardPortraitDynamicPatches
             return;
 
         ReleaseController(__instance, controller);
-    }
-
-    private static void ClonePostfix(AbstractModel __instance, AbstractModel __result)
-    {
-        if (__instance is CardModel source && __result is CardModel destination)
-            CardPortraitFields.Copy(source, destination);
     }
 
     private static void ToSerializablePostfix(CardModel __instance, SerializableCard __result) =>
@@ -210,7 +223,7 @@ internal static class CardPortraitDynamicPatches
         {
             if (node is NCard { Model: CardModel model } card
                 && CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
-                && sequence.Frames.Count > 1)
+                && sequence.Frames.Count > 0)
             {
                 CardPortraitAnimationController controller = GetOrCreateController(card);
                 controller.Bind(card, sequence);

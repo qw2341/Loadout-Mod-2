@@ -429,7 +429,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         mount.AddChild(card);
         card.SetAnchorsPreset(LayoutPreset.Center);
         card.Position = Vector2.Zero;
-        card.Scale = Vector2.One * 1.25f;
+        card.Scale = Vector2.One;
         card.MouseFilter = MouseFilterEnum.Ignore;
         card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
 

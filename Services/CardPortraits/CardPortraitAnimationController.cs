@@ -46,13 +46,20 @@ internal partial class CardPortraitAnimationController : Node
         _portrait = card.GetNodeOrNull<TextureRect>("%Portrait");
         _ancientPortrait = card.GetNodeOrNull<TextureRect>("%AncientPortrait");
         Stop();
-        if (sequence is not { Frames.Count: > 1 })
+        if (sequence is not { Frames.Count: > 0 })
             return;
 
         _sequence = sequence;
         _frameIndex = 0;
         ApplyCurrentFrame();
-        RestartTimer();
+        if (sequence.Frames.Count > 1)
+            RestartTimer();
+    }
+
+    public void Reapply()
+    {
+        if (_sequence is { Frames.Count: > 0 })
+            ApplyCurrentFrame();
     }
 
     public void Stop()

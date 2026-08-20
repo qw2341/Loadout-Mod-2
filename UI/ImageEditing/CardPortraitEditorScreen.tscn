@@ -43,10 +43,10 @@ color = Color(0.015, 0.02, 0.035, 0.72)
 [node name="CardPreviewMount" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 190.0
-offset_top = 175.0
-offset_right = 560.0
-offset_bottom = 835.0
+offset_left = 240.0
+offset_top = 315.0
+offset_right = 240.0
+offset_bottom = 315.0
 mouse_filter = 2
 
 [node name="EditorMount" type="Control" parent="."]
