@@ -13,8 +13,6 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
-using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
-using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class CardPortraitDynamicPatches
@@ -34,6 +32,12 @@ internal static class CardPortraitDynamicPatches
             nameof(NCard.UpdateVisuals),
             [typeof(PileType), typeof(CardPreviewMode)])
         ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.UpdateVisuals));
+    private static readonly MethodInfo UpdatePortraitMethod =
+        AccessTools.Method(typeof(NCard), "UpdatePortrait")
+        ?? throw new MissingMethodException(typeof(NCard).FullName, "UpdatePortrait");
+    private static readonly MethodInfo EnterTreeMethod =
+        AccessTools.Method(typeof(NCard), nameof(NCard._EnterTree))
+        ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard._EnterTree));
 
     private static bool _visualInstalled;
     private static bool _temporaryInstalled;
@@ -43,20 +47,11 @@ internal static class CardPortraitDynamicPatches
         if (_visualInstalled)
             return;
 
-        MethodInfo portraitGetter = AccessTools.PropertyGetter(typeof(CardModel), nameof(CardModel.Portrait))
-            ?? throw new MissingMethodException(typeof(CardModel).FullName, $"get_{nameof(CardModel.Portrait)}");
-        MethodInfo beginDragMethod = AccessTools.Method(typeof(NHandCardHolder), nameof(NHandCardHolder.BeginDrag))
-            ?? throw new MissingMethodException(typeof(NHandCardHolder).FullName, nameof(NHandCardHolder.BeginDrag));
-        MethodInfo returnHolderMethod = AccessTools.Method(
-            typeof(NPlayerHand),
-            "ReturnHolderToHand",
-            [typeof(NHandCardHolder)])
-            ?? throw new MissingMethodException(typeof(NPlayerHand).FullName, "ReturnHolderToHand");
-        VisualHarmony.Patch(portraitGetter, postfix: LastPostfix(portraitGetter, nameof(PortraitPostfix)));
-        VisualHarmony.Patch(ReloadMethod, postfix: LastPostfix(ReloadMethod, nameof(ReloadPostfix)));
+        VisualHarmony.Patch(
+            UpdatePortraitMethod,
+            postfix: LastPostfix(UpdatePortraitMethod, nameof(UpdatePortraitPostfix)));
         VisualHarmony.Patch(UpdateVisualsMethod, postfix: LastPostfix(UpdateVisualsMethod, nameof(UpdateVisualsPostfix)));
-        VisualHarmony.Patch(beginDragMethod, postfix: LastPostfix(beginDragMethod, nameof(BeginDragPostfix)));
-        VisualHarmony.Patch(returnHolderMethod, postfix: LastPostfix(returnHolderMethod, nameof(ReturnHolderToHandPostfix)));
+        VisualHarmony.Patch(EnterTreeMethod, postfix: LastPostfix(EnterTreeMethod, nameof(EnterTreePostfix)));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnReturnedFromPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnFreedToPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(AbstractModel), nameof(AbstractModel.MutableClone), nameof(ClonePostfix));
@@ -121,6 +116,7 @@ internal static class CardPortraitDynamicPatches
                 && CardPortraitFields.SharesIdentity(deckCard, card))
             || (previousPortraitId is not null
                 && AppliedPortraits.TryGetValue(node, out AppliedPortraitState? applied)
+                && applied.Sequence is not null
                 && string.Equals(
                     applied.Sequence.PortraitId,
                     previousPortraitId,
@@ -143,62 +139,64 @@ internal static class CardPortraitDynamicPatches
                 .ToArray() ?? []
         };
 
-    private static void PortraitPostfix(CardModel __instance, ref Texture2D __result)
-    {
-        if (CardPortraitRuntime.TryResolve(__instance, out CardPortraitTextureSequence sequence)
-            && sequence.Frames.Count > 0)
-        {
-            __result = sequence.Frames[0];
-        }
-    }
-
-    private static void ReloadPostfix(NCard __instance)
+    private static void UpdatePortraitPostfix(NCard __instance)
     {
         if (__instance.Model is not CardModel model)
         {
-            ReleaseController(__instance);
+            ClearAppliedPortrait(__instance);
             return;
         }
 
         if (!CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
             || sequence.Frames.Count == 0)
         {
-            RestoreAppliedPortrait(__instance);
+            RecordNoOverride(__instance, model);
             return;
         }
 
-        ApplyResolvedPortrait(__instance, sequence);
+        ApplyResolvedPortrait(__instance, model, sequence);
     }
 
     private static void UpdateVisualsPostfix(NCard __instance)
     {
-        if (__instance.Model is not CardModel model
-            || !CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
-            || sequence.Frames.Count == 0)
+        ReapplyOverride(__instance);
+    }
+
+    private static void EnterTreePostfix(NCard __instance)
+    {
+        ReapplyOverride(__instance);
+    }
+
+    private static void ReapplyOverride(NCard card)
+    {
+        if (card.Model is not CardModel model)
         {
-            RestoreAppliedPortrait(__instance);
+            ClearAppliedPortrait(card);
             return;
         }
 
-        ApplyResolvedPortrait(__instance, sequence);
+        if (AppliedPortraits.TryGetValue(card, out AppliedPortraitState? applied)
+            && ReferenceEquals(applied.Model, model))
+        {
+            if (applied.Sequence is not null)
+                ApplyResolvedPortrait(card, model, applied.Sequence);
+            return;
+        }
+
+        if (CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
+            && sequence.Frames.Count > 0)
+        {
+            ApplyResolvedPortrait(card, model, sequence);
+            return;
+        }
+
+        RecordNoOverride(card, model);
     }
 
     private static void PoolPostfix(NCard __instance)
     {
         AppliedPortraits.Remove(__instance);
         ReleaseController(__instance);
-    }
-
-    private static void BeginDragPostfix(NHandCardHolder __instance)
-    {
-        if (__instance.CardNode is { } card)
-            ReapplyOverride(card);
-    }
-
-    private static void ReturnHolderToHandPostfix(NHandCardHolder holder)
-    {
-        if (holder.CardNode is { } card)
-            ReapplyOverride(card);
     }
 
     private static void ClonePostfix(AbstractModel __instance, AbstractModel __result)
@@ -283,27 +281,18 @@ internal static class CardPortraitDynamicPatches
             portrait.Texture = texture;
     }
 
-    private static void ReapplyOverride(NCard card)
-    {
-        if (card.Model is not CardModel model
-            || !CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
-            || sequence.Frames.Count == 0)
-        {
-            RestoreAppliedPortrait(card);
-            return;
-        }
-
-        ApplyResolvedPortrait(card, sequence);
-    }
-
-    private static void ApplyResolvedPortrait(NCard card, CardPortraitTextureSequence sequence)
+    private static void ApplyResolvedPortrait(
+        NCard card,
+        CardModel model,
+        CardPortraitTextureSequence sequence)
     {
         ApplyPortrait(card, sequence.Frames[0]);
         if (!AppliedPortraits.TryGetValue(card, out AppliedPortraitState? applied)
+            || !ReferenceEquals(applied.Model, model)
             || !ReferenceEquals(applied.Sequence, sequence))
         {
             AppliedPortraits.Remove(card);
-            AppliedPortraits.Add(card, new AppliedPortraitState(sequence));
+            AppliedPortraits.Add(card, new AppliedPortraitState(model, sequence));
         }
         if (sequence.Frames.Count > 1)
         {
@@ -319,20 +308,26 @@ internal static class CardPortraitDynamicPatches
         }
     }
 
-    private static void RestoreAppliedPortrait(NCard card)
+    private static void ClearAppliedPortrait(NCard card)
     {
         if (!AppliedPortraits.Remove(card))
             return;
 
         ReleaseController(card);
-        if (card.Model is not CardModel model)
-            return;
+    }
 
-        TextureRect? portrait = CardModificationRuntime.ShouldUseAncientRendering(model)
-            ? card.GetNodeOrNull<TextureRect>("%AncientPortrait")
-            : card.GetNodeOrNull<TextureRect>("%Portrait");
-        if (portrait is not null)
-            portrait.Texture = model.Portrait;
+    private static void RecordNoOverride(NCard card, CardModel model)
+    {
+        if (AppliedPortraits.TryGetValue(card, out AppliedPortraitState? applied)
+            && ReferenceEquals(applied.Model, model)
+            && applied.Sequence is null)
+        {
+            return;
+        }
+
+        AppliedPortraits.Remove(card);
+        AppliedPortraits.Add(card, new AppliedPortraitState(model, null));
+        ReleaseController(card);
     }
 
     private static void ApplyOverridesToLoadedCards()
@@ -350,7 +345,7 @@ internal static class CardPortraitDynamicPatches
                 && CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
                 && sequence.Frames.Count > 0)
             {
-                ApplyResolvedPortrait(card, sequence);
+                ApplyResolvedPortrait(card, model, sequence);
             }
 
             foreach (Node child in node.GetChildren())
@@ -370,8 +365,13 @@ internal static class CardPortraitDynamicPatches
         {
             foreach (Node child in node.GetChildren())
                 Visit(child);
-            if (node is NCard card)
-                RestoreAppliedPortrait(card);
+            if (node is NCard card
+                && AppliedPortraits.TryGetValue(card, out AppliedPortraitState? applied))
+            {
+                ClearAppliedPortrait(card);
+                if (applied.Sequence is not null)
+                    ReloadCard(card);
+            }
         }
     }
 
@@ -393,5 +393,7 @@ internal static class CardPortraitDynamicPatches
         }
     }
 
-    private sealed record AppliedPortraitState(CardPortraitTextureSequence Sequence);
+    private sealed record AppliedPortraitState(
+        CardModel Model,
+        CardPortraitTextureSequence? Sequence);
 }

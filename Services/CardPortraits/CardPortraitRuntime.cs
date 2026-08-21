@@ -34,6 +34,9 @@ internal static class CardPortraitFields
 
     public static string GetOrCreateIdentity(CardModel card)
     {
+        if (card.IsCanonical)
+            throw new InvalidOperationException("A temporary portrait cannot be attached to a canonical card model.");
+
         if (Identities.TryGetValue(card, out CardPortraitIdentity? identity))
             return identity.Value;
 
@@ -44,7 +47,8 @@ internal static class CardPortraitFields
 
     public static bool TryGet(CardModel card, [NotNullWhen(true)] out CardPortraitReference? reference)
     {
-        if (Identities.TryGetValue(card, out CardPortraitIdentity? identity)
+        if (!card.IsCanonical
+            && Identities.TryGetValue(card, out CardPortraitIdentity? identity)
             && ReferencesByIdentity.TryGetValue(identity.Value, out reference))
         {
             return true;
@@ -56,6 +60,9 @@ internal static class CardPortraitFields
 
     public static bool Set(CardModel card, CardPortraitReference reference)
     {
+        if (card.IsCanonical)
+            return false;
+
         if (Identities.TryGetValue(card, out CardPortraitIdentity? identity))
         {
             if (string.Equals(identity.Value, reference.CardInstanceId, StringComparison.Ordinal)
@@ -90,6 +97,9 @@ internal static class CardPortraitFields
 
     public static void Copy(CardModel source, CardModel destination)
     {
+        if (source.IsCanonical || destination.IsCanonical)
+            return;
+
         if (!Identities.TryGetValue(source, out CardPortraitIdentity? identity)
             && (source.DeckVersion is not CardModel deckCard
                 || !Identities.TryGetValue(deckCard, out identity)))
@@ -109,7 +119,9 @@ internal static class CardPortraitFields
 
     public static bool SharesIdentity(CardModel first, CardModel second)
     {
-        return Identities.TryGetValue(first, out CardPortraitIdentity? firstIdentity)
+        return !first.IsCanonical
+            && !second.IsCanonical
+            && Identities.TryGetValue(first, out CardPortraitIdentity? firstIdentity)
             && Identities.TryGetValue(second, out CardPortraitIdentity? secondIdentity)
             && string.Equals(firstIdentity.Value, secondIdentity.Value, StringComparison.Ordinal);
     }
@@ -195,6 +207,9 @@ internal static class CardPortraitRuntime
     {
         Register();
         CardModel temporaryOwner = GetTemporaryOwner(card);
+        if (temporaryOwner.IsCanonical)
+            return false;
+
         string cardInstanceId = CardPortraitFields.GetOrCreateIdentity(temporaryOwner);
         CardPortraitFields.TryGet(temporaryOwner, out CardPortraitReference? previous);
         if (!CardPortraitStore.RegisterTemporary(

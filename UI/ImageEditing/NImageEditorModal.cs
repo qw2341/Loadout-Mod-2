@@ -168,7 +168,7 @@ public partial class NImageEditorModal : Control, IScreenContext
             Control tools = CreateToolsPanel();
             tools.SetAnchorsPreset(LayoutPreset.FullRect);
             toolsMount.AddChild(tools);
-            BuildCardPreview();
+            Callable.From(BuildCardPreview).CallDeferred();
             BuildLoadoutScreenActions();
         }
         else
