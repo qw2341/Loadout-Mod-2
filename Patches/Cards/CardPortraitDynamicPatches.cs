@@ -17,6 +17,8 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class CardPortraitDynamicPatches
 {
+    private const string AnimeRegentPortraitPatchTypeName = "regentCardsAnimeRework.PortraitPatch";
+    private const string AnimeRegentTryReplacePortraitMethodName = "TryReplacePortrait";
     private const string VisualHarmonyId = "Loadout.CardPortraits.Visual";
     private const string TemporaryHarmonyId = "Loadout.CardPortraits.Temporary";
     private static readonly Harmony VisualHarmony = new(VisualHarmonyId);
@@ -39,6 +41,12 @@ internal static class CardPortraitDynamicPatches
         AccessTools.Method(typeof(NCard), nameof(NCard._EnterTree))
         ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard._EnterTree));
 
+    [ThreadStatic]
+    private static CardModel? _portraitResolutionModel;
+
+    [ThreadStatic]
+    private static CardPortraitTextureSequence? _portraitResolutionSequence;
+
     private static bool _visualInstalled;
     private static bool _temporaryInstalled;
 
@@ -47,8 +55,14 @@ internal static class CardPortraitDynamicPatches
         if (_visualInstalled)
             return;
 
+        MethodInfo portraitGetter = AccessTools.PropertyGetter(typeof(CardModel), nameof(CardModel.Portrait))
+            ?? throw new MissingMethodException(typeof(CardModel).FullName, $"get_{nameof(CardModel.Portrait)}");
+        VisualHarmony.Patch(
+            portraitGetter,
+            postfix: LastPostfix(portraitGetter, nameof(PortraitPostfix)));
         VisualHarmony.Patch(
             UpdatePortraitMethod,
+            prefix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(UpdatePortraitPrefix)),
             postfix: LastPostfix(UpdatePortraitMethod, nameof(UpdatePortraitPostfix)));
         VisualHarmony.Patch(UpdateVisualsMethod, postfix: LastPostfix(UpdateVisualsMethod, nameof(UpdateVisualsPostfix)));
         VisualHarmony.Patch(EnterTreeMethod, postfix: LastPostfix(EnterTreeMethod, nameof(EnterTreePostfix)));
@@ -59,6 +73,7 @@ internal static class CardPortraitDynamicPatches
             typeof(AbstractModel),
             nameof(AbstractModel.ClonePreservingMutability),
             nameof(ClonePostfix));
+        PatchAnimeRegentCompatibility();
         _visualInstalled = true;
         ApplyOverridesToLoadedCards();
     }
@@ -89,6 +104,7 @@ internal static class CardPortraitDynamicPatches
         {
             RestorePortraitsFromLoadedCards();
             VisualHarmony.UnpatchAll(VisualHarmonyId);
+            ClearPortraitResolution();
             _visualInstalled = false;
         }
         if (_temporaryInstalled)
@@ -139,22 +155,52 @@ internal static class CardPortraitDynamicPatches
                 .ToArray() ?? []
         };
 
+    private static void UpdatePortraitPrefix(NCard __instance)
+    {
+        ClearPortraitResolution();
+        if (__instance.Model is not CardModel model)
+            return;
+
+        _portraitResolutionModel = model;
+        if (CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
+            && sequence.Frames.Count > 0)
+        {
+            _portraitResolutionSequence = sequence;
+        }
+    }
+
+    private static void PortraitPostfix(CardModel __instance, ref Texture2D __result)
+    {
+        if (ReferenceEquals(_portraitResolutionModel, __instance)
+            && _portraitResolutionSequence is { Frames.Count: > 0 } sequence)
+        {
+            __result = sequence.Frames[0];
+        }
+    }
+
     private static void UpdatePortraitPostfix(NCard __instance)
     {
-        if (__instance.Model is not CardModel model)
+        try
         {
-            ClearAppliedPortrait(__instance);
-            return;
-        }
+            if (__instance.Model is not CardModel model)
+            {
+                ClearAppliedPortrait(__instance);
+                return;
+            }
 
-        if (!CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
-            || sequence.Frames.Count == 0)
+            if (!ReferenceEquals(_portraitResolutionModel, model)
+                || _portraitResolutionSequence is not { Frames.Count: > 0 } sequence)
+            {
+                RecordNoOverride(__instance, model);
+                return;
+            }
+
+            ApplyResolvedPortrait(__instance, model, sequence);
+        }
+        finally
         {
-            RecordNoOverride(__instance, model);
-            return;
+            ClearPortraitResolution();
         }
-
-        ApplyResolvedPortrait(__instance, model, sequence);
     }
 
     private static void UpdateVisualsPostfix(NCard __instance)
@@ -243,6 +289,46 @@ internal static class CardPortraitDynamicPatches
             AccessTools.Method(targetType, methodName)
             ?? throw new MissingMethodException(targetType.FullName, methodName),
             postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), patchName));
+    }
+
+    private static void PatchAnimeRegentCompatibility()
+    {
+        Type? patchType = AccessTools.TypeByName(AnimeRegentPortraitPatchTypeName);
+        if (patchType is null)
+            return;
+
+        MethodInfo? tryReplacePortrait = AccessTools.Method(
+            patchType,
+            AnimeRegentTryReplacePortraitMethodName,
+            [typeof(NCard)]);
+        if (tryReplacePortrait is null)
+        {
+            GD.PushWarning("CardPortrait: Anime Regent portrait compatibility target was not found.");
+            return;
+        }
+
+        VisualHarmony.Patch(
+            tryReplacePortrait,
+            prefix: new HarmonyMethod(
+                typeof(CardPortraitDynamicPatches),
+                nameof(AnimeRegentTryReplacePortraitPrefix))
+            {
+                priority = Priority.First
+            });
+    }
+
+    private static bool AnimeRegentTryReplacePortraitPrefix(NCard __0)
+    {
+        return __0.Model is not CardModel model
+            || !AppliedPortraits.TryGetValue(__0, out AppliedPortraitState? applied)
+            || !ReferenceEquals(applied.Model, model)
+            || applied.Sequence is null;
+    }
+
+    private static void ClearPortraitResolution()
+    {
+        _portraitResolutionModel = null;
+        _portraitResolutionSequence = null;
     }
 
     private static CardPortraitAnimationController GetOrCreateController(NCard card)
