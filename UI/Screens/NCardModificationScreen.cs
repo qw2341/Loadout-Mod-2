@@ -959,7 +959,7 @@ public partial class NCardModificationScreen : Control
                 .Select(rarity => new LoadoutDropdownOption(
                     rarity.ToString(),
                     CardPrinter.GetCardRarityLabel(rarity),
-                    ShadowColor: CommonHelpers.GetRarityCardTitleColor(rarity))),
+                    OutlineColor: CommonHelpers.GetRarityCardTitleColor(rarity))),
             _workingState.Rarity ?? card.Rarity.ToString(),
             selected =>
             {

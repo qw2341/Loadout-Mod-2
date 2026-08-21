@@ -24,7 +24,7 @@ public readonly record struct LoadoutDropdownOption(
     Color? TextColor = null,
     Func<Texture2D?>? IconFactory = null,
     bool Enabled = true,
-    Color? ShadowColor = null);
+    Color? OutlineColor = null);
 
 public partial class NLoadoutDropdown : NDropdown
 {
@@ -263,7 +263,7 @@ public partial class NLoadoutDropdown : NDropdown
                 MouseFilter = MouseFilterEnum.Stop
             };
             item.FontSize = ItemFontSize;
-            item.Init(option.Id, option.Label, GetValidIcon(option.Icon), option.TextColor, option.ShadowColor);
+            item.Init(option.Id, option.Label, GetValidIcon(option.Icon), option.TextColor, option.OutlineColor);
             item.SetHoverTipsFactory(option.HoverTipsFactory);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(OnDropdownItemSelected));
             _dropdownItems.AddChild(item);

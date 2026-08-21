@@ -25,7 +25,7 @@ public partial class NSelectDropdownItem : NDropdownItem
     private string _pendingLabel = "DropdownItem";
     private Texture2D? _pendingIcon;
     private Color? _pendingTextColor;
-    private Color? _pendingShadowColor;
+    private Color? _pendingOutlineColor;
     private ColorRect? _highlight;
     private TextureRect? _icon;
     private Func<IReadOnlyList<IHoverTip>>? _hoverTipsFactory;
@@ -36,13 +36,13 @@ public partial class NSelectDropdownItem : NDropdownItem
         string label,
         Texture2D? icon = null,
         Color? textColor = null,
-        Color? shadowColor = null)
+        Color? outlineColor = null)
     {
         OptionId = optionId;
         _pendingLabel = label;
         _pendingIcon = icon;
         _pendingTextColor = textColor;
-        _pendingShadowColor = shadowColor;
+        _pendingOutlineColor = outlineColor;
 
         if (IsNodeReady())
         {
@@ -172,8 +172,10 @@ public partial class NSelectDropdownItem : NDropdownItem
         label.AddThemeColorOverride("font_color", _pendingTextColor ?? StsColors.cream);
         label.AddThemeColorOverride(
             "font_shadow_color",
-            _pendingShadowColor ?? new Color(0f, 0f, 0f, 0.12549f));
-        label.AddThemeConstantOverride("shadow_outline_size", _pendingShadowColor is null ? 0 : 2);
+            new Color(0f, 0f, 0f, 0.12549f));
+        label.AddThemeConstantOverride("shadow_outline_size", 0);
+        label.AddThemeColorOverride("font_outline_color", _pendingOutlineColor ?? Colors.Transparent);
+        label.AddThemeConstantOverride("outline_size", _pendingOutlineColor is null ? 0 : 3);
     }
 
     private void RefreshIconLayout()

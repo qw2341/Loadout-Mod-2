@@ -390,7 +390,7 @@ public class CardPrinter
 			    CommonHelpers.EnumFilterId("card_rarity", localRarity), GetCardRarityLabel(localRarity),
 			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Rarity == localRarity,
 			    "rarity",
-			    shadowColor: CommonHelpers.GetRarityCardTitleColor(localRarity));
+			    outlineColor: CommonHelpers.GetRarityCardTitleColor(localRarity));
 	    }
     }
 

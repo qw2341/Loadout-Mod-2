@@ -844,7 +844,7 @@ public class CommonHelpers
         string groupId,
         Func<TModel, TEnum> getValue,
         TEnum excludedValue,
-        Func<TEnum, Color>? getShadowColor = null)
+        Func<TEnum, Color>? getOutlineColor = null)
         where TEnum : struct, Enum
     {
         foreach (TEnum value in Enum.GetValues<TEnum>())
@@ -858,7 +858,7 @@ public class CommonHelpers
                 label,
                 model => EqualityComparer<TEnum>.Default.Equals(getValue(model), value),
                 groupId,
-                shadowColor: getShadowColor?.Invoke(value));
+                outlineColor: getOutlineColor?.Invoke(value));
         }
     }
 

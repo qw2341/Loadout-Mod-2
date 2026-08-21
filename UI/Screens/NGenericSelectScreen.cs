@@ -2754,7 +2754,7 @@ public partial class NGenericSelectScreen : Control
                     filter.Label,
                     TextColor: filter.TextColor,
                     IconFactory: filter.IconFactory,
-                    ShadowColor: filter.ShadowColor));
+                    OutlineColor: filter.OutlineColor));
             }
 
             string selectedOptionId = GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId;
@@ -5414,7 +5414,7 @@ public sealed class SelectScreenBuilder<TModel>
         bool enabledByDefault = false,
         Func<Texture2D?>? iconFactory = null,
         Color? textColor = null,
-        Color? shadowColor = null)
+        Color? outlineColor = null)
     {
         _screen.AddFilter(new SelectFilterDefinition(
             id,
@@ -5424,7 +5424,7 @@ public sealed class SelectScreenBuilder<TModel>
             enabledByDefault,
             iconFactory,
             textColor,
-            shadowColor));
+            outlineColor));
 
         return this;
     }
@@ -6052,7 +6052,7 @@ public sealed class SelectFilterDefinition
         bool enabled = false,
         Func<Texture2D?>? iconFactory = null,
         Color? textColor = null,
-        Color? shadowColor = null)
+        Color? outlineColor = null)
     {
         Id = id;
         Label = label;
@@ -6060,7 +6060,7 @@ public sealed class SelectFilterDefinition
         Predicate = predicate;
         IconFactory = iconFactory;
         TextColor = textColor;
-        ShadowColor = shadowColor;
+        OutlineColor = outlineColor;
         _enabled = enabled;
     }
 
@@ -6070,7 +6070,7 @@ public sealed class SelectFilterDefinition
     public Func<IGenericSelectItem, bool> Predicate { get; }
     public Func<Texture2D?>? IconFactory { get; }
     public Color? TextColor { get; }
-    public Color? ShadowColor { get; }
+    public Color? OutlineColor { get; }
     public bool Enabled
     {
         get => _enabled;
