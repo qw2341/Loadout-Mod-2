@@ -17,8 +17,6 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class CardPortraitDynamicPatches
 {
-    private const string AnimeRegentPortraitPatchTypeName = "regentCardsAnimeRework.PortraitPatch";
-    private const string AnimeRegentTryReplacePortraitMethodName = "TryReplacePortrait";
     private const string VisualHarmonyId = "Loadout.CardPortraits.Visual";
     private const string TemporaryHarmonyId = "Loadout.CardPortraits.Temporary";
     private static readonly Harmony VisualHarmony = new(VisualHarmonyId);
@@ -47,6 +45,9 @@ internal static class CardPortraitDynamicPatches
     [ThreadStatic]
     private static CardPortraitTextureSequence? _portraitResolutionSequence;
 
+    [ThreadStatic]
+    private static Texture2D? _portraitResolutionFallbackTexture;
+
     private static bool _visualInstalled;
     private static bool _temporaryInstalled;
 
@@ -60,12 +61,20 @@ internal static class CardPortraitDynamicPatches
         VisualHarmony.Patch(
             portraitGetter,
             postfix: LastPostfix(portraitGetter, nameof(PortraitPostfix)));
+
         VisualHarmony.Patch(
             UpdatePortraitMethod,
-            prefix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), nameof(UpdatePortraitPrefix)),
+            prefix: FirstPrefix(UpdatePortraitMethod, nameof(UpdatePortraitPrefix)),
             postfix: LastPostfix(UpdatePortraitMethod, nameof(UpdatePortraitPostfix)));
-        VisualHarmony.Patch(UpdateVisualsMethod, postfix: LastPostfix(UpdateVisualsMethod, nameof(UpdateVisualsPostfix)));
-        VisualHarmony.Patch(EnterTreeMethod, postfix: LastPostfix(EnterTreeMethod, nameof(EnterTreePostfix)));
+        VisualHarmony.Patch(
+            UpdatePortraitMethod,
+            postfix: FirstPostfix(
+                UpdatePortraitMethod,
+                nameof(UpdatePortraitBeforeForeignPostfix)));
+
+        PatchVisualSandwich(UpdateVisualsMethod, nameof(UpdateVisualsPostfix));
+        PatchVisualSandwich(EnterTreeMethod, nameof(EnterTreePostfix));
+        PatchVisualSandwich(ReloadMethod, nameof(ReloadPostfix));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnReturnedFromPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnFreedToPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(AbstractModel), nameof(AbstractModel.MutableClone), nameof(ClonePostfix));
@@ -73,7 +82,6 @@ internal static class CardPortraitDynamicPatches
             typeof(AbstractModel),
             nameof(AbstractModel.ClonePreservingMutability),
             nameof(ClonePostfix));
-        PatchAnimeRegentCompatibility();
         _visualInstalled = true;
         ApplyOverridesToLoadedCards();
     }
@@ -148,12 +156,29 @@ internal static class CardPortraitDynamicPatches
         new(typeof(CardPortraitDynamicPatches), methodName)
         {
             priority = Priority.Last,
-            after = Harmony.GetPatchInfo(target)?.Owners
-                .Where(owner => !string.Equals(owner, VisualHarmonyId, StringComparison.Ordinal)
-                                && !string.Equals(owner, TemporaryHarmonyId, StringComparison.Ordinal))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray() ?? []
+            after = GetForeignOwners(target)
         };
+
+    private static HarmonyMethod FirstPrefix(MethodBase target, string methodName) =>
+        new(typeof(CardPortraitDynamicPatches), methodName)
+        {
+            priority = Priority.First,
+            before = GetForeignOwners(target)
+        };
+
+    private static HarmonyMethod FirstPostfix(MethodBase target, string methodName) =>
+        new(typeof(CardPortraitDynamicPatches), methodName)
+        {
+            priority = Priority.First,
+            before = GetForeignOwners(target)
+        };
+
+    private static string[] GetForeignOwners(MethodBase target) =>
+        Harmony.GetPatchInfo(target)?.Owners
+            .Where(owner => !string.Equals(owner, VisualHarmonyId, StringComparison.Ordinal)
+                            && !string.Equals(owner, TemporaryHarmonyId, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray() ?? [];
 
     private static void UpdatePortraitPrefix(NCard __instance)
     {
@@ -165,7 +190,21 @@ internal static class CardPortraitDynamicPatches
         if (CardPortraitRuntime.TryResolve(model, out CardPortraitTextureSequence sequence)
             && sequence.Frames.Count > 0)
         {
+            _portraitResolutionFallbackTexture = GetFallbackTexture(__instance, model);
+            if (_portraitResolutionFallbackTexture is not null)
+                ApplyPortrait(__instance, _portraitResolutionFallbackTexture);
             _portraitResolutionSequence = sequence;
+        }
+    }
+
+    private static void UpdatePortraitBeforeForeignPostfix(NCard __instance)
+    {
+        if (__instance.Model is CardModel model
+            && ReferenceEquals(_portraitResolutionModel, model)
+            && _portraitResolutionSequence is not null
+            && _portraitResolutionFallbackTexture is not null)
+        {
+            ApplyPortrait(__instance, _portraitResolutionFallbackTexture);
         }
     }
 
@@ -195,7 +234,11 @@ internal static class CardPortraitDynamicPatches
                 return;
             }
 
-            ApplyResolvedPortrait(__instance, model, sequence);
+            ApplyResolvedPortrait(
+                __instance,
+                model,
+                sequence,
+                _portraitResolutionFallbackTexture);
         }
         finally
         {
@@ -211,6 +254,25 @@ internal static class CardPortraitDynamicPatches
     private static void EnterTreePostfix(NCard __instance)
     {
         ReapplyOverride(__instance);
+    }
+
+    private static void ReloadPostfix(NCard __instance)
+    {
+        ReapplyOverride(__instance);
+    }
+
+    private static void PrepareForForeignPortraitHooks(NCard __instance)
+    {
+        if (__instance.Model is not CardModel model
+            || !AppliedPortraits.TryGetValue(__instance, out AppliedPortraitState? applied)
+            || !ReferenceEquals(applied.Model, model)
+            || applied.Sequence is null
+            || applied.FallbackTexture is null)
+        {
+            return;
+        }
+
+        ApplyPortrait(__instance, applied.FallbackTexture);
     }
 
     private static void ReapplyOverride(NCard card)
@@ -283,6 +345,17 @@ internal static class CardPortraitDynamicPatches
             postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), patchName));
     }
 
+    private static void PatchVisualSandwich(MethodInfo target, string finalPostfixName)
+    {
+        VisualHarmony.Patch(
+            target,
+            prefix: FirstPrefix(target, nameof(PrepareForForeignPortraitHooks)),
+            postfix: LastPostfix(target, finalPostfixName));
+        VisualHarmony.Patch(
+            target,
+            postfix: FirstPostfix(target, nameof(PrepareForForeignPortraitHooks)));
+    }
+
     private static void PatchTemporaryPostfix(Type targetType, string methodName, string patchName)
     {
         TemporaryHarmony.Patch(
@@ -291,44 +364,11 @@ internal static class CardPortraitDynamicPatches
             postfix: new HarmonyMethod(typeof(CardPortraitDynamicPatches), patchName));
     }
 
-    private static void PatchAnimeRegentCompatibility()
-    {
-        Type? patchType = AccessTools.TypeByName(AnimeRegentPortraitPatchTypeName);
-        if (patchType is null)
-            return;
-
-        MethodInfo? tryReplacePortrait = AccessTools.Method(
-            patchType,
-            AnimeRegentTryReplacePortraitMethodName,
-            [typeof(NCard)]);
-        if (tryReplacePortrait is null)
-        {
-            GD.PushWarning("CardPortrait: Anime Regent portrait compatibility target was not found.");
-            return;
-        }
-
-        VisualHarmony.Patch(
-            tryReplacePortrait,
-            prefix: new HarmonyMethod(
-                typeof(CardPortraitDynamicPatches),
-                nameof(AnimeRegentTryReplacePortraitPrefix))
-            {
-                priority = Priority.First
-            });
-    }
-
-    private static bool AnimeRegentTryReplacePortraitPrefix(NCard __0)
-    {
-        return __0.Model is not CardModel model
-            || !AppliedPortraits.TryGetValue(__0, out AppliedPortraitState? applied)
-            || !ReferenceEquals(applied.Model, model)
-            || applied.Sequence is null;
-    }
-
     private static void ClearPortraitResolution()
     {
         _portraitResolutionModel = null;
         _portraitResolutionSequence = null;
+        _portraitResolutionFallbackTexture = null;
     }
 
     private static CardPortraitAnimationController GetOrCreateController(NCard card)
@@ -357,12 +397,29 @@ internal static class CardPortraitDynamicPatches
         controller.QueueFree();
     }
 
-    private static void ApplyPortrait(NCard card, Texture2D texture)
+    private static TextureRect? GetPortraitNode(NCard card)
     {
-        TextureRect? portrait = card.Model is { } model
-                                && CardModificationRuntime.ShouldUseAncientRendering(model)
+        return card.Model is { } model
+               && CardModificationRuntime.ShouldUseAncientRendering(model)
             ? card.GetNodeOrNull<TextureRect>("%AncientPortrait")
             : card.GetNodeOrNull<TextureRect>("%Portrait");
+    }
+
+    private static Texture2D? GetFallbackTexture(NCard card, CardModel model)
+    {
+        if (AppliedPortraits.TryGetValue(card, out AppliedPortraitState? applied)
+            && ReferenceEquals(applied.Model, model)
+            && applied.FallbackTexture is not null)
+        {
+            return applied.FallbackTexture;
+        }
+
+        return model.Portrait;
+    }
+
+    private static void ApplyPortrait(NCard card, Texture2D texture)
+    {
+        TextureRect? portrait = GetPortraitNode(card);
         if (portrait is not null && !ReferenceEquals(portrait.Texture, texture))
             portrait.Texture = texture;
     }
@@ -370,15 +427,25 @@ internal static class CardPortraitDynamicPatches
     private static void ApplyResolvedPortrait(
         NCard card,
         CardModel model,
-        CardPortraitTextureSequence sequence)
+        CardPortraitTextureSequence sequence,
+        Texture2D? fallbackTexture = null)
     {
+        if (fallbackTexture is null
+            && AppliedPortraits.TryGetValue(card, out AppliedPortraitState? previous)
+            && ReferenceEquals(previous.Model, model))
+        {
+            fallbackTexture = previous.FallbackTexture;
+        }
+        fallbackTexture ??= GetPortraitNode(card)?.Texture;
+
         ApplyPortrait(card, sequence.Frames[0]);
         if (!AppliedPortraits.TryGetValue(card, out AppliedPortraitState? applied)
             || !ReferenceEquals(applied.Model, model)
-            || !ReferenceEquals(applied.Sequence, sequence))
+            || !ReferenceEquals(applied.Sequence, sequence)
+            || !ReferenceEquals(applied.FallbackTexture, fallbackTexture))
         {
             AppliedPortraits.Remove(card);
-            AppliedPortraits.Add(card, new AppliedPortraitState(model, sequence));
+            AppliedPortraits.Add(card, new AppliedPortraitState(model, sequence, fallbackTexture));
         }
         if (sequence.Frames.Count > 1)
         {
@@ -412,7 +479,7 @@ internal static class CardPortraitDynamicPatches
         }
 
         AppliedPortraits.Remove(card);
-        AppliedPortraits.Add(card, new AppliedPortraitState(model, null));
+        AppliedPortraits.Add(card, new AppliedPortraitState(model, null, null));
         ReleaseController(card);
     }
 
@@ -481,5 +548,6 @@ internal static class CardPortraitDynamicPatches
 
     private sealed record AppliedPortraitState(
         CardModel Model,
-        CardPortraitTextureSequence? Sequence);
+        CardPortraitTextureSequence? Sequence,
+        Texture2D? FallbackTexture);
 }
