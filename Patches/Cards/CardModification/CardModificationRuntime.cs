@@ -205,6 +205,21 @@ public static class CardModificationRuntime
                && permanent.ForceAncientPortraitRendering == true;
     }
 
+    public static void SetPreviewAncientRendering(CardModel card, bool enabled)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        if (!PreviewDeltas.TryGetValue(card, out CardModificationDelta? preview))
+        {
+            if (!enabled)
+                return;
+            preview = new CardModificationDelta();
+            PreviewDeltas.Add(card, preview);
+        }
+
+        preview.ForceAncientPortraitRendering = enabled;
+        CardModificationDynamicPatches.EnableAncientRenderingPatches();
+    }
+
     public static void PushLocStringContext(CardModel card)
     {
         _locStringContext ??= new Stack<CardModel>();

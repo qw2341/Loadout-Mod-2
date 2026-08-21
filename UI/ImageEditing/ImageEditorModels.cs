@@ -44,7 +44,9 @@ public sealed record ImageEditRequest(
     bool AllowRotation = false,
     IReadOnlyList<ImageEditSaveOption>? SaveOptions = null,
     bool UseLoadoutScreen = false,
-    CardModel? CardPreviewModel = null);
+    CardModel? CardPreviewModel = null,
+    bool AllowForceAncientRendering = false,
+    bool InitialForceAncientRendering = false);
 
 public sealed record ImageEditResult(
     ImageEditStatus Status,
@@ -53,7 +55,8 @@ public sealed record ImageEditResult(
     string? DisplayName = null,
     string? ErrorMessage = null,
     ImageMediaDocument? OutputDocument = null,
-    string? SaveOptionId = null)
+    string? SaveOptionId = null,
+    bool? ForceAncientRendering = null)
 {
     public bool Saved => Status == ImageEditStatus.Saved;
 

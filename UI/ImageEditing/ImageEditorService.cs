@@ -113,7 +113,8 @@ public static class ImageEditorService
                 session.Document.FirstImage,
                 session.DisplayName,
                 OutputDocument: session.Document,
-                SaveOptionId: saveOption.Id);
+                SaveOptionId: saveOption.Id,
+                ForceAncientRendering: session.ForceAncientRendering);
         }
         catch (Exception exception)
         {

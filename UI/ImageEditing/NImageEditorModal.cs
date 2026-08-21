@@ -13,6 +13,7 @@ using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -23,6 +24,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     private readonly TaskCompletionSource<EditorSessionResult> _completion = new();
 
     private ImageEditRequest _request = null!;
+    private ImageEditFrameDefinition _activeFrame = null!;
     private ImageMediaDocument _source = null!;
     private PanelContainer _editorPanel = null!;
     private NImageEditorCanvas _canvas = null!;
@@ -33,6 +35,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     private MegaLabel? _rotationLabel;
     private Control _saveButton = null!;
     private NCard? _cardPreview;
+    private CardModel? _cardPreviewModel;
     private Control? _cardPreviewMount;
     private TextureRect? _cardPreviewPortrait;
     private Texture2D? _cardPreviewOriginalTexture;
@@ -43,6 +46,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     private bool _initialized;
     private bool _uiBuilt;
     private bool _completed;
+    private bool _forceAncientRendering;
 
     [Export]
     public bool UseLoadoutScreenChrome { get; set; }
@@ -60,6 +64,8 @@ public partial class NImageEditorModal : Control, IScreenContext
     {
         _source = source;
         _request = request;
+        _activeFrame = request.Frame;
+        _forceAncientRendering = request.InitialForceAncientRendering;
         _initialized = true;
         if (IsNodeReady())
             BuildUi();
@@ -255,6 +261,21 @@ public partial class NImageEditorModal : Control, IScreenContext
         tools.AddChild(_toolLabel);
         tools.AddChild(CreateToolButton("pan", EditorText("IMAGE_EDITOR_PAN", "Move image"), ImageEditorTool.Pan));
 
+        if (_request.AllowForceAncientRendering && _request.CardPreviewModel is not null)
+        {
+            NLoadoutToggle forceAncient = new()
+            {
+                CustomMinimumSize = new Vector2(360f, 56f),
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            forceAncient.Init(
+                "force_ancient_portrait_rendering",
+                LocMan.Loc("CARD_MOD_FORCE_ANCIENT_PORTRAIT_RENDERING", "Force Ancient Portrait Rendering"),
+                _forceAncientRendering);
+            forceAncient.Toggled += OnForceAncientRenderingToggled;
+            tools.AddChild(forceAncient);
+        }
+
         if (_request.AllowAlphaEditing)
         {
             tools.AddChild(CreateToolButton("erase", EditorText("IMAGE_EDITOR_ERASE", "Eraser"), ImageEditorTool.Erase));
@@ -425,6 +446,13 @@ public partial class NImageEditorModal : Control, IScreenContext
         if (_request.CardPreviewModel is not { } model)
             return;
 
+        _cardPreviewModel = model;
+        _activeFrame = ImageEditFramePresets.ForCard(
+            model.Type,
+            model.Rarity == CardRarity.Ancient || _forceAncientRendering);
+        _canvas.SetFrame(_activeFrame);
+        if (_request.AllowForceAncientRendering)
+            CardModificationRuntime.SetPreviewAncientRendering(model, _forceAncientRendering);
         _cardPreviewMount = GetNodeOrNull<Control>("%CardPreviewMount");
         if (_cardPreviewMount is null)
             throw new InvalidOperationException("The card portrait editor screen is missing its card preview mount.");
@@ -451,7 +479,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         _cardPreviewViewport = new SubViewport
         {
             Name = "PortraitPreviewViewport",
-            Size = _request.Frame.OutputSize,
+            Size = _activeFrame.OutputSize,
             TransparentBg = true,
             Disable3D = true,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Once
@@ -463,7 +491,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         {
             Name = "PortraitPreviewSurface",
             Position = Vector2.Zero,
-            Size = _request.Frame.OutputSize,
+            Size = _activeFrame.OutputSize,
             MouseFilter = MouseFilterEnum.Ignore,
             Material = _cardPreviewMaterial,
             Color = Colors.White
@@ -473,6 +501,51 @@ public partial class NImageEditorModal : Control, IScreenContext
         _canvas.PreviewChanged += RefreshCardPreviewMaterial;
         LayoutCardPreview();
         Callable.From(RefreshCardPreviewMaterial).CallDeferred();
+    }
+
+    private void OnForceAncientRenderingToggled(NLoadoutToggle toggle)
+    {
+        bool enabled = toggle.IsChecked;
+        if (_forceAncientRendering == enabled)
+            return;
+
+        _forceAncientRendering = enabled;
+        if (_cardPreviewModel is null)
+            return;
+
+        bool ancientPresentation = _cardPreviewModel.Rarity == CardRarity.Ancient || enabled;
+        _activeFrame = ImageEditFramePresets.ForCard(_cardPreviewModel.Type, ancientPresentation);
+        _canvas.SetFrame(_activeFrame);
+        if (_cardPreviewViewport is not null && GodotObject.IsInstanceValid(_cardPreviewViewport))
+            _cardPreviewViewport.Size = _activeFrame.OutputSize;
+        if (_cardPreviewSurface is not null && GodotObject.IsInstanceValid(_cardPreviewSurface))
+            _cardPreviewSurface.Size = _activeFrame.OutputSize;
+
+        CardModificationRuntime.SetPreviewAncientRendering(_cardPreviewModel, enabled);
+        RefreshCardPreviewPresentation();
+    }
+
+    private void RefreshCardPreviewPresentation()
+    {
+        if (_cardPreview is null
+            || !GodotObject.IsInstanceValid(_cardPreview)
+            || _cardPreviewModel is null)
+        {
+            return;
+        }
+
+        _cardPreview.Model = null;
+        _cardPreview.Model = _cardPreviewModel;
+        _cardPreview.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+        _cardPreview.GetNodeOrNull<CardPortraitAnimationController>(
+            CardPortraitAnimationController.NodeName)?.Stop();
+        _cardPreviewPortrait = CardModificationRuntime.ShouldUseAncientRendering(_cardPreviewModel)
+            ? _cardPreview.GetNodeOrNull<TextureRect>("%AncientPortrait")
+            : _cardPreview.GetNodeOrNull<TextureRect>("%Portrait");
+        _cardPreviewOriginalTexture = _cardPreviewPortrait?.Texture;
+        if (_cardPreviewPortrait is not null && _cardPreviewViewportTexture is not null)
+            _cardPreviewPortrait.Texture = _cardPreviewViewportTexture;
+        RefreshCardPreviewMaterial();
     }
 
     private void RefreshCardPreviewMaterial()
@@ -528,6 +601,7 @@ public partial class NImageEditorModal : Control, IScreenContext
             _cardPreview.QueueFreeSafely();
 
         _cardPreview = null;
+        _cardPreviewModel = null;
         _cardPreviewMount = null;
         _cardPreviewPortrait = null;
         _cardPreviewOriginalTexture = null;
@@ -692,7 +766,14 @@ public partial class NImageEditorModal : Control, IScreenContext
 
         try
         {
-            Complete(new EditorSessionResult(true, _canvas.RenderOutputDocument(), name, saveOptionId));
+            Complete(new EditorSessionResult(
+                true,
+                _canvas.RenderOutputDocument(),
+                name,
+                saveOptionId,
+                ForceAncientRendering: _request.AllowForceAncientRendering
+                    ? _forceAncientRendering
+                    : null));
         }
         catch (Exception exception)
         {
@@ -742,7 +823,8 @@ public partial class NImageEditorModal : Control, IScreenContext
         ImageMediaDocument? Document,
         string? DisplayName,
         string? SaveOptionId,
-        string? ErrorMessage = null);
+        string? ErrorMessage = null,
+        bool? ForceAncientRendering = null);
 
     private static string EditorText(string key, string fallback)
     {

@@ -726,6 +726,11 @@ public partial class NCardModificationScreen : Control
         CommitPendingTemporaryModification();
         LoadoutOwnedItem<CardModel> selected = _item;
         CardModel frameCard = _previewDisplayModel ?? selected.Model;
+        CardModel editorPreviewCard = CardModificationRuntime.CreatePreviewCard(
+            selected.Model,
+            _workingState.Clone());
+        bool hasDetachedEditorPreview = !ReferenceEquals(editorPreviewCard, selected.Model);
+        bool initialForceAncientRendering = _workingState.ForceAncientPortraitRendering == true;
         ImageEditFrameDefinition frame = ImageEditFramePresets.ForCard(
             frameCard.Type,
             CardModificationRuntime.ShouldUseAncientRendering(frameCard));
@@ -758,7 +763,9 @@ public partial class NCardModificationScreen : Control
             AllowRotation: true,
             SaveOptions: saveOptions,
             UseLoadoutScreen: true,
-            CardPreviewModel: frameCard);
+            CardPreviewModel: editorPreviewCard,
+            AllowForceAncientRendering: hasDetachedEditorPreview,
+            InitialForceAncientRendering: initialForceAncientRendering);
         ImageEditResult result = await ImageEditorService.PickAndEditAsync(request);
         if (result.Status == ImageEditStatus.Cancelled)
             return;
@@ -780,18 +787,22 @@ public partial class NCardModificationScreen : Control
             return;
         }
 
+        bool forceAncientRendering = result.ForceAncientRendering ?? initialForceAncientRendering;
+        ImageEditFrameDefinition savedFrame = ImageEditFramePresets.ForCard(
+            editorPreviewCard.Type,
+            editorPreviewCard.Rarity == CardRarity.Ancient || forceAncientRendering);
         bool saved = result.SaveOptionId switch
         {
             "temporary" when temporaryTarget is { } selectedTemporaryTarget => CardPortraitRuntime.SaveTemporary(
                 resolved.Model,
                 selectedTemporaryTarget,
-                frame,
+                savedFrame,
                 result.OutputDocument,
                 result.SavedPath),
             "permanent" => CardPortraitRuntime.SavePermanent(
                 resolved.Model,
                 permanentTarget,
-                frame,
+                savedFrame,
                 result.OutputDocument,
                 result.SavedPath),
             _ => false
@@ -807,6 +818,13 @@ public partial class NCardModificationScreen : Control
         if (_itemIndex >= 0 && _itemIndex < _items.Count)
             _items[_itemIndex] = resolved;
         LoadItem(resolved);
+        if (forceAncientRendering != initialForceAncientRendering)
+        {
+            _workingState.ForceAncientPortraitRendering = forceAncientRendering;
+            _temporaryState.ForceAncientPortraitRendering = forceAncientRendering;
+            ApplyWorkingState();
+            CommitPendingTemporaryModification();
+        }
         RebuildControls();
         RefreshPreview(forceReload: true);
         NotifyPortraitChanged(resolved);

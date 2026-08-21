@@ -26,6 +26,7 @@ public partial class NImageEditorCanvas : Control
     private const int MaxWorkingDimension = 1280;
     private const float CheckerSize = 18f;
     private const float SnapDistance = 12f;
+    private const float OverflowCenterSnapScale = 0.3f;
 
     private static readonly Color CheckerLight = new("4A4A4A");
     private static readonly Color CheckerDark = new("303030");
@@ -58,6 +59,7 @@ public partial class NImageEditorCanvas : Control
     private int _currentFrameIndex;
     private Vector2 _lastPointer;
     private Vector2 _pointerPosition;
+    private Vector2 _dragOffset;
     private Vector2 _offset;
     private float _zoom;
     private float _fitZoom;
@@ -287,6 +289,7 @@ public partial class NImageEditorCanvas : Control
             {
                 _dragging = mouseButton.Pressed;
                 _lastPointer = mouseButton.Position;
+                _dragOffset = _offset;
                 _strokeStarted = false;
                 if (_dragging && _tool == ImageEditorTool.Pan)
                 {
@@ -325,7 +328,8 @@ public partial class NImageEditorCanvas : Control
             float displayScale = GetDisplayScale();
             if (displayScale > 0f)
             {
-                _offset += (mouseMotion.Position - _lastPointer) / displayScale;
+                _dragOffset += (mouseMotion.Position - _lastPointer) / displayScale;
+                _offset = _dragOffset;
                 SnapImageToFrame(displayScale);
                 UpdatePreviewParameters();
             }
@@ -400,6 +404,34 @@ public partial class NImageEditorCanvas : Control
         _rotationRadians = Mathf.DegToRad(normalized);
         UpdatePreviewParameters();
         RotationDegreesChanged?.Invoke(normalized);
+    }
+
+    public void SetFrame(ImageEditFrameDefinition frame)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        if (!_initialized || frame.OutputSize.X <= 0 || frame.OutputSize.Y <= 0)
+            return;
+        if (string.Equals(_frame.Id, frame.Id, StringComparison.Ordinal)
+            && _frame.OutputSize == frame.OutputSize)
+        {
+            return;
+        }
+
+        _frame = frame;
+        _maskTexture = frame.AlphaMask is { } mask && !mask.IsEmpty()
+            ? ImageTexture.CreateFromImage(mask)
+            : null;
+        if (_overlay is not null)
+        {
+            _overlay.Texture = frame.PreviewOverlay;
+            _overlay.Visible = frame.PreviewOverlay is not null;
+        }
+        _previewMaterial.SetShaderParameter("output_size", new Vector2(frame.OutputSize.X, frame.OutputSize.Y));
+        _previewMaterial.SetShaderParameter("has_mask", _maskTexture is not null);
+        if (_maskTexture is not null)
+            _previewMaterial.SetShaderParameter("mask_texture", _maskTexture);
+        FitToFrame();
+        LayoutPreview();
     }
 
     public void BeginTransformEdit()
@@ -699,15 +731,18 @@ public partial class NImageEditorCanvas : Control
     {
         float bestAdjustment = 0f;
         float bestDistance = threshold + 1f;
-        TrySnap(-center + halfExtent);
-        TrySnap(frameExtent - center - halfExtent);
-        TrySnap(frameExtent * 0.5f - center);
+        TrySnap(-center + halfExtent, threshold);
+        TrySnap(frameExtent - center - halfExtent, threshold);
+        float centerThreshold = halfExtent > frameExtent * 0.5f + 0.5f
+            ? threshold * OverflowCenterSnapScale
+            : threshold;
+        TrySnap(frameExtent * 0.5f - center, centerThreshold);
         return center + bestAdjustment;
 
-        void TrySnap(float adjustment)
+        void TrySnap(float adjustment, float snapThreshold)
         {
             float distance = Mathf.Abs(adjustment);
-            if (distance <= threshold && distance < bestDistance)
+            if (distance <= snapThreshold && distance < bestDistance)
             {
                 bestDistance = distance;
                 bestAdjustment = adjustment;
