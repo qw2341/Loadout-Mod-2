@@ -358,10 +358,27 @@ internal static class LoadoutKeywordRuntimePatches
         }
 
         TryEnable(XCostHarmony, XCostHarmonyId, () =>
-            XCostHarmony.Patch(
-                XCostPlayCountPatch.TargetMethod(),
-                postfix: new HarmonyMethod(typeof(XCostPlayCountPatch), nameof(XCostPlayCountPatch.Postfix))),
-            () => XCostEnabled = true);
+        {
+            HarmonyMethod prefix = new(
+                typeof(XCostOnPlayPatch),
+                nameof(XCostOnPlayPatch.Prefix));
+            HarmonyMethod postfix = new(
+                typeof(XCostOnPlayPatch),
+                nameof(XCostOnPlayPatch.Postfix))
+            {
+                before = [PostOnPlayHarmonyId]
+            };
+            MethodBase[] targets = XCostOnPlayPatch.TargetMethods().ToArray();
+            if (targets.Length == 0)
+            {
+                throw new MissingMethodException(
+                    typeof(CardModel).FullName,
+                    "OnPlay(PlayerChoiceContext, CardPlay) implementations");
+            }
+
+            foreach (MethodBase target in targets)
+                XCostHarmony.Patch(target, prefix: prefix, postfix: postfix);
+        }, () => XCostEnabled = true);
     }
 
     private static void SetStickyEnabled(bool enabled)

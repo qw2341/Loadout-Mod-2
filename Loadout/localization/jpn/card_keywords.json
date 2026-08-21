@@ -4,7 +4,7 @@
   "LOADOUT-STICKY.title": "粘着",
   "LOADOUT-STICKY.description": "プレイ後に[gold]手札[/gold]へ戻り、それ以外の方法でも手札から移動しない。",
   "LOADOUT-X_COST.title": "Xコスト",
-  "LOADOUT-X_COST.description": "コストX。このカードのプレイ回数をX倍にする。",
+  "LOADOUT-X_COST.description": "コストX。このカードの効果をX回繰り返す。",
   "LOADOUT-INFINITE_UPGRADE.title": "無限アップグレード",
   "LOADOUT-INFINITE_UPGRADE.description": "何度でもアップグレードできる。",
   "LOADOUT-PASSING.title": "パス",

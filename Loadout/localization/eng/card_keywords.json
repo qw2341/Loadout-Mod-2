@@ -4,7 +4,7 @@
   "LOADOUT-STICKY.title": "Sticky",
   "LOADOUT-STICKY.description": "Returns to your [gold]Hand[/gold] after being played or discarded.",
   "LOADOUT-X_COST.title": "X Cost",
-  "LOADOUT-X_COST.description": "Costs X. This card's plays are repeated X times.",
+  "LOADOUT-X_COST.description": "Costs X. This card's effect is repeated X times.",
   "LOADOUT-INFINITE_UPGRADE.title": "Infinite Upgrade",
   "LOADOUT-INFINITE_UPGRADE.description": "Can be upgraded indefinitely.",
   "LOADOUT-PASSING.title": "Passing",

@@ -31,7 +31,7 @@ public static class LoadoutKeywords
     [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Livid;
 
-    [CustomEnum("X_COST"), KeywordProperties(AutoKeywordPosition.Before)]
+    [CustomEnum("X_COST")]
     public static CardKeyword XCost;
 
     [CustomEnum("INFINITE_UPGRADE"), KeywordProperties(AutoKeywordPosition.Before)]

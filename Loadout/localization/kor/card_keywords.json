@@ -4,7 +4,7 @@
   "LOADOUT-STICKY.title": "점착",
   "LOADOUT-STICKY.description": "사용 후 [gold]손[/gold]으로 돌아오며 다른 방법으로도 손에서 이동하지 않습니다.",
   "LOADOUT-X_COST.title": "X 비용",
-  "LOADOUT-X_COST.description": "비용이 X입니다. 이 카드의 사용 횟수가 X배 반복됩니다.",
+  "LOADOUT-X_COST.description": "비용이 X입니다. 이 카드의 효과를 X번 반복합니다.",
   "LOADOUT-INFINITE_UPGRADE.title": "무한 강화",
   "LOADOUT-INFINITE_UPGRADE.description": "무한히 강화할 수 있습니다.",
   "LOADOUT-PASSING.title": "패스",

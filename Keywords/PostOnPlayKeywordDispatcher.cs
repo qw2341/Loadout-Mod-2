@@ -53,6 +53,12 @@ internal static class PostOnPlayKeywordDispatcher
         CardPlay __1,
         out object? __state)
     {
+        if (XCostOnPlayPatch.IsRepeating(__instance, __1))
+        {
+            __state = null;
+            return;
+        }
+
         CardPlay cardPlay = __1;
         List<KeywordEffectState>? effects = null;
 

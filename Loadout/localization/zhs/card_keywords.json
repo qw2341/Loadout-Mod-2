@@ -4,7 +4,7 @@
   "LOADOUT-STICKY.title": "黏手",
   "LOADOUT-STICKY.description": "打出后返回你的[gold]手牌[/gold]，且无法通过其他方式移出你的手牌。",
   "LOADOUT-X_COST.title": "X 费用",
-  "LOADOUT-X_COST.description": "耗费 X。此牌的打出次数重复 X 倍。",
+  "LOADOUT-X_COST.description": "耗费 X。此牌的效果重复 X 次。",
   "LOADOUT-INFINITE_UPGRADE.title": "无限升级",
   "LOADOUT-INFINITE_UPGRADE.description": "可以无限次升级。",
   "LOADOUT-PASSING.title": "传递",

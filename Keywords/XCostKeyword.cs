@@ -6,9 +6,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 
 public sealed class XCostKeyword : LoadoutKeywordModel
@@ -67,30 +69,128 @@ public static class XCostKeywordMechanics
     }
 }
 
-public static class XCostPlayCountPatch
+public static class XCostOnPlayPatch
 {
-    public static MethodBase TargetMethod()
+    private sealed record RepeatScope(
+        CardModel Card,
+        CardPlay CardPlay,
+        RepeatScope? Parent);
+
+    private static readonly AsyncLocal<RepeatScope?> CurrentRepeat = new();
+    private static readonly Dictionary<MethodBase, FastInvokeHandler> OnPlayInvokers = [];
+
+    internal static bool IsRepeating(CardModel card, CardPlay cardPlay)
     {
-        return AccessTools.Method(
-            typeof(CardModel),
-            "GeneratePlayCount",
-            [
-                typeof(MegaCrit.Sts2.Core.Combat.ICombatState),
-                typeof(MegaCrit.Sts2.Core.Entities.Creatures.Creature)
-            ]);
+        for (RepeatScope? scope = CurrentRepeat.Value;
+             scope is not null;
+             scope = scope.Parent)
+        {
+            if (ReferenceEquals(scope.Card, card)
+                && ReferenceEquals(scope.CardPlay, cardPlay))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        foreach (MethodBase target in PostOnPlayKeywordDispatcher.TargetMethods())
+        {
+            if (target is not MethodInfo method)
+                continue;
+
+            OnPlayInvokers[target] = HarmonyLib.MethodInvoker.GetHandler(method);
+            yield return target;
+        }
+    }
+
+    [HarmonyPrefix]
+    public static bool Prefix(
+        CardModel __instance,
+        CardPlay __1,
+        ref Task __result,
+        out int __state)
+    {
+        __state = 0;
+        if (IsRepeating(__instance, __1)
+            || !LoadoutKeywords.Has(__instance, LoadoutKeywords.XCost))
+        {
+            return true;
+        }
+
+        int executionCount = Math.Max(0, __instance.ResolveEnergyXValue());
+        if (executionCount == 0)
+        {
+            __result = Task.CompletedTask;
+            return false;
+        }
+
+        __state = executionCount - 1;
+        return true;
     }
 
     [HarmonyPostfix]
-    public static void Postfix(CardModel __instance, ref Task<int> __result)
+    public static void Postfix(
+        CardModel __instance,
+        PlayerChoiceContext __0,
+        CardPlay __1,
+        MethodBase __originalMethod,
+        int __state,
+        ref Task __result)
     {
-        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.XCost))
-            __result = MultiplyByXAsync(__instance, __result);
+        if (__state <= 0)
+            return;
+
+        if (!OnPlayInvokers.TryGetValue(
+                __originalMethod,
+                out FastInvokeHandler? invokeOnPlay))
+        {
+            throw new MissingMethodException(
+                __originalMethod.DeclaringType?.FullName,
+                __originalMethod.Name);
+        }
+
+        __result = RepeatOnPlay(
+            __result,
+            invokeOnPlay,
+            __instance,
+            __0,
+            __1,
+            __state);
     }
 
-    private static async Task<int> MultiplyByXAsync(CardModel card, Task<int> original)
+    private static async Task RepeatOnPlay(
+        Task originalOnPlay,
+        FastInvokeHandler invokeOnPlay,
+        CardModel card,
+        PlayerChoiceContext choiceContext,
+        CardPlay cardPlay,
+        int additionalExecutions)
     {
-        int nativePlayCount = await original;
-        int x = Math.Max(0, card.ResolveEnergyXValue());
-        return checked(nativePlayCount * x);
+        await originalOnPlay;
+
+        RepeatScope? previousRepeat = CurrentRepeat.Value;
+        CurrentRepeat.Value = new RepeatScope(card, cardPlay, previousRepeat);
+        try
+        {
+            object[] arguments = [choiceContext, cardPlay];
+            for (int i = 0; i < additionalExecutions; i++)
+            {
+                if (invokeOnPlay(card, arguments) is not Task repeatedOnPlay)
+                {
+                    throw new InvalidOperationException(
+                        $"{card.GetType().FullName}.OnPlay did not return a Task.");
+                }
+
+                await repeatedOnPlay;
+            }
+        }
+        finally
+        {
+            CurrentRepeat.Value = previousRepeat;
+        }
     }
 }

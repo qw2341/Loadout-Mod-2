@@ -4,7 +4,7 @@
   "LOADOUT-STICKY.title": "Collante",
   "LOADOUT-STICKY.description": "Revient dans votre [gold]Main[/gold] après avoir été jouée et ne peut pas en être déplacée autrement.",
   "LOADOUT-X_COST.title": "Coût X",
-  "LOADOUT-X_COST.description": "Coûte X. Les utilisations de cette carte sont répétées X fois.",
+  "LOADOUT-X_COST.description": "Coûte X. L’effet de cette carte est répété X fois.",
   "LOADOUT-INFINITE_UPGRADE.title": "Amélioration infinie",
   "LOADOUT-INFINITE_UPGRADE.description": "Peut être améliorée indéfiniment.",
   "LOADOUT-PASSING.title": "Passage",
