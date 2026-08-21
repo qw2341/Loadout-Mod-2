@@ -18,6 +18,7 @@ public static class LoadoutKeywords
     public const string XCostKey = "XCost";
     public const string InfiniteUpgradeKey = "InfiniteUpgrade";
     public const string LessonLearnedKey = "LessonLearned";
+    public const string HeavenlyKey = "Heavenly";
 
     [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Inevitable;
@@ -39,6 +40,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("LESSON_LEARNED")]
     public static CardKeyword LessonLearned;
+
+    [CustomEnum("HEAVENLY")]
+    public static CardKeyword Heavenly;
 
     public static IEnumerable<CardKeyword> All =>
         LoadoutKeywordRegistry.All.Select(model => model.Keyword);

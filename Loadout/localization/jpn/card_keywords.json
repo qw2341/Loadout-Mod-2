@@ -13,5 +13,8 @@
   "LOADOUT-LIVID.description": "プレイ時、各プレイヤーの[gold]捨て札[/gold]へ自身のコピーを1枚追加する。",
   "LOADOUT-LESSON_LEARNED.title": "得た教訓",
   "LOADOUT-LESSON_LEARNED.description": "[gold]フェイタル[/gold]の場合、[gold]デッキ[/gold]のランダムなカードを[gold]アップグレード[/gold]する。",
-  "LOADOUT-LESSON_LEARNED.cardText": "[gold]フェイタル[/gold]の場合、[gold]デッキ[/gold]のランダムなカードを{LoadoutLessonLearnedCards:diff()}枚[gold]アップグレード[/gold]する。"
+  "LOADOUT-LESSON_LEARNED.cardText": "[gold]フェイタル[/gold]の場合、[gold]デッキ[/gold]のランダムなカードを{LoadoutLessonLearnedCards:diff()}枚[gold]アップグレード[/gold]する。",
+  "LOADOUT-HEAVENLY.title": "ヘヴンリー",
+  "LOADOUT-HEAVENLY.description": "Xが4以上なら、Xを2倍にする。",
+  "LOADOUT-HEAVENLY.cardText": "Xが{LoadoutHeavenlyEnergy:diff()}以上なら、Xを2倍にする。"
 }

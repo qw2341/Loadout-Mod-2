@@ -27,7 +27,8 @@ public static class LoadoutKeywordRegistry
         LividKeyword.Instance,
         XCostKeyword.Instance,
         InfiniteUpgradeKeyword.Instance,
-        LessonLearnedKeyword.Instance
+        LessonLearnedKeyword.Instance,
+        HeavenlyKeyword.Instance
     ];
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>

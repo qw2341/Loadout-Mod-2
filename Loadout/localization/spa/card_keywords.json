@@ -13,5 +13,8 @@
   "LOADOUT-LIVID.description": "Añade una copia de sí misma a la [gold]Pila de descarte[/gold] de cada jugador al jugarse.",
   "LOADOUT-LESSON_LEARNED.title": "Lección aprendida",
   "LOADOUT-LESSON_LEARNED.description": "Si es [gold]Fatal[/gold], [gold]mejora[/gold] cartas aleatorias de tu [gold]Mazo[/gold].",
-  "LOADOUT-LESSON_LEARNED.cardText": "Si es [gold]Fatal[/gold], [gold]mejora[/gold] {LoadoutLessonLearnedCards:diff()} {LoadoutLessonLearnedCards:plural:carta aleatoria|cartas aleatorias} de tu [gold]Mazo[/gold]."
+  "LOADOUT-LESSON_LEARNED.cardText": "Si es [gold]Fatal[/gold], [gold]mejora[/gold] {LoadoutLessonLearnedCards:diff()} {LoadoutLessonLearnedCards:plural:carta aleatoria|cartas aleatorias} de tu [gold]Mazo[/gold].",
+  "LOADOUT-HEAVENLY.title": "Celestial",
+  "LOADOUT-HEAVENLY.description": "Si X es 4 o más, duplica X.",
+  "LOADOUT-HEAVENLY.cardText": "Si X es {LoadoutHeavenlyEnergy:diff()} o más, duplica X."
 }

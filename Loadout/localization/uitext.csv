@@ -217,6 +217,7 @@ DYNAMIC_VAR_CALCULATION_BASE,Base Value,基础数值,Valeur de base,基本値,�
 DYNAMIC_VAR_CALCULATION_EXTRA,Extra Value,额外数值,Valeur supplémentaire,追加値,추가값,Valor adicional
 DYNAMIC_VAR_CARDS,Cards,卡牌,Cartes,カード,카드,Cartas
 DYNAMIC_VAR_LOADOUT_LESSON_LEARNED_CARDS,Cards to Upgrade,升级牌数,Cartes de Leçon apprise,カード枚数,얻은 교훈 카드 수,Cartas de Lección aprendida
+DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
 DYNAMIC_VAR_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
 DYNAMIC_VAR_EXTRA_DAMAGE,Extra Damage,额外伤害,Dégâts supplémentaires,追加ダメージ,추가 피해,Daño adicional
 DYNAMIC_VAR_HEAL,Heal,治疗,Soins,回復,회복,Curación

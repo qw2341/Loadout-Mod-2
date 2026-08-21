@@ -13,5 +13,8 @@
   "LOADOUT-LIVID.description": "Ajoute une copie d'elle-même à la [gold]Défausse[/gold] de chaque joueur lorsqu'elle est jouée.",
   "LOADOUT-LESSON_LEARNED.title": "Leçon apprise",
   "LOADOUT-LESSON_LEARNED.description": "Si [gold]Fatal[/gold], [gold]améliore[/gold] des cartes aléatoires de votre [gold]Deck[/gold].",
-  "LOADOUT-LESSON_LEARNED.cardText": "Si [gold]Fatal[/gold], [gold]améliore[/gold] {LoadoutLessonLearnedCards:diff()} {LoadoutLessonLearnedCards:plural:carte aléatoire|cartes aléatoires} de votre [gold]Deck[/gold]."
+  "LOADOUT-LESSON_LEARNED.cardText": "Si [gold]Fatal[/gold], [gold]améliore[/gold] {LoadoutLessonLearnedCards:diff()} {LoadoutLessonLearnedCards:plural:carte aléatoire|cartes aléatoires} de votre [gold]Deck[/gold].",
+  "LOADOUT-HEAVENLY.title": "Céleste",
+  "LOADOUT-HEAVENLY.description": "X est doublé si sa valeur est de 4 ou plus.",
+  "LOADOUT-HEAVENLY.cardText": "X est doublé si sa valeur est de {LoadoutHeavenlyEnergy:diff()} ou plus."
 }
