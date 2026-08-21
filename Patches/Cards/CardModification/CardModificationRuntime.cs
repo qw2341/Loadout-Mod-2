@@ -466,6 +466,62 @@ public static class CardModificationRuntime
         return CreateDelta(baseline, desired, permanent);
     }
 
+    public static bool IsValidPrinterDelta(ModelId cardId, CardModificationDelta? delta)
+    {
+        if (delta is null || delta.IsEmpty)
+            return LoadoutModelRegistry.ResolveCard(cardId) is not null;
+
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(cardId);
+        if (canonical is null)
+            return false;
+
+        CardModificationDelta normalized;
+        try
+        {
+            normalized = delta.Clone();
+            normalized.Normalize();
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalized.PoolId)
+            && !TryResolveModel(normalized.PoolId, ModelDb.AllCardPools, out CardPoolModel? _))
+            return false;
+        if (!string.IsNullOrWhiteSpace(normalized.Type)
+            && (!TryParseEnum(normalized.Type, out CardType type)
+                || !ModelDb.AllCards.Any(card => card.Type.Equals(type))))
+            return false;
+        if (!string.IsNullOrWhiteSpace(normalized.Rarity)
+            && (!TryParseEnum(normalized.Rarity, out CardRarity rarity)
+                || !ModelDb.AllCards.Any(card => card.Rarity.Equals(rarity))))
+            return false;
+        if (normalized.DynamicVarDeltas.Keys.Any(name =>
+                !canonical.DynamicVars.ContainsKey(name)
+                && !LoadoutKeywordRegistry.TryGetDynamicVar(name, out _)))
+            return false;
+        if (normalized.UpgradeModification.DynamicVarDeltas.Keys.Any(name =>
+                !canonical.DynamicVars.ContainsKey(name)
+                && !LoadoutKeywordRegistry.TryGetDynamicVar(name, out _)))
+            return false;
+        if (normalized.KeywordOverrides.Keys.Any(key =>
+                !LoadoutKeywords.TryResolve(key, out CardKeyword keyword) || keyword == CardKeyword.None)
+            || normalized.UpgradeModification.KeywordOverrides.Keys.Any(key =>
+                !LoadoutKeywords.TryResolve(key, out CardKeyword keyword) || keyword == CardKeyword.None))
+            return false;
+        if (normalized.Enchantments is not null
+            && normalized.Enchantments.Any(spec =>
+                !spec.Clear
+                && !TryResolveModel(spec.ModelId, ModelDb.DebugEnchantments, out EnchantmentModel? _)))
+            return false;
+        if (normalized.Affliction is { Clear: false } affliction
+            && !TryResolveModel(affliction.ModelId, ModelDb.DebugAfflictions, out AfflictionModel? _))
+            return false;
+
+        return true;
+    }
+
     public static CardModificationSpec MaterializePermanentSpec(ModelId cardId, CardModificationDelta delta)
     {
         return CanonicalCardModificationRegistry.TryGetBaseline(cardId, out CanonicalCardBaseline? baseline)
@@ -930,7 +986,6 @@ public static class CardModificationRuntime
         ICardScope? cardScope = source.CardScope;
         if (canonical is null
             || source.Owner is null
-            || source.Pile is null
             || cardScope is null)
             return null;
 
@@ -974,7 +1029,7 @@ public static class CardModificationRuntime
         CardModificationSpec state)
     {
         CardModel? canonical = LoadoutModelRegistry.ResolveCard(source.Id);
-        if (canonical is null || source.Owner is null || source.Pile is null)
+        if (canonical is null || source.Owner is null || source.CardScope is null)
             return false;
 
         int upgradeLevel = source.IsUpgradable
@@ -1145,6 +1200,31 @@ public static class CardModificationRuntime
 
         if (temporaryChanged)
             CardModificationNetProtocol.BroadcastTemporary(item, next: null);
+        LoadoutKeywordRuntimePatches.Reconcile();
+    }
+
+    public static void ApplyCatalogPermanent(ModelId cardId, CardModificationSpec? state)
+    {
+        ApplyCatalogPermanentDelta(
+            cardId,
+            state is null || state.IsEmpty ? null : CreatePermanentDelta(cardId, state),
+            authoritativeRemote: false);
+    }
+
+    public static void ApplyCatalogPermanentDelta(
+        ModelId cardId,
+        CardModificationDelta? delta,
+        bool authoritativeRemote)
+    {
+        if (LoadoutModelRegistry.ResolveCard(cardId) is null)
+            return;
+
+        CardModificationSpec previousPermanent = PermanentCardModificationStore.Get(cardId);
+        bool changed = authoritativeRemote
+            ? PermanentCardModificationStore.ApplyHostDelta(cardId, delta)
+            : IsPermanentAuthority() && PermanentCardModificationStore.SetProfileDelta(cardId, delta);
+        if (changed)
+            RetrofitLiveDeckCopies(cardId, previousPermanent);
         LoadoutKeywordRuntimePatches.Reconcile();
     }
 

@@ -16,6 +16,7 @@ using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
@@ -39,34 +40,45 @@ public class CardPrinter
 	
     public static void Initialize()
     {
+	    CardPrinterRunRecipeStore.Register();
 	    IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
 	    NGenericSelectScreen cardPrinterScreen = null;
 	    long observedPermanentDisplayRevision = CardModificationRuntime.PermanentDisplayRevision;
+	    long observedRecipeRevision = CardPrinterRunRecipeStore.Revision;
 	    bool playModeDefaultApplied = false;
 	    SelectItemAdapter<CardModel> cardPrinterAdapter = new()
 	    {
 		    GetId = card => card.Id.ToString(),
-		    GetName = card => FormatCardTitle(card),
-		    GetSearchText = card => $"{card.Id} {FormatCardTitle(card)} {card.GetDescriptionForPile(PileType.None)}",
+		    GetName = card => FormatCardTitle(ResolvePrinterDisplay(card)),
+		    GetSearchText = card =>
+		    {
+			    CardModel display = ResolvePrinterDisplay(card);
+			    return $"{card.Id} {FormatCardTitle(display)} {display.GetDescriptionForPile(PileType.None)}";
+		    },
 		    GetBanTarget = card => ContentBanTarget.Card(card),
-		    CapturePreloadResourcePaths = card => CardModificationRuntime
-			    .GetPermanentCardForDisplay(card)
+		    CapturePreloadResourcePaths = card => ResolvePrinterDisplay(card)
 			    .AllPortraitPaths
 			    .ToArray(),
-		    CreateView = (card, state) => CreateCardGridItem(card, state),
-		    ViewReady = (card, view) => RefreshCardVisuals(view, card),
+		    CreateView = (card, state) => CreateCardGridItem(ResolvePrinterDisplay(card), state),
+		    ViewReady = (card, view) => RefreshCardVisuals(view, ResolvePrinterDisplay(card)),
 		    UpdateView = (card, view, state) =>
 		    {
-			    ForceRefreshCardVisuals(view, card);
+			    ForceRefreshCardVisuals(view, ResolvePrinterDisplay(card));
 			    UpdateCardGridItem(view, state);
 		    },
-		    BindActivationWithCleanup = (_, view, activate) => BindCardActivationWithCleanup(view, activate)
+		    BindActivationWithCleanup = (card, view, activate) => BindCardActivationWithCleanup(
+			    view,
+			    activate,
+			    () => OpenCardPrinterEditor(
+				    cardPrinterScreen,
+				    card,
+				    () => observedRecipeRevision = CardPrinterRunRecipeStore.Revision))
 	    };
 
 	    void BuildCardPrinterScreen(SelectScreenBuilder<CardModel> builder)
 	    {
 		    IReadOnlyList<CardModel> effectiveCards = allCards
-			    .Select(CardModificationRuntime.GetPermanentCardForDisplay)
+			    .Select(ResolvePrinterDisplay)
 			    .ToList();
 
 		    builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
@@ -92,9 +104,9 @@ public class CardPrinter
 			    LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")),
 			    checkedByDefault: false,
 			    section: SelectSidebarSection.Bottom);
-		    IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedCardPools();
+		    IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedPrinterCardPools();
 		    builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
-		    builder.KeySorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.Loc("SORT_NAME", "Name")), FormatCardTitle, comparer: StringComparer.Ordinal);
+		    builder.KeySorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.Loc("SORT_NAME", "Name")), card => FormatCardTitle(ResolvePrinterDisplay(card)), comparer: StringComparer.Ordinal);
 		    builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
 		    builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.Loc("SORT_COST", "Cost")), CompareEffectiveCardCost);
 	    }
@@ -136,6 +148,7 @@ public class CardPrinter
 			    return;
 
 		    long targetRevision = CardModificationRuntime.PermanentDisplayRevision;
+		    observedRecipeRevision = CardPrinterRunRecipeStore.Revision;
 		    RefreshVisibleCardPrinterCards(cardPrinterScreen, new[] { cardKey }, targetRevision);
 	    }
 
@@ -162,7 +175,7 @@ public class CardPrinter
 						    (item, view) =>
 						    {
 							    if (item.UntypedModel is CardModel card)
-								    ForceRefreshCardVisuals(view, card);
+								    ForceRefreshCardVisuals(view, ResolvePrinterDisplay(card));
 						    },
 						    refreshMetadata: true,
 						    refreshLayout: false);
@@ -177,7 +190,7 @@ public class CardPrinter
 			    screen.ForEachVisibleItemView((item, view) =>
 			    {
 				    if (item.UntypedModel is CardModel card && MatchesCardRefreshId(card, cardIds))
-					    ForceRefreshCardVisuals(view, card);
+					    ForceRefreshCardVisuals(view, ResolvePrinterDisplay(card));
 			    });
 			    observedPermanentDisplayRevision = Math.Max(observedPermanentDisplayRevision, targetRevision);
 		    }).CallDeferred();
@@ -190,7 +203,7 @@ public class CardPrinter
 			screen => ConfigureCardPrinterSidebar(screen),
 			"CardPrinter.png",
 			LocMan.Loc("CARDPRINTER_TITLE", "Card Printer"),
-			LocMan.Loc("CARDPRINTER_DESC", "Right-click this relic to obtain any card you want; use during combat will also add it to your hand. Ctrl + right click to repeat the last action."),
+			LocMan.Loc("CARDPRINTER_DESC", "Right-click this relic to open the Card Printer. Left-click a card to Obtain it; right-click a card to Edit its recipe for this run. Ctrl + right click repeats the last action."),
 			HandleAddCardActivatedAsync,
 			LastActionService.CardPrinterKey,
 			ReplayCardPrinterLastActionAsync,
@@ -198,6 +211,7 @@ public class CardPrinter
 
 		cardPrinterScreen = printerItem.BoundScreen;
 		observedPermanentDisplayRevision = CardModificationRuntime.PermanentDisplayRevision;
+		observedRecipeRevision = CardPrinterRunRecipeStore.Revision;
 		if (cardPrinterScreen is not null)
 		{
 			void OnScreenOpened()
@@ -208,9 +222,13 @@ public class CardPrinter
 					resetScroll: false);
 				CardModificationRuntime.PermanentCardDisplayChanged -= RefreshCardPrinterCard;
 				CardModificationRuntime.PermanentCardDisplayChanged += RefreshCardPrinterCard;
+				CardPrinterRunRecipeStore.Changed -= RefreshCardPrinterCard;
+				CardPrinterRunRecipeStore.Changed += RefreshCardPrinterCard;
 
 				long currentRevision = CardModificationRuntime.PermanentDisplayRevision;
-				if (observedPermanentDisplayRevision == currentRevision)
+				long currentRecipeRevision = CardPrinterRunRecipeStore.Revision;
+				if (observedPermanentDisplayRevision == currentRevision
+				    && observedRecipeRevision == currentRecipeRevision)
 					return;
 
 				SelectScreenUiState state = cardPrinterScreen.CaptureUiState();
@@ -218,11 +236,13 @@ public class CardPrinter
 				BindCardPrinterSidebar(cardPrinterScreen, applyDefaultClassFilter: false);
 				cardPrinterScreen.RestoreUiState(state);
 				observedPermanentDisplayRevision = currentRevision;
+				observedRecipeRevision = currentRecipeRevision;
 			}
 
 			void OnScreenClosed()
 			{
 				CardModificationRuntime.PermanentCardDisplayChanged -= RefreshCardPrinterCard;
+				CardPrinterRunRecipeStore.Changed -= RefreshCardPrinterCard;
 			}
 
 			cardPrinterScreen.ScreenOpened += OnScreenOpened;
@@ -236,12 +256,23 @@ public class CardPrinter
 		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 	    int multiplier = screen.GetCurrentActivationMultiplier();
-	    int upgradeCount = screen.IsToggleEnabled(ViewUpgradesToggleId) && canonicalCard.IsUpgradable ? 1 : 0;
+	    CardModel effectiveCard = ResolvePrinterDisplay(canonicalCard);
+	    int upgradeCount = screen.IsToggleEnabled(ViewUpgradesToggleId) && effectiveCard.IsUpgradable ? 1 : 0;
 	    LoadoutTargetSelection target = LoadoutTargetService.GetSelected(LastActionService.CardPrinterKey, LoadoutTargetMode.AllPlayersAndPlayers);
 	    LoadoutCardPileTarget pileTarget = screen is NCardSelectScreen cardScreen
 		    ? cardScreen.SelectedPileTarget
 		    : LoadoutCardPileTarget.HandAndDeck;
-	    if (!LoadoutImmediateMutationService.RequestAddCard(canonicalCard.Id, multiplier, target, upgradeCount, pileTarget))
+	    CardPrinterRunRecipeStore.TryGet(canonicalCard.Id, out CardPrinterRunRecipe recipe);
+	    CardModificationDelta? printerDelta = recipe?.Delta;
+	    string? portraitReference = recipe?.TemporaryPortraitReference;
+	    if (!LoadoutImmediateMutationService.RequestAddCard(
+		        canonicalCard.Id,
+		        multiplier,
+		        target,
+		        upgradeCount,
+		        pileTarget,
+		        printerDelta,
+		        portraitReference))
 		    return Task.FromResult<IReadOnlyList<LastActionEntry>>(Array.Empty<LastActionEntry>());
 
 	    LastActionEntry entry = new()
@@ -250,7 +281,11 @@ public class CardPrinter
 		    ContentId = canonicalCard.Id.ToString(),
 		    Amount = multiplier,
 		    UpgradeCount = upgradeCount,
-		    CardPileTarget = pileTarget
+		    CardPileTarget = pileTarget,
+		    CardModificationStateJson = printerDelta is null || printerDelta.IsEmpty
+			    ? string.Empty
+			    : CardModificationCodec.SerializeDelta(printerDelta),
+		    CardPrinterPortraitReference = portraitReference ?? string.Empty
 	    };
 	    entry.SetTargetSelection(target);
 	    return Task.FromResult<IReadOnlyList<LastActionEntry>>(new[] { entry });
@@ -271,12 +306,22 @@ public class CardPrinter
 			    continue;
 		    }
 
+		    CardModificationDelta? printerDelta = null;
+		    if (!string.IsNullOrWhiteSpace(entry.CardModificationStateJson)
+		        && !TryDeserializePrinterDelta(entry.CardModificationStateJson, out printerDelta))
+		    {
+			    GD.PushWarning($"LoadoutPanel: cannot replay card action for '{entry.ContentId}' because its printer recipe is invalid.");
+			    continue;
+		    }
+
 		    if (!LoadoutImmediateMutationService.RequestAddCard(
 			        card.Id,
 			        entry.Amount,
 			        entry.GetTargetSelection(fallbackTarget),
 			        entry.UpgradeCount,
-			        (entry.CardPileTarget ?? LoadoutCardPileTarget.HandAndDeck).NormalizeForCreation()))
+			        (entry.CardPileTarget ?? LoadoutCardPileTarget.HandAndDeck).NormalizeForCreation(),
+			        printerDelta,
+			        entry.CardPrinterPortraitReference))
 		    {
 			    GD.PushWarning($"LoadoutPanel: could not replay card action for '{entry.ContentId}'.");
 		    }
@@ -284,6 +329,63 @@ public class CardPrinter
 
 	    return Task.CompletedTask;
     }
+
+    private static bool TryDeserializePrinterDelta(string json, out CardModificationDelta? delta)
+    {
+	    delta = null;
+	    if (!CardModificationCodec.TryDeserializeDelta(json, out CardModificationDelta parsed))
+		    return false;
+	    delta = parsed.IsEmpty ? null : parsed;
+	    return true;
+    }
+
+    private static void OpenCardPrinterEditor(
+        NGenericSelectScreen selectScreen,
+        CardModel canonicalCard,
+        Action recipeRefreshObserved)
+    {
+	    NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance;
+	    if (root is null || selectScreen is null || canonicalCard is null)
+		    return;
+
+	    Player localPlayer;
+	    try
+	    {
+		    localPlayer = LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState());
+	    }
+	    catch
+	    {
+		    return;
+	    }
+
+	    SelectScrollOffsetState parentScroll = selectScreen.CaptureScrollOffset();
+	    NCardModificationScreen modificationScreen = NCardModificationScreen.Create();
+	    modificationScreen.Name = $"CardPrinterModification_{CommonHelpers.MakeSafeNodeName(canonicalCard.Id.ToString())}";
+	    modificationScreen.InitForCardPrinter(
+		    canonicalCard,
+		    localPlayer,
+		    () =>
+		    {
+			    recipeRefreshObserved();
+			    if (!GodotObject.IsInstanceValid(selectScreen))
+				    return;
+			    selectScreen.RestoreScrollOffset(parentScroll);
+			    if (selectScreen is not NCardSelectScreen cardScreen)
+				    return;
+			    bool layoutDirty = cardScreen.RefreshItemById(
+				    canonicalCard.Id.ToString(),
+				    (item, view) => ForceRefreshCardVisuals(view, ResolvePrinterDisplay(canonicalCard)),
+				    refreshMetadata: true,
+				    refreshLayout: false);
+			    if (layoutDirty)
+				    cardScreen.RefreshLayout(resetScroll: false, updateExistingViews: false);
+		    },
+		    recipeRefreshObserved);
+	    root.OpenScreen(modificationScreen);
+    }
+
+    private static CardModel ResolvePrinterDisplay(CardModel card) =>
+	    CardPrinterRunRecipeStore.GetEffectiveCardForDisplay(card);
 
     public static Control CreateCardGridItem(CardModel model, SelectItemState state, PileType pileType = PileType.None)
     {
@@ -315,7 +417,7 @@ public class CardPrinter
 
     private static void AddCardPoolFilters(SelectScreenBuilder<CardModel> builder)
     {
-	    IReadOnlyList<CardPoolModel> pools = BuildOrderedCardPools();
+	    IReadOnlyList<CardPoolModel> pools = BuildOrderedPrinterCardPools();
 
 	    foreach (CardPoolModel pool in pools)
 	    {
@@ -323,7 +425,7 @@ public class CardPrinter
 		    builder.Filter(
 			    CommonHelpers.PoolFilterId("card", localPool),
 			    CommonHelpers.GetPoolLabel(localPool),
-			    card => CommonHelpers.SamePool(CardModificationRuntime.GetPermanentCardForDisplay(card).Pool, localPool),
+			    card => CommonHelpers.SamePool(ResolvePrinterDisplay(card).Pool, localPool),
 			    "class",
 			    iconFactory: () => CommonHelpers.GetPoolClassIcon(localPool));
 	    }
@@ -337,13 +439,13 @@ public class CardPrinter
 	    builder.Filter(
 		    MultiplayerFilterId,
 		    LocMan.Loc("CARD_MODE_MULTIPLAYER", "Multiplayer"),
-		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).MultiplayerConstraint
+		    card => ResolvePrinterDisplay(card).MultiplayerConstraint
 		            == CardMultiplayerConstraint.MultiplayerOnly,
 		    PlayModeFilterGroupId);
 	    builder.Filter(
 		    SingleplayerFilterId,
 		    LocMan.Loc("CARD_MODE_SINGLEPLAYER", "Singleplayer"),
-		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).MultiplayerConstraint
+		    card => ResolvePrinterDisplay(card).MultiplayerConstraint
 		            != CardMultiplayerConstraint.MultiplayerOnly,
 		    PlayModeFilterGroupId,
 		    enabledByDefault: IsSingleplayerMode());
@@ -371,7 +473,7 @@ public class CardPrinter
 		    CardType localType = type;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_type", localType), GetCardTypeLabel(localType),
-			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Type == localType,
+			    card => ResolvePrinterDisplay(card).Type == localType,
 			    "type");
 	    }
     }
@@ -388,7 +490,7 @@ public class CardPrinter
 		    CardRarity localRarity = rarity;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_rarity", localRarity), GetCardRarityLabel(localRarity),
-			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Rarity == localRarity,
+			    card => ResolvePrinterDisplay(card).Rarity == localRarity,
 			    "rarity",
 			    outlineColor: CommonHelpers.GetRarityCardTitleColor(localRarity));
 	    }
@@ -412,7 +514,7 @@ public class CardPrinter
 		    CardKeyword localKeyword = keyword;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_keyword", localKeyword), GetCardKeywordLabel(localKeyword),
-			    card => Enumerable.Contains(GetLocalCardKeywords(CardModificationRuntime.GetPermanentCardForDisplay(card)), localKeyword),
+			    card => Enumerable.Contains(GetLocalCardKeywords(ResolvePrinterDisplay(card)), localKeyword),
 			    "keyword");
 	    }
     }
@@ -440,7 +542,7 @@ public class CardPrinter
 		    CardTag localTag = tag;
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_tag", localTag), GetCardTagLabel(localTag),
-			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Tags.Contains(localTag),
+			    card => ResolvePrinterDisplay(card).Tags.Contains(localTag),
 			    "tag");
 	    }
     }
@@ -451,27 +553,27 @@ public class CardPrinter
 	    builder.FilterGroup("energy_cost", LocMan.Loc("FILTER_GROUP_COST", "Cost"));
 	    builder.Filter(
 		    $"card_energy_cost_0", "0",
-		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.Canonical == 0 && !CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.CostsX,
+		    card => ResolvePrinterDisplay(card).EnergyCost.Canonical == 0 && !ResolvePrinterDisplay(card).EnergyCost.CostsX,
 		    "energy_cost");
 	    for (int i = 1; i < 3; i++)
 	    {
 		    int localI = i;
 		    builder.Filter(
 			    $"card_energy_cost_{localI}", localI.ToString(),
-			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.Canonical == localI,
+			    card => ResolvePrinterDisplay(card).EnergyCost.Canonical == localI,
 			    "energy_cost");
 	    }
 	    builder.Filter(
 		    $"card_energy_cost_3+", "3+",
-		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.Canonical >= 3,
+		    card => ResolvePrinterDisplay(card).EnergyCost.Canonical >= 3,
 		    "energy_cost");
 	    builder.Filter(
 		    $"card_energy_cost_X", "X",
-		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.CostsX,
+		    card => ResolvePrinterDisplay(card).EnergyCost.CostsX,
 		    "energy_cost");
 	    builder.Filter(
 		    $"card_energy_cost_unplayable", CommonLoc.Unplayable,
-		    card => CardModificationRuntime.GetPermanentCardForDisplay(card).EnergyCost.Canonical < 0,
+		    card => ResolvePrinterDisplay(card).EnergyCost.Canonical < 0,
 		    "energy_cost");
     }
 
@@ -480,6 +582,16 @@ public class CardPrinter
 	    return CommonHelpers.BuildOrderedPools(
 		    ModelDb.AllCards
 			    .Select(CardModificationRuntime.GetPermanentCardForDisplay)
+			    .Select(card => card.Pool),
+		    ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
+		    pool => !CommonHelpers.IsInternalPool(pool));
+    }
+
+    private static IReadOnlyList<CardPoolModel> BuildOrderedPrinterCardPools()
+    {
+	    return CommonHelpers.BuildOrderedPools(
+		    ModelDb.AllCards
+			    .Select(ResolvePrinterDisplay)
 			    .Select(card => card.Pool),
 		    ModelDb.AllCharacters.Where(character => character.IsPlayable).Select(character => character.CardPool),
 		    pool => !CommonHelpers.IsInternalPool(pool));
@@ -724,8 +836,8 @@ public class CardPrinter
     
     private static int CompareCardLibraryOrder(CardModel left, CardModel right, IReadOnlyList<CardPoolModel> orderedPools)
     {
-	    left = CardModificationRuntime.GetPermanentCardForDisplay(left);
-	    right = CardModificationRuntime.GetPermanentCardForDisplay(right);
+	    left = ResolvePrinterDisplay(left);
+	    right = ResolvePrinterDisplay(right);
 
 	    int pool = GetCardPoolSortIndex(left.Pool, orderedPools).CompareTo(GetCardPoolSortIndex(right.Pool, orderedPools));
 	    if (pool != 0)
@@ -748,8 +860,8 @@ public class CardPrinter
 
     private static int CompareEffectiveCardCost(CardModel left, CardModel right)
     {
-	    left = CardModificationRuntime.GetPermanentCardForDisplay(left);
-	    right = CardModificationRuntime.GetPermanentCardForDisplay(right);
+	    left = ResolvePrinterDisplay(left);
+	    right = ResolvePrinterDisplay(right);
 	    int cost = left.EnergyCost.GetResolved().CompareTo(right.EnergyCost.GetResolved());
 	    return cost != 0 ? cost : string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
     }

@@ -235,6 +235,71 @@ public static class CardModificationNetProtocol
         }
     }
 
+    public static bool RequestCatalogPermanentOperation(
+        CardModificationOperation operation,
+        ModelId cardId,
+        CardModificationSpec? state = null)
+    {
+        if (operation is not CardModificationOperation.ApplyPermanent
+                and not CardModificationOperation.ResetPermanentToBasic
+            || !LoadoutPanelAccessService.CanLocalPlayerUsePanel()
+            || LoadoutModelRegistry.ResolveCard(cardId) is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            INetGameService netService = RunManager.Instance.NetService;
+            Player? localPlayer = GetRunPlayer(netService.NetId) ?? GetLocalRunPlayer();
+            if (localPlayer is null)
+                return false;
+
+            CardModificationDelta? delta = operation == CardModificationOperation.ApplyPermanent
+                ? CardModificationRuntime.CreatePermanentDelta(cardId, state)
+                : null;
+            string stateJson = delta is null || delta.IsEmpty
+                ? string.Empty
+                : CardModificationCodec.SerializeDelta(delta);
+            LoadoutCardModificationOperationPayload payload = new()
+            {
+                Operation = operation,
+                RequesterNetId = localPlayer.NetId,
+                OwnerNetId = 0,
+                DeckIndex = -1,
+                PileTarget = LoadoutCardPileTarget.Unspecified,
+                CombatCardIndex = 0,
+                CardId = LoadoutModelIdSafety.ToWireString(cardId),
+                StateJson = stateJson
+            };
+            if (!IsValidOperationPayload(payload))
+                return false;
+
+            if (netService.Type is NetGameType.Singleplayer or NetGameType.Replay)
+            {
+                CardModificationRuntime.ApplyCatalogPermanentDelta(cardId, delta, authoritativeRemote: false);
+                return true;
+            }
+
+            if (netService.Type == NetGameType.Client)
+            {
+                CustomMessageWrapper.Send(new LoadoutCardModificationOperationRequestMessage
+                {
+                    Payload = payload
+                }, netService);
+                return true;
+            }
+
+            PublishOperation(payload, netService);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed to request catalog {operation}. {exception.Message}");
+            return false;
+        }
+    }
+
     internal static void HandleOperationRequest(
         LoadoutCardModificationOperationRequestMessage message,
         ulong senderId)
@@ -427,6 +492,15 @@ public static class CardModificationNetProtocol
             return;
         }
 
+        if (IsCatalogOperationPayload(payload))
+        {
+            CardModificationRuntime.ApplyCatalogPermanentDelta(
+                cardId,
+                payload.Operation == CardModificationOperation.ResetPermanentToBasic ? null : delta,
+                authoritativeRemote);
+            return;
+        }
+
         CardModificationRuntime.ApplySynchronizedDeltaOperation(
             payload.Operation,
             cardId,
@@ -442,17 +516,39 @@ public static class CardModificationNetProtocol
 
     private static bool IsValidOperationPayload(LoadoutCardModificationOperationPayload payload)
     {
+        if (payload.RequesterNetId == 0
+            || string.IsNullOrWhiteSpace(payload.CardId)
+            || (payload.StateJson?.Length ?? 0) > MaxStateJsonLength)
+        {
+            return false;
+        }
+
+        if (IsCatalogOperationPayload(payload))
+        {
+            return LoadoutModelRegistry.TryResolveWireId(payload.CardId, out ModelId cardId)
+                   && LoadoutModelRegistry.ResolveCard(cardId) is not null;
+        }
+
         return (payload.Operation is CardModificationOperation.SaveTemporary
                     or CardModificationOperation.ResetTemporary
                     or CardModificationOperation.ResetTemporaryToBasic
                     or CardModificationOperation.ApplyPermanent
                     or CardModificationOperation.ResetPermanentToBasic)
-               && payload.RequesterNetId != 0
                && payload.OwnerNetId != 0
                && LoadoutCardPileTargets.IsSupportedOwnedTarget(payload.PileTarget.NormalizeForOwnedCard())
                && (payload.PileTarget.NormalizeForOwnedCard().IsCombatPile() || payload.DeckIndex >= 0)
-               && !string.IsNullOrWhiteSpace(payload.CardId)
-               && (payload.StateJson?.Length ?? 0) <= MaxStateJsonLength;
+               && LoadoutModelRegistry.TryResolveWireId(payload.CardId, out ModelId ownedCardId)
+               && LoadoutModelRegistry.ResolveCard(ownedCardId) is not null;
+    }
+
+    private static bool IsCatalogOperationPayload(LoadoutCardModificationOperationPayload payload)
+    {
+        return (payload.Operation is CardModificationOperation.ApplyPermanent
+                   or CardModificationOperation.ResetPermanentToBasic)
+               && payload.OwnerNetId == 0
+               && payload.DeckIndex == -1
+               && payload.PileTarget == LoadoutCardPileTarget.Unspecified
+               && payload.CombatCardIndex == 0;
     }
 
     private static bool TryDeserializeDelta(string? stateJson, out CardModificationDelta? delta)

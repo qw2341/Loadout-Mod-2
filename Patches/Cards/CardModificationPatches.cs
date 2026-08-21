@@ -676,6 +676,7 @@ public static class RunManagerCleanUpCardModificationPatch
         LoadoutKeywordRuntimePatches.ResetRunPatches();
         TildeKeyStateService.OnRunCleaningUp();
         LoadoutImmediateMutationService.OnRunCleaningUp();
+        CardPrinterRunRecipeStore.OnRunCleaningUp();
         CardModificationNetProtocol.OnRunCleaningUp();
         RelicModificationMultiplayerSyncService.OnRunCleaningUp();
         ContentBanService.OnRunCleaningUp();

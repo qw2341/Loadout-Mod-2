@@ -28,7 +28,7 @@ public static class LastActionService
     public const string AdjustPowerKind = "adjust_power";
     public const string SummonMonsterKind = "summon_monster";
 
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private const string SavePath = "loadout/services/last_actions.json";
 
     private static readonly object SyncRoot = new();
@@ -185,7 +185,9 @@ public static class LastActionService
             Target = entry.Target,
             TargetScope = entry.TargetScope,
             TargetPlayerNetId = entry.TargetPlayerNetId,
-            CardPileTarget = entry.CardPileTarget
+            CardPileTarget = entry.CardPileTarget,
+            CardModificationStateJson = entry.CardModificationStateJson ?? string.Empty,
+            CardPrinterPortraitReference = entry.CardPrinterPortraitReference ?? string.Empty
         };
     }
 
@@ -238,6 +240,12 @@ public sealed class LastActionEntry
 
     [JsonPropertyName("cardPileTarget")]
     public LoadoutCardPileTarget? CardPileTarget { get; set; }
+
+    [JsonPropertyName("cardModificationState")]
+    public string CardModificationStateJson { get; set; } = string.Empty;
+
+    [JsonPropertyName("cardPrinterPortrait")]
+    public string CardPrinterPortraitReference { get; set; } = string.Empty;
 
     public void SetTargetSelection(LoadoutTargetSelection selection)
     {

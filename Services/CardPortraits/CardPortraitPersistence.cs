@@ -46,7 +46,31 @@ internal static class CardPortraitPersistence
         save.Props.strings ??= [];
         save.Props.strings.Add(new SavedProperties.SavedProperty<string>(
             FieldName,
-            $"2:{reference!.CardInstanceId}:{reference.RunStartTime.ToString(CultureInfo.InvariantCulture)}:{reference.PortraitId}:{reference.RelativeFile}"));
+            FormatReference(reference!)));
+    }
+
+    public static string FormatReference(CardPortraitReference reference) =>
+        $"2:{reference.CardInstanceId}:{reference.RunStartTime.ToString(CultureInfo.InvariantCulture)}:{reference.PortraitId}:{reference.RelativeFile}";
+
+    public static bool TryParseReference(string? value, out CardPortraitReference reference)
+    {
+        reference = null!;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string[] parts = value.Split(':', 5, StringSplitOptions.None);
+        if (parts.Length != 5
+            || parts[0] != "2"
+            || !Guid.TryParseExact(parts[1], "N", out _)
+            || !long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long runStartTime)
+            || !Guid.TryParseExact(parts[3], "N", out _)
+            || !IsSafeRelativeFile(parts[4]))
+        {
+            return false;
+        }
+
+        reference = new CardPortraitReference(parts[1], parts[3], runStartTime, parts[4]);
+        return true;
     }
 
     public static bool TryRead(SerializableCard save, out CardPortraitReference reference)
@@ -60,17 +84,8 @@ internal static class CardPortraitPersistence
             if (!IsPortraitField(entry.name))
                 continue;
 
-            string[] parts = entry.value.Split(':', 5, StringSplitOptions.None);
-            if (parts.Length == 5
-                && parts[0] == "2"
-                && Guid.TryParseExact(parts[1], "N", out _)
-                && long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long runStartTime)
-                && Guid.TryParseExact(parts[3], "N", out _)
-                && IsSafeRelativeFile(parts[4]))
-            {
-                reference = new CardPortraitReference(parts[1], parts[3], runStartTime, parts[4]);
+            if (TryParseReference(entry.value, out reference))
                 return true;
-            }
             return false;
         }
         return false;

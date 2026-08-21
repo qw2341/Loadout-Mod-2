@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.Keywords;
 using Loadout.Services.CardModification;
+using Loadout.Services.CardPortraits;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.Compatibility;
 using Loadout.Services.Loadouts;
@@ -20,6 +21,7 @@ using Loadout.Services.Morphing;
 using Loadout.Services.Networking;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.RelicModification;
+using Loadout.Services.Saving;
 using Loadout.Services.Targets;
 using Loadout.Services.TildeKey;
 using Loadout.UI;
@@ -86,6 +88,8 @@ public static class LoadoutImmediateMutationService
     internal const int MaxSynchronizedCardCopies = 50;
     internal const int MaxSynchronizedCardUpgradeCount = 1000;
     private const int MaxRelicModificationStateJsonLength = 256 * 1024;
+    private const int MaxCardPrinterDeltaJsonLength = 256 * 1024;
+    private const int MaxCardPrinterPortraitReferenceLength = 2048;
     private const string SynchronizedAddCardsCommandPrefix = "__loadout_add_cards_v2";
     private const string SynchronizedDeckCardCopiesCommandPrefix = "__loadout_clone_deck_card_v2";
 
@@ -160,13 +164,25 @@ public static class LoadoutImmediateMutationService
         int amount,
         LoadoutTargetSelection target,
         int cardUpgradeCount = 0,
-        LoadoutCardPileTarget pileTarget = LoadoutCardPileTarget.Unspecified)
+        LoadoutCardPileTarget pileTarget = LoadoutCardPileTarget.Unspecified,
+        CardModificationDelta? printerDelta = null,
+        string? printerPortraitReference = null)
     {
+        printerDelta = printerDelta?.Clone();
+        printerDelta?.Normalize();
+        string printerDeltaJson = printerDelta is null || printerDelta.IsEmpty
+            ? string.Empty
+            : CardModificationCodec.SerializeDelta(printerDelta);
         if (amount <= 0
             || amount > MaxSynchronizedCardCopies
             || cardUpgradeCount < 0
             || cardUpgradeCount > MaxSynchronizedCardUpgradeCount
-            || LoadoutModelIdSafety.IsNoneOrEmpty(modelId))
+            || LoadoutModelIdSafety.IsNoneOrEmpty(modelId)
+            || !CardModificationRuntime.IsValidPrinterDelta(modelId, printerDelta)
+            || printerDeltaJson.Length > MaxCardPrinterDeltaJsonLength
+            || (printerPortraitReference?.Length ?? 0) > MaxCardPrinterPortraitReferenceLength
+            || !string.IsNullOrWhiteSpace(printerPortraitReference)
+               && !CardPortraitRuntime.IsValidTemporaryReference(printerPortraitReference))
         {
             return false;
         }
@@ -178,7 +194,9 @@ public static class LoadoutImmediateMutationService
             Amount = amount,
             Target = target,
             CardUpgradeCount = Math.Max(0, cardUpgradeCount),
-            CardPileTarget = pileTarget.NormalizeForCreation()
+            CardPileTarget = pileTarget.NormalizeForCreation(),
+            CardModificationStateJson = printerDeltaJson,
+            CardPrinterPortraitReference = printerPortraitReference ?? string.Empty
         });
     }
 
@@ -824,7 +842,10 @@ public static class LoadoutImmediateMutationService
             || payload.Amount > MaxSynchronizedCardCopies
             || payload.CardUpgradeCount < 0
             || payload.CardUpgradeCount > MaxSynchronizedCardUpgradeCount
-            || ResolveCanonicalCard(payload.ModelId) is null)
+            || ResolveCanonicalCard(payload.ModelId) is null
+            || !TryParsePrinterDelta(payload.CardModificationStateJson, out CardModificationDelta? parsedPrinterDelta)
+            || !CardModificationRuntime.IsValidPrinterDelta(payload.ModelId, parsedPrinterDelta)
+            || !IsValidPrinterPortraitReference(payload.CardPrinterPortraitReference))
         {
             return false;
         }
@@ -847,6 +868,9 @@ public static class LoadoutImmediateMutationService
         if (!LoadoutCardPileTargets.IsSupportedCreationTarget(pileTarget)
             || pileTarget.IsCombatPile() && !CombatManager.Instance.IsInProgress)
             return false;
+        long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+        if (!runStartTime.HasValue)
+            return false;
 
         bool isCombatAction = CombatManager.Instance.IsInProgress
                               && (pileTarget == LoadoutCardPileTarget.HandAndDeck || pileTarget.IsCombatPile());
@@ -855,7 +879,11 @@ public static class LoadoutImmediateMutationService
             payload.Amount,
             payload.CardUpgradeCount,
             pileTarget,
-            targetNetIds);
+            targetNetIds,
+            requester.NetId,
+            runStartTime.Value,
+            payload.CardModificationStateJson,
+            payload.CardPrinterPortraitReference);
         try
         {
             RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
@@ -923,23 +951,47 @@ public static class LoadoutImmediateMutationService
 
             string[] args = command[addCardsPrefix.Length..]
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (args.Length != 5
+            bool hasPrinterRecipe = args.Length == 9;
+            ulong parsedRequesterNetId = 0;
+            long parsedRunStartTime = 0;
+            string parsedDeltaJson = string.Empty;
+            string parsedPortraitReference = string.Empty;
+            if (args.Length is not 5 and not 9
                 || !TryDecodeModelIdToken(args[0], out ModelId modelId)
                 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int amount)
                 || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int upgradeCount)
                 || !TryParseCreationPileTarget(args[3], out LoadoutCardPileTarget pileTarget)
-                || !TryParseTargetNetIds(args[4], out ulong[] targetNetIds))
+                || !TryParseTargetNetIds(args[4], out ulong[] targetNetIds)
+                || hasPrinterRecipe
+                   && (!ulong.TryParse(args[5], NumberStyles.None, CultureInfo.InvariantCulture, out parsedRequesterNetId)
+                       || parsedRequesterNetId == 0
+                       || !long.TryParse(args[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedRunStartTime)
+                       || parsedRunStartTime <= 0
+                       || !TryDecodeTextToken(args[7], MaxCardPrinterDeltaJsonLength, out parsedDeltaJson)
+                       || !TryParsePrinterDelta(parsedDeltaJson, out _)
+                       || !TryDecodeTextToken(args[8], MaxCardPrinterPortraitReferenceLength, out parsedPortraitReference)
+                       || !IsValidPrinterPortraitReference(parsedPortraitReference)))
             {
                 GD.PushWarning("LoadoutImmediateMutation: ignored malformed synchronized card action.");
                 return true;
             }
 
+            ulong requesterNetId = hasPrinterRecipe ? parsedRequesterNetId : action.Player!.NetId;
+            long runStartTime = hasPrinterRecipe
+                ? parsedRunStartTime
+                : SaveUtility.GetCurrentRunStartTime() ?? 0;
+            string deltaJson = hasPrinterRecipe ? parsedDeltaJson : string.Empty;
+            string portraitReference = hasPrinterRecipe ? parsedPortraitReference : string.Empty;
             result = ExecuteSynchronizedAddCardsAsync(
                 modelId,
                 amount,
                 upgradeCount,
                 pileTarget,
-                targetNetIds);
+                targetNetIds,
+                requesterNetId,
+                runStartTime,
+                deltaJson,
+                portraitReference);
             return true;
         }
 
@@ -1004,13 +1056,23 @@ public static class LoadoutImmediateMutationService
         int amount,
         int upgradeCount,
         LoadoutCardPileTarget pileTarget,
-        IReadOnlyList<ulong> targetNetIds)
+        IReadOnlyList<ulong> targetNetIds,
+        ulong requesterNetId,
+        long runStartTime,
+        string printerDeltaJson,
+        string printerPortraitReference)
     {
         if (amount <= 0
             || amount > MaxSynchronizedCardCopies
             || upgradeCount < 0
             || upgradeCount > MaxSynchronizedCardUpgradeCount
-            || ResolveCanonicalCard(modelId) is not { } canonicalCard)
+            || ResolveCanonicalCard(modelId) is not { } canonicalCard
+            || requesterNetId == 0
+            || runStartTime <= 0
+            || SaveUtility.GetCurrentRunStartTime() != runStartTime
+            || !TryParsePrinterDelta(printerDeltaJson, out CardModificationDelta? printerDelta)
+            || !CardModificationRuntime.IsValidPrinterDelta(modelId, printerDelta)
+            || !IsValidPrinterPortraitReference(printerPortraitReference))
         {
             return;
         }
@@ -1049,7 +1111,10 @@ public static class LoadoutImmediateMutationService
                     targetPlayer,
                     canonicalCard,
                     amount,
-                    upgradeCount);
+                    upgradeCount,
+                    printerDelta,
+                    requesterNetId,
+                    printerPortraitReference);
             }
 
             if ((pileTarget == LoadoutCardPileTarget.HandAndDeck && CombatManager.Instance.IsInProgress)
@@ -1059,7 +1124,15 @@ public static class LoadoutImmediateMutationService
                     ? LoadoutCardPileTarget.Hand
                     : pileTarget;
                 if (combatTarget.TryGetPileType(out PileType combatPileType))
-                    await AddCombatCardCopiesAsync(targetPlayer, canonicalCard, amount, upgradeCount, combatPileType);
+                    await AddCombatCardCopiesAsync(
+                        targetPlayer,
+                        canonicalCard,
+                        amount,
+                        upgradeCount,
+                        combatPileType,
+                        printerDelta,
+                        requesterNetId,
+                        printerPortraitReference);
             }
         }
     }
@@ -1097,7 +1170,11 @@ public static class LoadoutImmediateMutationService
         int amount,
         int upgradeCount,
         LoadoutCardPileTarget pileTarget,
-        IReadOnlyList<ulong> targetNetIds)
+        IReadOnlyList<ulong> targetNetIds,
+        ulong requesterNetId,
+        long runStartTime,
+        string printerDeltaJson,
+        string printerPortraitReference)
     {
         string targets = string.Join(",", targetNetIds
             .Where(netId => netId != 0)
@@ -1111,7 +1188,11 @@ public static class LoadoutImmediateMutationService
             amount.ToString(CultureInfo.InvariantCulture),
             upgradeCount.ToString(CultureInfo.InvariantCulture),
             ((int)pileTarget.NormalizeForCreation()).ToString(CultureInfo.InvariantCulture),
-            targets);
+            targets,
+            requesterNetId.ToString(CultureInfo.InvariantCulture),
+            runStartTime.ToString(CultureInfo.InvariantCulture),
+            EncodeTextToken(printerDeltaJson),
+            EncodeTextToken(printerPortraitReference));
     }
 
     private static string BuildSynchronizedDeckCardCopiesCommand(
@@ -1132,7 +1213,14 @@ public static class LoadoutImmediateMutationService
 
     private static string EncodeModelIdToken(string wireModelId)
     {
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(wireModelId))
+        return EncodeTextToken(wireModelId);
+    }
+
+    private static string EncodeTextToken(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "-";
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
@@ -1141,7 +1229,20 @@ public static class LoadoutImmediateMutationService
     private static bool TryDecodeModelIdToken(string token, out ModelId modelId)
     {
         modelId = ModelId.none;
-        if (string.IsNullOrWhiteSpace(token))
+        if (!TryDecodeTextToken(token, 4096, out string wireModelId))
+            return false;
+
+        return LoadoutModelRegistry.TryResolveWireId(wireModelId, out modelId)
+               && !LoadoutModelIdSafety.IsNoneOrEmpty(modelId);
+    }
+
+    private static bool TryDecodeTextToken(string token, int maxDecodedLength, out string value)
+    {
+        value = string.Empty;
+        if (token == "-")
+            return true;
+        if (string.IsNullOrWhiteSpace(token)
+            || token.Length > checked(maxDecodedLength * 2))
             return false;
 
         string base64 = token
@@ -1153,9 +1254,8 @@ public static class LoadoutImmediateMutationService
 
         try
         {
-            string wireModelId = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
-            return LoadoutModelRegistry.TryResolveWireId(wireModelId, out modelId)
-                   && !LoadoutModelIdSafety.IsNoneOrEmpty(modelId);
+            value = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+            return value.Length <= maxDecodedLength;
         }
         catch (FormatException)
         {
@@ -1187,6 +1287,28 @@ public static class LoadoutImmediateMutationService
             .OrderBy(netId => netId)
             .ToArray();
         return targetNetIds.Length > 0;
+    }
+
+    private static bool TryParsePrinterDelta(string? json, out CardModificationDelta? delta)
+    {
+        delta = null;
+        if (string.IsNullOrWhiteSpace(json))
+            return true;
+        if (json.Length > MaxCardPrinterDeltaJsonLength
+            || !CardModificationCodec.TryDeserializeDelta(json, out CardModificationDelta parsed))
+        {
+            return false;
+        }
+
+        delta = parsed.IsEmpty ? null : parsed;
+        return true;
+    }
+
+    private static bool IsValidPrinterPortraitReference(string? reference)
+    {
+        return string.IsNullOrWhiteSpace(reference)
+               || reference.Length <= MaxCardPrinterPortraitReferenceLength
+               && CardPortraitRuntime.IsValidTemporaryReference(reference);
     }
 
     private static bool TryParseCreationPileTarget(string raw, out LoadoutCardPileTarget target)
@@ -1326,7 +1448,11 @@ public static class LoadoutImmediateMutationService
 
     private static async Task ApplyAddCardAsync(LoadoutImmediateMutationPayload payload, Player requester)
     {
-        if (payload.Amount <= 0 || ResolveCanonicalCard(payload.ModelId) is not { } canonicalCard)
+        if (payload.Amount <= 0
+            || ResolveCanonicalCard(payload.ModelId) is not { } canonicalCard
+            || !TryParsePrinterDelta(payload.CardModificationStateJson, out CardModificationDelta? printerDelta)
+            || !CardModificationRuntime.IsValidPrinterDelta(payload.ModelId, printerDelta)
+            || !IsValidPrinterPortraitReference(payload.CardPrinterPortraitReference))
             return;
 
         LoadoutCardPileTarget pileTarget = payload.CardPileTarget.NormalizeForCreation();
@@ -1342,7 +1468,10 @@ public static class LoadoutImmediateMutationService
                     targetPlayer,
                     canonicalCard,
                     payload.Amount,
-                    payload.CardUpgradeCount);
+                    payload.CardUpgradeCount,
+                    printerDelta,
+                    requester.NetId,
+                    payload.CardPrinterPortraitReference);
             }
 
             if ((pileTarget == LoadoutCardPileTarget.HandAndDeck && CombatManager.Instance.IsInProgress)
@@ -1352,7 +1481,15 @@ public static class LoadoutImmediateMutationService
                     ? LoadoutCardPileTarget.Hand
                     : pileTarget;
                 if (combatTarget.TryGetPileType(out PileType combatPileType))
-                    await AddCombatCardCopiesAsync(targetPlayer, canonicalCard, payload.Amount, payload.CardUpgradeCount, combatPileType);
+                    await AddCombatCardCopiesAsync(
+                        targetPlayer,
+                        canonicalCard,
+                        payload.Amount,
+                        payload.CardUpgradeCount,
+                        combatPileType,
+                        printerDelta,
+                        requester.NetId,
+                        payload.CardPrinterPortraitReference);
             }
         }
     }
@@ -1417,7 +1554,10 @@ public static class LoadoutImmediateMutationService
         Player targetPlayer,
         CardModel canonicalCard,
         int amount,
-        int upgradeCount)
+        int upgradeCount,
+        CardModificationDelta? printerDelta = null,
+        ulong requesterNetId = 0,
+        string? printerPortraitReference = null)
     {
         List<CardModel> cards = new(amount);
         for (int i = 0; i < amount; i++)
@@ -1425,6 +1565,7 @@ public static class LoadoutImmediateMutationService
             try
             {
                 CardModel card = targetPlayer.RunState.CreateCard(canonicalCard, targetPlayer);
+                ApplyPrinterRecipe(card, printerDelta, requesterNetId, printerPortraitReference);
                 if (upgradeCount > 0)
                     UpgradeCardWithCommand(card, upgradeCount);
                 cards.Add(card);
@@ -1466,7 +1607,10 @@ public static class LoadoutImmediateMutationService
         CardModel canonicalCard,
         int amount,
         int upgradeCount,
-        PileType pileType)
+        PileType pileType,
+        CardModificationDelta? printerDelta = null,
+        ulong requesterNetId = 0,
+        string? printerPortraitReference = null)
     {
         ICombatState? combatState = targetPlayer.Creature.CombatState;
         if (combatState is null)
@@ -1478,6 +1622,7 @@ public static class LoadoutImmediateMutationService
             try
             {
                 CardModel card = combatState.CreateCard(canonicalCard, targetPlayer);
+                ApplyPrinterRecipe(card, printerDelta, requesterNetId, printerPortraitReference);
                 if (upgradeCount > 0)
                     UpgradeCardWithCommand(card, upgradeCount);
 
@@ -1515,6 +1660,26 @@ public static class LoadoutImmediateMutationService
         if (IsLocalPlayer(targetPlayer))
             PreviewAddedCards(addedCards);
         return addedCards.Any(result => result.success);
+    }
+
+    private static void ApplyPrinterRecipe(
+        CardModel card,
+        CardModificationDelta? delta,
+        ulong requesterNetId,
+        string? portraitReference)
+    {
+        if (delta is { IsEmpty: false })
+        {
+            CardModificationFields.SetDelta(card, delta);
+            CardModificationRuntime.ReapplyTemporaryDelta(card);
+        }
+
+        if (!string.IsNullOrWhiteSpace(portraitReference)
+            && requesterNetId != 0
+            && GetLocalRunPlayer()?.NetId == requesterNetId)
+        {
+            CardPortraitRuntime.TryApplyTemporaryReference(card, portraitReference);
+        }
     }
 
     private static void PreviewAddedCards(IReadOnlyList<CardPileAddResult> addedCards)
@@ -2249,6 +2414,7 @@ public struct LoadoutImmediateMutationPayload
     public ModelId ExpectedModelId;
     public CardModificationOperation CardModificationOperation;
     public string CardModificationStateJson;
+    public string CardPrinterPortraitReference;
     public LoadoutKind LoadoutKind;
     public string LoadoutPayload;
     public string TildePayloadJson;
@@ -2275,6 +2441,7 @@ public struct LoadoutImmediateMutationPayload
         WriteModelIdString(writer, ExpectedModelId);
         writer.WriteInt((int)CardModificationOperation, 8);
         writer.WriteString(CardModificationStateJson ?? string.Empty);
+        writer.WriteString(CardPrinterPortraitReference ?? string.Empty);
         writer.WriteInt((int)LoadoutKind, 4);
         writer.WriteString(LoadoutPayload ?? string.Empty);
         writer.WriteString(TildePayloadJson ?? string.Empty);
@@ -2299,6 +2466,7 @@ public struct LoadoutImmediateMutationPayload
         ExpectedModelId = ReadModelIdString(reader);
         CardModificationOperation = (CardModificationOperation)reader.ReadInt(8);
         CardModificationStateJson = reader.ReadString();
+        CardPrinterPortraitReference = reader.ReadString();
         LoadoutKind = (LoadoutKind)reader.ReadInt(4);
         LoadoutPayload = reader.ReadString();
         TildePayloadJson = reader.ReadString();
@@ -2315,6 +2483,7 @@ public struct LoadoutImmediateMutationPayload
         ModelId = LoadoutModelIdSafety.OrNone(ModelId);
         ExpectedModelId = LoadoutModelIdSafety.OrNone(ExpectedModelId);
         CardModificationStateJson ??= string.Empty;
+        CardPrinterPortraitReference ??= string.Empty;
         LoadoutPayload ??= string.Empty;
         TildePayloadJson ??= string.Empty;
         RelicModificationStateJson ??= string.Empty;

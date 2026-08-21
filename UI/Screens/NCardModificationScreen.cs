@@ -94,6 +94,8 @@ public partial class NCardModificationScreen : Control
     private bool _hasBeenVisible;
     private bool _awaitingResetConfirmation;
     private bool _customRunAuthoringMode;
+    private bool _cardPrinterMode;
+    private Action? _cardPrinterRecipeChanged;
     private Func<LoadoutOwnedItem<CardModel>, CardModificationSpec>? _customRunStateProvider;
     private Action<LoadoutOwnedItem<CardModel>, CardModificationSpec>? _customRunStateSaved;
     private Action<LoadoutOwnedItem<CardModel>, int>? _customRunAddCopies;
@@ -139,6 +141,22 @@ public partial class NCardModificationScreen : Control
         _customRunStateSaved = stateSaved;
         _customRunAddCopies = addCopies;
         Init(item, items);
+    }
+
+    public void InitForCardPrinter(
+        CardModel canonicalCard,
+        Player localPlayer,
+        Action? parentScrollRestore = null,
+        Action? recipeChanged = null)
+    {
+        _cardPrinterMode = true;
+        _cardPrinterRecipeChanged = recipeChanged;
+        CardPrinterRunRecipeStore.Register();
+        CardPrinterRunRecipe? recipe = CardPrinterRunRecipeStore.TryGet(canonicalCard.Id, out CardPrinterRunRecipe found)
+            ? found
+            : null;
+        CardModel detached = CardPrinterRunRecipeStore.CreateDetachedCard(canonicalCard, localPlayer, recipe);
+        Init(new LoadoutOwnedItem<CardModel>(localPlayer, -1, detached, null, null), parentScrollRestore: parentScrollRestore);
     }
 
     public override void _Ready()
@@ -189,7 +207,7 @@ public partial class NCardModificationScreen : Control
             RefreshNativeButtonState();
             if (Visible && IsInsideTree() && _item is not null && !_isClosing)
             {
-                if (!_customRunAuthoringMode)
+                if (!_customRunAuthoringMode && !_cardPrinterMode)
                     BindRunContentEvents();
                 _hasBeenVisible = true;
                 Callable.From(() => RefreshPreview(forceReload: false)).CallDeferred();
@@ -667,13 +685,16 @@ public partial class NCardModificationScreen : Control
             ConfigureActionButtonSize(resetPermanentButton);
         }
 
-        NLoadoutActionButton addCopiesButton = CreateActionButton(
-            "add_copies_to_deck",
-            LocMan.Loc("CARD_MOD_ADD_COPIES_TO_DECK", "Add Copies To Deck"),
-            CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
-        ConnectActionButton(addCopiesButton, AddCopiesToDeck);
-        _actionControls.AddChild(addCopiesButton);
-        ConfigureActionButtonSize(addCopiesButton);
+        if (!_cardPrinterMode)
+        {
+            NLoadoutActionButton addCopiesButton = CreateActionButton(
+                "add_copies_to_deck",
+                LocMan.Loc("CARD_MOD_ADD_COPIES_TO_DECK", "Add Copies To Deck"),
+                CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
+            ConnectActionButton(addCopiesButton, AddCopiesToDeck);
+            _actionControls.AddChild(addCopiesButton);
+            ConfigureActionButtonSize(addCopiesButton);
+        }
     }
 
     private void RebuildLeftControls()
@@ -778,10 +799,13 @@ public partial class NCardModificationScreen : Control
             return;
         }
 
-        if (_isClosing
-            || !IsInsideTree()
-            || !TryResolveCurrentLocation(selected, out LoadoutOwnedItem<CardModel>? resolved)
-            || resolved is null)
+        LoadoutOwnedItem<CardModel>? resolved = selected;
+        if (!_cardPrinterMode
+            && !TryResolveCurrentLocation(selected, out resolved))
+        {
+            resolved = null;
+        }
+        if (_isClosing || !IsInsideTree() || resolved is null)
         {
             TryDeletePortraitOutput(result.SavedPath);
             return;
@@ -827,7 +851,13 @@ public partial class NCardModificationScreen : Control
         }
         RebuildControls();
         RefreshPreview(forceReload: true);
-        NotifyPortraitChanged(resolved);
+        if (_cardPrinterMode)
+        {
+            CardPrinterRunRecipeStore.SetFromEditor(resolved.Model, _workingState);
+            _cardPrinterRecipeChanged?.Invoke();
+        }
+        else
+            NotifyPortraitChanged(resolved);
     }
 
     private static void TryDeletePortraitOutput(string path)
@@ -1610,6 +1640,20 @@ public partial class NCardModificationScreen : Control
             return;
         }
 
+        if (_cardPrinterMode)
+        {
+            bool accepted = CardModificationNetProtocol.RequestCatalogPermanentOperation(
+                CardModificationOperation.ApplyPermanent,
+                _item.Model.Id,
+                permanentState);
+            if (!accepted)
+                return;
+            CardPrinterRunRecipeStore.Reset(_item.Model.Id);
+            _cardPrinterRecipeChanged?.Invoke();
+            ReloadCardPrinterItem();
+            return;
+        }
+
         bool requestedPermanent = LoadoutImmediateMutationService.RequestCardModification(
             CardModificationOperation.ApplyPermanent,
             _item,
@@ -1640,6 +1684,14 @@ public partial class NCardModificationScreen : Control
             _customRunStateSaved?.Invoke(_item, _workingState);
             RebuildControls();
             RefreshPreview(forceReload: true);
+            return;
+        }
+        if (_cardPrinterMode)
+        {
+            CardPrinterRunRecipeStore.Reset(_item.Model.Id);
+            _cardPrinterRecipeChanged?.Invoke();
+            CardPortraitRuntime.ResetTemporary(_item.Model);
+            ReloadCardPrinterItem();
             return;
         }
         if (!TryResolveCurrentLocation(_item, out LoadoutOwnedItem<CardModel>? current)
@@ -1673,6 +1725,20 @@ public partial class NCardModificationScreen : Control
         if (_customRunAuthoringMode)
         {
             ResetTemporary();
+            return;
+        }
+        if (_cardPrinterMode)
+        {
+            ModelId cardId = _item.Model.Id;
+            CardPortraitRuntime.ResetPermanent(_item.Model);
+            bool accepted = CardModificationNetProtocol.RequestCatalogPermanentOperation(
+                CardModificationOperation.ResetPermanentToBasic,
+                cardId);
+            if (!accepted)
+                return;
+            CardPrinterRunRecipeStore.Reset(cardId);
+            _cardPrinterRecipeChanged?.Invoke();
+            ReloadCardPrinterItem();
             return;
         }
         if (!TryResolveCurrentLocation(_item, out LoadoutOwnedItem<CardModel>? current)
@@ -1749,6 +1815,15 @@ public partial class NCardModificationScreen : Control
             _temporaryState = authored.Clone();
             return true;
         }
+        if (_cardPrinterMode)
+        {
+            CardModificationSpec authored = _workingState.Clone();
+            authored.Normalize();
+            CardPrinterRunRecipeStore.SetFromEditor(_item.Model, authored);
+            _cardPrinterRecipeChanged?.Invoke();
+            _temporaryState = authored.Clone();
+            return true;
+        }
         CardModificationSpec state = _temporaryState.Clone();
         state.Normalize();
         SuppressStateRefreshThisFrame();
@@ -1762,6 +1837,26 @@ public partial class NCardModificationScreen : Control
 
         CardModificationRuntime.SaveTemporary(_item, state);
         return true;
+    }
+
+    private void ReloadCardPrinterItem()
+    {
+        if (!_cardPrinterMode || _item is null)
+            return;
+
+        CardModel? canonical = LoadoutModelRegistry.ResolveCard(_item.Model.Id);
+        if (canonical is null)
+            return;
+        CardPrinterRunRecipe? recipe = CardPrinterRunRecipeStore.TryGet(canonical.Id, out CardPrinterRunRecipe found)
+            ? found
+            : null;
+        CardModel detached = CardPrinterRunRecipeStore.CreateDetachedCard(canonical, _item.Owner, recipe);
+        LoadoutOwnedItem<CardModel> replacement = new(_item.Owner, -1, detached, null, null);
+        _items = [replacement];
+        _itemIndex = 0;
+        LoadItem(replacement);
+        RebuildControls();
+        RefreshPreview(forceReload: true);
     }
 
     private void SuppressStateRefreshThisFrame()

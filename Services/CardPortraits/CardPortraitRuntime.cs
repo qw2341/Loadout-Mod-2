@@ -9,6 +9,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using Godot;
 using Loadout.Patches.Cards.CardModification;
+using Loadout.Services.Saving;
 using Loadout.UI.ImageEditing;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
@@ -300,6 +301,43 @@ internal static class CardPortraitRuntime
 
     public static bool HasTemporary(CardModel card) =>
         CardPortraitFields.TryGet(GetTemporaryOwner(card), out _);
+
+    public static bool TryExportTemporaryReference(CardModel card, out string? reference)
+    {
+        if (CardPortraitFields.TryGet(GetTemporaryOwner(card), out CardPortraitReference? found))
+        {
+            reference = CardPortraitPersistence.FormatReference(found);
+            return true;
+        }
+
+        reference = null;
+        return false;
+    }
+
+    public static bool IsValidTemporaryReference(string? reference)
+    {
+        return CardPortraitPersistence.TryParseReference(reference, out CardPortraitReference parsed)
+               && parsed.RunStartTime == SaveUtility.GetCurrentRunStartTime();
+    }
+
+    public static bool TryApplyTemporaryReference(CardModel card, string? reference)
+    {
+        Register();
+        CardModel temporaryOwner = GetTemporaryOwner(card);
+        if (temporaryOwner.IsCanonical
+            || !CardPortraitPersistence.TryParseReference(reference, out CardPortraitReference parsed)
+            || parsed.RunStartTime != SaveUtility.GetCurrentRunStartTime()
+            || !CardPortraitStore.TryGetTemporary(parsed, out _))
+        {
+            return false;
+        }
+
+        string cardInstanceId = CardPortraitFields.GetOrCreateIdentity(temporaryOwner);
+        CardPortraitReference local = parsed with { CardInstanceId = cardInstanceId };
+        CardPortraitFields.Set(temporaryOwner, local);
+        CardPortraitDynamicPatches.EnsureTemporaryInstalled();
+        return true;
+    }
 
     public static void DeleteTemporaryRun(long runStartTime)
     {
