@@ -533,8 +533,6 @@ public partial class NCardKeywordEditor : VBoxContainer
     private static IReadOnlyList<IHoverTip> GetKeywordHoverTips(
         CardKeyword keyword)
     {
-        if (LoadoutKeywordRegistry.IsDescriptionKeyword(keyword))
-            return [];
         try
         {
             return [HoverTipFactory.FromKeyword(keyword)];
