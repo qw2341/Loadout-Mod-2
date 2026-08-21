@@ -6,7 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Godot;
 using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
@@ -424,6 +426,7 @@ public static class NCardAncientRenderingCardModificationPatch
 {
     private static readonly FieldInfo? CardRarityField =
         AccessTools.Field(typeof(CardModel), "<Rarity>k__BackingField");
+    private static readonly ConditionalWeakTable<NCard, AncientPresentationNodes> PresentationNodes = new();
 
     public static void Prefix(NCard __instance, out (CardModel? Model, CardRarity Rarity) __state)
     {
@@ -442,12 +445,69 @@ public static class NCardAncientRenderingCardModificationPatch
     }
 
     public static Exception? Finalizer(
+        NCard __instance,
         (CardModel? Model, CardRarity Rarity) __state,
         Exception? __exception)
     {
         if (__state.Model is not null)
             CardRarityField?.SetValue(__state.Model, __state.Rarity);
+
+        if (__exception is null
+            && __state.Model is not null
+            && ReferenceEquals(__instance.Model, __state.Model))
+        {
+            ApplyForcedAncientPresentation(__instance, __state.Model);
+        }
         return __exception;
+    }
+
+    private static void ApplyForcedAncientPresentation(NCard card, CardModel model)
+    {
+        AncientPresentationNodes nodes = PresentationNodes.GetValue(
+            card,
+            static current => new AncientPresentationNodes(current));
+        foreach (CanvasItem? node in nodes.NormalNodes)
+        {
+            if (node is not null)
+                node.Visible = false;
+        }
+        foreach (CanvasItem? node in nodes.AncientNodes)
+        {
+            if (node is not null)
+                node.Visible = true;
+        }
+
+        if (nodes.AncientPortrait is not null && nodes.AncientPortrait.Texture is null)
+            nodes.AncientPortrait.Texture = nodes.NormalPortrait?.Texture ?? model.Portrait;
+    }
+
+    private sealed class AncientPresentationNodes
+    {
+        public AncientPresentationNodes(NCard card)
+        {
+            NormalPortrait = card.GetNodeOrNull<TextureRect>("%Portrait");
+            NormalNodes =
+            [
+                card.GetNodeOrNull<TextureRect>("%PortraitBorder"),
+                NormalPortrait,
+                card.GetNodeOrNull<TextureRect>("%Frame"),
+                card.GetNodeOrNull<TextureRect>("%TitleBanner")
+            ];
+            AncientPortrait = card.GetNodeOrNull<TextureRect>("%AncientPortrait");
+            AncientNodes =
+            [
+                AncientPortrait,
+                card.GetNodeOrNull<TextureRect>("%AncientBorderGlassOverlay"),
+                card.GetNodeOrNull<TextureRect>("%AncientBorder"),
+                card.GetNodeOrNull<TextureRect>("%AncientTextBg"),
+                card.GetNodeOrNull<Control>("%AncientBanner")
+            ];
+        }
+
+        public CanvasItem?[] NormalNodes { get; }
+        public CanvasItem?[] AncientNodes { get; }
+        public TextureRect? NormalPortrait { get; }
+        public TextureRect? AncientPortrait { get; }
     }
 }
 
