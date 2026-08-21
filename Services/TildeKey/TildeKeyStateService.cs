@@ -123,8 +123,9 @@ public static class TildeKeyStateService
     public const string HandSizeStatId = "hand_size";
     public const string PlayerDamageMultiplierStatId = "player_damage_multiplier";
     public const string EnemyDamageMultiplierStatId = "enemy_damage_multiplier";
+    public const string MonsterHealthMultiplierStatId = "monster_health_multiplier";
 
-    private const int CurrentSchemaVersion = 3;
+    private const int CurrentSchemaVersion = 4;
     private const string RunDirectory = "loadout/services/tilde_key";
     private const string RunFilePrefix = "tilde_key_run";
     private const int DefaultDrawPerTurn = 5;
@@ -182,6 +183,7 @@ public static class TildeKeyStateService
         new(HandSizeStatId, "Hand Size", player => GetVirtualStatValue(player, HandSizeStatId, DefaultHandSize), (player, value) => SetVirtualStatValue(player, HandSizeStatId, value)),
         new(PlayerDamageMultiplierStatId, "Player Damage Multiplier", player => GetVirtualStatValue(player, PlayerDamageMultiplierStatId, DefaultDamageMultiplier), (player, value) => SetVirtualStatValue(player, PlayerDamageMultiplierStatId, value)),
         new(EnemyDamageMultiplierStatId, "Enemy Damage Multiplier", player => GetVirtualStatValue(player, EnemyDamageMultiplierStatId, DefaultDamageMultiplier), (player, value) => SetVirtualStatValue(player, EnemyDamageMultiplierStatId, value)),
+        new(MonsterHealthMultiplierStatId, "Monster Health Multiplier", _ => GetGlobalStatValue(MonsterHealthMultiplierStatId, DefaultDamageMultiplier), (_, value) => SetGlobalStatValue(MonsterHealthMultiplierStatId, value)),
         new("extra_card_shop_removals", "Card Shop Removals Used", player => player.ExtraFields.CardShopRemovalsUsed, (player, value) => player.ExtraFields.CardShopRemovalsUsed = value),
         new("extra_wongo_points", "Wongo Points", player => player.ExtraFields.WongoPoints, (player, value) => player.ExtraFields.WongoPoints = value),
         new("extra_damage_dealt", "Damage Dealt", player => player.ExtraFields.DamageDealt, (player, value) => player.ExtraFields.DamageDealt = value),
@@ -797,6 +799,12 @@ public static class TildeKeyStateService
     public static bool TryGetEnemyDamageMultiplier(Player player, out int value)
     {
         return TryGetVirtualStatOverride(player.NetId, EnemyDamageMultiplierStatId, out value);
+    }
+
+    public static int GetMonsterHealthMultiplier()
+    {
+        EnsureLoaded();
+        return GetGlobalStatValue(MonsterHealthMultiplierStatId, DefaultDamageMultiplier);
     }
 
     public static bool IsGodmodeProtected(Creature? creature)
@@ -1441,6 +1449,26 @@ public static class TildeKeyStateService
         return TryGetVirtualStatOverride(player.NetId, statId, out int value) ? value : defaultValue;
     }
 
+    private static int GetGlobalStatValue(string statId, int defaultValue)
+    {
+        lock (SyncRoot)
+        {
+            return _run.GlobalStats.TryGetValue(statId, out TildeKeySavedStat? saved)
+                ? saved.Value
+                : defaultValue;
+        }
+    }
+
+    private static void SetGlobalStatValue(string statId, int value)
+    {
+        lock (SyncRoot)
+        {
+            bool locked = _run.GlobalStats.TryGetValue(statId, out TildeKeySavedStat? saved)
+                          && saved.Locked;
+            _run.GlobalStats[statId] = new TildeKeySavedStat { Value = value, Locked = locked };
+        }
+    }
+
     private static void SetVirtualStatValue(Player player, string statId, int value)
     {
         lock (SyncRoot)
@@ -2048,6 +2076,12 @@ public static class TildeKeyStateService
         EnsureLoaded();
         lock (SyncRoot)
         {
+            if (IsGlobalStat(statId) && _run.GlobalStats.TryGetValue(statId, out TildeKeySavedStat? global))
+            {
+                saved = global;
+                return true;
+            }
+
             if (GetPlayerStateLocked(netId, create: false, out TildeKeyPlayerState? state)
                 && state is not null
                 && state.Stats.TryGetValue(statId, out TildeKeySavedStat? found))
@@ -2066,6 +2100,23 @@ public static class TildeKeyStateService
         bool changed = false;
         lock (SyncRoot)
         {
+            if (IsGlobalStat(statId))
+            {
+                if (_run.GlobalStats.TryGetValue(statId, out TildeKeySavedStat? global))
+                {
+                    if (global.Value == value)
+                        return false;
+
+                    global.Value = value;
+                }
+                else
+                {
+                    _run.GlobalStats[statId] = new TildeKeySavedStat { Value = value, Locked = false };
+                }
+
+                return true;
+            }
+
             bool persistUnlocked = IsVirtualStat(statId);
             if (!GetPlayerStateLocked(netId, create: persistUnlocked, out TildeKeyPlayerState? state)
                 || state is null)
@@ -2095,6 +2146,12 @@ public static class TildeKeyStateService
     {
         lock (SyncRoot)
         {
+            if (IsGlobalStat(statId))
+            {
+                _run.GlobalStats[statId] = new TildeKeySavedStat { Value = value, Locked = locked };
+                return;
+            }
+
             if (locked || IsVirtualStat(statId))
             {
                 GetPlayerStateLocked(netId, create: true, out TildeKeyPlayerState? state);
@@ -2117,6 +2174,11 @@ public static class TildeKeyStateService
                || string.Equals(statId, HandSizeStatId, StringComparison.Ordinal)
                || string.Equals(statId, PlayerDamageMultiplierStatId, StringComparison.Ordinal)
                || string.Equals(statId, EnemyDamageMultiplierStatId, StringComparison.Ordinal);
+    }
+
+    private static bool IsGlobalStat(string statId)
+    {
+        return string.Equals(statId, MonsterHealthMultiplierStatId, StringComparison.Ordinal);
     }
 
     private static void SetSavedToggle(ulong netId, string toggleId, bool enabled)
@@ -2401,8 +2463,31 @@ public static class TildeKeyStateService
         save.SchemaVersion = CurrentSchemaVersion;
         save.RunStartTime = runStartTime;
         save.Players = NormalizePlayers(save.Players);
+        save.GlobalStats = NormalizeGlobalStats(save.GlobalStats);
         save.GlobalToggles = NormalizeToggles(save.GlobalToggles);
         return save;
+    }
+
+    private static Dictionary<string, TildeKeySavedStat> NormalizeGlobalStats(
+        Dictionary<string, TildeKeySavedStat>? stats)
+    {
+        Dictionary<string, TildeKeySavedStat> normalized = new(StringComparer.Ordinal);
+        if (stats is null)
+            return normalized;
+
+        foreach ((string key, TildeKeySavedStat? value) in stats)
+        {
+            if (!IsGlobalStat(key) || value is null)
+                continue;
+
+            normalized[key] = new TildeKeySavedStat
+            {
+                Value = value.Value,
+                Locked = value.Locked
+            };
+        }
+
+        return normalized;
     }
 
     private static void HydrateVirtualStatsLocked()
@@ -2560,6 +2645,9 @@ public static class TildeKeyStateService
         [JsonPropertyName("players")]
         public Dictionary<string, TildeKeyPlayerState> Players { get; set; } = new(StringComparer.Ordinal);
 
+        [JsonPropertyName("globalStats")]
+        public Dictionary<string, TildeKeySavedStat> GlobalStats { get; set; } = new(StringComparer.Ordinal);
+
         [JsonPropertyName("globalToggles")]
         public Dictionary<string, bool> GlobalToggles { get; set; } = new(StringComparer.Ordinal);
 
@@ -2568,6 +2656,7 @@ public static class TildeKeyStateService
             info.AddValue(nameof(SchemaVersion), SchemaVersion);
             info.AddValue(nameof(RunStartTime), RunStartTime);
             info.AddValue(nameof(Players), Players);
+            info.AddValue(nameof(GlobalStats), GlobalStats);
             info.AddValue(nameof(GlobalToggles), GlobalToggles);
         }
     }

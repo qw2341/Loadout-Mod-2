@@ -153,6 +153,7 @@ TILDEKEY_STAT_DRAW_PER_TURN,Draw Per Turn,每回合抽牌,Pioche par tour,ター
 TILDEKEY_STAT_HAND_SIZE,Max Hand Size,手牌上限,Taille de main maximale,手札上限,최대 손패 크기,Tamaño máximo de mano
 TILDEKEY_STAT_PLAYER_DAMAGE_MULTIPLIER,Player Damage Multiplier(%),玩家伤害倍数（%）,Multiplicateur de dégâts du joueur (%),プレイヤーダメージ倍率（%）,플레이어 피해 배율(%),Multiplicador de daño del jugador (%)
 TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER,Enemy Damage Multiplier(%),敌人伤害倍数（%）,Multiplicateur de dégâts des ennemis (%),敵ダメージ倍率（%）,적 피해 배율(%),Multiplicador de daño enemigo (%)
+TILDEKEY_STAT_MONSTER_HEALTH_MULTIPLIER,Enemy Health Multiplier(%),敌人生命值倍数（%）,Multiplicateur de santé des monstres (%),モンスターHP倍率（%）,몬스터 체력 배율(%),Multiplicador de salud de los monstruos (%)
 TILDEKEY_INFINITE_ENERGY,Infinite Energy,无限能量,Énergie infinie,無限エナジー,무한 에너지,Energía infinita
 TILDEKEY_DRAW_TILL_HAND_LIMIT,Draw Till Hand Limit,抽牌至手牌上限,Piocher jusqu'à la limite de main,手札上限まで引く,손패 한도까지 드로우,Robar hasta el límite de mano
 TILDEKEY_SCROLL_RELIC_COUNTER,Scroll Edit Relic Counter,滚轮编辑遗物计数,Modifier le compteur de relique avec la molette,スクロールでレリックカウンターを編集,스크롤로 유물 카운터 편집,Editar contador de reliquia con la rueda

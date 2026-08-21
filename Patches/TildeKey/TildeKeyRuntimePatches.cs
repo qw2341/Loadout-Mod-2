@@ -466,6 +466,50 @@ public static class TildeKeyModifyDamagePatch
     }
 }
 
+[HarmonyPatch]
+public static class TildeKeyMonsterHealthMultiplierPatch
+{
+    private static readonly ConditionalWeakTable<Creature, object> AppliedCreatures = new();
+    private static readonly object AppliedMarker = new();
+
+    public static MethodBase TargetMethod() =>
+        AccessTools.Method(typeof(Creature), nameof(Creature.AfterAddedToRoom))
+        ?? throw new MissingMethodException(typeof(Creature).FullName, nameof(Creature.AfterAddedToRoom));
+
+    [HarmonyPostfix]
+    public static void Postfix(Creature __instance, ref Task __result)
+    {
+        if (__instance is not { IsEnemy: true, Monster: not null })
+            return;
+
+        lock (AppliedCreatures)
+        {
+            if (AppliedCreatures.TryGetValue(__instance, out _))
+                return;
+
+            AppliedCreatures.Add(__instance, AppliedMarker);
+        }
+
+        int multiplier = TildeKeyStateService.GetMonsterHealthMultiplier();
+        if (multiplier == 100)
+            return;
+
+        __result = ApplyAfterSpawnAsync(__instance, __result, multiplier);
+    }
+
+    private static async Task ApplyAfterSpawnAsync(Creature creature, Task original, int multiplier)
+    {
+        await original;
+        int nonNegativeMultiplier = Math.Max(0, multiplier);
+        decimal scaledMaxHp = Math.Max(1m, (decimal)creature.MaxHp * nonNegativeMultiplier / 100m);
+        decimal scaledCurrentHp = creature.CurrentHp == 0
+            ? 0m
+            : Math.Max(1m, (decimal)creature.CurrentHp * nonNegativeMultiplier / 100m);
+        creature.SetMaxHpInternal(scaledMaxHp);
+        creature.SetCurrentHpInternal(scaledCurrentHp);
+    }
+}
+
 
 /// <summary>
 /// Dynamically installed only while a draw-to-limit toggle exists. Patching the

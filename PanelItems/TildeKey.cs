@@ -393,6 +393,10 @@ public static partial class TildeKey
                 LocMan.Loc("TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER", "Enemy Damage Multiplier"),
                 DamageIconElitePath,
                 HpAccent),
+            TildeKeyStateService.MonsterHealthMultiplierStatId => new(
+                LocMan.Loc("TILDEKEY_STAT_MONSTER_HEALTH_MULTIPLIER", "Monster Health Multiplier"),
+                HeartIconPath,
+                HpAccent),
             
             //LESS USED STUFF GOES HERE
             "turn_number" => new(
