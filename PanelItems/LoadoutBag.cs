@@ -52,7 +52,12 @@ public class LoadoutBag
 				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 				AddRelicPoolFilters(builder);
 				builder.FilterGroup("rarity", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity"));
-				CommonHelpers.AddEnumFilters(builder, "rarity", (RelicModel relic) => relic.Rarity, RelicRarity.None);
+				CommonHelpers.AddEnumFilters(
+					builder,
+					"rarity",
+					(RelicModel relic) => relic.Rarity,
+					RelicRarity.None,
+					CommonHelpers.GetRarityCardTitleColor);
 				CommonHelpers.AddModFilters(builder, ModelDb.AllRelics);
 				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), CommonHelpers.FormatRelicTitle, comparer: StringComparer.Ordinal);
 				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
@@ -715,7 +720,8 @@ public class LoadoutBag
 		    builder.Filter(CommonHelpers.PoolFilterId("relic", localPool), CommonHelpers.GetPoolLabel(localPool),
 			    relic => LoadoutBag.TryGetRelicPool(relic, out RelicPoolModel relicPool)
 			             && CommonHelpers.SamePool(relicPool, localPool),
-			    "class");
+			    "class",
+			    icon: CommonHelpers.GetPoolClassIcon(localPool));
 	    }
     }
 

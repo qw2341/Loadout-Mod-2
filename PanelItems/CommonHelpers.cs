@@ -676,11 +676,7 @@ public class CommonHelpers
 
     public static string GetPoolLabel(AbstractModel pool)
     {
-        CharacterModel character = ModelDb.AllCharacters
-            .Where(candidate => candidate.IsPlayable)
-            .FirstOrDefault(candidate => SamePool(candidate.CardPool, pool)
-                || SamePool(candidate.PotionPool, pool)
-                || SamePool(candidate.RelicPool, pool));
+        CharacterModel character = GetPoolCharacter(pool);
 
         if (character is not null)
             return character.Title.GetFormattedText();
@@ -710,6 +706,46 @@ public class CommonHelpers
             return LocMan.Loc("EVENT", "Event");
 
         return PrettifyPoolTypeName(typeName);
+    }
+
+    public static Texture2D? GetPoolClassIcon(AbstractModel pool)
+    {
+        CharacterModel character = GetPoolCharacter(pool);
+        if (character is null)
+            return null;
+
+        try
+        {
+            return TryGetValidTexture(character.IconTexture);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static Color GetRarityCardTitleColor<TEnum>(TEnum rarity)
+        where TEnum : struct, Enum
+    {
+        return rarity.ToString() switch
+        {
+            "Uncommon" or "Shop" => StsColors.cardTitleOutlineUncommon,
+            "Rare" => StsColors.cardTitleOutlineRare,
+            "Curse" => StsColors.cardTitleOutlineCurse,
+            "Quest" => StsColors.cardTitleOutlineQuest,
+            "Status" => StsColors.cardTitleOutlineStatus,
+            "Event" => StsColors.cardTitleOutlineSpecial,
+            _ => StsColors.cardTitleOutlineCommon
+        };
+    }
+
+    private static CharacterModel GetPoolCharacter(AbstractModel pool)
+    {
+        return ModelDb.AllCharacters
+            .Where(candidate => candidate.IsPlayable)
+            .FirstOrDefault(candidate => SamePool(candidate.CardPool, pool)
+                || SamePool(candidate.PotionPool, pool)
+                || SamePool(candidate.RelicPool, pool));
     }
 
     public static string PoolFilterId(string prefix, AbstractModel pool)
@@ -795,7 +831,8 @@ public class CommonHelpers
         SelectScreenBuilder<TModel> builder,
         string groupId,
         Func<TModel, TEnum> getValue,
-        TEnum excludedValue)
+        TEnum excludedValue,
+        Func<TEnum, Color>? getTextColor = null)
         where TEnum : struct, Enum
     {
         foreach (TEnum value in Enum.GetValues<TEnum>())
@@ -804,7 +841,12 @@ public class CommonHelpers
                 continue;
 
             string label = GetEnumLabel(value);
-            builder.Filter(EnumFilterId(typeof(TEnum).Name, value), label, model => EqualityComparer<TEnum>.Default.Equals(getValue(model), value), groupId);
+            builder.Filter(
+                EnumFilterId(typeof(TEnum).Name, value),
+                label,
+                model => EqualityComparer<TEnum>.Default.Equals(getValue(model), value),
+                groupId,
+                textColor: getTextColor?.Invoke(value));
         }
     }
 

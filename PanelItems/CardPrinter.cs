@@ -320,11 +320,12 @@ public class CardPrinter
 	    foreach (CardPoolModel pool in pools)
 	    {
 		    CardPoolModel localPool = pool;
-			    builder.Filter(
+		    builder.Filter(
 			    CommonHelpers.PoolFilterId("card", localPool),
 			    CommonHelpers.GetPoolLabel(localPool),
 			    card => CommonHelpers.SamePool(CardModificationRuntime.GetPermanentCardForDisplay(card).Pool, localPool),
-			    "class");
+			    "class",
+			    icon: CommonHelpers.GetPoolClassIcon(localPool));
 	    }
     }
 
@@ -388,7 +389,8 @@ public class CardPrinter
 		    builder.Filter(
 			    CommonHelpers.EnumFilterId("card_rarity", localRarity), GetCardRarityLabel(localRarity),
 			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Rarity == localRarity,
-			    "rarity");
+			    "rarity",
+			    textColor: CommonHelpers.GetRarityCardTitleColor(localRarity));
 	    }
     }
 

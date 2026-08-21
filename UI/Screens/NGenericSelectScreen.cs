@@ -2748,7 +2748,13 @@ public partial class NGenericSelectScreen : Control
             options.Add(new LoadoutDropdownOption(AllFilterOptionId, SelectScreenLoc.Text("ALL", "All")));
 
             foreach (SelectFilterDefinition filter in groupFilters)
-                options.Add(new LoadoutDropdownOption(filter.Id, filter.Label));
+            {
+                options.Add(new LoadoutDropdownOption(
+                    filter.Id,
+                    filter.Label,
+                    Icon: filter.Icon,
+                    TextColor: filter.TextColor));
+            }
 
             string selectedOptionId = GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId;
             NLoadoutDropdown dropdown = new();
@@ -5404,14 +5410,18 @@ public sealed class SelectScreenBuilder<TModel>
         string label,
         Func<TModel, bool> predicate,
         string groupId = "default",
-        bool enabledByDefault = false)
+        bool enabledByDefault = false,
+        Texture2D? icon = null,
+        Color? textColor = null)
     {
         _screen.AddFilter(new SelectFilterDefinition(
             id,
             label,
             groupId,
             item => item is GenericSelectItem<TModel> typed && predicate(typed.Model),
-            enabledByDefault));
+            enabledByDefault,
+            icon,
+            textColor));
 
         return this;
     }
@@ -6036,12 +6046,16 @@ public sealed class SelectFilterDefinition
         string label,
         string groupId,
         Func<IGenericSelectItem, bool> predicate,
-        bool enabled = false)
+        bool enabled = false,
+        Texture2D? icon = null,
+        Color? textColor = null)
     {
         Id = id;
         Label = label;
         GroupId = groupId;
         Predicate = predicate;
+        Icon = icon;
+        TextColor = textColor;
         _enabled = enabled;
     }
 
@@ -6049,6 +6063,8 @@ public sealed class SelectFilterDefinition
     public string Label { get; }
     public string GroupId { get; }
     public Func<IGenericSelectItem, bool> Predicate { get; }
+    public Texture2D? Icon { get; }
+    public Color? TextColor { get; }
     public bool Enabled
     {
         get => _enabled;

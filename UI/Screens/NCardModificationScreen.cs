@@ -923,7 +923,10 @@ public partial class NCardModificationScreen : Control
 
         AddDropdownRow(_leftControls,
             LocMan.Loc("FILTER_GROUP_CLASS", "Class"),
-            pools.Select(pool => new LoadoutDropdownOption(pool.Id.ToString(), CommonHelpers.GetPoolLabel(pool))),
+            pools.Select(pool => new LoadoutDropdownOption(
+                pool.Id.ToString(),
+                CommonHelpers.GetPoolLabel(pool),
+                Icon: CommonHelpers.GetPoolClassIcon(pool))),
             _workingState.PoolId ?? card.Pool.Id.ToString(),
             selected =>
             {
@@ -953,7 +956,10 @@ public partial class NCardModificationScreen : Control
             Enum.GetValues<CardRarity>()
                 .Where(rarity => rarity != CardRarity.None)
                 .OrderBy(CardPrinter.GetCardRaritySortValue)
-                .Select(rarity => new LoadoutDropdownOption(rarity.ToString(), CardPrinter.GetCardRarityLabel(rarity))),
+                .Select(rarity => new LoadoutDropdownOption(
+                    rarity.ToString(),
+                    CardPrinter.GetCardRarityLabel(rarity),
+                    TextColor: CommonHelpers.GetRarityCardTitleColor(rarity))),
             _workingState.Rarity ?? card.Rarity.ToString(),
             selected =>
             {

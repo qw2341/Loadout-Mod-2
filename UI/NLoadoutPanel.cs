@@ -412,7 +412,12 @@ public partial class NLoadoutPanel : Panel
 				builder.FilterGroup("class", LocMan.Loc("FILTER_GROUP_CLASS", "Class"));
 				AddPotionPoolFilters(builder);
 				builder.FilterGroup("rarity", LocMan.Loc("FILTER_GROUP_RARITY", "Rarity"));
-				CommonHelpers.AddEnumFilters(builder, "rarity", (PotionModel potion) => potion.Rarity, PotionRarity.None);
+				CommonHelpers.AddEnumFilters(
+					builder,
+					"rarity",
+					(PotionModel potion) => potion.Rarity,
+					PotionRarity.None,
+					CommonHelpers.GetRarityCardTitleColor);
 				CommonHelpers.AddModFilters(builder, ModelDb.AllPotions);
 				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), CommonHelpers.FormatPotionTitle, comparer: StringComparer.Ordinal);
 				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
@@ -744,7 +749,8 @@ public partial class NLoadoutPanel : Panel
 			PotionPoolModel localPool = pool;
 			builder.Filter(CommonHelpers.PoolFilterId("potion", localPool), CommonHelpers.GetPoolLabel(localPool),
 				potion => CommonHelpers.SamePool(potion.Pool, localPool),
-				"class");
+				"class",
+				icon: CommonHelpers.GetPoolClassIcon(localPool));
 		}
 	}
 
