@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Patches.Cards.CardModification;
+using Loadout.Services.CardPortraits;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
@@ -36,6 +37,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     private TextureRect? _cardPreviewPortrait;
     private Texture2D? _cardPreviewOriginalTexture;
     private SubViewport? _cardPreviewViewport;
+    private Texture2D? _cardPreviewViewportTexture;
     private ColorRect? _cardPreviewSurface;
     private ShaderMaterial? _cardPreviewMaterial;
     private bool _initialized;
@@ -436,6 +438,8 @@ public partial class NImageEditorModal : Control, IScreenContext
         card.SetAnchorsPreset(LayoutPreset.TopLeft);
         card.MouseFilter = MouseFilterEnum.Ignore;
         card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+        card.GetNodeOrNull<CardPortraitAnimationController>(
+            CardPortraitAnimationController.NodeName)?.Stop();
 
         _cardPreviewPortrait = CardModificationRuntime.ShouldUseAncientRendering(model)
             ? card.GetNodeOrNull<TextureRect>("%AncientPortrait")
@@ -453,6 +457,7 @@ public partial class NImageEditorModal : Control, IScreenContext
             RenderTargetUpdateMode = SubViewport.UpdateMode.Once
         };
         AddChild(_cardPreviewViewport);
+        _cardPreviewViewportTexture = _cardPreviewViewport.GetTexture();
         _cardPreviewMaterial = _canvas.CreateOutputPreviewMaterial();
         _cardPreviewSurface = new ColorRect
         {
@@ -464,7 +469,7 @@ public partial class NImageEditorModal : Control, IScreenContext
             Color = Colors.White
         };
         _cardPreviewViewport.AddChild(_cardPreviewSurface);
-        _cardPreviewPortrait.Texture = _cardPreviewViewport.GetTexture();
+        _cardPreviewPortrait.Texture = _cardPreviewViewportTexture;
         _canvas.PreviewChanged += RefreshCardPreviewMaterial;
         LayoutCardPreview();
         Callable.From(RefreshCardPreviewMaterial).CallDeferred();
@@ -480,6 +485,13 @@ public partial class NImageEditorModal : Control, IScreenContext
         }
 
         _canvas.UpdateOutputPreviewMaterial(_cardPreviewMaterial);
+        if (_cardPreviewViewportTexture is not null
+            && _cardPreviewPortrait is not null
+            && GodotObject.IsInstanceValid(_cardPreviewPortrait)
+            && !ReferenceEquals(_cardPreviewPortrait.Texture, _cardPreviewViewportTexture))
+        {
+            _cardPreviewPortrait.Texture = _cardPreviewViewportTexture;
+        }
         _cardPreviewViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
     }
 
@@ -520,6 +532,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         _cardPreviewPortrait = null;
         _cardPreviewOriginalTexture = null;
         _cardPreviewViewport = null;
+        _cardPreviewViewportTexture = null;
         _cardPreviewSurface = null;
         _cardPreviewMaterial = null;
     }
