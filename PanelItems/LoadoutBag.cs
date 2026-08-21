@@ -57,7 +57,7 @@ public class LoadoutBag
 					"rarity",
 					(RelicModel relic) => relic.Rarity,
 					RelicRarity.None,
-					CommonHelpers.GetRarityCardTitleColor);
+					CommonHelpers.GetRelicRarityColor);
 				CommonHelpers.AddModFilters(builder, ModelDb.AllRelics);
 				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), CommonHelpers.FormatRelicTitle, comparer: StringComparer.Ordinal);
 				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
@@ -721,7 +721,7 @@ public class LoadoutBag
 			    relic => LoadoutBag.TryGetRelicPool(relic, out RelicPoolModel relicPool)
 			             && CommonHelpers.SamePool(relicPool, localPool),
 			    "class",
-			    icon: CommonHelpers.GetPoolClassIcon(localPool));
+			    iconFactory: () => CommonHelpers.GetPoolClassIcon(localPool));
 	    }
     }
 

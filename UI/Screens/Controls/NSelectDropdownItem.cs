@@ -25,17 +25,24 @@ public partial class NSelectDropdownItem : NDropdownItem
     private string _pendingLabel = "DropdownItem";
     private Texture2D? _pendingIcon;
     private Color? _pendingTextColor;
+    private Color? _pendingShadowColor;
     private ColorRect? _highlight;
     private TextureRect? _icon;
     private Func<IReadOnlyList<IHoverTip>>? _hoverTipsFactory;
     private bool _hoverTipsVisible;
 
-    public void Init(string optionId, string label, Texture2D? icon = null, Color? textColor = null)
+    public void Init(
+        string optionId,
+        string label,
+        Texture2D? icon = null,
+        Color? textColor = null,
+        Color? shadowColor = null)
     {
         OptionId = optionId;
         _pendingLabel = label;
         _pendingIcon = icon;
         _pendingTextColor = textColor;
+        _pendingShadowColor = shadowColor;
 
         if (IsNodeReady())
         {
@@ -159,9 +166,14 @@ public partial class NSelectDropdownItem : NDropdownItem
 
     private void ApplyTextColor()
     {
-        GetNodeOrNull<MegaLabel>("Label")?.AddThemeColorOverride(
-            "font_color",
-            _pendingTextColor ?? StsColors.cream);
+        if (GetNodeOrNull<MegaLabel>("Label") is not { } label)
+            return;
+
+        label.AddThemeColorOverride("font_color", _pendingTextColor ?? StsColors.cream);
+        label.AddThemeColorOverride(
+            "font_shadow_color",
+            _pendingShadowColor ?? new Color(0f, 0f, 0f, 0.12549f));
+        label.AddThemeConstantOverride("shadow_outline_size", _pendingShadowColor is null ? 0 : 2);
     }
 
     private void RefreshIconLayout()
@@ -169,11 +181,37 @@ public partial class NSelectDropdownItem : NDropdownItem
         if (_icon is null || GetNodeOrNull<MegaLabel>("Label") is not { } label)
             return;
 
-        bool hasIcon = _pendingIcon is not null;
-        _icon.Texture = _pendingIcon;
+        Texture2D? icon = GetValidIcon(_pendingIcon);
+        bool hasIcon = icon is not null;
+        try
+        {
+            _icon.Texture = icon;
+        }
+        catch (ObjectDisposedException)
+        {
+            hasIcon = false;
+            _pendingIcon = null;
+            _icon.Texture = null;
+        }
         _icon.Visible = hasIcon;
         label.OffsetLeft = hasIcon ? LabelIconInset : 0f;
         label.OffsetRight = hasIcon ? -LabelIconInset : 0f;
+    }
+
+    private static Texture2D? GetValidIcon(Texture2D? icon)
+    {
+        if (icon is null || !GodotObject.IsInstanceValid(icon))
+            return null;
+
+        try
+        {
+            _ = icon.GetRid();
+            return icon;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
     }
 
     private static Font? LoadFont(string path)

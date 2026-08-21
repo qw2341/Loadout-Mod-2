@@ -325,7 +325,7 @@ public class CardPrinter
 			    CommonHelpers.GetPoolLabel(localPool),
 			    card => CommonHelpers.SamePool(CardModificationRuntime.GetPermanentCardForDisplay(card).Pool, localPool),
 			    "class",
-			    icon: CommonHelpers.GetPoolClassIcon(localPool));
+			    iconFactory: () => CommonHelpers.GetPoolClassIcon(localPool));
 	    }
     }
 
@@ -390,7 +390,7 @@ public class CardPrinter
 			    CommonHelpers.EnumFilterId("card_rarity", localRarity), GetCardRarityLabel(localRarity),
 			    card => CardModificationRuntime.GetPermanentCardForDisplay(card).Rarity == localRarity,
 			    "rarity",
-			    textColor: CommonHelpers.GetRarityCardTitleColor(localRarity));
+			    shadowColor: CommonHelpers.GetRarityCardTitleColor(localRarity));
 	    }
     }
 

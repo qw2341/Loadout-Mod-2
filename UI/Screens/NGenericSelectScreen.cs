@@ -2752,8 +2752,9 @@ public partial class NGenericSelectScreen : Control
                 options.Add(new LoadoutDropdownOption(
                     filter.Id,
                     filter.Label,
-                    Icon: filter.Icon,
-                    TextColor: filter.TextColor));
+                    TextColor: filter.TextColor,
+                    IconFactory: filter.IconFactory,
+                    ShadowColor: filter.ShadowColor));
             }
 
             string selectedOptionId = GetSelectedFilterIdForGroup(groupId) ?? AllFilterOptionId;
@@ -5411,8 +5412,9 @@ public sealed class SelectScreenBuilder<TModel>
         Func<TModel, bool> predicate,
         string groupId = "default",
         bool enabledByDefault = false,
-        Texture2D? icon = null,
-        Color? textColor = null)
+        Func<Texture2D?>? iconFactory = null,
+        Color? textColor = null,
+        Color? shadowColor = null)
     {
         _screen.AddFilter(new SelectFilterDefinition(
             id,
@@ -5420,8 +5422,9 @@ public sealed class SelectScreenBuilder<TModel>
             groupId,
             item => item is GenericSelectItem<TModel> typed && predicate(typed.Model),
             enabledByDefault,
-            icon,
-            textColor));
+            iconFactory,
+            textColor,
+            shadowColor));
 
         return this;
     }
@@ -6047,15 +6050,17 @@ public sealed class SelectFilterDefinition
         string groupId,
         Func<IGenericSelectItem, bool> predicate,
         bool enabled = false,
-        Texture2D? icon = null,
-        Color? textColor = null)
+        Func<Texture2D?>? iconFactory = null,
+        Color? textColor = null,
+        Color? shadowColor = null)
     {
         Id = id;
         Label = label;
         GroupId = groupId;
         Predicate = predicate;
-        Icon = icon;
+        IconFactory = iconFactory;
         TextColor = textColor;
+        ShadowColor = shadowColor;
         _enabled = enabled;
     }
 
@@ -6063,8 +6068,9 @@ public sealed class SelectFilterDefinition
     public string Label { get; }
     public string GroupId { get; }
     public Func<IGenericSelectItem, bool> Predicate { get; }
-    public Texture2D? Icon { get; }
+    public Func<Texture2D?>? IconFactory { get; }
     public Color? TextColor { get; }
+    public Color? ShadowColor { get; }
     public bool Enabled
     {
         get => _enabled;

@@ -926,7 +926,7 @@ public partial class NCardModificationScreen : Control
             pools.Select(pool => new LoadoutDropdownOption(
                 pool.Id.ToString(),
                 CommonHelpers.GetPoolLabel(pool),
-                Icon: CommonHelpers.GetPoolClassIcon(pool))),
+                IconFactory: () => CommonHelpers.GetPoolClassIcon(pool))),
             _workingState.PoolId ?? card.Pool.Id.ToString(),
             selected =>
             {
@@ -959,7 +959,7 @@ public partial class NCardModificationScreen : Control
                 .Select(rarity => new LoadoutDropdownOption(
                     rarity.ToString(),
                     CardPrinter.GetCardRarityLabel(rarity),
-                    TextColor: CommonHelpers.GetRarityCardTitleColor(rarity))),
+                    ShadowColor: CommonHelpers.GetRarityCardTitleColor(rarity))),
             _workingState.Rarity ?? card.Rarity.ToString(),
             selected =>
             {

@@ -750,7 +750,7 @@ public partial class NLoadoutPanel : Panel
 			builder.Filter(CommonHelpers.PoolFilterId("potion", localPool), CommonHelpers.GetPoolLabel(localPool),
 				potion => CommonHelpers.SamePool(potion.Pool, localPool),
 				"class",
-				icon: CommonHelpers.GetPoolClassIcon(localPool));
+				iconFactory: () => CommonHelpers.GetPoolClassIcon(localPool));
 		}
 	}
 

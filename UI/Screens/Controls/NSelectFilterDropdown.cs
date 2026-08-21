@@ -23,7 +23,8 @@ public readonly record struct LoadoutDropdownOption(
     Texture2D? Icon = null,
     Color? TextColor = null,
     Func<Texture2D?>? IconFactory = null,
-    bool Enabled = true);
+    bool Enabled = true,
+    Color? ShadowColor = null);
 
 public partial class NLoadoutDropdown : NDropdown
 {
@@ -262,7 +263,7 @@ public partial class NLoadoutDropdown : NDropdown
                 MouseFilter = MouseFilterEnum.Stop
             };
             item.FontSize = ItemFontSize;
-            item.Init(option.Id, option.Label, option.Icon, option.TextColor);
+            item.Init(option.Id, option.Label, GetValidIcon(option.Icon), option.TextColor, option.ShadowColor);
             item.SetHoverTipsFactory(option.HoverTipsFactory);
             item.Connect(NDropdownItem.SignalName.Selected, Callable.From<NDropdownItem>(OnDropdownItemSelected));
             _dropdownItems.AddChild(item);
@@ -302,17 +303,28 @@ public partial class NLoadoutDropdown : NDropdown
             return;
         }
 
-        LoadoutDropdownOption selectedItem = _items.FirstOrDefault(item => item.Id == _selectedItemId);
-        if (string.IsNullOrWhiteSpace(selectedItem.Id))
+        int selectedIndex = _items.FindIndex(item => item.Id == _selectedItemId);
+        if (selectedIndex < 0)
         {
-            selectedItem = _items[0];
-            _selectedItemId = selectedItem.Id;
+            selectedIndex = 0;
+            LoadoutDropdownOption firstItem = _items[0];
+            _selectedItemId = firstItem.Id;
         }
+
+        LoadoutDropdownOption selectedItem = _items[selectedIndex];
+        Texture2D? selectedIcon = ResolveOptionIcon(selectedIndex);
+        NSelectDropdownItem? selectedNode = _dropdownItems.GetChildren()
+            .OfType<NSelectDropdownItem>()
+            .ElementAtOrDefault(selectedIndex);
+        selectedNode?.SetIcon(selectedIcon);
+
+        if (string.IsNullOrWhiteSpace(selectedItem.Id))
+            _selectedItemId = selectedItem.Id;
 
         string label = string.IsNullOrWhiteSpace(_labelPrefix)
             ? selectedItem.Label
             : $"{_labelPrefix}: {selectedItem.Label}";
-        RefreshCurrentItemIcon(selectedItem.Icon);
+        RefreshCurrentItemIcon(selectedIcon);
         RefreshCurrentItemColor();
         _currentOptionLabel.SetTextAutoSize(label);
     }
@@ -330,8 +342,17 @@ public partial class NLoadoutDropdown : NDropdown
         if (_currentOptionIcon is null || _currentOptionLabel is null)
             return;
 
-        bool hasIcon = icon is not null;
-        _currentOptionIcon.Texture = icon;
+        Texture2D? validIcon = GetValidIcon(icon);
+        bool hasIcon = validIcon is not null;
+        try
+        {
+            _currentOptionIcon.Texture = validIcon;
+        }
+        catch (ObjectDisposedException)
+        {
+            hasIcon = false;
+            _currentOptionIcon.Texture = null;
+        }
         _currentOptionIcon.Visible = hasIcon;
         _currentOptionLabel.OffsetLeft = hasIcon ? 52f : 0f;
         _currentOptionLabel.OffsetRight = hasIcon ? -52f : 0f;
@@ -383,26 +404,47 @@ public partial class NLoadoutDropdown : NDropdown
         NSelectDropdownItem[] itemNodes = _dropdownItems.GetChildren().OfType<NSelectDropdownItem>().ToArray();
         int count = Math.Min(_items.Count, itemNodes.Length);
         for (int i = 0; i < count; i++)
-        {
-            LoadoutDropdownOption option = _items[i];
-            if (option.Icon is not null || option.IconFactory is null)
-                continue;
+            itemNodes[i].SetIcon(ResolveOptionIcon(i));
 
-            Texture2D? icon = null;
+        RefreshCurrentItemLabel();
+    }
+
+    private Texture2D? ResolveOptionIcon(int index)
+    {
+        LoadoutDropdownOption option = _items[index];
+        Texture2D? icon = GetValidIcon(option.Icon);
+        if (icon is null && option.IconFactory is not null)
+        {
             try
             {
-                icon = option.IconFactory();
+                icon = GetValidIcon(option.IconFactory());
             }
             catch (Exception exception)
             {
                 GD.PushWarning($"Dropdown option '{option.Id}' icon failed. {exception.Message}");
             }
-
-            _items[i] = option with { Icon = icon, IconFactory = null };
-            itemNodes[i].SetIcon(icon);
         }
 
-        RefreshCurrentItemLabel();
+        if (!ReferenceEquals(icon, option.Icon))
+            _items[index] = option with { Icon = icon };
+
+        return icon;
+    }
+
+    private static Texture2D? GetValidIcon(Texture2D? icon)
+    {
+        if (icon is null || !GodotObject.IsInstanceValid(icon))
+            return null;
+
+        try
+        {
+            _ = icon.GetRid();
+            return icon;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
     }
 
     public void CloseLoadoutDropdown(bool restoreFocus = true)
@@ -530,15 +572,27 @@ public partial class NLoadoutDropdown : NDropdown
         if (_dropdownContainer is null)
             return;
 
-        Vector2 globalPosition = GlobalPosition + new Vector2((Size.X - DropdownWidth) * 0.5f, Size.Y + 2f);
-        float viewportHeight = GetViewportRect().Size.Y;
-        float availableHeight = MathF.Max(ItemHeight, viewportHeight - globalPosition.Y - 24f);
+        const float viewportMargin = 12f;
+        Vector2 viewportSize = GetViewportRect().Size;
+        float desiredHeight = GetDesiredDropdownHeight(GetMaxDropdownHeight());
+        float buttonTop = GlobalPosition.Y;
+        float buttonBottom = GlobalPosition.Y + Size.Y + 2f;
+        float availableBelow = MathF.Max(0f, viewportSize.Y - viewportMargin - buttonBottom);
+        float availableAbove = MathF.Max(0f, buttonTop - viewportMargin - 2f);
+        bool openAbove = desiredHeight > availableBelow && availableAbove > availableBelow;
+        float availableHeight = MathF.Max(1f, openAbove ? availableAbove : availableBelow);
         RefreshDropdownLayout(availableHeight);
-        float currentHeight = _dropdownContainer.Size.Y > 0f ? _dropdownContainer.Size.Y : GetDesiredDropdownHeight(availableHeight);
+        float currentHeight = GetDesiredDropdownHeight(MathF.Min(GetMaxDropdownHeight(), availableHeight));
+        float desiredX = GlobalPosition.X + (Size.X - DropdownWidth) * 0.5f;
+        float maxX = MathF.Max(viewportMargin, viewportSize.X - DropdownWidth - viewportMargin);
+        float globalX = Mathf.Clamp(desiredX, viewportMargin, maxX);
+        float globalY = openAbove
+            ? MathF.Max(viewportMargin, buttonTop - currentHeight - 2f)
+            : buttonBottom;
 
         _dropdownContainer.SetAnchorsPreset(LayoutPreset.TopLeft);
-        _dropdownContainer.GlobalPosition = globalPosition;
-        _dropdownContainer.Size = new Vector2(DropdownWidth, MathF.Min(currentHeight, availableHeight));
+        _dropdownContainer.GlobalPosition = new Vector2(globalX, globalY);
+        _dropdownContainer.Size = new Vector2(DropdownWidth, currentHeight);
         _dropdownContainer.CustomMinimumSize = _dropdownContainer.Size;
     }
 
@@ -549,7 +603,7 @@ public partial class NLoadoutDropdown : NDropdown
 
         float maxHeight = GetMaxDropdownHeight();
         if (availableHeight is { } constrainedHeight)
-            maxHeight = MathF.Min(maxHeight, MathF.Max(ItemHeight, constrainedHeight));
+            maxHeight = MathF.Min(maxHeight, MathF.Max(1f, constrainedHeight));
 
         if (_dropdownContainer is NLoadoutDropdownContainer dropdownContainer)
         {

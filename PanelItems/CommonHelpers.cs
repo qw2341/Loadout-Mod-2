@@ -739,6 +739,18 @@ public class CommonHelpers
         };
     }
 
+    public static Color GetRelicRarityColor(RelicRarity rarity)
+    {
+        return rarity switch
+        {
+            RelicRarity.Uncommon or RelicRarity.Shop => StsColors.blue,
+            RelicRarity.Rare => StsColors.gold,
+            RelicRarity.Event => StsColors.green,
+            RelicRarity.Ancient => StsColors.red,
+            _ => StsColors.cream
+        };
+    }
+
     private static CharacterModel GetPoolCharacter(AbstractModel pool)
     {
         return ModelDb.AllCharacters
@@ -832,7 +844,7 @@ public class CommonHelpers
         string groupId,
         Func<TModel, TEnum> getValue,
         TEnum excludedValue,
-        Func<TEnum, Color>? getTextColor = null)
+        Func<TEnum, Color>? getShadowColor = null)
         where TEnum : struct, Enum
     {
         foreach (TEnum value in Enum.GetValues<TEnum>())
@@ -846,7 +858,7 @@ public class CommonHelpers
                 label,
                 model => EqualityComparer<TEnum>.Default.Equals(getValue(model), value),
                 groupId,
-                textColor: getTextColor?.Invoke(value));
+                shadowColor: getShadowColor?.Invoke(value));
         }
     }
 
