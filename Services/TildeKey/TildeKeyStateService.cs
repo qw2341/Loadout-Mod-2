@@ -190,11 +190,16 @@ public static class TildeKeyStateService
         new("extra_debuffs_applied", "Debuffs Applied", player => player.ExtraFields.DebuffsApplied, (player, value) => player.ExtraFields.DebuffsApplied = value)
     ];
 
+    private static readonly IReadOnlyList<TildeKeyStatDefinition> StartingDefaultDefinitions = Definitions
+        .Where(definition => definition.Id is not ("block" or "combat_energy" or "stars" or "turn_number"))
+        .ToArray();
+
     private static readonly Dictionary<string, TildeKeyStatDefinition> DefinitionById =
         Definitions.ToDictionary(definition => definition.Id, StringComparer.Ordinal);
 
     private static RunSaveData _run = new();
     private static readonly Dictionary<string, Dictionary<string, int>> VirtualStats = new(StringComparer.Ordinal);
+    private static RunState? _pendingStartingDefaultsRun;
     private static bool _registered;
     private static bool _combatHookRegistered;
     private static bool _runLoaded;
@@ -218,6 +223,20 @@ public static class TildeKeyStateService
     public static long StateRevision => Interlocked.Read(ref _stateRevision);
 
     public static IReadOnlyList<TildeKeyStatDefinition> StatDefinitions => Definitions;
+
+    public static IReadOnlyList<TildeKeyStatDefinition> StartingDefaultStatDefinitions => StartingDefaultDefinitions;
+
+    public static bool IsStartingDefaultStatId(string statId)
+    {
+        return !string.IsNullOrWhiteSpace(statId)
+               && DefinitionById.ContainsKey(statId)
+               && statId is not ("block" or "combat_energy" or "stars" or "turn_number");
+    }
+
+    public static bool IsStartingDefaultToggleId(string toggleId)
+    {
+        return !string.IsNullOrWhiteSpace(toggleId) && IsKnownToggle(toggleId);
+    }
 
     public static void Register()
     {
@@ -256,6 +275,84 @@ public static class TildeKeyStateService
         ReloadRunIfNeeded();
     }
 
+    public static void MarkStartingDefaultsPending(RunState runState)
+    {
+        lock (SyncRoot)
+            _pendingStartingDefaultsRun = runState;
+    }
+
+    public static void ApplyPendingStartingDefaults(RunManager manager)
+    {
+        RunState? pending;
+        lock (SyncRoot)
+        {
+            pending = _pendingStartingDefaultsRun;
+            _pendingStartingDefaultsRun = null;
+        }
+
+        if (pending is null || !ReferenceEquals(manager.DebugOnlyGetState(), pending))
+            return;
+
+        ApplyStartingDefaultsToNewSingleplayerRun(pending);
+    }
+
+    public static void ApplyStartingDefaultsToNewSingleplayerRun(RunState runState)
+    {
+        if (runState is null || !RunManager.Instance.IsSingleplayerOrFakeMultiplayer || runState.Players.Count != 1)
+            return;
+
+        RealityManipulatorStartingDefaultsSnapshot defaults =
+            RealityManipulatorStartingDefaultsService.GetEnabledSnapshot();
+        if (defaults.Stats.Count == 0 && defaults.Toggles.Count == 0)
+            return;
+
+        try
+        {
+            ReloadRun();
+            Player player = runState.Players[0];
+            IEnumerable<KeyValuePair<string, int>> orderedStats = defaults.Stats
+                .OrderBy(pair => pair.Key switch
+                {
+                    "max_hp" => 0,
+                    "current_hp" => 2,
+                    _ => 1
+                });
+
+            foreach ((string statId, int value) in orderedStats)
+            {
+                if (!IsStartingDefaultStatId(statId)
+                    || !DefinitionById.TryGetValue(statId, out TildeKeyStatDefinition? definition))
+                {
+                    continue;
+                }
+
+                UpdateSavedValueAfterSet(player.NetId, statId, value);
+                ApplyStat(definition, player, value);
+            }
+
+            foreach (string toggleId in defaults.Toggles)
+            {
+                if (IsGlobalToggle(toggleId))
+                {
+                    lock (SyncRoot)
+                        _run.GlobalToggles[toggleId] = true;
+                }
+                else if (IsKnownPlayerToggle(toggleId))
+                {
+                    SetSavedToggle(player.NetId, toggleId, enabled: true);
+                }
+            }
+
+            SaveRunState();
+            RefreshDynamicLockPatches();
+            RaiseStateChanged();
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"RealityManipulator: failed applying starting defaults. {exception.Message}");
+        }
+    }
+
     public static void OnRunCleaningUp()
     {
         lock (SyncRoot)
@@ -263,6 +360,7 @@ public static class TildeKeyStateService
             _runLoaded = false;
             _loadedRunStartTime = null;
             _run = new RunSaveData();
+            _pendingStartingDefaultsRun = null;
             VirtualStats.Clear();
         }
         _lastMapScreen = null;
@@ -2744,5 +2842,25 @@ internal sealed class RelicCounterBinding
             isSaved,
             relic => (int)(field.GetValue(relic) ?? 0),
             (relic, value) => field.SetValue(relic, value));
+    }
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.SetUpNewSingleplayer))]
+public static class RealityManipulatorStartingDefaultsRunPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(RunState state)
+    {
+        TildeKeyStateService.MarkStartingDefaultsPending(state);
+    }
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
+public static class RealityManipulatorStartingDefaultsLaunchPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(RunManager __instance)
+    {
+        TildeKeyStateService.ApplyPendingStartingDefaults(__instance);
     }
 }

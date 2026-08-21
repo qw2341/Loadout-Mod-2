@@ -31,10 +31,17 @@ public partial class NLoadoutToggle : Control
     private Tween? _tween;
     private Func<IReadOnlyList<IHoverTip>>? _hoverTipsFactory;
     private bool _signalsConnected;
+    private bool _isInteractive = true;
 
     public string ToggleId { get; private set; } = string.Empty;
 
     public bool IsChecked { get; private set; }
+
+    public void SetInteractive(bool interactive)
+    {
+        _isInteractive = interactive;
+        ApplyInteractionState();
+    }
 
     public void SetHoverTipsFactory(Func<IReadOnlyList<IHoverTip>>? hoverTipsFactory)
     {
@@ -62,8 +69,7 @@ public partial class NLoadoutToggle : Control
     public override void _Ready()
     {
         EnsureControlTree();
-        FocusMode = FocusModeEnum.All;
-        MouseFilter = MouseFilterEnum.Stop;
+        ApplyInteractionState();
 
         MouseEntered += OnHoverStart;
         MouseExited += OnHoverEnd;
@@ -116,6 +122,9 @@ public partial class NLoadoutToggle : Control
 
     private void OnGuiInput(InputEvent inputEvent)
     {
+        if (!_isInteractive)
+            return;
+
         if (inputEvent is InputEventMouseButton { ButtonIndex: MouseButton.Left } mouseButton)
         {
             if (mouseButton.Pressed)
@@ -192,6 +201,13 @@ public partial class NLoadoutToggle : Control
 
         if (_notTickedImage is not null)
             _notTickedImage.Visible = !IsChecked;
+    }
+
+    private void ApplyInteractionState()
+    {
+        FocusMode = _isInteractive ? FocusModeEnum.All : FocusModeEnum.None;
+        MouseFilter = _isInteractive ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        Modulate = new Color(1f, 1f, 1f, _isInteractive ? 1f : 0.45f);
     }
 
     private void EnsureControlTree()

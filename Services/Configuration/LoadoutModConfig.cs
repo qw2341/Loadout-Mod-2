@@ -11,6 +11,7 @@ using BaseLib.Config;
 using BaseLib.Config.UI;
 using Godot;
 using Loadout.Companions;
+using Loadout.PanelItems;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.Configuration;
@@ -125,6 +126,12 @@ public sealed class LoadoutModConfig : SimpleModConfig
         AddOptionRow(optionContainer, nameof(PanelAnimation), CreateRawDropdownControl);
         AddOptionRow(optionContainer, nameof(Companion), CreateCompanionDropdownControl);
         AddCompanionActions(optionContainer);
+
+        optionContainer.AddChild(CreateSectionHeader(GetLabelText("RealityManipulatorSection")));
+        optionContainer.AddChild(CreateButton(
+            "RealityManipulatorStartingDefaults",
+            "OpenRealityManipulatorStartingDefaults",
+            () => TildeKey.OpenStartingDefaultsScreen(optionContainer.GetTree())));
 
         optionContainer.AddChild(CreateSectionHeader(GetLabelText("CardModificationsSection")));
         AddOptionRow(optionContainer, nameof(CardCustomizationScope), CreateRawDropdownControl);

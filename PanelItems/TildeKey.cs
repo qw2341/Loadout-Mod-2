@@ -44,9 +44,11 @@ public static partial class TildeKey
     private const string DamageIconElitePath = "res://images/ui/game_over_screen/badge_elite.png";
     private const string DebuffIconPath = "res://images/ui/game_over_screen/badge_debuffer.png";
     private static WeakReference<TildeStatRow>? ActiveStatRow;
+    private static NGenericSelectScreen? _startingDefaultsScreen;
     private static readonly Color HpAccent = new("F1373E");
     private static readonly Color BlockAccent = new("3B6FA3");
     private static readonly Vector2 StatRowSize = new(720f, 54f);
+    private static readonly Vector2 StartingDefaultStatRowSize = new(860f, 54f);
     private static readonly Dictionary<string, Texture2D?> TextureCache = new(StringComparer.Ordinal);
 
     public static void Initialize()
@@ -144,6 +146,98 @@ public static partial class TildeKey
         };
 
         NLoadoutPanel.ItemsContainer.AddChild(item);
+    }
+
+    public static void OpenStartingDefaultsScreen(SceneTree tree)
+    {
+        NLoadoutPanelRoot? root = NLoadoutPanelRoot.Instance ?? NLoadoutPanelRoot.GetOrAttach(tree);
+        if (root is null)
+        {
+            GD.PushError("RealityManipulator: could not find or attach LoadoutPanelRoot.");
+            return;
+        }
+
+        if (_startingDefaultsScreen is null || !GodotObject.IsInstanceValid(_startingDefaultsScreen))
+            _startingDefaultsScreen = CreateStartingDefaultsScreen();
+
+        _startingDefaultsScreen.RefreshCurrentItemStates();
+        RefreshStartingDefaultSidebarToggles(_startingDefaultsScreen);
+        root.OpenScreen(_startingDefaultsScreen);
+    }
+
+    private static NGenericSelectScreen CreateStartingDefaultsScreen()
+    {
+        PackedScene scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
+        NGenericSelectScreen screen = scene.Instantiate<NGenericSelectScreen>();
+        screen.Name = "RealityManipulatorStartingDefaultsScreen";
+
+        SelectItemAdapter<TildeKeyStatDefinition> adapter = new()
+        {
+            GetId = definition => definition.Id,
+            GetName = GetStatLabel,
+            GetSearchText = GetStatSearchText,
+            CreateView = (definition, _) => new TildeStatRow(screen, definition, startingDefaultsMode: true),
+            UpdateView = (definition, view, _) =>
+            {
+                if (view is TildeStatRow row)
+                    row.Refresh(definition);
+            }
+        };
+
+        void ConfigureScreen()
+        {
+            screen.Configure(TildeKeyStateService.StartingDefaultStatDefinitions, adapter, builder =>
+            {
+                builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
+                builder.Materialization(SelectMaterializationMode.Eager);
+                builder.Layout(1, StartingDefaultStatRowSize, 0, 8, fixedSlots: false, paddingTop: 84f, paddingBottom: 160f);
+            });
+            AddStartingDefaultSidebarControls(screen);
+        }
+
+        ConfigureScreen();
+        screen.GuiInput += CommitActiveStatRowOnOutsideClick;
+        screen.LocaleChanged += () =>
+        {
+            SelectScreenUiState state = screen.CaptureUiState();
+            ConfigureScreen();
+            screen.RestoreUiState(state);
+        };
+        screen.Cancelled += () =>
+        {
+            CommitActiveStatRowBeforeTargetChange();
+            NLoadoutPanelRoot.CloseTopLoadoutScreen();
+        };
+        screen.Confirmed += _ =>
+        {
+            CommitActiveStatRowBeforeTargetChange();
+            NLoadoutPanelRoot.CloseTopLoadoutScreen();
+        };
+
+        void RefreshActiveState()
+        {
+            Callable.From(() =>
+            {
+                if (!screen.IsScreenActive)
+                    return;
+
+                screen.RefreshCurrentItemStates();
+                RefreshStartingDefaultSidebarToggles(screen);
+            }).CallDeferred();
+        }
+
+        screen.ScreenOpened += () =>
+        {
+            RealityManipulatorStartingDefaultsService.StateChanged -= RefreshActiveState;
+            RealityManipulatorStartingDefaultsService.StateChanged += RefreshActiveState;
+            screen.RefreshCurrentItemStates();
+            RefreshStartingDefaultSidebarToggles(screen);
+        };
+        screen.ScreenClosed += () =>
+        {
+            RealityManipulatorStartingDefaultsService.StateChanged -= RefreshActiveState;
+        };
+        return screen;
     }
 
     private static void CommitActiveStatRowOnOutsideClick(InputEvent inputEvent)
@@ -268,6 +362,59 @@ public static partial class TildeKey
         RefreshSidebarToggles(screen);
     }
 
+    private static void AddStartingDefaultSidebarControls(NGenericSelectScreen screen)
+    {
+        UpsertToggle(
+            screen,
+            GodmodeToggleName,
+            TildeKeyStateService.GodmodeToggleId,
+            LocMan.Loc("TILDEKEY_GODMODE", "Godmode"),
+            () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.GodmodeToggleId),
+            enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.GodmodeToggleId, enabled));
+
+        UpsertToggle(
+            screen,
+            GoToAnyRoomToggleName,
+            TildeKeyStateService.GoToAnyRoomToggleId,
+            LocMan.Loc("TILDEKEY_GO_TO_ANY_ROOM", "Go To Any Room"),
+            () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.GoToAnyRoomToggleId),
+            enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.GoToAnyRoomToggleId, enabled));
+
+        UpsertToggle(
+            screen,
+            InfiniteEnergyToggleName,
+            TildeKeyStateService.InfiniteEnergyToggleId,
+            LocMan.Loc("TILDEKEY_INFINITE_ENERGY", "Infinite Energy"),
+            () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.InfiniteEnergyToggleId),
+            enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.InfiniteEnergyToggleId, enabled));
+
+        UpsertToggle(
+            screen,
+            DrawTillHandLimitToggleName,
+            TildeKeyStateService.DrawTillHandLimitToggleId,
+            LocMan.Loc("TILDEKEY_DRAW_TILL_HAND_LIMIT", "Draw Till Hand Limit"),
+            () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.DrawTillHandLimitToggleId),
+            enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.DrawTillHandLimitToggleId, enabled));
+
+        UpsertToggle(
+            screen,
+            ScrollRelicCounterToggleName,
+            TildeKeyStateService.ScrollRelicCounterToggleId,
+            LocMan.Loc("TILDEKEY_SCROLL_RELIC_COUNTER", "Scroll Relic Counters"),
+            () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.ScrollRelicCounterToggleId),
+            enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.ScrollRelicCounterToggleId, enabled));
+
+        UpsertToggle(
+            screen,
+            KillAllMonstersToggleName,
+            TildeKeyStateService.KillAllMonstersToggleId,
+            LocMan.Loc("TILDEKEY_KILL_ALL_MONSTERS", "Kill all monsters"),
+            () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.KillAllMonstersToggleId),
+            enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.KillAllMonstersToggleId, enabled));
+
+        RefreshStartingDefaultSidebarToggles(screen);
+    }
+
     private static void UpsertToggle(
         NGenericSelectScreen screen,
         string nodeName,
@@ -315,6 +462,22 @@ public static partial class TildeKey
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.ScrollRelicCounterToggleId, GetSelectedTarget()), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{KillAllMonstersToggleName}")
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.KillAllMonstersToggleId, GetSelectedTarget()), emit: false);
+    }
+
+    private static void RefreshStartingDefaultSidebarToggles(NGenericSelectScreen screen)
+    {
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{GodmodeToggleName}")
+            ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.GodmodeToggleId), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{GoToAnyRoomToggleName}")
+            ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.GoToAnyRoomToggleId), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{InfiniteEnergyToggleName}")
+            ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.InfiniteEnergyToggleId), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{DrawTillHandLimitToggleName}")
+            ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.DrawTillHandLimitToggleId), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{ScrollRelicCounterToggleName}")
+            ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.ScrollRelicCounterToggleId), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{KillAllMonstersToggleName}")
+            ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.KillAllMonstersToggleId), emit: false);
     }
 
     private static LoadoutTargetSelection GetSelectedTarget()
@@ -492,15 +655,20 @@ public static partial class TildeKey
         private readonly MegaLabel _nameLabel;
         private readonly LineEdit _valueEntry;
         private readonly NLoadoutToggle? _lockToggle;
+        private readonly bool _startingDefaultsMode;
         private bool _isRefreshing;
         private bool _suppressNextFocusCommit;
         private string _targetOptionId = string.Empty;
 
-        public TildeStatRow(NGenericSelectScreen screen, TildeKeyStatDefinition definition)
+        public TildeStatRow(
+            NGenericSelectScreen screen,
+            TildeKeyStatDefinition definition,
+            bool startingDefaultsMode = false)
         {
             _screen = screen;
             _definition = definition;
-            CustomMinimumSize = StatRowSize;
+            _startingDefaultsMode = startingDefaultsMode;
+            CustomMinimumSize = startingDefaultsMode ? StartingDefaultStatRowSize : StatRowSize;
             SizeFlagsHorizontal = SizeFlags.ExpandFill;
             SizeFlagsVertical = SizeFlags.ShrinkBegin;
             AddThemeConstantOverride("separation", 12);
@@ -518,15 +686,20 @@ public static partial class TildeKey
             _valueEntry.FocusEntered += OnFocusEntered;
             AddChild(_valueEntry);
 
-            if (definition.SupportsLock)
+            if (startingDefaultsMode || definition.SupportsLock)
             {
                 _lockToggle = new NLoadoutToggle
                 {
                     Name = "LockToggle",
-                    CustomMinimumSize = new Vector2(150f, 46f),
+                    CustomMinimumSize = new Vector2(startingDefaultsMode ? 280f : 150f, 46f),
                     SizeFlagsHorizontal = SizeFlags.ShrinkEnd
                 };
-                _lockToggle.Init("lock", LocMan.Loc("TILDEKEY_LOCK", "Lock"), checkedByDefault: false);
+                _lockToggle.Init(
+                    startingDefaultsMode ? "starting_default" : "lock",
+                    startingDefaultsMode
+                        ? LocMan.Loc("TILDEKEY_SET_AS_STARTING_DEFAULT", "Set as starting default")
+                        : LocMan.Loc("TILDEKEY_LOCK", "Lock"),
+                    checkedByDefault: false);
                 _lockToggle.Connect(NLoadoutToggle.SignalName.Toggled, Callable.From<NLoadoutToggle>(OnLockToggled));
                 AddChild(_lockToggle);
             }
@@ -554,6 +727,25 @@ public static partial class TildeKey
             _icon.Modulate = presentation.Accent;
             _nameLabel.Text = presentation.Label;
             _nameLabel.AddThemeColorOverride("font_color", presentation.Accent);
+
+            if (_startingDefaultsMode)
+            {
+                bool hasValue = RealityManipulatorStartingDefaultsService.TryGetStatValue(definition.Id, out int startingValue);
+                if (!_valueEntry.HasFocus())
+                    _valueEntry.Text = hasValue ? startingValue.ToString(CultureInfo.InvariantCulture) : string.Empty;
+
+                if (_lockToggle is not null)
+                {
+                    _lockToggle.SetLabel(LocMan.Loc("TILDEKEY_SET_AS_STARTING_DEFAULT", "Set as starting default"));
+                    _lockToggle.SetChecked(
+                        hasValue && RealityManipulatorStartingDefaultsService.IsStatEnabled(definition.Id),
+                        emit: false);
+                    _lockToggle.SetInteractive(hasValue);
+                }
+
+                _isRefreshing = false;
+                return;
+            }
 
             string targetOptionId = GetSelectedTarget().ToOptionId();
             bool targetChanged = !string.Equals(_targetOptionId, targetOptionId, StringComparison.Ordinal);
@@ -643,6 +835,13 @@ public static partial class TildeKey
                 return;
             }
 
+            if (_startingDefaultsMode)
+            {
+                RealityManipulatorStartingDefaultsService.SetStatValue(_definition.Id, value);
+                _screen.RefreshCurrentItemStates();
+                return;
+            }
+
             LoadoutImmediateMutationService.RequestTildeSetStat(_definition.Id, value, GetSelectedTarget());
             _screen.RefreshCurrentItemStates();
         }
@@ -651,6 +850,28 @@ public static partial class TildeKey
         {
             if (_isRefreshing)
                 return;
+
+            if (_startingDefaultsMode)
+            {
+                if (!toggle.IsChecked)
+                {
+                    RealityManipulatorStartingDefaultsService.SetStatEnabled(_definition.Id, enabled: false);
+                    _screen.RefreshCurrentItemStates();
+                    return;
+                }
+
+                if (!TryParseEntryValue(_valueEntry.Text, out int startingValue))
+                {
+                    toggle.SetChecked(false, emit: false);
+                    _screen.RefreshCurrentItemStates();
+                    return;
+                }
+
+                RealityManipulatorStartingDefaultsService.SetStatValue(_definition.Id, startingValue);
+                RealityManipulatorStartingDefaultsService.SetStatEnabled(_definition.Id, enabled: true);
+                _screen.RefreshCurrentItemStates();
+                return;
+            }
 
             if (!TryParseEntryValue(_valueEntry.Text, out int value))
                 value = TildeKeyStateService.GetDisplayValue(_definition, GetSelectedTarget());

@@ -143,6 +143,7 @@ TILDEKEY_DESC,Right-click this relic to select debug powers you want. Left Click
 TILDEKEY_GODMODE,Godmode,上帝模式,Mode Dieu,無敵モード,무적 모드,Modo dios
 TILDEKEY_GO_TO_ANY_ROOM,Go To Any Room,前往任意房间,Aller dans n'importe quelle salle,任意の部屋へ移動,아무 방으로 이동,Ir a cualquier sala
 TILDEKEY_LOCK,Lock,锁定,Verrouiller,ロック,잠금,Bloquear
+TILDEKEY_SET_AS_STARTING_DEFAULT,Set as starting default,设为起始默认值,Définir comme valeur de départ,開始時のデフォルトに設定,시작 기본값으로 설정,Establecer como valor inicial
 TILDEKEY_STAT_CURRENT_HP,Current HP,当前生命值,PV actuels,現在HP,현재 HP,PV actuales
 TILDEKEY_STAT_MAX_HP,Max HP,最大生命值,PV max,最大HP,최대 HP,PV máximos
 TILDEKEY_STAT_MAX_ENERGY,Max Energy,最大能量,Énergie max,最大エナジー,최대 에너지,Energía máxima
