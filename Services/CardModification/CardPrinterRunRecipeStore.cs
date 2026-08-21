@@ -4,7 +4,7 @@ namespace Loadout.Services.CardModification;
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
 using Godot;
@@ -35,6 +35,10 @@ public static class CardPrinterRunRecipeStore
     private const int MaxPortraitReferenceLength = 2048;
 
     private static readonly object Gate = new();
+    private static readonly FieldInfo? RunStartTimeField = typeof(RunManager).GetField(
+        "_startTime",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly Dictionary<string, CardPrinterRunRecipe> Recipes = new(StringComparer.Ordinal);
     private static readonly Dictionary<ModelId, CardModel> DisplayCache = [];
     private static RecipeSaveData _save = new();
     private static bool _registered;
@@ -72,6 +76,7 @@ public static class CardPrinterRunRecipeStore
             _loaded = false;
             _loadedRunStartTime = null;
             _save = new RecipeSaveData();
+            Recipes.Clear();
             DisplayCache.Clear();
             _revision++;
         }
@@ -79,13 +84,12 @@ public static class CardPrinterRunRecipeStore
 
     public static bool TryGet(ModelId cardId, out CardPrinterRunRecipe recipe)
     {
-        EnsureLoaded();
+        Register();
         lock (Gate)
         {
-            if (_save.Recipes.TryGetValue(NormalizeCardId(cardId), out RecipeEntry? entry)
-                && TryCreateRecipe(entry, out CardPrinterRunRecipe? found))
+            if (Recipes.TryGetValue(NormalizeCardId(cardId), out CardPrinterRunRecipe? found))
             {
-                recipe = found!.Copy();
+                recipe = found.Copy();
                 return true;
             }
         }
@@ -149,7 +153,7 @@ public static class CardPrinterRunRecipeStore
         CardModificationDelta? delta,
         string? temporaryPortraitReference = null)
     {
-        EnsureLoaded();
+        Register();
         if (LoadoutModelRegistry.ResolveCard(cardId) is null)
             return false;
         if (!string.IsNullOrWhiteSpace(temporaryPortraitReference)
@@ -180,6 +184,7 @@ public static class CardPrinterRunRecipeStore
             if (delta.IsEmpty && temporaryPortraitReference is null)
             {
                 changed = _save.Recipes.Remove(key);
+                Recipes.Remove(key);
             }
             else
             {
@@ -195,7 +200,10 @@ public static class CardPrinterRunRecipeStore
                               StringComparison.Ordinal)
                           || !string.Equals(current.TemporaryPortraitReference, next.TemporaryPortraitReference, StringComparison.Ordinal);
                 if (changed)
+                {
                     _save.Recipes[key] = next;
+                    Recipes[key] = new CardPrinterRunRecipe(delta.Clone(), temporaryPortraitReference);
+                }
             }
 
             if (!changed)
@@ -212,13 +220,15 @@ public static class CardPrinterRunRecipeStore
 
     public static bool Reset(ModelId cardId)
     {
-        EnsureLoaded();
+        Register();
+        string key = NormalizeCardId(cardId);
         bool changed;
         lock (Gate)
         {
-            changed = _save.Recipes.Remove(NormalizeCardId(cardId));
+            changed = _save.Recipes.Remove(key);
             if (!changed)
                 return false;
+            Recipes.Remove(key);
             DisplayCache.Remove(cardId);
             SaveLocked();
             _revision++;
@@ -244,6 +254,7 @@ public static class CardPrinterRunRecipeStore
         {
             _loaded = false;
             _loadedRunStartTime = null;
+            Recipes.Clear();
             DisplayCache.Clear();
             _revision++;
         }
@@ -252,7 +263,7 @@ public static class CardPrinterRunRecipeStore
 
     private static void EnsureLoaded()
     {
-        long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+        long? runStartTime = GetCurrentRunStartTime();
         lock (Gate)
         {
             if (_loaded && _loadedRunStartTime == runStartTime)
@@ -260,6 +271,7 @@ public static class CardPrinterRunRecipeStore
 
             _loaded = true;
             _loadedRunStartTime = runStartTime;
+            Recipes.Clear();
             DisplayCache.Clear();
             if (!runStartTime.HasValue)
             {
@@ -275,8 +287,32 @@ public static class CardPrinterRunRecipeStore
             _save = stale
                 ? new RecipeSaveData { RunStartTime = runStartTime.Value }
                 : Normalize(loaded.Value, runStartTime.Value);
+            foreach ((string cardId, RecipeEntry entry) in _save.Recipes)
+            {
+                if (TryCreateRecipe(entry, out CardPrinterRunRecipe? recipe))
+                    Recipes[cardId] = recipe!;
+            }
             if (loaded.Loaded && (stale || loaded.Value.SchemaVersion != CurrentSchemaVersion))
                 SaveLocked();
+        }
+    }
+
+    private static long? GetCurrentRunStartTime()
+    {
+        try
+        {
+            RunManager manager = RunManager.Instance;
+            if (!manager.IsInProgress || manager.DebugOnlyGetState() is null)
+                return null;
+
+            if (RunStartTimeField?.GetValue(manager) is long startTime)
+                return startTime;
+
+            return SaveUtility.GetCurrentRunStartTime();
+        }
+        catch
+        {
+            return null;
         }
     }
 
