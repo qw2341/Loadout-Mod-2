@@ -67,9 +67,8 @@ internal partial class CardPortraitAnimationController : Node
             ApplyCurrentFrame();
     }
 
-    public bool IsBoundTo(CardModel model) =>
-        _sequence is not null
-        && _sequence.CardModelId.Equals(model.Id);
+    public bool IsBoundTo(CardPortraitTextureSequence sequence) =>
+        ReferenceEquals(_sequence, sequence);
 
     public void Stop()
     {

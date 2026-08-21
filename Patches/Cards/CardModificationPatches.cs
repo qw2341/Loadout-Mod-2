@@ -452,11 +452,21 @@ public static class NCardAncientRenderingCardModificationPatch
         if (__state.Model is not null)
             CardRarityField?.SetValue(__state.Model, __state.Rarity);
 
-        if (__exception is null
-            && __state.Model is not null
-            && ReferenceEquals(__instance.Model, __state.Model))
+        if (__exception is null && __instance.Model is CardModel currentModel)
         {
-            ApplyForcedAncientPresentation(__instance, __state.Model);
+            if (currentModel.Rarity != CardRarity.Ancient
+                && CardModificationRuntime.ShouldUseAncientRendering(currentModel))
+            {
+                ApplyForcedAncientPresentation(__instance, currentModel);
+            }
+            else if (currentModel.Rarity == CardRarity.Ancient)
+            {
+                DiscardForcedAncientPresentation(__instance);
+            }
+            else
+            {
+                RestoreNormalPresentation(__instance, currentModel);
+            }
         }
         return __exception;
     }
@@ -466,6 +476,7 @@ public static class NCardAncientRenderingCardModificationPatch
         AncientPresentationNodes nodes = PresentationNodes.GetValue(
             card,
             static current => new AncientPresentationNodes(current));
+        nodes.IsForced = true;
         foreach (CanvasItem? node in nodes.NormalNodes)
         {
             if (node is not null)
@@ -479,6 +490,35 @@ public static class NCardAncientRenderingCardModificationPatch
 
         if (nodes.AncientPortrait is not null && nodes.AncientPortrait.Texture is null)
             nodes.AncientPortrait.Texture = nodes.NormalPortrait?.Texture ?? model.Portrait;
+    }
+
+    private static void RestoreNormalPresentation(NCard card, CardModel model)
+    {
+        if (!PresentationNodes.TryGetValue(card, out AncientPresentationNodes? nodes)
+            || !nodes.IsForced)
+        {
+            return;
+        }
+
+        foreach (CanvasItem? node in nodes.NormalNodes)
+        {
+            if (node is not null)
+                node.Visible = true;
+        }
+        foreach (CanvasItem? node in nodes.AncientNodes)
+        {
+            if (node is not null)
+                node.Visible = false;
+        }
+        if (nodes.NormalPortrait is not null)
+            nodes.NormalPortrait.Texture = model.Portrait;
+        nodes.IsForced = false;
+    }
+
+    private static void DiscardForcedAncientPresentation(NCard card)
+    {
+        if (PresentationNodes.TryGetValue(card, out AncientPresentationNodes? nodes))
+            nodes.IsForced = false;
     }
 
     private sealed class AncientPresentationNodes
@@ -508,6 +548,7 @@ public static class NCardAncientRenderingCardModificationPatch
         public CanvasItem?[] AncientNodes { get; }
         public TextureRect? NormalPortrait { get; }
         public TextureRect? AncientPortrait { get; }
+        public bool IsForced { get; set; }
     }
 }
 

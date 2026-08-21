@@ -215,7 +215,7 @@ internal static class CardPortraitRuntime
         if (CardPortraitStore.TryGetTemporary(reference, out CardPortraitAsset asset))
             CacheDocument(asset, card, document);
         CardPortraitDynamicPatches.EnsureTemporaryInstalled();
-        CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner);
+        CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner, previous?.PortraitId);
         return true;
     }
 
@@ -239,7 +239,7 @@ internal static class CardPortraitRuntime
         if (CardPortraitStore.TryGetPermanent(card.Id, out CardPortraitAsset asset))
             CacheDocument(asset, card, document);
         CardPortraitDynamicPatches.EnsureVisualInstalled();
-        CardPortraitDynamicPatches.RefreshPermanent(card.Id);
+        CardPortraitDynamicPatches.RefreshModelId(card.Id);
         CardModificationRuntime.NotifyPermanentCardVisualChanged(card.Id);
         return true;
     }
@@ -248,14 +248,16 @@ internal static class CardPortraitRuntime
     {
         Register();
         CardModel temporaryOwner = GetTemporaryOwner(card);
-        if (!CardPortraitFields.TryGet(temporaryOwner, out CardPortraitReference? previous)
-            || !CardPortraitFields.Clear(temporaryOwner))
+        if (!CardPortraitFields.TryGet(temporaryOwner, out CardPortraitReference? previous))
         {
+            CardPortraitDynamicPatches.RefreshModelId(card.Id);
             return false;
         }
+        if (!CardPortraitFields.Clear(temporaryOwner))
+            return false;
 
         RemoveCachedPortrait(previous.PortraitId);
-        CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner);
+        CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner, previous.PortraitId);
         ReconcilePatches();
         return true;
     }
@@ -270,13 +272,13 @@ internal static class CardPortraitRuntime
         if (!permanentChanged)
         {
             RemoveCachedSequences(card.Id);
-            CardPortraitDynamicPatches.RefreshPermanent(card.Id);
+            CardPortraitDynamicPatches.RefreshModelId(card.Id);
             CardModificationRuntime.NotifyPermanentCardVisualChanged(card.Id);
         }
         if (previousTemporary is not null)
             RemoveCachedPortrait(previousTemporary.PortraitId);
         if (temporaryChanged)
-            CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner);
+            CardPortraitDynamicPatches.RefreshTemporary(temporaryOwner, previousTemporary?.PortraitId);
         ReconcilePatches();
         return temporaryChanged || permanentChanged;
     }
@@ -479,7 +481,7 @@ internal static class CardPortraitRuntime
     private static void OnPermanentChanged(ModelId cardId)
     {
         RemoveCachedSequences(cardId);
-        CardPortraitDynamicPatches.RefreshPermanent(cardId);
+        CardPortraitDynamicPatches.RefreshModelId(cardId);
         CardModificationRuntime.NotifyPermanentCardVisualChanged(cardId);
         ReconcilePatches();
     }
@@ -491,7 +493,7 @@ internal static class CardPortraitRuntime
         foreach (ModelId cardId in changedIds)
         {
             RemoveCachedSequences(cardId);
-            CardPortraitDynamicPatches.RefreshPermanent(cardId);
+            CardPortraitDynamicPatches.RefreshModelId(cardId);
             CardModificationRuntime.NotifyPermanentCardVisualChanged(cardId);
         }
         ReconcilePatches();
