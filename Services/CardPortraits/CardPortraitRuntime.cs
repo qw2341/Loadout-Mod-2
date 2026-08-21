@@ -135,7 +135,7 @@ internal static class CardPortraitFields
 
 internal static class CardPortraitRuntime
 {
-    private const long MaxOutputPixelsAcrossFrames = 48L * 1024L * 1024L;
+    private const long MaxOutputPixelsAcrossFrames = ImageAnimationSizing.MaxOutputPixelsAcrossFrames;
     private const long SequenceCacheByteBudget = 512L * 1024L * 1024L;
 
     private static readonly Dictionary<CardPortraitCacheKey, CardPortraitCacheEntry> SequenceCache = [];
@@ -390,7 +390,10 @@ internal static class CardPortraitRuntime
             throw new InvalidDataException("The portrait metadata does not match its saved asset.");
         }
 
-        long outputPixels = (long)frame.OutputSize.X * frame.OutputSize.Y * source.Frames.Count;
+        Vector2I outputSize = ImageAnimationSizing.GetOutputSize(
+            frame.OutputSize,
+            source.Frames.Count);
+        long outputPixels = (long)outputSize.X * outputSize.Y * source.Frames.Count;
         if (outputPixels > MaxOutputPixelsAcrossFrames)
             throw new InvalidDataException("The animated portrait exceeds the decoded frame budget.");
 
@@ -398,7 +401,7 @@ internal static class CardPortraitRuntime
         List<double> durations = new(source.Frames.Count);
         foreach (ImageMediaFrame mediaFrame in source.Frames)
         {
-            Image fitted = CenterCover(mediaFrame.Image, frame.OutputSize);
+            Image fitted = CenterCover(mediaFrame.Image, outputSize);
             textures.Add(ImageTexture.CreateFromImage(fitted));
             durations.Add(Math.Clamp(mediaFrame.DurationSeconds, 0.02, 10.0));
         }

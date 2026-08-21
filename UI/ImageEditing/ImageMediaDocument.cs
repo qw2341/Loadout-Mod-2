@@ -56,6 +56,33 @@ public sealed class ImageMediaDocument
     }
 }
 
+internal static class ImageAnimationSizing
+{
+    public const long MaxOutputPixelsAcrossFrames = 48L * 1024L * 1024L;
+    private const int MaxOutputDimension = 500;
+
+    public static Vector2I GetOutputSize(Vector2I requestedSize, int frameCount)
+    {
+        if (requestedSize.X <= 0 || requestedSize.Y <= 0 || frameCount <= 1)
+            return requestedSize;
+
+        long requestedPixels = (long)requestedSize.X * requestedSize.Y;
+        double dimensionScale = Math.Min(
+            1.0,
+            (double)MaxOutputDimension / Math.Max(requestedSize.X, requestedSize.Y));
+        double budgetScale = Math.Min(
+            1.0,
+            Math.Sqrt((double)MaxOutputPixelsAcrossFrames / (requestedPixels * frameCount)));
+        double scale = Math.Min(dimensionScale, budgetScale);
+        if (scale >= 1.0)
+            return requestedSize;
+
+        int width = Math.Max(1, (int)Math.Floor(requestedSize.X * scale));
+        int height = Math.Max(1, (int)Math.Floor(requestedSize.Y * scale));
+        return new Vector2I(width, height);
+    }
+}
+
 public static class ImageAnimationPackage
 {
     public const string Extension = ".loadoutanim";

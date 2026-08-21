@@ -501,44 +501,89 @@ public partial class NImageEditorCanvas : Control
         if (_backgroundPreviewActive)
             RemoveBackground();
 
+        Vector2I outputSize = ImageAnimationSizing.GetOutputSize(
+            _frame.OutputSize,
+            _workingFrames.Count);
         List<ImageMediaFrame> frames = new(_workingFrames.Count);
         for (int i = 0; i < _workingFrames.Count; i++)
-            frames.Add(new ImageMediaFrame(RenderFrame(_workingFrames[i]), _frameDurations[i]));
+            frames.Add(new ImageMediaFrame(
+                RenderFrame(_workingFrames[i], outputSize),
+                _frameDurations[i]));
         return new ImageMediaDocument(frames);
     }
 
-    private Image RenderFrame(Image source)
+    private Image RenderFrame(Image source, Vector2I outputSize)
     {
-        int outputWidth = _frame.OutputSize.X;
-        int outputHeight = _frame.OutputSize.Y;
-        Image output = Image.CreateEmpty(outputWidth, outputHeight, false, Image.Format.Rgba8);
-        output.Fill(Colors.Transparent);
+        int outputWidth = outputSize.X;
+        int outputHeight = outputSize.Y;
+        int sourceWidth = source.GetWidth();
+        int sourceHeight = source.GetHeight();
+        byte[] sourcePixels = source.GetData();
+        byte[] outputPixels = new byte[checked(outputWidth * outputHeight * 4)];
         Image? mask = _frame.BakeMaskIntoOutput ? _frame.AlphaMask : null;
-        Vector2 sourceCenter = new(source.GetWidth() * 0.5f, source.GetHeight() * 0.5f);
+        byte[]? maskPixels = mask is not null && !mask.IsEmpty() ? mask.GetData() : null;
+        int maskWidth = mask?.GetWidth() ?? 0;
+        int maskHeight = mask?.GetHeight() ?? 0;
+        Vector2 sourceCenter = new(sourceWidth * 0.5f, sourceHeight * 0.5f);
         Vector2 imageCenter = _offset + sourceCenter * _zoom;
+        Vector2 outputCoordinateScale = new(
+            (float)_frame.OutputSize.X / outputWidth,
+            (float)_frame.OutputSize.Y / outputHeight);
+        float inverseZoom = 1f / _zoom;
+        float cosine = Mathf.Cos(-_rotationRadians);
+        float sine = Mathf.Sin(-_rotationRadians);
 
         for (int y = 0; y < outputHeight; y++)
         {
+            float outputY = (y + 0.5f) * outputCoordinateScale.Y;
             for (int x = 0; x < outputWidth; x++)
             {
-                Vector2 outputPoint = new(x + 0.5f, y + 0.5f);
-                Vector2 sourcePoint = Rotate(outputPoint - imageCenter, -_rotationRadians) / _zoom + sourceCenter;
-                float sourceX = sourcePoint.X - 0.5f;
-                float sourceY = sourcePoint.Y - 0.5f;
-                if (sourceX < 0f || sourceY < 0f || sourceX > source.GetWidth() - 1 || sourceY > source.GetHeight() - 1)
+                float deltaX = (x + 0.5f) * outputCoordinateScale.X - imageCenter.X;
+                float deltaY = outputY - imageCenter.Y;
+                float sourceX = (deltaX * cosine - deltaY * sine) * inverseZoom
+                    + sourceCenter.X - 0.5f;
+                float sourceY = (deltaX * sine + deltaY * cosine) * inverseZoom
+                    + sourceCenter.Y - 0.5f;
+                if (sourceX < 0f || sourceY < 0f || sourceX > sourceWidth - 1 || sourceY > sourceHeight - 1)
                     continue;
 
-                Color color = SampleBilinear(source, sourceX, sourceY);
-                if (mask is not null && !mask.IsEmpty())
+                int x0 = Mathf.FloorToInt(sourceX);
+                int y0 = Mathf.FloorToInt(sourceY);
+                int x1 = Mathf.Min(x0 + 1, sourceWidth - 1);
+                int y1 = Mathf.Min(y0 + 1, sourceHeight - 1);
+                float tx = sourceX - x0;
+                float ty = sourceY - y0;
+                int topLeft = (y0 * sourceWidth + x0) * 4;
+                int topRight = (y0 * sourceWidth + x1) * 4;
+                int bottomLeft = (y1 * sourceWidth + x0) * 4;
+                int bottomRight = (y1 * sourceWidth + x1) * 4;
+                int outputOffset = (y * outputWidth + x) * 4;
+                for (int channel = 0; channel < 4; channel++)
                 {
-                    int maskX = Mathf.Clamp(x * mask.GetWidth() / outputWidth, 0, mask.GetWidth() - 1);
-                    int maskY = Mathf.Clamp(y * mask.GetHeight() / outputHeight, 0, mask.GetHeight() - 1);
-                    color.A *= mask.GetPixel(maskX, maskY).A;
+                    float top = Mathf.Lerp(sourcePixels[topLeft + channel], sourcePixels[topRight + channel], tx);
+                    float bottom = Mathf.Lerp(sourcePixels[bottomLeft + channel], sourcePixels[bottomRight + channel], tx);
+                    outputPixels[outputOffset + channel] = (byte)Mathf.Clamp(
+                        Mathf.RoundToInt(Mathf.Lerp(top, bottom, ty)),
+                        0,
+                        255);
                 }
-                output.SetPixel(x, y, color);
+
+                if (maskPixels is not null)
+                {
+                    int maskX = Mathf.Clamp(x * maskWidth / outputWidth, 0, maskWidth - 1);
+                    int maskY = Mathf.Clamp(y * maskHeight / outputHeight, 0, maskHeight - 1);
+                    int maskAlpha = maskPixels[(maskY * maskWidth + maskX) * 4 + 3];
+                    outputPixels[outputOffset + 3] = (byte)(
+                        (outputPixels[outputOffset + 3] * maskAlpha + 127) / 255);
+                }
             }
         }
-        return output;
+        return Image.CreateFromData(
+            outputWidth,
+            outputHeight,
+            false,
+            Image.Format.Rgba8,
+            outputPixels);
     }
 
     private void ApplyInitializedState()
@@ -1108,19 +1153,6 @@ public partial class NImageEditorCanvas : Control
         float green = color.G - target.G;
         float blue = color.B - target.B;
         return red * red + green * green + blue * blue <= tolerance * tolerance * 3f;
-    }
-
-    private static Color SampleBilinear(Image image, float x, float y)
-    {
-        int x0 = Mathf.FloorToInt(x);
-        int y0 = Mathf.FloorToInt(y);
-        int x1 = Mathf.Min(x0 + 1, image.GetWidth() - 1);
-        int y1 = Mathf.Min(y0 + 1, image.GetHeight() - 1);
-        float tx = x - x0;
-        float ty = y - y0;
-        Color top = image.GetPixel(x0, y0).Lerp(image.GetPixel(x1, y0), tx);
-        Color bottom = image.GetPixel(x0, y1).Lerp(image.GetPixel(x1, y1), tx);
-        return top.Lerp(bottom, ty);
     }
 
     private static Vector2 Rotate(Vector2 point, float radians)
