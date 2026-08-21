@@ -28,6 +28,7 @@ using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
@@ -197,6 +198,10 @@ internal static class Sts2Compatibility
     internal static bool UsesNewCardLocation { get; } =
         string.Equals(StickyCardPlayResultMethod.Name, "ModifyCardPlayResultLocation", StringComparison.Ordinal);
 
+    internal static MethodInfo CardPortraitRefreshMethod { get; } = ResolveCardPortraitRefreshMethod();
+    internal static bool UsesDedicatedCardPortraitRefresh =>
+        string.Equals(CardPortraitRefreshMethod.Name, "UpdatePortrait", StringComparison.Ordinal);
+
     // CreateCloneForPlayer was added after 0.107. Keep the 0.110-only method
     // reflection-only so loading/JITing this compatibility class on 0.107 never
     // resolves a missing metadata reference.
@@ -270,6 +275,7 @@ internal static class Sts2Compatibility
             $"AttackCommand.CardPlay={(UsesAttackCommandCardPlay ? "0.110" : "0.107 fallback")}, " +
             $"MegaAnimationState animations={(SetAnimationMethod.ReturnType == typeof(void) ? "0.110" : "0.107")}, " +
             $"card result hook={(UsesNewCardLocation ? "0.110" : "0.107")}, " +
+            $"card portrait refresh={(UsesDedicatedCardPortraitRefresh ? "UpdatePortrait (beta)" : "Reload (release)")}, " +
             $"card clone-for-player={(UsesNativeCreateCloneForPlayer ? "0.110" : "0.107 fallback")}, " +
             $"mod assemblies={(NewModAssembliesField is not null ? "0.110" : "0.107")}, " +
             $"ModelDb monsters={(AllModelsGetter is not null ? "All (0.110)" : "Monsters (0.107)")}, " +
@@ -1278,5 +1284,17 @@ internal static class Sts2Compatibility
         throw new MissingFieldException(
             typeof(Controller).FullName,
             $"{betaFieldName} (0.110) or {legacyFieldName} (0.107)");
+    }
+
+    private static MethodInfo ResolveCardPortraitRefreshMethod()
+    {
+        MethodInfo? method = AccessTools.Method(typeof(NCard), "UpdatePortrait", Type.EmptyTypes)
+                             ?? AccessTools.Method(typeof(NCard), "Reload", Type.EmptyTypes);
+        if (method is not null && !method.IsStatic && method.ReturnType == typeof(void))
+            return method;
+
+        throw new MissingMethodException(
+            typeof(NCard).FullName,
+            "UpdatePortrait() (beta) or Reload() (release)");
     }
 }

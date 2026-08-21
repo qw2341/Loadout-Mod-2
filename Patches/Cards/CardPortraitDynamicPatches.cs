@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using Godot;
 using HarmonyLib;
 using Loadout.Patches.Cards.CardModification;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -33,8 +34,7 @@ internal static class CardPortraitDynamicPatches
             [typeof(PileType), typeof(CardPreviewMode)])
         ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard.UpdateVisuals));
     private static readonly MethodInfo UpdatePortraitMethod =
-        AccessTools.Method(typeof(NCard), "UpdatePortrait")
-        ?? throw new MissingMethodException(typeof(NCard).FullName, "UpdatePortrait");
+        Sts2Compatibility.CardPortraitRefreshMethod;
     private static readonly MethodInfo EnterTreeMethod =
         AccessTools.Method(typeof(NCard), nameof(NCard._EnterTree))
         ?? throw new MissingMethodException(typeof(NCard).FullName, nameof(NCard._EnterTree));
@@ -74,7 +74,8 @@ internal static class CardPortraitDynamicPatches
 
         PatchVisualSandwich(UpdateVisualsMethod, nameof(UpdateVisualsPostfix));
         PatchVisualSandwich(EnterTreeMethod, nameof(EnterTreePostfix));
-        PatchVisualSandwich(ReloadMethod, nameof(ReloadPostfix));
+        if (!UpdatePortraitMethod.Equals(ReloadMethod))
+            PatchVisualSandwich(ReloadMethod, nameof(ReloadPostfix));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnReturnedFromPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(NCard), nameof(NCard.OnFreedToPool), nameof(PoolPostfix));
         PatchVisualPostfix(typeof(AbstractModel), nameof(AbstractModel.MutableClone), nameof(ClonePostfix));
