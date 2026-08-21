@@ -24,55 +24,100 @@ internal sealed record CardPortraitTextureSequence(
 
 internal static class CardPortraitFields
 {
-    private static ConditionalWeakTable<CardModel, CardPortraitReference> References = new();
-    private static int _referenceCount;
+    private sealed record CardPortraitIdentity(string Value);
 
-    public static bool HasAny => _referenceCount > 0;
+    private static ConditionalWeakTable<CardModel, CardPortraitIdentity> Identities = new();
+    private static readonly Dictionary<string, CardPortraitReference> ReferencesByIdentity =
+        new(StringComparer.Ordinal);
 
-    public static bool TryGet(CardModel card, [NotNullWhen(true)] out CardPortraitReference? reference) =>
-        References.TryGetValue(card, out reference);
+    public static bool HasAny => ReferencesByIdentity.Count > 0;
+
+    public static string GetOrCreateIdentity(CardModel card)
+    {
+        if (Identities.TryGetValue(card, out CardPortraitIdentity? identity))
+            return identity.Value;
+
+        string value = Guid.NewGuid().ToString("N");
+        Identities.Add(card, new CardPortraitIdentity(value));
+        return value;
+    }
+
+    public static bool TryGet(CardModel card, [NotNullWhen(true)] out CardPortraitReference? reference)
+    {
+        if (Identities.TryGetValue(card, out CardPortraitIdentity? identity)
+            && ReferencesByIdentity.TryGetValue(identity.Value, out reference))
+        {
+            return true;
+        }
+
+        reference = null;
+        return false;
+    }
 
     public static bool Set(CardModel card, CardPortraitReference reference)
     {
-        if (References.TryGetValue(card, out CardPortraitReference? current))
+        if (Identities.TryGetValue(card, out CardPortraitIdentity? identity))
         {
-            if (current == reference)
+            if (string.Equals(identity.Value, reference.CardInstanceId, StringComparison.Ordinal)
+                && ReferencesByIdentity.TryGetValue(identity.Value, out CardPortraitReference? current)
+                && current == reference)
+            {
                 return false;
-            References.Remove(card);
+            }
+
+            if (!string.Equals(identity.Value, reference.CardInstanceId, StringComparison.Ordinal))
+            {
+                Identities.Remove(card);
+                Identities.Add(card, new CardPortraitIdentity(reference.CardInstanceId));
+            }
         }
         else
         {
-            _referenceCount++;
+            Identities.Add(card, new CardPortraitIdentity(reference.CardInstanceId));
         }
 
-        References.Add(card, reference);
+        ReferencesByIdentity[reference.CardInstanceId] = reference;
         return true;
     }
 
     public static bool Clear(CardModel card)
     {
-        if (!References.Remove(card))
+        if (!Identities.TryGetValue(card, out CardPortraitIdentity? identity))
             return false;
-        _referenceCount = Math.Max(0, _referenceCount - 1);
-        return true;
+
+        return ReferencesByIdentity.Remove(identity.Value);
     }
 
     public static void Copy(CardModel source, CardModel destination)
     {
-        if (!References.TryGetValue(source, out CardPortraitReference? reference)
+        if (!Identities.TryGetValue(source, out CardPortraitIdentity? identity)
             && (source.DeckVersion is not CardModel deckCard
-                || !References.TryGetValue(deckCard, out reference)))
+                || !Identities.TryGetValue(deckCard, out identity)))
         {
             return;
         }
 
-        Set(destination, reference);
+        if (Identities.TryGetValue(destination, out CardPortraitIdentity? destinationIdentity))
+        {
+            if (string.Equals(destinationIdentity.Value, identity.Value, StringComparison.Ordinal))
+                return;
+            Identities.Remove(destination);
+        }
+
+        Identities.Add(destination, identity);
+    }
+
+    public static bool SharesIdentity(CardModel first, CardModel second)
+    {
+        return Identities.TryGetValue(first, out CardPortraitIdentity? firstIdentity)
+            && Identities.TryGetValue(second, out CardPortraitIdentity? secondIdentity)
+            && string.Equals(firstIdentity.Value, secondIdentity.Value, StringComparison.Ordinal);
     }
 
     public static void ClearAll()
     {
-        References = new ConditionalWeakTable<CardModel, CardPortraitReference>();
-        _referenceCount = 0;
+        Identities = new ConditionalWeakTable<CardModel, CardPortraitIdentity>();
+        ReferencesByIdentity.Clear();
     }
 }
 
@@ -150,9 +195,11 @@ internal static class CardPortraitRuntime
     {
         Register();
         CardModel temporaryOwner = GetTemporaryOwner(card);
+        string cardInstanceId = CardPortraitFields.GetOrCreateIdentity(temporaryOwner);
         CardPortraitFields.TryGet(temporaryOwner, out CardPortraitReference? previous);
         if (!CardPortraitStore.RegisterTemporary(
                 card.Id,
+                cardInstanceId,
                 target,
                 frame,
                 document,

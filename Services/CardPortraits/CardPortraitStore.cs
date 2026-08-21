@@ -28,6 +28,7 @@ internal sealed record CardPortraitRecord(
     DateTimeOffset UpdatedAt);
 
 internal sealed record CardPortraitReference(
+    string CardInstanceId,
     string PortraitId,
     long RunStartTime,
     string RelativeFile);
@@ -171,6 +172,7 @@ internal static class CardPortraitStore
 
     public static bool RegisterTemporary(
         ModelId cardId,
+        string cardInstanceId,
         CardPortraitSaveTarget target,
         ImageEditFrameDefinition frame,
         ImageMediaDocument document,
@@ -178,7 +180,8 @@ internal static class CardPortraitStore
         out CardPortraitReference reference)
     {
         reference = null!;
-        if (!target.RunStartTime.HasValue
+        if (!Guid.TryParseExact(cardInstanceId, "N", out _)
+            || !target.RunStartTime.HasValue
             || SaveUtility.GetCurrentRunStartTime() != target.RunStartTime
             || !TryValidateSavedFile(target.Directory, savedPath, out string fileName))
         {
@@ -224,7 +227,7 @@ internal static class CardPortraitStore
             }
         }
 
-        reference = new CardPortraitReference(target.PortraitId, runStartTime, relativeFile);
+        reference = new CardPortraitReference(cardInstanceId, target.PortraitId, runStartTime, relativeFile);
         return true;
     }
 

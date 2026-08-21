@@ -115,8 +115,9 @@ internal static class CardPortraitDynamicPatches
     public static void RefreshTemporary(CardModel card)
     {
         RefreshLoadedCards(model =>
-            ReferenceEquals(model, card)
-            || ReferenceEquals(model.DeckVersion, card));
+            CardPortraitFields.SharesIdentity(model, card)
+            || (model.DeckVersion is CardModel deckCard
+                && CardPortraitFields.SharesIdentity(deckCard, card)));
     }
 
     public static void RefreshPermanent(ModelId cardId)

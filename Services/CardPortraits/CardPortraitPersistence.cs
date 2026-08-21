@@ -15,7 +15,6 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 internal static class CardPortraitPersistence
 {
     public const string FieldName = "loadout_card_portrait_ref_v2";
-    private const string LegacyFieldName = "loadout_card_portrait_ref_v1";
 
     [ThreadStatic]
     private static int _checksumDepth;
@@ -47,7 +46,7 @@ internal static class CardPortraitPersistence
         save.Props.strings ??= [];
         save.Props.strings.Add(new SavedProperties.SavedProperty<string>(
             FieldName,
-            $"2:{reference!.RunStartTime.ToString(CultureInfo.InvariantCulture)}:{reference.PortraitId}:{reference.RelativeFile}"));
+            $"2:{reference!.CardInstanceId}:{reference.RunStartTime.ToString(CultureInfo.InvariantCulture)}:{reference.PortraitId}:{reference.RelativeFile}"));
     }
 
     public static bool TryRead(SerializableCard save, out CardPortraitReference reference)
@@ -61,14 +60,15 @@ internal static class CardPortraitPersistence
             if (!IsPortraitField(entry.name))
                 continue;
 
-            string[] parts = entry.value.Split(':', 4, StringSplitOptions.None);
-            if (parts.Length == 4
+            string[] parts = entry.value.Split(':', 5, StringSplitOptions.None);
+            if (parts.Length == 5
                 && parts[0] == "2"
-                && long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long runStartTimeV2)
-                && Guid.TryParseExact(parts[2], "N", out _)
-                && IsSafeRelativeFile(parts[3]))
+                && Guid.TryParseExact(parts[1], "N", out _)
+                && long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long runStartTime)
+                && Guid.TryParseExact(parts[3], "N", out _)
+                && IsSafeRelativeFile(parts[4]))
             {
-                reference = new CardPortraitReference(parts[2], runStartTimeV2, parts[3]);
+                reference = new CardPortraitReference(parts[1], parts[3], runStartTime, parts[4]);
                 return true;
             }
             return false;
@@ -126,8 +126,7 @@ internal static class CardPortraitPersistence
         && props.cardArrays is not { Count: > 0 };
 
     private static bool IsPortraitField(string name) =>
-        string.Equals(name, FieldName, StringComparison.Ordinal)
-        || string.Equals(name, LegacyFieldName, StringComparison.Ordinal);
+        string.Equals(name, FieldName, StringComparison.Ordinal);
 
     private static bool IsSafeRelativeFile(string file)
     {
