@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
@@ -29,9 +30,18 @@ public enum PowerGiverTarget
     Monsters
 }
 
+public sealed class PowerGiverCombatStartHook : AbstractModel
+{
+    public override bool ShouldReceiveCombatHooks => true;
+
+    public override Task BeforeCombatStart()
+        => PowerGiverStateService.ApplyConfiguredStartingPowersAsync();
+}
+
 public static class PowerGiverStateService
 {
     private const int CurrentSchemaVersion = 2;
+    private const string CombatStartHookId = "Loadout.PowerGiver.StartingPowers";
     private const string FavoritesPath = "loadout/services/favorites/powers.json";
     private const string LegacyFavoritesPath = "loadout/power_giver_favorites.json";
     private const string RunDirectory = "loadout/relics/powergiver";
@@ -45,6 +55,7 @@ public static class PowerGiverStateService
     private static readonly FavoritesUtility Favorites = new(FavoritesPath, [LegacyFavoritesPath]);
     private static PowerGiverRunState _run = new();
     private static bool _registered;
+    private static bool _combatStartHookRegistered;
     private static bool _runLoaded;
     private static long? _loadedRunStartTime;
 
@@ -65,7 +76,7 @@ public static class PowerGiverStateService
         _registered = true;
         RunManager.Instance.RunStarted += OnRunStarted;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
-        CombatManager.Instance.CombatSetUp += OnCombatSetUp;
+        RegisterCombatStartHook();
         EnsureLoaded();
     }
 
@@ -76,7 +87,6 @@ public static class PowerGiverStateService
 
         RunManager.Instance.RunStarted -= OnRunStarted;
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
-        CombatManager.Instance.CombatSetUp -= OnCombatSetUp;
         _registered = false;
     }
 
@@ -183,8 +193,11 @@ public static class PowerGiverStateService
         return true;
     }
 
-    private static void OnCombatSetUp(CombatState combatState)
+    public static Task ApplyConfiguredStartingPowersAsync()
     {
+        if (!_registered || CombatManager.Instance.DebugOnlyGetState() is not { } combatState)
+            return Task.CompletedTask;
+
         EnsureLoaded();
 
         IReadOnlyDictionary<string, int> allPlayerCounters;
@@ -199,11 +212,22 @@ public static class PowerGiverStateService
             monsterCounters = new Dictionary<string, int>(_run.MonsterCounters, StringComparer.Ordinal);
         }
 
-        TaskHelper.RunSafely(ApplyConfiguredPowersAsync(
+        return ApplyConfiguredPowersAsync(
             combatState,
             allPlayerCounters,
             playerCountersByNetId,
-            monsterCounters));
+            monsterCounters);
+    }
+
+    private static void RegisterCombatStartHook()
+    {
+        if (_combatStartHookRegistered)
+            return;
+
+        PowerGiverCombatStartHook hook = ModelDb.GetById<PowerGiverCombatStartHook>(
+            ModelDb.GetId<PowerGiverCombatStartHook>());
+        ModHelper.SubscribeForRunStateHooks(CombatStartHookId, _ => [hook]);
+        _combatStartHookRegistered = true;
     }
 
     private static void OnRunStarted(RunState _)
@@ -376,7 +400,7 @@ public static class PowerGiverStateService
         IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> playerCountersByNetId,
         IReadOnlyDictionary<string, int> monsterCounters)
     {
-        foreach (Player player in combatState.Players)
+        foreach (Player player in combatState.Players.OrderBy(player => player.NetId))
         {
             Dictionary<string, int> mergedCounters = new(allPlayerCounters, StringComparer.Ordinal);
             if (playerCountersByNetId.TryGetValue(player.NetId, out IReadOnlyDictionary<string, int>? playerCounters))
@@ -385,13 +409,16 @@ public static class PowerGiverStateService
                     mergedCounters[powerId] = mergedCounters.GetValueOrDefault(powerId, 0) + amount;
             }
 
-            foreach ((string powerId, int amount) in mergedCounters.Where(pair => pair.Value != 0))
+            foreach ((string powerId, int amount) in mergedCounters
+                         .Where(pair => pair.Value != 0)
+                         .OrderBy(pair => pair.Key, StringComparer.Ordinal))
                 await ApplyPowerToTargets(powerId, amount, [player.Creature], player.Creature);
         }
 
         Creature? applier = combatState.Players.FirstOrDefault()?.Creature;
-        foreach ((string powerId, int amount) in monsterCounters)
-            await ApplyPowerToTargets(powerId, amount, combatState.Enemies.ToList(), applier);
+        IReadOnlyList<Creature> enemies = combatState.Enemies.ToList();
+        foreach ((string powerId, int amount) in monsterCounters.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            await ApplyPowerToTargets(powerId, amount, enemies, applier);
     }
 
     private static async Task ApplyCurrentCombatDeltaAsync(
