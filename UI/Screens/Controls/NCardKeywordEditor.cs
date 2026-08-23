@@ -40,7 +40,9 @@ public partial class NCardKeywordEditor : VBoxContainer
         CardKeyword Keyword,
         string Label,
         string ModId,
-        string ModName);
+        string ModName,
+        LoadoutKeywordEditorSection EditorSection,
+        int EditorOrder);
 
     private sealed record ContentBlock(
         string? Header,
@@ -217,6 +219,16 @@ public partial class NCardKeywordEditor : VBoxContainer
                     entry.ModId,
                     _selectedModId,
                     StringComparison.Ordinal))
+                .ToList();
+            if (string.Equals(
+                    _selectedModId,
+                    MainFile.ModId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return BuildLoadoutBlocks(filtered);
+            }
+
+            filtered = filtered
                 .OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(entry => Convert.ToInt32(entry.Keyword))
                 .ToList();
@@ -227,13 +239,29 @@ public partial class NCardKeywordEditor : VBoxContainer
 
         List<ContentBlock> blocks = [];
         IReadOnlyList<CatalogEntry> core = catalog
-            .Where(entry => IsCoreSource(entry.ModId))
+            .Where(entry =>
+                IsCoreSource(entry.ModId)
+                && entry.EditorSection != LoadoutKeywordEditorSection.Basic)
             .OrderBy(entry => GetSourceRank(entry.ModId))
             .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => Convert.ToInt32(entry.Keyword))
             .ToList();
         if (core.Count > 0)
             blocks.Add(new ContentBlock(null, core));
+
+        IReadOnlyList<CatalogEntry> basic = catalog
+            .Where(entry =>
+                entry.EditorSection == LoadoutKeywordEditorSection.Basic)
+            .OrderBy(entry => entry.EditorOrder)
+            .ToList();
+        if (basic.Count > 0)
+        {
+            blocks.Add(new ContentBlock(
+                LocMan.Loc(
+                    "CARD_MOD_LOADOUT_BASIC_KEYWORDS",
+                    "Loadout Basic Keywords"),
+                basic));
+        }
 
         foreach (IGrouping<string, CatalogEntry> source in GetOrderedSources(catalog)
                      .Where(source => !IsCoreSource(source.Key)))
@@ -244,6 +272,36 @@ public partial class NCardKeywordEditor : VBoxContainer
                 .ToList();
             blocks.Add(new ContentBlock(source.First().ModName, entries));
         }
+        return blocks;
+    }
+
+    private static IReadOnlyList<ContentBlock> BuildLoadoutBlocks(
+        IReadOnlyList<CatalogEntry> entries)
+    {
+        List<ContentBlock> blocks = [];
+        IReadOnlyList<CatalogEntry> standard = entries
+            .Where(entry =>
+                entry.EditorSection != LoadoutKeywordEditorSection.Basic)
+            .OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => Convert.ToInt32(entry.Keyword))
+            .ToList();
+        if (standard.Count > 0)
+            blocks.Add(new ContentBlock(null, standard));
+
+        IReadOnlyList<CatalogEntry> basic = entries
+            .Where(entry =>
+                entry.EditorSection == LoadoutKeywordEditorSection.Basic)
+            .OrderBy(entry => entry.EditorOrder)
+            .ToList();
+        if (basic.Count > 0)
+        {
+            blocks.Add(new ContentBlock(
+                LocMan.Loc(
+                    "CARD_MOD_LOADOUT_BASIC_KEYWORDS",
+                    "Loadout Basic Keywords"),
+                basic));
+        }
+
         return blocks;
     }
 
@@ -361,11 +419,29 @@ public partial class NCardKeywordEditor : VBoxContainer
                     StringComparison.Ordinal)
                     ? LocMan.Loc("OTHER", "Other")
                     : CommonHelpers.GetModName(modId);
+                LoadoutKeywordEditorSection editorSection =
+                    LoadoutKeywordEditorSection.Default;
+                int editorOrder = int.MaxValue;
+                for (int index = 0;
+                     index < LoadoutKeywordRegistry.All.Count;
+                     index++)
+                {
+                    LoadoutKeywordModel model =
+                        LoadoutKeywordRegistry.All[index];
+                    if (!model.Keyword.Equals(keyword))
+                        continue;
+
+                    editorSection = model.EditorSection;
+                    editorOrder = index;
+                    break;
+                }
                 return new CatalogEntry(
                     keyword,
                     GetKeywordLabel(keyword),
                     modId,
-                    modName);
+                    modName,
+                    editorSection,
+                    editorOrder);
             })
             .ToList();
     }

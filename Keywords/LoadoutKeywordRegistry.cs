@@ -28,7 +28,15 @@ public static class LoadoutKeywordRegistry
         XCostKeyword.Instance,
         InfiniteUpgradeKeyword.Instance,
         LessonLearnedKeyword.Instance,
-        HeavenlyKeyword.Instance
+        HeavenlyKeyword.Instance,
+        BasicDamageKeyword.Instance,
+        BasicDamageAoeKeyword.Instance,
+        BasicBlockKeyword.Instance,
+        BasicDrawKeyword.Instance,
+        BasicDiscardKeyword.Instance,
+        BasicExhaustKeyword.Instance,
+        BasicHealKeyword.Instance,
+        BasicEnergyKeyword.Instance
     ];
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
@@ -124,7 +132,7 @@ public static class LoadoutKeywordRegistry
                     if (variables.ContainsKey(dynamicVar.Name))
                         continue;
 
-                    DynamicVar value = new(dynamicVar.Name, dynamicVar.DefaultValue);
+                    DynamicVar value = dynamicVar.Create();
                     value.SetOwner(card);
                     variables.Add(dynamicVar.Name, value);
                 }

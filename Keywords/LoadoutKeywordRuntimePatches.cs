@@ -507,6 +507,27 @@ internal static class LoadoutKeywordRuntimePatches
                 postfix: new HarmonyMethod(
                     typeof(LoadoutDescriptionKeywordHoverTipsPatch),
                     nameof(LoadoutDescriptionKeywordHoverTipsPatch.Postfix)));
+            HarmonyMethod targetTypePostfix = new(
+                typeof(LoadoutBasicKeywordTargetTypePatch),
+                nameof(LoadoutBasicKeywordTargetTypePatch.Postfix));
+            foreach (MethodBase target in
+                     LoadoutBasicKeywordTargetTypePatch.TargetMethods())
+            {
+                DescriptionKeywordHarmony.Patch(
+                    target,
+                    postfix: targetTypePostfix);
+            }
+
+            HarmonyMethod gainsBlockPostfix = new(
+                typeof(LoadoutBasicKeywordGainsBlockPatch),
+                nameof(LoadoutBasicKeywordGainsBlockPatch.Postfix));
+            foreach (MethodBase target in
+                     LoadoutBasicKeywordGainsBlockPatch.TargetMethods())
+            {
+                DescriptionKeywordHarmony.Patch(
+                    target,
+                    postfix: gainsBlockPostfix);
+            }
         }, () => DescriptionKeywordsEnabled = true);
     }
 

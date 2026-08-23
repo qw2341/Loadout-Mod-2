@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
@@ -25,12 +26,24 @@ public enum LoadoutKeywordPresentation
     DescriptionOnly
 }
 
+public enum LoadoutKeywordEditorSection
+{
+    Default,
+    Basic
+}
+
 public sealed record LoadoutKeywordDynamicVarDefinition(
     string Name,
     decimal DefaultValue,
     int Minimum,
     int Maximum,
-    string LabelLocKey);
+    string LabelLocKey,
+    Func<string, decimal, DynamicVar>? Factory = null)
+{
+    public DynamicVar Create() =>
+        Factory?.Invoke(Name, DefaultValue)
+        ?? new DynamicVar(Name, DefaultValue);
+}
 
 /// <summary>
 /// Common API for Loadout-owned card keywords. Keyword-specific files provide
@@ -47,6 +60,9 @@ public abstract class LoadoutKeywordModel
 
     public virtual LoadoutKeywordPresentation Presentation =>
         LoadoutKeywordPresentation.Normal;
+
+    public virtual LoadoutKeywordEditorSection EditorSection =>
+        LoadoutKeywordEditorSection.Default;
 
     public virtual string? CardTextLocKey => null;
 
@@ -101,6 +117,7 @@ public abstract class LoadoutKeywordModel
     /// </summary>
     public virtual Task AfterOnPlay(
         CardModel card,
+        PlayerChoiceContext choiceContext,
         CardPlay cardPlay,
         object? capturedState)
     {

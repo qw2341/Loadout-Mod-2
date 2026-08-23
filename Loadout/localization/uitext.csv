@@ -218,6 +218,15 @@ DYNAMIC_VAR_CALCULATION_EXTRA,Extra Value,额外数值,Valeur supplémentaire,�
 DYNAMIC_VAR_CARDS,Cards,卡牌,Cartes,カード,카드,Cartas
 DYNAMIC_VAR_LOADOUT_LESSON_LEARNED_CARDS,Cards to Upgrade,升级牌数,Cartes de Leçon apprise,カード枚数,얻은 교훈 카드 수,Cartas de Lección aprendida
 DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
+CARD_MOD_LOADOUT_BASIC_KEYWORDS,Loadout Basic Keywords,Loadout 基础关键词,Mots-clés de base Loadout,Loadout基本キーワード,Loadout 기본 키워드,Palabras clave básicas de Loadout
+DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
+DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE_AOE,AOE Damage,群体伤害,Dégâts de zone,全体ダメージ,광역 피해,Daño en área
+DYNAMIC_VAR_LOADOUT_BASIC_BLOCK,Block,格挡,Blocage,ブロック,방어도,Bloqueo
+DYNAMIC_VAR_LOADOUT_BASIC_DRAW,Cards to Draw,抽牌数,Cartes à piocher,引くカード枚数,뽑을 카드 수,Cartas a robar
+DYNAMIC_VAR_LOADOUT_BASIC_DISCARD,Cards to Discard,丢弃牌数,Cartes à défausser,捨てるカード枚数,버릴 카드 수,Cartas a descartar
+DYNAMIC_VAR_LOADOUT_BASIC_EXHAUST,Cards to Exhaust,消耗牌数,Cartes à Épuiser,廃棄するカード枚数,소멸시킬 카드 수,Cartas a Agotar
+DYNAMIC_VAR_LOADOUT_BASIC_HEAL,Health to Heal,回复生命,PV à soigner,回復するHP,회복할 체력,PV a curar
+DYNAMIC_VAR_LOADOUT_BASIC_ENERGY,Energy to Gain,获得能量,Énergie à gagner,得るエナジー,얻을 에너지,Energía a obtener
 DYNAMIC_VAR_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
 DYNAMIC_VAR_EXTRA_DAMAGE,Extra Damage,额外伤害,Dégâts supplémentaires,追加ダメージ,추가 피해,Daño adicional
 DYNAMIC_VAR_HEAL,Heal,治疗,Soins,回復,회복,Curación

@@ -19,6 +19,14 @@ public static class LoadoutKeywords
     public const string InfiniteUpgradeKey = "InfiniteUpgrade";
     public const string LessonLearnedKey = "LessonLearned";
     public const string HeavenlyKey = "Heavenly";
+    public const string BasicDamageKey = "BasicDamage";
+    public const string BasicDamageAoeKey = "BasicDamageAoe";
+    public const string BasicBlockKey = "BasicBlock";
+    public const string BasicDrawKey = "BasicDraw";
+    public const string BasicDiscardKey = "BasicDiscard";
+    public const string BasicExhaustKey = "BasicExhaust";
+    public const string BasicHealKey = "BasicHeal";
+    public const string BasicEnergyKey = "BasicEnergy";
 
     [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Inevitable;
@@ -43,6 +51,30 @@ public static class LoadoutKeywords
 
     [CustomEnum("HEAVENLY")]
     public static CardKeyword Heavenly;
+
+    [CustomEnum("BASIC_DAMAGE")]
+    public static CardKeyword BasicDamage;
+
+    [CustomEnum("BASIC_DAMAGE_AOE")]
+    public static CardKeyword BasicDamageAoe;
+
+    [CustomEnum("BASIC_BLOCK")]
+    public static CardKeyword BasicBlock;
+
+    [CustomEnum("BASIC_DRAW")]
+    public static CardKeyword BasicDraw;
+
+    [CustomEnum("BASIC_DISCARD")]
+    public static CardKeyword BasicDiscard;
+
+    [CustomEnum("BASIC_EXHAUST")]
+    public static CardKeyword BasicExhaust;
+
+    [CustomEnum("BASIC_HEAL")]
+    public static CardKeyword BasicHeal;
+
+    [CustomEnum("BASIC_ENERGY")]
+    public static CardKeyword BasicEnergy;
 
     public static IEnumerable<CardKeyword> All =>
         LoadoutKeywordRegistry.All.Select(model => model.Keyword);

@@ -80,6 +80,7 @@ internal static class PostOnPlayKeywordDispatcher
     [HarmonyPostfix]
     public static void Postfix(
         CardModel __instance,
+        PlayerChoiceContext __0,
         CardPlay __1,
         object? __state,
         ref Task __result)
@@ -87,12 +88,13 @@ internal static class PostOnPlayKeywordDispatcher
         if (__state is not DispatchState state)
             return;
 
-        __result = Apply(__result, __instance, __1, state);
+        __result = Apply(__result, __instance, __0, __1, state);
     }
 
     private static async Task Apply(
         Task originalOnPlay,
         CardModel source,
+        PlayerChoiceContext choiceContext,
         CardPlay cardPlay,
         DispatchState state)
     {
@@ -102,6 +104,7 @@ internal static class PostOnPlayKeywordDispatcher
         {
             await effect.Model.AfterOnPlay(
                 source,
+                choiceContext,
                 cardPlay,
                 effect.CapturedState);
         }
