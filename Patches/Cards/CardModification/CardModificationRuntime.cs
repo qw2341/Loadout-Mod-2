@@ -1066,7 +1066,8 @@ public static class CardModificationRuntime
 
     internal static void ApplyUpgradeModification(
         CardModel card,
-        CardUpgradeModificationSpec modification)
+        CardUpgradeModificationSpec modification,
+        int? loadoutUpgradedEnergyCost)
     {
         if (modification.IsEmpty)
             return;
@@ -1078,7 +1079,7 @@ public static class CardModificationRuntime
 
         int? energyCost = modification.EnergyCostDelta.HasValue
             ? AddIntDeltaClamped(
-                card.EnergyCost.Canonical,
+                loadoutUpgradedEnergyCost ?? card.EnergyCost.Canonical,
                 modification.EnergyCostDelta.Value)
             : null;
         if (modification.BaseReplayCountDelta.HasValue)

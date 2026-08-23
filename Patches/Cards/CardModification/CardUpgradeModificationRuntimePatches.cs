@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.CardModification;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 
@@ -46,6 +47,16 @@ internal static class CardUpgradeModificationRuntimePatches
             prefix: new HarmonyMethod(
                 typeof(CardUpgradeModificationRecalculationPatch),
                 nameof(CardUpgradeModificationRecalculationPatch.Prefix)));
+        Harmony.Patch(
+            AccessTools.Method(
+                typeof(CardEnergyCost),
+                nameof(CardEnergyCost.UpgradeBy))
+            ?? throw new MissingMethodException(
+                typeof(CardEnergyCost).FullName,
+                nameof(CardEnergyCost.UpgradeBy)),
+            prefix: new HarmonyMethod(
+                typeof(CardUpgradeModificationEnergyCostPatch),
+                nameof(CardUpgradeModificationEnergyCostPatch.Prefix)));
         _enabled = true;
     }
 
@@ -119,6 +130,7 @@ internal static class CardUpgradeModificationRuntimePatches
 internal readonly record struct CardUpgradeModificationContextState(
     CardModel? ActiveCard,
     CardUpgradeModificationSpec? Modification,
+    int? LoadoutUpgradedEnergyCost,
     bool Applied);
 
 internal static class CardUpgradeModificationContextPatch
@@ -130,6 +142,9 @@ internal static class CardUpgradeModificationContextPatch
     internal static CardUpgradeModificationSpec? Modification;
 
     [ThreadStatic]
+    internal static int? LoadoutUpgradedEnergyCost;
+
+    [ThreadStatic]
     internal static bool Applied;
 
     public static void Prefix(
@@ -139,11 +154,16 @@ internal static class CardUpgradeModificationContextPatch
         __state = new CardUpgradeModificationContextState(
             ActiveCard,
             Modification,
+            LoadoutUpgradedEnergyCost,
             Applied);
         CardUpgradeModificationSpec resolved =
             CardUpgradeModificationRuntimePatches.Resolve(__instance);
         ActiveCard = resolved.IsEmpty ? null : __instance;
         Modification = resolved.IsEmpty ? null : resolved;
+        LoadoutUpgradedEnergyCost = resolved.EnergyCostDelta.HasValue
+                                    && !__instance.EnergyCost.CostsX
+            ? __instance.EnergyCost.Canonical
+            : null;
         Applied = false;
     }
 
@@ -153,8 +173,33 @@ internal static class CardUpgradeModificationContextPatch
     {
         ActiveCard = __state.ActiveCard;
         Modification = __state.Modification;
+        LoadoutUpgradedEnergyCost = __state.LoadoutUpgradedEnergyCost;
         Applied = __state.Applied;
         return __exception;
+    }
+}
+
+internal static class CardUpgradeModificationEnergyCostPatch
+{
+    public static void Prefix(CardEnergyCost __instance, int addend)
+    {
+        CardModel? card = CardUpgradeModificationContextPatch.ActiveCard;
+        int? energyCost =
+            CardUpgradeModificationContextPatch.LoadoutUpgradedEnergyCost;
+        if (card is null
+            || !energyCost.HasValue
+            || __instance.CostsX
+            || addend == 0
+            || !ReferenceEquals(card.EnergyCost, __instance))
+        {
+            return;
+        }
+
+        CardUpgradeModificationContextPatch.LoadoutUpgradedEnergyCost =
+            (int)Math.Clamp(
+                (long)energyCost.Value + addend,
+                0L,
+                int.MaxValue);
     }
 }
 
@@ -175,6 +220,9 @@ internal static class CardUpgradeModificationRecalculationPatch
         }
 
         CardUpgradeModificationContextPatch.Applied = true;
-        CardModificationRuntime.ApplyUpgradeModification(card, modification);
+        CardModificationRuntime.ApplyUpgradeModification(
+            card,
+            modification,
+            CardUpgradeModificationContextPatch.LoadoutUpgradedEnergyCost);
     }
 }
