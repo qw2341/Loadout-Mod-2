@@ -107,7 +107,12 @@ public abstract class LoadoutKeywordModel
 
         LocString cardText = new("card_keywords", CardTextLocKey);
         card.DynamicVars.AddTo(cardText);
+        AddCardTextVariables(card, cardText);
         return cardText.GetFormattedText();
+    }
+
+    protected virtual void AddCardTextVariables(CardModel card, LocString cardText)
+    {
     }
 
     /// <summary>

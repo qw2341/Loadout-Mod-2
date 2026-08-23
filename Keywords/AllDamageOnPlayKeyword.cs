@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 
@@ -45,6 +46,11 @@ public sealed class AllDamageOnPlayKeyword : LoadoutImprovementKeywordModel
         VariableDefinitions;
 
     public override bool HasOnPlayEffect => true;
+
+    protected override void AddCardTextVariables(CardModel card, LocString cardText)
+    {
+        cardText.Add("CardTitle", card.Title);
+    }
 
     public override Task AfterOnPlay(
         CardModel card,
