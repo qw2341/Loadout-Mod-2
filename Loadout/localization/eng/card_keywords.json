@@ -38,6 +38,9 @@
   "LOADOUT-BASIC_HEAL.title": "Heal",
   "LOADOUT-BASIC_HEAL.description": "Heals the card's owner.",
   "LOADOUT-BASIC_HEAL.cardText": "Heal {LoadoutBasicHeal:diff()} HP.",
+  "LOADOUT-BASIC_LOSE_HEALTH.title": "Lose Health",
+  "LOADOUT-BASIC_LOSE_HEALTH.description": "Loses HP.",
+  "LOADOUT-BASIC_LOSE_HEALTH.cardText": "Lose {LoadoutBasicHpLoss:diff()} HP.",
   "LOADOUT-BASIC_ENERGY.title": "Energy",
   "LOADOUT-BASIC_ENERGY.description": "Gains Energy.",
   "LOADOUT-BASIC_ENERGY.cardText": "Gain {LoadoutBasicEnergy:energyIcons()}."

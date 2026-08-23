@@ -38,6 +38,9 @@
   "LOADOUT-BASIC_HEAL.title": "回復",
   "LOADOUT-BASIC_HEAL.description": "カードの所有者を回復する。",
   "LOADOUT-BASIC_HEAL.cardText": "HPを{LoadoutBasicHeal:diff()}回復する。",
+  "LOADOUT-BASIC_LOSE_HEALTH.title": "HP減少",
+  "LOADOUT-BASIC_LOSE_HEALTH.description": "HPを失う。",
+  "LOADOUT-BASIC_LOSE_HEALTH.cardText": "HPを{LoadoutBasicHpLoss:diff()}失う。",
   "LOADOUT-BASIC_ENERGY.title": "エナジー",
   "LOADOUT-BASIC_ENERGY.description": "エナジーを得る。",
   "LOADOUT-BASIC_ENERGY.cardText": "{LoadoutBasicEnergy:energyIcons()}を得る。"

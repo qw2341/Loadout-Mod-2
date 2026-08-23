@@ -26,6 +26,7 @@ public static class LoadoutKeywords
     public const string BasicDiscardKey = "BasicDiscard";
     public const string BasicExhaustKey = "BasicExhaust";
     public const string BasicHealKey = "BasicHeal";
+    public const string BasicLoseHealthKey = "BasicLoseHealth";
     public const string BasicEnergyKey = "BasicEnergy";
 
     [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
@@ -72,6 +73,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_HEAL")]
     public static CardKeyword BasicHeal;
+
+    [CustomEnum("BASIC_LOSE_HEALTH")]
+    public static CardKeyword BasicLoseHealth;
 
     [CustomEnum("BASIC_ENERGY")]
     public static CardKeyword BasicEnergy;

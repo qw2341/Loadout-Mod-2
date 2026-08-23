@@ -38,6 +38,9 @@
   "LOADOUT-BASIC_HEAL.title": "Soin",
   "LOADOUT-BASIC_HEAL.description": "Soigne le propriétaire de la carte.",
   "LOADOUT-BASIC_HEAL.cardText": "Soigne {LoadoutBasicHeal:diff()} PV.",
+  "LOADOUT-BASIC_LOSE_HEALTH.title": "Perte de PV",
+  "LOADOUT-BASIC_LOSE_HEALTH.description": "Fait perdre des PV.",
+  "LOADOUT-BASIC_LOSE_HEALTH.cardText": "Perdez {LoadoutBasicHpLoss:diff()} PV.",
   "LOADOUT-BASIC_ENERGY.title": "Énergie",
   "LOADOUT-BASIC_ENERGY.description": "Confère de l'Énergie.",
   "LOADOUT-BASIC_ENERGY.cardText": "Gagnez {LoadoutBasicEnergy:energyIcons()}."

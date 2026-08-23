@@ -36,6 +36,7 @@ public static class LoadoutKeywordRegistry
         BasicDiscardKeyword.Instance,
         BasicExhaustKeyword.Instance,
         BasicHealKeyword.Instance,
+        BasicLoseHealthKeyword.Instance,
         BasicEnergyKeyword.Instance
     ];
 

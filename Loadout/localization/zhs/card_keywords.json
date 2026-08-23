@@ -38,6 +38,9 @@
   "LOADOUT-BASIC_HEAL.title": "治疗",
   "LOADOUT-BASIC_HEAL.description": "为此牌的拥有者恢复生命。",
   "LOADOUT-BASIC_HEAL.cardText": "回复{LoadoutBasicHeal:diff()}点生命。",
+  "LOADOUT-BASIC_LOSE_HEALTH.title": "失去生命",
+  "LOADOUT-BASIC_LOSE_HEALTH.description": "失去生命。",
+  "LOADOUT-BASIC_LOSE_HEALTH.cardText": "失去{LoadoutBasicHpLoss:diff()}点生命。",
   "LOADOUT-BASIC_ENERGY.title": "能量",
   "LOADOUT-BASIC_ENERGY.description": "获得能量。",
   "LOADOUT-BASIC_ENERGY.cardText": "获得{LoadoutBasicEnergy:energyIcons()}。"
