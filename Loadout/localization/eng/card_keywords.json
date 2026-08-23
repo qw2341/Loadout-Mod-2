@@ -40,5 +40,5 @@
   "LOADOUT-BASIC_HEAL.cardText": "Heal {LoadoutBasicHeal:diff()} HP.",
   "LOADOUT-BASIC_ENERGY.title": "Energy",
   "LOADOUT-BASIC_ENERGY.description": "Gains Energy.",
-  "LOADOUT-BASIC_ENERGY.cardText": "Gain {LoadoutBasicEnergy:diff()} Energy."
+  "LOADOUT-BASIC_ENERGY.cardText": "Gain {LoadoutBasicEnergy:energyIcons()}."
 }

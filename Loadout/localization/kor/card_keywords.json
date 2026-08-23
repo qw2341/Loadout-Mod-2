@@ -40,5 +40,5 @@
   "LOADOUT-BASIC_HEAL.cardText": "체력을 {LoadoutBasicHeal:diff()} 회복합니다.",
   "LOADOUT-BASIC_ENERGY.title": "에너지",
   "LOADOUT-BASIC_ENERGY.description": "에너지를 얻습니다.",
-  "LOADOUT-BASIC_ENERGY.cardText": "에너지를 {LoadoutBasicEnergy:diff()} 얻습니다."
+  "LOADOUT-BASIC_ENERGY.cardText": "{LoadoutBasicEnergy:energyIcons()}를 얻습니다."
 }

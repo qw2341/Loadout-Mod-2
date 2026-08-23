@@ -40,5 +40,5 @@
   "LOADOUT-BASIC_HEAL.cardText": "Cura {LoadoutBasicHeal:diff()} PV.",
   "LOADOUT-BASIC_ENERGY.title": "Energía",
   "LOADOUT-BASIC_ENERGY.description": "Otorga Energía.",
-  "LOADOUT-BASIC_ENERGY.cardText": "Obtén {LoadoutBasicEnergy:diff()} de Energía."
+  "LOADOUT-BASIC_ENERGY.cardText": "Gana {LoadoutBasicEnergy:energyIcons()}."
 }

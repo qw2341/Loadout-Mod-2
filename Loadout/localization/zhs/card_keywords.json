@@ -40,5 +40,5 @@
   "LOADOUT-BASIC_HEAL.cardText": "回复{LoadoutBasicHeal:diff()}点生命。",
   "LOADOUT-BASIC_ENERGY.title": "能量",
   "LOADOUT-BASIC_ENERGY.description": "获得能量。",
-  "LOADOUT-BASIC_ENERGY.cardText": "获得{LoadoutBasicEnergy:diff()}点能量。"
+  "LOADOUT-BASIC_ENERGY.cardText": "获得{LoadoutBasicEnergy:energyIcons()}。"
 }

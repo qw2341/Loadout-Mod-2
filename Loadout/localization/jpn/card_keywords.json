@@ -40,5 +40,5 @@
   "LOADOUT-BASIC_HEAL.cardText": "HPを{LoadoutBasicHeal:diff()}回復する。",
   "LOADOUT-BASIC_ENERGY.title": "エナジー",
   "LOADOUT-BASIC_ENERGY.description": "エナジーを得る。",
-  "LOADOUT-BASIC_ENERGY.cardText": "{LoadoutBasicEnergy:diff()}エナジーを得る。"
+  "LOADOUT-BASIC_ENERGY.cardText": "{LoadoutBasicEnergy:energyIcons()}を得る。"
 }
