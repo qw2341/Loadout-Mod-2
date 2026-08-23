@@ -64,6 +64,17 @@ public static class RelicFromSerializableModificationPatch
     }
 }
 
+[HarmonyPatch(typeof(AbstractModel), nameof(AbstractModel.InvokeExecutionFinished))]
+public static class RelicRuntimeSavedPropertyModificationPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(AbstractModel __instance)
+    {
+        if (__instance is RelicModel relic)
+            RelicModificationStateService.RecordRuntimeSavedPropertyValues(relic);
+    }
+}
+
 [HarmonyPatch(typeof(NInspectRelicScreen), nameof(NInspectRelicScreen.Open))]
 public static class InspectRelicPermanentDisplayPatch
 {

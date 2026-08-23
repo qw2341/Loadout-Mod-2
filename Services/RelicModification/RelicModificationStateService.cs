@@ -247,6 +247,7 @@ public static class RelicModificationStateService
     public static bool HasCustomTextOverrides => HasKnownFeature(RelicModificationFeature.CustomText);
     public static bool HasNeverMeltOverrides => HasKnownFeature(RelicModificationFeature.NeverMelt);
     public static bool HasNeverUsedOverrides => HasKnownFeature(RelicModificationFeature.NeverUsed);
+    public static bool HasSavedPropertyOverrides => HasKnownFeature(RelicModificationFeature.SavedProperties);
 
     public static void Register()
     {
@@ -481,6 +482,7 @@ public static class RelicModificationStateService
         // created by clone propagation must be discarded before reading attached state.
         RelicModificationInstanceState.Invalidate(relic);
         MarkFeaturePresence(RelicModificationInstanceState.GetStateReadOnly(relic));
+        RecordRuntimeSavedPropertyValues(relic);
         EffectiveStates.Remove(relic);
         ApplyPermanentToRelic(relic);
     }
@@ -575,6 +577,60 @@ public static class RelicModificationStateService
     public static void PrepareRuntimeCounterMutation(RelicModel relic)
     {
         EnsureBaseline(relic);
+    }
+
+    public static void RecordRuntimeSavedPropertyValues(RelicModel relic)
+    {
+        if (!HasSavedPropertyOverrides || relic.IsCanonical) return;
+
+        RelicModificationState effective = GetEffectiveStateReadOnly(relic);
+        if (effective.PrimitiveValues.Count == 0
+            && (effective.CounterMember is null || !effective.CounterValue.HasValue))
+        {
+            return;
+        }
+
+        RelicModificationAttachment attachment = RelicModificationInstanceState.Get(relic);
+        bool changed = false;
+        foreach (RelicSavedPropertyDescriptor descriptor in GetSavedPropertyDescriptors(relic))
+        {
+            if (!effective.PrimitiveValues.ContainsKey(descriptor.Key)
+                && !MatchesCounterMember(effective.CounterMember, descriptor))
+            {
+                continue;
+            }
+
+            try
+            {
+                RelicPrimitiveValue value = RelicPrimitiveValue.FromObject(
+                    descriptor.GetValue(relic),
+                    descriptor.ValueType);
+                if (attachment.State.PrimitiveValues.TryGetValue(descriptor.Key, out RelicPrimitiveValue? current)
+                    && current.Kind == value.Kind
+                    && string.Equals(current.Value, value.Value, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                attachment.State.PrimitiveValues[descriptor.Key] = value;
+                changed = true;
+            }
+            catch { }
+        }
+
+        if (effective.CounterMember is not null
+            && TildeKeyStateService.TryGetRelicCounterValue(relic, effective.CounterMember, out int counterValue)
+            && (!string.Equals(attachment.State.CounterMember, effective.CounterMember, StringComparison.Ordinal)
+                || attachment.State.CounterValue != counterValue))
+        {
+            attachment.State.CounterMember = effective.CounterMember;
+            attachment.State.CounterValue = counterValue;
+            changed = true;
+        }
+
+        if (!changed) return;
+        RelicModificationInstanceState.Set(relic, attachment);
+        EffectiveStates.Remove(relic);
     }
 
     public static string ExportPermanentSnapshot()
@@ -753,6 +809,14 @@ public static class RelicModificationStateService
     }
 
     private static bool HasSavedProperty(MemberInfo member) => member.GetCustomAttributes(true).Any(a => a.GetType().Name == "SavedPropertyAttribute");
+    private static bool MatchesCounterMember(string? counterMember, RelicSavedPropertyDescriptor descriptor)
+    {
+        return counterMember is not null
+               && (string.Equals(counterMember, descriptor.Key, StringComparison.Ordinal)
+                   || string.Equals(counterMember, descriptor.Name, StringComparison.Ordinal)
+                   || counterMember.EndsWith($":{descriptor.Name}", StringComparison.Ordinal));
+    }
+
     private static bool IsSupported(Type type)
     {
         Type actual = Nullable.GetUnderlyingType(type) ?? type;
@@ -982,7 +1046,8 @@ public static class RelicModificationStateService
         Rarity = 1 << 0,
         CustomText = 1 << 1,
         NeverMelt = 1 << 2,
-        NeverUsed = 1 << 3
+        NeverUsed = 1 << 3,
+        SavedProperties = 1 << 4
     }
 
     private static bool HasKnownFeature(RelicModificationFeature feature)
@@ -998,6 +1063,9 @@ public static class RelicModificationStateService
             features |= RelicModificationFeature.CustomText;
         if (state.NeverMelt == true) features |= RelicModificationFeature.NeverMelt;
         if (state.NeverUsed == true) features |= RelicModificationFeature.NeverUsed;
+        if (state.PrimitiveValues.Count > 0
+            || state.CounterMember is not null && state.CounterValue.HasValue)
+            features |= RelicModificationFeature.SavedProperties;
         return features;
     }
 
