@@ -241,7 +241,7 @@ public partial class NCardKeywordEditor : VBoxContainer
         IReadOnlyList<CatalogEntry> core = catalog
             .Where(entry =>
                 IsCoreSource(entry.ModId)
-                && entry.EditorSection != LoadoutKeywordEditorSection.Basic)
+                && entry.EditorSection == LoadoutKeywordEditorSection.Default)
             .OrderBy(entry => GetSourceRank(entry.ModId))
             .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => Convert.ToInt32(entry.Keyword))
@@ -249,19 +249,18 @@ public partial class NCardKeywordEditor : VBoxContainer
         if (core.Count > 0)
             blocks.Add(new ContentBlock(null, core));
 
-        IReadOnlyList<CatalogEntry> basic = catalog
-            .Where(entry =>
-                entry.EditorSection == LoadoutKeywordEditorSection.Basic)
-            .OrderBy(entry => entry.EditorOrder)
-            .ToList();
-        if (basic.Count > 0)
-        {
-            blocks.Add(new ContentBlock(
-                LocMan.Loc(
-                    "CARD_MOD_LOADOUT_BASIC_KEYWORDS",
-                    "Loadout Basic Keywords"),
-                basic));
-        }
+        AddLoadoutSection(
+            blocks,
+            catalog,
+            LoadoutKeywordEditorSection.Basic,
+            "CARD_MOD_LOADOUT_BASIC_KEYWORDS",
+            "Loadout Basic Keywords");
+        AddLoadoutSection(
+            blocks,
+            catalog,
+            LoadoutKeywordEditorSection.Improvement,
+            "CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS",
+            "Loadout Improvement Keywords");
 
         foreach (IGrouping<string, CatalogEntry> source in GetOrderedSources(catalog)
                      .Where(source => !IsCoreSource(source.Key)))
@@ -281,28 +280,46 @@ public partial class NCardKeywordEditor : VBoxContainer
         List<ContentBlock> blocks = [];
         IReadOnlyList<CatalogEntry> standard = entries
             .Where(entry =>
-                entry.EditorSection != LoadoutKeywordEditorSection.Basic)
+                entry.EditorSection == LoadoutKeywordEditorSection.Default)
             .OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => Convert.ToInt32(entry.Keyword))
             .ToList();
         if (standard.Count > 0)
             blocks.Add(new ContentBlock(null, standard));
 
-        IReadOnlyList<CatalogEntry> basic = entries
-            .Where(entry =>
-                entry.EditorSection == LoadoutKeywordEditorSection.Basic)
-            .OrderBy(entry => entry.EditorOrder)
-            .ToList();
-        if (basic.Count > 0)
-        {
-            blocks.Add(new ContentBlock(
-                LocMan.Loc(
-                    "CARD_MOD_LOADOUT_BASIC_KEYWORDS",
-                    "Loadout Basic Keywords"),
-                basic));
-        }
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.Basic,
+            "CARD_MOD_LOADOUT_BASIC_KEYWORDS",
+            "Loadout Basic Keywords");
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.Improvement,
+            "CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS",
+            "Loadout Improvement Keywords");
 
         return blocks;
+    }
+
+    private static void AddLoadoutSection(
+        ICollection<ContentBlock> blocks,
+        IEnumerable<CatalogEntry> entries,
+        LoadoutKeywordEditorSection section,
+        string titleLocKey,
+        string titleFallback)
+    {
+        IReadOnlyList<CatalogEntry> sectionEntries = entries
+            .Where(entry => entry.EditorSection == section)
+            .OrderBy(entry => entry.EditorOrder)
+            .ToList();
+        if (sectionEntries.Count == 0)
+            return;
+
+        blocks.Add(new ContentBlock(
+            LocMan.Loc(titleLocKey, titleFallback),
+            sectionEntries));
     }
 
     private VBoxContainer CreateContent(

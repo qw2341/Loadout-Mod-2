@@ -33,6 +33,12 @@ public static class LoadoutKeywords
     public const string BasicHealKey = "BasicHeal";
     public const string BasicLoseHealthKey = "BasicLoseHealth";
     public const string BasicEnergyKey = "BasicEnergy";
+    public const string DamageOnPlayKey = "ImprovementDamageOnPlay";
+    public const string AllDamageOnPlayKey = "ImprovementAllDamageOnPlay";
+    public const string PermanentDamageOnPlayKey =
+        "ImprovementPermanentDamageOnPlay";
+    public const string PermanentDamageOnFatalKey =
+        "ImprovementPermanentDamageOnFatal";
 
     [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Inevitable;
@@ -99,6 +105,18 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_ENERGY")]
     public static CardKeyword BasicEnergy;
+
+    [CustomEnum("IMPROVEMENT_DAMAGE_ON_PLAY")]
+    public static CardKeyword DamageOnPlay;
+
+    [CustomEnum("IMPROVEMENT_ALL_DAMAGE_ON_PLAY")]
+    public static CardKeyword AllDamageOnPlay;
+
+    [CustomEnum("IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY")]
+    public static CardKeyword PermanentDamageOnPlay;
+
+    [CustomEnum("IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL")]
+    public static CardKeyword PermanentDamageOnFatal;
 
     public static IEnumerable<CardKeyword> All =>
         LoadoutKeywordRegistry.All.Select(model => model.Keyword);

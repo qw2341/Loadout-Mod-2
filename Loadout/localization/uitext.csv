@@ -220,6 +220,11 @@ DYNAMIC_VAR_LOADOUT_LESSON_LEARNED_CARDS,Cards to Upgrade,升级牌数,Cartes de
 DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
 DYNAMIC_VAR_LOADOUT_ALT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
 CARD_MOD_LOADOUT_BASIC_KEYWORDS,Loadout Basic Keywords,Loadout 基础关键词,Mots-clés de base Loadout,Loadout基本キーワード,Loadout 기본 키워드,Palabras clave básicas de Loadout
+CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS,Loadout Improvement Keywords,Loadout 强化关键词,Mots-clés d’amélioration Loadout,Loadout強化キーワード,Loadout 강화 키워드,Palabras clave de mejora de Loadout
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_DAMAGE_ON_PLAY,Damage Increase,伤害增加,Augmentation des dégâts,ダメージ増加,피해 증가,Aumento de daño
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_ALL_DAMAGE_ON_PLAY,All Damage Increase,所有伤害增加,Augmentation de tous les dégâts,全同IDカードのダメージ増加,동일 ID 카드 피해 증가,Aumento de daño de copias
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY,Permanent Damage Increase,永久伤害增加,Augmentation permanente des dégâts,永続ダメージ増加,영구 피해 증가,Aumento permanente de daño
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL,Fatal Damage Increase,斩杀伤害增加,Augmentation des dégâts en Coup de grâce,リーサル時ダメージ増加,치명타 피해 증가,Aumento de daño letal
 DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
 DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE_AOE,AOE Damage,群体伤害,Dégâts de zone,全体ダメージ,광역 피해,Daño en área
 DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_DAMAGE,Damage per Hit,每次伤害,Dégâts par coup,1ヒットのダメージ,타격당 피해,Daño por golpe

@@ -58,5 +58,17 @@
   "LOADOUT-BASIC_LOSE_HEALTH.cardText": "체력을 {LoadoutBasicHpLoss:diff()} 잃습니다.",
   "LOADOUT-BASIC_ENERGY.title": "에너지",
   "LOADOUT-BASIC_ENERGY.description": "에너지를 얻습니다.",
-  "LOADOUT-BASIC_ENERGY.cardText": "{LoadoutBasicEnergy:energyIcons()}를 얻습니다."
+  "LOADOUT-BASIC_ENERGY.cardText": "{LoadoutBasicEnergy:energyIcons()}를 얻습니다.",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.title": "+ 사용 시 피해",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.description": "사용 시 이 카드의 피해량이 증가합니다.",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.cardText": "이번 전투 동안 이 카드의 피해량이 {LoadoutImprovementDamageOnPlay:diff()} 증가합니다.",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.title": "+ 사용 시 동일 카드 피해",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.description": "사용 시 ID가 같은 모든 카드의 피해량이 증가합니다.",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.cardText": "이번 전투 동안 ID가 같은 모든 카드의 피해량이 {LoadoutImprovementAllDamageOnPlay:diff()} 증가합니다.",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.title": "+ 사용 시 영구 피해",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.description": "사용 시 이 카드의 피해량이 영구적으로 증가합니다.",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.cardText": "이 카드의 피해량이 영구적으로 {LoadoutImprovementPermanentDamageOnPlay:diff()} 증가합니다.",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.title": "+ 치명타 시 영구 피해",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.description": "[gold]치명타[/gold]라면 이 카드의 피해량이 영구적으로 증가합니다.",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.cardText": "[gold]치명타[/gold]라면, 이 카드의 피해량이 영구적으로 {LoadoutImprovementPermanentDamageOnFatal:diff()} 증가합니다."
 }

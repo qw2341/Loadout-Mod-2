@@ -58,5 +58,17 @@
   "LOADOUT-BASIC_LOSE_HEALTH.cardText": "Perdez {LoadoutBasicHpLoss:diff()} PV.",
   "LOADOUT-BASIC_ENERGY.title": "Énergie",
   "LOADOUT-BASIC_ENERGY.description": "Confère de l'Énergie.",
-  "LOADOUT-BASIC_ENERGY.cardText": "Gagnez {LoadoutBasicEnergy:energyIcons()}."
+  "LOADOUT-BASIC_ENERGY.cardText": "Gagnez {LoadoutBasicEnergy:energyIcons()}.",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.title": "+ Dégâts à l'utilisation",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.description": "Augmente les dégâts de cette carte lorsqu'elle est jouée.",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.cardText": "Augmentez les dégâts de cette carte de {LoadoutImprovementDamageOnPlay:diff()} jusqu'à la fin du combat.",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.title": "+ Tous les dégâts à l'utilisation",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.description": "Augmente les dégâts de toutes les cartes du même ID lorsqu'elle est jouée.",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.cardText": "Augmentez les dégâts de toutes les cartes ayant le même ID de {LoadoutImprovementAllDamageOnPlay:diff()} jusqu'à la fin du combat.",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.title": "+ Dégâts permanents à l'utilisation",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.description": "Augmente définitivement les dégâts de cette carte lorsqu'elle est jouée.",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.cardText": "Augmentez les dégâts de cette carte de {LoadoutImprovementPermanentDamageOnPlay:diff()} de façon permanente.",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.title": "+ Dégâts permanents en Coup de grâce",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.description": "Augmente définitivement les dégâts de cette carte en cas de [gold]Coup de grâce[/gold].",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.cardText": "[gold]Coup de grâce[/gold] : augmentez les dégâts de cette carte de {LoadoutImprovementPermanentDamageOnFatal:diff()} de façon permanente."
 }

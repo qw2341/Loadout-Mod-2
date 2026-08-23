@@ -42,7 +42,11 @@ public static class LoadoutKeywordRegistry
         BasicExhaustKeyword.Instance,
         BasicHealKeyword.Instance,
         BasicLoseHealthKeyword.Instance,
-        BasicEnergyKeyword.Instance
+        BasicEnergyKeyword.Instance,
+        DamageOnPlayKeyword.Instance,
+        AllDamageOnPlayKeyword.Instance,
+        PermanentDamageOnPlayKeyword.Instance,
+        PermanentDamageOnFatalKeyword.Instance
     ];
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
@@ -66,6 +70,12 @@ public static class LoadoutKeywordRegistry
             .ToArray();
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
+        FatalModels =
+        Models
+            .Where(model => model.HasFatalEffect)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
         TargetChangingModels =
         Models
             .Where(model => model.ChangesTargeting)
@@ -81,6 +91,9 @@ public static class LoadoutKeywordRegistry
 
     public static IReadOnlyList<LoadoutKeywordModel> WithUnblockedDamageEffect =>
         UnblockedDamageModels;
+
+    public static IReadOnlyList<LoadoutKeywordModel> WithFatalEffect =>
+        FatalModels;
 
     public static bool TryGet(
         CardKeyword keyword,
@@ -134,6 +147,29 @@ public static class LoadoutKeywordRegistry
         }
 
         return false;
+    }
+
+    public static bool HasFatalEffect(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in FatalModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static void ApplyFatalEffects(CardModel card, int fatalCount)
+    {
+        if (fatalCount <= 0)
+            return;
+
+        foreach (LoadoutKeywordModel model in FatalModels)
+        {
+            if (model.IsEnabled(card))
+                model.AfterFatal(card, fatalCount);
+        }
     }
 
     public static string GetTitle(LoadoutKeywordModel model)

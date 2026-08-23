@@ -58,5 +58,17 @@
   "LOADOUT-BASIC_LOSE_HEALTH.cardText": "失去{LoadoutBasicHpLoss:diff()}点生命。",
   "LOADOUT-BASIC_ENERGY.title": "能量",
   "LOADOUT-BASIC_ENERGY.description": "获得能量。",
-  "LOADOUT-BASIC_ENERGY.cardText": "获得{LoadoutBasicEnergy:energyIcons()}。"
+  "LOADOUT-BASIC_ENERGY.cardText": "获得{LoadoutBasicEnergy:energyIcons()}。",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.title": "+ 打出时伤害",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.description": "打出时增加这张牌的伤害。",
+  "LOADOUT-IMPROVEMENT_DAMAGE_ON_PLAY.cardText": "将这张牌在本场战斗中的伤害增加{LoadoutImprovementDamageOnPlay:diff()}点。",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.title": "+ 打出时所有同名牌伤害",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.description": "打出时增加所有同ID卡牌的伤害。",
+  "LOADOUT-IMPROVEMENT_ALL_DAMAGE_ON_PLAY.cardText": "本场战斗中，所有同ID卡牌的伤害增加{LoadoutImprovementAllDamageOnPlay:diff()}点。",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.title": "+ 打出时永久伤害",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.description": "打出时永久增加这张牌的伤害。",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY.cardText": "这张牌在本局游戏中的伤害永久性增加{LoadoutImprovementPermanentDamageOnPlay:diff()}点。",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.title": "+ 斩杀时永久伤害",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.description": "[gold]斩杀[/gold]时，永久增加这张牌的伤害。",
+  "LOADOUT-IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL.cardText": "[gold]斩杀[/gold]时，这张牌在本局游戏中的伤害永久性增加{LoadoutImprovementPermanentDamageOnFatal:diff()}点。"
 }

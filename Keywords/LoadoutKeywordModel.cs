@@ -29,7 +29,8 @@ public enum LoadoutKeywordPresentation
 public enum LoadoutKeywordEditorSection
 {
     Default,
-    Basic
+    Basic,
+    Improvement
 }
 
 public sealed record LoadoutKeywordDynamicVarDefinition(
@@ -77,6 +78,8 @@ public abstract class LoadoutKeywordModel
     public virtual bool HasOnPlayEffect => false;
 
     public virtual bool HasUnblockedDamageEffect => false;
+
+    public virtual bool HasFatalEffect => false;
 
     public virtual bool ChangesTargeting => false;
 
@@ -133,6 +136,10 @@ public abstract class LoadoutKeywordModel
         decimal unblockedDamage)
     {
         return Task.CompletedTask;
+    }
+
+    public virtual void AfterFatal(CardModel card, int fatalCount)
+    {
     }
 
     internal static MethodInfo GetDescriptionTarget()
