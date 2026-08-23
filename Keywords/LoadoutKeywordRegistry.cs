@@ -31,6 +31,8 @@ public static class LoadoutKeywordRegistry
         HeavenlyKeyword.Instance,
         BasicDamageKeyword.Instance,
         BasicDamageAoeKeyword.Instance,
+        BasicMultiHitKeyword.Instance,
+        BasicMultiHitAoeKeyword.Instance,
         BasicBlockKeyword.Instance,
         BasicDrawKeyword.Instance,
         BasicDiscardKeyword.Instance,
@@ -52,6 +54,12 @@ public static class LoadoutKeywordRegistry
         PostOnPlayModels =
         Models
             .Where(model => model.HasOnPlayEffect)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        TargetChangingModels =
+        Models
+            .Where(model => model.ChangesTargeting)
             .ToArray();
 
     public static IReadOnlyList<LoadoutKeywordModel> All => Models;
@@ -103,6 +111,17 @@ public static class LoadoutKeywordRegistry
     {
         return TryGet(keyword, out LoadoutKeywordModel model)
                && model.Presentation == LoadoutKeywordPresentation.DescriptionOnly;
+    }
+
+    public static bool ChangesTargeting(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in TargetChangingModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
     }
 
     public static string GetTitle(LoadoutKeywordModel model)

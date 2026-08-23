@@ -13,35 +13,46 @@ using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.ValueProps;
 
-public sealed class BasicDamageKeyword : LoadoutBasicKeywordModel
+public sealed class BasicMultiHitKeyword : LoadoutBasicKeywordModel
 {
-    public const string AmountVar = "LoadoutBasicDamage";
+    public const string DamageAmountVar = "LoadoutBasicMultiHitDamage";
+    public const string RepeatAmountVar = "LoadoutBasicMultiHitRepeat";
 
     private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition>
         VariableDefinitions =
         [
             new(
-                AmountVar,
+                DamageAmountVar,
                 1m,
                 0,
                 int.MaxValue,
-                "DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE",
-                (name, value) => new DamageVar(name, value, ValueProp.Move))
+                "DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_DAMAGE",
+                (name, value) =>
+                    new DamageVar(name, value, ValueProp.Move)),
+            new(
+                RepeatAmountVar,
+                1m,
+                0,
+                int.MaxValue,
+                "DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_REPEAT",
+                (name, value) =>
+                    new RepeatVar(name, decimal.ToInt32(value)))
         ];
 
-    public static BasicDamageKeyword Instance { get; } = new();
+    public static BasicMultiHitKeyword Instance { get; } = new();
 
-    private BasicDamageKeyword()
+    private BasicMultiHitKeyword()
     {
     }
 
-    public override CardKeyword Keyword => LoadoutKeywords.BasicDamage;
+    public override CardKeyword Keyword => LoadoutKeywords.BasicMultiHit;
 
-    public override string StorageKey => LoadoutKeywords.BasicDamageKey;
+    public override string StorageKey => LoadoutKeywords.BasicMultiHitKey;
 
-    public override string TitleLocKey => "LOADOUT-BASIC_DAMAGE.title";
+    public override string TitleLocKey => "LOADOUT-BASIC_MULTI_HIT.title";
 
-    public override string? CardTextLocKey => "LOADOUT-BASIC_DAMAGE.cardText";
+    public override string? CardTextLocKey =>
+        "LOADOUT-BASIC_MULTI_HIT.cardText";
 
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         VariableDefinitions;
@@ -54,8 +65,9 @@ public sealed class BasicDamageKeyword : LoadoutBasicKeywordModel
         CardPlay cardPlay,
         object? capturedState)
     {
-        DynamicVar amount = GetAmount(card, AmountVar);
-        if (amount.BaseValue <= 0m)
+        DynamicVar damage = GetAmount(card, DamageAmountVar);
+        int repeats = Math.Max(0, GetAmount(card, RepeatAmountVar).IntValue);
+        if (damage.BaseValue <= 0m || repeats == 0)
             return;
 
         Creature? target = cardPlay.Target;
@@ -67,7 +79,8 @@ public sealed class BasicDamageKeyword : LoadoutBasicKeywordModel
         if (target is null || target.IsDead)
             return;
 
-        await DamageCmd.Attack(amount.BaseValue)
+        await DamageCmd.Attack(damage.BaseValue)
+            .WithHitCount(repeats)
             .FromCard(card, cardPlay)
             .Targeting(target)
             .WithHitFx("vfx/vfx_attack_slash")

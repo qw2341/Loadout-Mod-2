@@ -221,6 +221,10 @@ DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしき�
 CARD_MOD_LOADOUT_BASIC_KEYWORDS,Loadout Basic Keywords,Loadout 基础关键词,Mots-clés de base Loadout,Loadout基本キーワード,Loadout 기본 키워드,Palabras clave básicas de Loadout
 DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
 DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE_AOE,AOE Damage,群体伤害,Dégâts de zone,全体ダメージ,광역 피해,Daño en área
+DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_DAMAGE,Damage per Hit,每次伤害,Dégâts par coup,1ヒットのダメージ,타격당 피해,Daño por golpe
+DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_REPEAT,Hits,次数,Nombre de coups,ヒット回数,타격 횟수,Golpes
+DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_AOE_DAMAGE,AOE Damage per Hit,每次群体伤害,Dégâts de zone par coup,1ヒットの全体ダメージ,타격당 광역 피해,Daño en área por golpe
+DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_AOE_REPEAT,AOE Hits,群体伤害次数,Nombre de coups de zone,全体ヒット回数,광역 타격 횟수,Golpes en área
 DYNAMIC_VAR_LOADOUT_BASIC_BLOCK,Block,格挡,Blocage,ブロック,방어도,Bloqueo
 DYNAMIC_VAR_LOADOUT_BASIC_DRAW,Cards to Draw,抽牌数,Cartes à piocher,引くカード枚数,뽑을 카드 수,Cartas a robar
 DYNAMIC_VAR_LOADOUT_BASIC_DISCARD,Cards to Discard,丢弃牌数,Cartes à défausser,捨てるカード枚数,버릴 카드 수,Cartas a descartar

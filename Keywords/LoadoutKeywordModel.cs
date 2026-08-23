@@ -76,6 +76,8 @@ public abstract class LoadoutKeywordModel
 
     public virtual bool HasOnPlayEffect => false;
 
+    public virtual bool ChangesTargeting => false;
+
     public bool IsEnabled(
         CardModel card,
         IReadOnlyDictionary<string, bool>? overrides = null)
