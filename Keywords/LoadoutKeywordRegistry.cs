@@ -29,6 +29,7 @@ public static class LoadoutKeywordRegistry
         InfiniteUpgradeKeyword.Instance,
         LessonLearnedKeyword.Instance,
         HeavenlyKeyword.Instance,
+        AltHeavenlyKeyword.Instance,
         LifestealKeyword.Instance,
         WallopKeyword.Instance,
         BasicDamageKeyword.Instance,

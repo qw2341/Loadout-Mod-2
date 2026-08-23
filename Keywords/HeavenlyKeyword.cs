@@ -50,17 +50,28 @@ internal static class HeavenlyResolveEnergyXValuePatch
     [HarmonyPostfix]
     private static void Postfix(CardModel __instance, ref int __result)
     {
-        if (!__instance.EnergyCost.CostsX
-            || !LoadoutKeywords.Has(__instance, LoadoutKeywords.Heavenly)
-            || !LoadoutKeywordRegistry.TryGetValue(
+        if (!__instance.EnergyCost.CostsX)
+            return;
+
+        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.AltHeavenly)
+            && LoadoutKeywordRegistry.TryGetValue(
                 __instance,
-                HeavenlyKeyword.EnergyVar,
-                out DynamicVar energyVar)
-            || __result < energyVar.IntValue)
+                AltHeavenlyKeyword.EnergyVar,
+                out DynamicVar altEnergyVar)
+            && __result >= altEnergyVar.IntValue)
         {
+            __result = AltHeavenlyKeyword.Factorialize(__result);
             return;
         }
 
-        __result *= 2;
+        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.Heavenly)
+            && LoadoutKeywordRegistry.TryGetValue(
+                __instance,
+                HeavenlyKeyword.EnergyVar,
+                out DynamicVar energyVar)
+            && __result >= energyVar.IntValue)
+        {
+            __result *= 2;
+        }
     }
 }

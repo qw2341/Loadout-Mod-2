@@ -19,6 +19,7 @@ public static class LoadoutKeywords
     public const string InfiniteUpgradeKey = "InfiniteUpgrade";
     public const string LessonLearnedKey = "LessonLearned";
     public const string HeavenlyKey = "Heavenly";
+    public const string AltHeavenlyKey = "AltHeavenly";
     public const string LifestealKey = "Lifesteal";
     public const string WallopKey = "Wallop";
     public const string BasicDamageKey = "BasicDamage";
@@ -56,6 +57,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("HEAVENLY")]
     public static CardKeyword Heavenly;
+
+    [CustomEnum("ALT_HEAVENLY")]
+    public static CardKeyword AltHeavenly;
 
     [CustomEnum("LIFESTEAL")]
     public static CardKeyword Lifesteal;
