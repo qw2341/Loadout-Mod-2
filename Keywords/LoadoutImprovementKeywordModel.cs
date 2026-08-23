@@ -11,8 +11,6 @@ using MegaCrit.Sts2.Core.Models;
 
 public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
 {
-    private const string DamageVarName = "Damage";
-
     public override LoadoutKeywordPresentation Presentation =>
         LoadoutKeywordPresentation.DescriptionOnly;
 
@@ -28,16 +26,7 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
 
     protected static bool IncreaseDamage(CardModel card, decimal amount)
     {
-        if (amount <= 0m
-            || card.IsCanonical
-            || !card.DynamicVars.TryGetValue(DamageVarName, out DynamicVar? damage)
-            || damage is not DamageVar)
-        {
-            return false;
-        }
-
-        damage.BaseValue += amount;
-        return true;
+        return IncreaseDamage(card, amount, persistentDelta: null);
     }
 
     protected static void IncreaseDamagePermanently(
@@ -54,17 +43,39 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
 
     private static void IncreasePersistentCopy(CardModel card, decimal amount)
     {
-        if (!IncreaseDamage(card, amount))
-            return;
-
         CardModificationDelta delta =
             CardModificationFields.TryGet(card, out CardModificationCardData data)
                 ? data.Delta.Clone()
                 : new CardModificationDelta();
-        delta.DynamicVarDeltas.TryGetValue(
-            DamageVarName,
-            out decimal existingIncrease);
-        delta.DynamicVarDeltas[DamageVarName] = existingIncrease + amount;
-        CardModificationFields.SetDelta(card, delta);
+        if (IncreaseDamage(card, amount, delta))
+            CardModificationFields.SetDelta(card, delta);
+    }
+
+    private static bool IncreaseDamage(
+        CardModel card,
+        decimal amount,
+        CardModificationDelta? persistentDelta)
+    {
+        if (amount <= 0m || card.IsCanonical)
+            return false;
+
+        bool changed = false;
+        foreach ((string name, DynamicVar dynamicVar) in card.DynamicVars)
+        {
+            if (dynamicVar is not DamageVar damage)
+                continue;
+
+            damage.BaseValue += amount;
+            changed = true;
+            if (persistentDelta is null)
+                continue;
+
+            persistentDelta.DynamicVarDeltas.TryGetValue(
+                name,
+                out decimal existingIncrease);
+            persistentDelta.DynamicVarDeltas[name] = existingIncrease + amount;
+        }
+
+        return changed;
     }
 }
