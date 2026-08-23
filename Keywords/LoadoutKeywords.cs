@@ -57,10 +57,10 @@ public static class LoadoutKeywords
     [CustomEnum("HEAVENLY")]
     public static CardKeyword Heavenly;
 
-    [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
+    [CustomEnum("LIFESTEAL")]
     public static CardKeyword Lifesteal;
 
-    [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
+    [CustomEnum("WALLOP")]
     public static CardKeyword Wallop;
 
     [CustomEnum("BASIC_DAMAGE")]

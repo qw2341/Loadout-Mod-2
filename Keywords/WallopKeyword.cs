@@ -22,6 +22,11 @@ public sealed class WallopKeyword : LoadoutKeywordModel
 
     public override string TitleLocKey => "LOADOUT-WALLOP.title";
 
+    public override LoadoutKeywordPresentation Presentation =>
+        LoadoutKeywordPresentation.DescriptionOnly;
+
+    public override string? CardTextLocKey => "LOADOUT-WALLOP.cardText";
+
     public override bool HasUnblockedDamageEffect => true;
 
     public override Task AfterUnblockedDamageDealt(

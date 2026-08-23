@@ -21,6 +21,12 @@ public sealed class LifestealKeyword : LoadoutKeywordModel
 
     public override string TitleLocKey => "LOADOUT-LIFESTEAL.title";
 
+    public override LoadoutKeywordPresentation Presentation =>
+        LoadoutKeywordPresentation.DescriptionOnly;
+
+    public override string? CardTextLocKey =>
+        "LOADOUT-LIFESTEAL.cardText";
+
     public override bool HasUnblockedDamageEffect => true;
 
     public override Task AfterUnblockedDamageDealt(
