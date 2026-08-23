@@ -76,6 +76,8 @@ public abstract class LoadoutKeywordModel
 
     public virtual bool HasOnPlayEffect => false;
 
+    public virtual bool HasUnblockedDamageEffect => false;
+
     public virtual bool ChangesTargeting => false;
 
     public bool IsEnabled(
@@ -122,6 +124,13 @@ public abstract class LoadoutKeywordModel
         PlayerChoiceContext choiceContext,
         CardPlay cardPlay,
         object? capturedState)
+    {
+        return Task.CompletedTask;
+    }
+
+    public virtual Task AfterUnblockedDamageDealt(
+        CardModel card,
+        decimal unblockedDamage)
     {
         return Task.CompletedTask;
     }

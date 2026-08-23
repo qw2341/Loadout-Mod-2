@@ -19,6 +19,8 @@ public static class LoadoutKeywords
     public const string InfiniteUpgradeKey = "InfiniteUpgrade";
     public const string LessonLearnedKey = "LessonLearned";
     public const string HeavenlyKey = "Heavenly";
+    public const string LifestealKey = "Lifesteal";
+    public const string WallopKey = "Wallop";
     public const string BasicDamageKey = "BasicDamage";
     public const string BasicDamageAoeKey = "BasicDamageAoe";
     public const string BasicMultiHitKey = "BasicMultiHit";
@@ -54,6 +56,12 @@ public static class LoadoutKeywords
 
     [CustomEnum("HEAVENLY")]
     public static CardKeyword Heavenly;
+
+    [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
+    public static CardKeyword Lifesteal;
+
+    [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
+    public static CardKeyword Wallop;
 
     [CustomEnum("BASIC_DAMAGE")]
     public static CardKeyword BasicDamage;

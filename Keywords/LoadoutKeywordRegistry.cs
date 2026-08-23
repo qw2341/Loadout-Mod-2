@@ -29,6 +29,8 @@ public static class LoadoutKeywordRegistry
         InfiniteUpgradeKeyword.Instance,
         LessonLearnedKeyword.Instance,
         HeavenlyKeyword.Instance,
+        LifestealKeyword.Instance,
+        WallopKeyword.Instance,
         BasicDamageKeyword.Instance,
         BasicDamageAoeKeyword.Instance,
         BasicMultiHitKeyword.Instance,
@@ -57,6 +59,12 @@ public static class LoadoutKeywordRegistry
             .ToArray();
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
+        UnblockedDamageModels =
+        Models
+            .Where(model => model.HasUnblockedDamageEffect)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
         TargetChangingModels =
         Models
             .Where(model => model.ChangesTargeting)
@@ -69,6 +77,9 @@ public static class LoadoutKeywordRegistry
 
     public static IReadOnlyList<LoadoutKeywordModel> WithPostOnPlayEffect =>
         PostOnPlayModels;
+
+    public static IReadOnlyList<LoadoutKeywordModel> WithUnblockedDamageEffect =>
+        UnblockedDamageModels;
 
     public static bool TryGet(
         CardKeyword keyword,
