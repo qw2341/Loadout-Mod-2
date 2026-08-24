@@ -590,8 +590,13 @@ public static class CardModificationRuntime
             card.CurrentUpgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(delta),
             upgradeModification,
-            delta.KeywordOverrides);
-        return MaterializeSpec(baseline, delta, permanent);
+            delta.KeywordOverrides,
+            delta);
+        return MaterializeSpec(
+            baseline,
+            delta,
+            permanent,
+            baseEnergyAppliedBeforeUpgrade: true);
     }
 
     public static void ReapplyTemporaryDelta(CardModel card)
@@ -611,8 +616,13 @@ public static class CardModificationRuntime
             card.CurrentUpgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(data.Delta),
             upgradeModification,
-            data.Delta.KeywordOverrides);
-        CardModificationSpec desired = MaterializeSpec(baseline, data.Delta, permanent);
+            data.Delta.KeywordOverrides,
+            data.Delta);
+        CardModificationSpec desired = MaterializeSpec(
+            baseline,
+            data.Delta,
+            permanent,
+            baseEnergyAppliedBeforeUpgrade: true);
         CopyNativeFields(baseline, card, previous, desired);
         ApplySpecToCard(card, desired);
     }
@@ -913,11 +923,18 @@ public static class CardModificationRuntime
     private static CardModificationSpec MaterializeSpec(
         CardModel baseline,
         CardModificationDelta delta,
-        CardModificationSpec? structuralBaseline = null)
+        CardModificationSpec? structuralBaseline = null,
+        bool baseEnergyAppliedBeforeUpgrade = false)
     {
         CardModificationSpec spec = new()
         {
-            EnergyCost = delta.EnergyOverride ?? (delta.EnergyDelta.HasValue ? baseline.EnergyCost.Canonical + delta.EnergyDelta.Value : null),
+            EnergyCost = baseEnergyAppliedBeforeUpgrade
+                && (delta.EnergyOverride.HasValue || delta.EnergyDelta.HasValue)
+                    ? baseline.EnergyCost.Canonical
+                    : delta.EnergyOverride
+                      ?? (delta.EnergyDelta.HasValue
+                          ? baseline.EnergyCost.Canonical + delta.EnergyDelta.Value
+                          : null),
             BaseReplayCount = delta.BaseReplayCountDelta.HasValue ? baseline.BaseReplayCount + delta.BaseReplayCountDelta.Value : null,
             BaseStarCost = delta.BaseStarCostDelta.HasValue ? baseline.BaseStarCost + delta.BaseStarCostDelta.Value : null,
             PoolId = delta.PoolId,
@@ -1919,7 +1936,8 @@ public static class CardModificationRuntime
         int upgradeLevel,
         bool? infiniteUpgradeOverride = null,
         CardUpgradeModificationSpec? upgradeModification = null,
-        IReadOnlyDictionary<string, bool>? baseKeywordOverrides = null)
+        IReadOnlyDictionary<string, bool>? baseKeywordOverrides = null,
+        CardModificationDelta? baseEnergyDelta = null)
     {
         CardModel baseline;
         using (SuppressPermanentApplication())
@@ -1932,6 +1950,27 @@ public static class CardModificationRuntime
         {
             ApplyKeywordOverrides(baseline, baseKeywordOverrides);
             LoadoutKeywordRegistry.SynchronizeDynamicVars(baseline);
+        }
+
+        if (baseEnergyDelta is not null)
+        {
+            XCostKeywordMechanics.SynchronizeEnergyCost(
+                baseline,
+                baseEnergyDelta.KeywordOverrides,
+                baseEnergyDelta.EnergyOverride);
+            if (!baseline.EnergyCost.CostsX)
+            {
+                if (baseEnergyDelta.EnergyOverride.HasValue)
+                    SetEnergyCost(baseline, baseEnergyDelta.EnergyOverride.Value);
+                else if (baseEnergyDelta.EnergyDelta.HasValue)
+                {
+                    SetEnergyCost(
+                        baseline,
+                        AddIntDeltaClamped(
+                            baseline.EnergyCost.Canonical,
+                            baseEnergyDelta.EnergyDelta.Value));
+                }
+            }
         }
 
         if (infiniteUpgradeOverride.HasValue)
@@ -1968,7 +2007,14 @@ public static class CardModificationRuntime
         {
             for (int i = 0; i < count && baseline.IsUpgradable; i++)
             {
+                using CardUpgradeModificationRuntimePatches.EnergyReplayScope energyReplay =
+                    CardUpgradeModificationRuntimePatches.BeginEnergyReplay(baseline);
                 baseline.UpgradeInternal();
+                if (upgradeModification?.EnergyCostDelta.HasValue != true
+                    && energyReplay.UpgradedCost.HasValue)
+                {
+                    SetEnergyCost(baseline, energyReplay.UpgradedCost.Value);
+                }
                 baseline.FinalizeUpgradeInternal();
             }
         }

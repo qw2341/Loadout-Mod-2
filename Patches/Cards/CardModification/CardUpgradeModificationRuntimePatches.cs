@@ -19,7 +19,11 @@ internal static class CardUpgradeModificationRuntimePatches
     [ThreadStatic]
     private static Stack<CardUpgradeModificationSpec?>? _overrides;
 
+    [ThreadStatic]
+    private static Stack<EnergyReplayScope>? _energyReplays;
+
     private static bool _enabled;
+    private static bool _energyEnabled;
 
     public static void Enable()
     {
@@ -47,6 +51,15 @@ internal static class CardUpgradeModificationRuntimePatches
             prefix: new HarmonyMethod(
                 typeof(CardUpgradeModificationRecalculationPatch),
                 nameof(CardUpgradeModificationRecalculationPatch.Prefix)));
+        EnableEnergyCostPatch();
+        _enabled = true;
+    }
+
+    private static void EnableEnergyCostPatch()
+    {
+        if (_energyEnabled)
+            return;
+
         Harmony.Patch(
             AccessTools.Method(
                 typeof(CardEnergyCost),
@@ -57,7 +70,7 @@ internal static class CardUpgradeModificationRuntimePatches
             prefix: new HarmonyMethod(
                 typeof(CardUpgradeModificationEnergyCostPatch),
                 nameof(CardUpgradeModificationEnergyCostPatch.Prefix)));
-        _enabled = true;
+        _energyEnabled = true;
     }
 
     public static IDisposable BeginOverride(
@@ -76,6 +89,21 @@ internal static class CardUpgradeModificationRuntimePatches
         _overrides ??= new Stack<CardUpgradeModificationSpec?>();
         _overrides.Push(value);
         return new OverrideScope();
+    }
+
+    public static EnergyReplayScope BeginEnergyReplay(CardModel card)
+    {
+        EnableEnergyCostPatch();
+        _energyReplays ??= new Stack<EnergyReplayScope>();
+        EnergyReplayScope scope = new(card.EnergyCost);
+        _energyReplays.Push(scope);
+        return scope;
+    }
+
+    internal static void RecordEnergyUpgrade(CardEnergyCost energyCost, int addend)
+    {
+        if (_energyReplays is { Count: > 0 })
+            _energyReplays.Peek().Record(energyCost, addend);
     }
 
     public static CardUpgradeModificationSpec Resolve(CardModel card)
@@ -99,7 +127,9 @@ internal static class CardUpgradeModificationRuntimePatches
     {
         Harmony.UnpatchAll(HarmonyId);
         _enabled = false;
+        _energyEnabled = false;
         _overrides?.Clear();
+        _energyReplays?.Clear();
         if (PermanentCardModificationStore.HasAnyUpgradeModifications)
             Enable();
     }
@@ -108,7 +138,9 @@ internal static class CardUpgradeModificationRuntimePatches
     {
         Harmony.UnpatchAll(HarmonyId);
         _enabled = false;
+        _energyEnabled = false;
         _overrides?.Clear();
+        _energyReplays?.Clear();
     }
 
     private sealed class OverrideScope : IDisposable
@@ -123,6 +155,50 @@ internal static class CardUpgradeModificationRuntimePatches
             _disposed = true;
             if (_overrides is { Count: > 0 })
                 _overrides.Pop();
+        }
+    }
+
+    public sealed class EnergyReplayScope : IDisposable
+    {
+        private readonly CardEnergyCost _energyCost;
+        private bool _disposed;
+
+        internal EnergyReplayScope(CardEnergyCost energyCost)
+        {
+            _energyCost = energyCost;
+            UpgradedCost = energyCost.CostsX
+                ? null
+                : energyCost.Canonical;
+        }
+
+        public int? UpgradedCost { get; private set; }
+
+        internal void Record(CardEnergyCost energyCost, int addend)
+        {
+            if (!ReferenceEquals(_energyCost, energyCost)
+                || !UpgradedCost.HasValue
+                || addend == 0)
+            {
+                return;
+            }
+
+            UpgradedCost = (int)Math.Clamp(
+                (long)UpgradedCost.Value + addend,
+                0L,
+                int.MaxValue);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            if (_energyReplays is { Count: > 0 }
+                && ReferenceEquals(_energyReplays.Peek(), this))
+            {
+                _energyReplays.Pop();
+            }
         }
     }
 }
@@ -183,6 +259,10 @@ internal static class CardUpgradeModificationEnergyCostPatch
 {
     public static void Prefix(CardEnergyCost __instance, int addend)
     {
+        CardUpgradeModificationRuntimePatches.RecordEnergyUpgrade(
+            __instance,
+            addend);
+
         CardModel? card = CardUpgradeModificationContextPatch.ActiveCard;
         int? energyCost =
             CardUpgradeModificationContextPatch.LoadoutUpgradedEnergyCost;
