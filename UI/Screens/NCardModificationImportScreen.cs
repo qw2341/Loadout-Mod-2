@@ -36,7 +36,10 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     private string? _suppressActivationId;
     private NPreviewCardHolder? _upgradePreview;
     private NInspectCardScreen? _foregroundInspect;
-    private NModalContainer? _hiddenModal;
+    private Node? _inspectOriginalParent;
+    private int _inspectOriginalIndex;
+    private int _inspectOriginalZIndex;
+    private bool _inspectOriginalZAsRelative;
     private bool _completed;
 
     public Control? DefaultFocusedControl => GetNodeOrNull<Control>(CancelButtonPath);
@@ -76,7 +79,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     public override void _ExitTree()
     {
         HideUpgradePreview();
-        RestoreModalAfterInspect();
+        RestoreInspectParent();
         if (!_completed)
             Complete(false, closeModal: false);
         base._ExitTree();
@@ -84,7 +87,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
 
     public override void _Input(InputEvent inputEvent)
     {
-        if (!IsVisibleInTree())
+        if (!IsVisibleInTree() || _foregroundInspect is { Visible: true })
             return;
         base._Input(inputEvent);
         if (!IsScreenActive
@@ -116,11 +119,22 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
             CreateView = (entry, _) => CreateCardView(entry),
             ViewReady = (entry, view) =>
             {
-                ModificationImportScreenUi.RefreshExactCardView(view, entry.GetIncomingPreview());
+                RefreshEntryCard(entry, view, refreshDeferred: false);
                 EnsureSmithBadge(entry, view);
                 ApplyEntryVisual(entry, view);
+                Callable.From(() =>
+                {
+                    if (!GodotObject.IsInstanceValid(view))
+                        return;
+                    RefreshEntryCard(entry, view, refreshDeferred: false);
+                    ApplyEntryVisual(entry, view);
+                }).CallDeferred();
             },
-            UpdateView = (entry, view, _) => ApplyEntryVisual(entry, view),
+            UpdateView = (entry, view, _) =>
+            {
+                RefreshEntryCard(entry, view, refreshDeferred: false);
+                ApplyEntryVisual(entry, view);
+            },
             BindActivationWithCleanup = (entry, view, activate) =>
                 CardPrinter.BindCardActivationWithCleanup(
                     view,
@@ -191,6 +205,12 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
             return;
         }
 
+        if (entry.HasConflict)
+        {
+            InspectEntry(entry);
+            return;
+        }
+
         entry.Toggle();
         RefreshEntry(entry);
     }
@@ -205,7 +225,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
 
         CardModel? preview = entry.GetIncomingPreview();
         if (preview is not null && NGame.Instance is { } game)
-            OpenInspectInForeground(game.GetInspectCardScreen(), preview);
+            OpenInspectOnTop(game.GetInspectCardScreen(), preview);
     }
 
     private void OnConflictResolved(CardModificationImportEntry entry)
@@ -245,22 +265,32 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
         }
     }
 
-    private void OpenInspectInForeground(NInspectCardScreen inspect, CardModel preview)
+    private void OpenInspectOnTop(NInspectCardScreen inspect, CardModel preview)
     {
-        if (inspect.Visible || NModalContainer.Instance is not { } modal)
+        if (inspect.Visible
+            || inspect.GetParent() is not { } originalParent
+            || NModalContainer.Instance is not { } modal)
+        {
             return;
+        }
 
         _foregroundInspect = inspect;
-        _hiddenModal = modal;
+        _inspectOriginalParent = originalParent;
+        _inspectOriginalIndex = inspect.GetIndex();
+        _inspectOriginalZIndex = inspect.ZIndex;
+        _inspectOriginalZAsRelative = inspect.ZAsRelative;
         inspect.VisibilityChanged += OnForegroundInspectVisibilityChanged;
-        modal.Hide();
+        inspect.Reparent(modal, keepGlobalTransform: false);
+        inspect.ZAsRelative = true;
+        inspect.ZIndex = 700;
+        modal.MoveChild(inspect, modal.GetChildCount() - 1);
         try
         {
             inspect.Open([preview], 0, false);
         }
         catch
         {
-            RestoreModalAfterInspect();
+            RestoreInspectParent();
             throw;
         }
     }
@@ -269,24 +299,40 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     {
         if (_foregroundInspect is null || _foregroundInspect.Visible)
             return;
-        RestoreModalAfterInspect();
+        RestoreInspectParent();
     }
 
-    private void RestoreModalAfterInspect()
+    private void RestoreInspectParent()
     {
         if (_foregroundInspect is not null && GodotObject.IsInstanceValid(_foregroundInspect))
+        {
             _foregroundInspect.VisibilityChanged -= OnForegroundInspectVisibilityChanged;
-        if (_hiddenModal is not null && GodotObject.IsInstanceValid(_hiddenModal))
-            _hiddenModal.Show();
+            if (_inspectOriginalParent is not null
+                && GodotObject.IsInstanceValid(_inspectOriginalParent)
+                && !ReferenceEquals(_foregroundInspect.GetParent(), _inspectOriginalParent))
+            {
+                _foregroundInspect.Reparent(_inspectOriginalParent, keepGlobalTransform: false);
+                _inspectOriginalParent.MoveChild(
+                    _foregroundInspect,
+                    Math.Clamp(_inspectOriginalIndex, 0, _inspectOriginalParent.GetChildCount() - 1));
+            }
+            _foregroundInspect.ZIndex = _inspectOriginalZIndex;
+            _foregroundInspect.ZAsRelative = _inspectOriginalZAsRelative;
+        }
         _foregroundInspect = null;
-        _hiddenModal = null;
+        _inspectOriginalParent = null;
     }
 
     private void ApplyBulk(ModificationImportDecision decision)
     {
         foreach (CardModificationImportEntry entry in _session!.Entries)
+        {
+            if (!entry.HasConflict)
+                continue;
             entry.SetDecision(decision);
-        RefreshMaterializedEntries();
+            RefreshItemView(entry.Id.ToString());
+        }
+        RefreshConfirmAvailability();
     }
 
     private void MergeNonConflicts()
@@ -294,7 +340,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
         foreach (CardModificationImportEntry entry in _session!.Entries)
         {
             entry.SetDecision(entry.HasConflict
-                ? ModificationImportDecision.Unresolved
+                ? ModificationImportDecision.KeepLocal
                 : ModificationImportDecision.UseIncoming);
         }
         RefreshMaterializedEntries();
@@ -329,13 +375,24 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
             return;
         }
 
-        if (entry.HasConflict && entry.Decision == ModificationImportDecision.Unresolved)
+        Color? highlightColor = entry.HasConflict
+                                && entry.Decision == ModificationImportDecision.Unresolved
+            ? entry.HasPortraitOnlyConflict
+                ? new Color(0.18f, 1f, 0.34f, 1f)
+                : NCardHighlight.red
+            : !entry.HasConflict && entry.IsSelected
+                ? NCardHighlight.gold
+                : null;
+        if (highlightColor is { } color)
         {
-            card.CardHighlight.SelfModulate = new Color(1f, 0.28f, 0.14f, 1f);
+            card.CardHighlight.SelfModulate = Colors.White;
+            card.CardHighlight.Modulate = color;
             card.CardHighlight.AnimShow();
         }
         else
         {
+            card.CardHighlight.SelfModulate = Colors.White;
+            card.CardHighlight.Modulate = NCardHighlight.playableColor;
             card.CardHighlight.AnimHideInstantly();
         }
     }
@@ -401,8 +458,11 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     private void BeginPaint(Vector2 pointer)
     {
         _pressEntry = FindEntryAt(pointer);
-        if (_pressEntry is null)
+        if (_pressEntry is null || _pressEntry.HasConflict)
+        {
+            _pressEntry = null;
             return;
+        }
 
         _pressPosition = pointer;
         _paintIncoming = !_pressEntry.IsSelected;
@@ -428,7 +488,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
 
     private void Paint(CardModificationImportEntry entry)
     {
-        if (!_paintedIds.Add(entry.Id.ToString()))
+        if (entry.HasConflict || !_paintedIds.Add(entry.Id.ToString()))
             return;
         entry.SetDecision(_paintIncoming
             ? ModificationImportDecision.UseIncoming
@@ -462,6 +522,17 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
             }
         }
         return null;
+    }
+
+    private static void RefreshEntryCard(
+        CardModificationImportEntry entry,
+        Control view,
+        bool refreshDeferred = true)
+    {
+        ModificationImportScreenUi.RefreshExactCardView(
+            view,
+            entry.GetIncomingPreview(),
+            refreshDeferred);
     }
 
     private void OnConfirmed(IReadOnlyList<IGenericSelectItem> _) => Complete(true, closeModal: true);

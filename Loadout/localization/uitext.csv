@@ -741,9 +741,9 @@ CARD_PORTRAIT_SAVE_TEMPORARY,Save Temporary,临时保存,Enregistrer temporairem
 CARD_PORTRAIT_SAVE_PERMANENT,Save Permanent,永久保存,Enregistrer définitivement,永久保存,영구 저장,Guardar permanentemente
 BACK,Back,返回,Retour,戻る,뒤로,Atrás
 MOD_IMPORT_ABORT,Abort Operation,中止操作,Abandonner l’opération,操作を中止,작업 중단,Abortar operación
-MOD_IMPORT_KEEP_LOCAL,Keep All Local Changes,保留所有本地修改,Conserver toutes les modifications locales,ローカルの変更をすべて保持,모든 로컬 변경 유지,Conservar todos los cambios locales
+MOD_IMPORT_KEEP_LOCAL,Keep Local for Conflicts,冲突使用本地版本,Garder la version locale en cas de conflit,競合ではローカル版を使用,충돌 시 로컬 버전 유지,Mantener local en conflictos
 MOD_IMPORT_MERGE,Merge Non-Conflicting Changes,合并无冲突的修改,Fusionner les modifications sans conflit,競合しない変更を統合,충돌하지 않는 변경 병합,Fusionar cambios sin conflictos
-MOD_IMPORT_ACCEPT_INCOMING,Accept All Incoming Changes,接受所有传入修改,Accepter toutes les modifications reçues,受信した変更をすべて適用,모든 가져온 변경 수락,Aceptar todos los cambios entrantes
+MOD_IMPORT_ACCEPT_INCOMING,Use Imported for Conflicts,冲突使用导入版本,Utiliser la version importée en cas de conflit,競合ではインポート版を使用,충돌 시 가져온 버전 사용,Usar importado en conflictos
 MOD_IMPORT_CARD_CONFLICT,Choose Card Version,选择卡牌版本,Choisir la version de la carte,カードのバージョンを選択,카드 버전 선택,Elegir versión de la carta
 MOD_IMPORT_RELIC_CONFLICT,Choose Relic Version,选择遗物版本,Choisir la version de la relique,レリックのバージョンを選択,유물 버전 선택,Elegir versión de la reliquia
 MOD_IMPORT_RELIC_DETAILS,Relic Modification,遗物修改,Modification de relique,レリック変更,유물 변경,Modificación de reliquia

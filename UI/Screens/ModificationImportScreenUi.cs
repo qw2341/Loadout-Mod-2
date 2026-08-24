@@ -42,7 +42,7 @@ public static class ModificationImportScreenUi
         buttons.AddThemeConstantOverride("separation", 18);
         buttons.AddChild(CreateButton(
             "KeepLocal",
-            LocMan.Loc("MOD_IMPORT_KEEP_LOCAL", "Keep All Local Changes"),
+            LocMan.Loc("MOD_IMPORT_KEEP_LOCAL", "Keep Local for Conflicts"),
             keepLocal));
         buttons.AddChild(CreateButton(
             "Merge",
@@ -50,22 +50,10 @@ public static class ModificationImportScreenUi
             merge));
         buttons.AddChild(CreateButton(
             "AcceptIncoming",
-            LocMan.Loc("MOD_IMPORT_ACCEPT_INCOMING", "Accept All Incoming Changes"),
+            LocMan.Loc("MOD_IMPORT_ACCEPT_INCOMING", "Use Imported for Conflicts"),
             acceptIncoming));
         margin.AddChild(buttons);
         screen.SetBottomActionControl(margin, BottomBarHeight);
-
-        MegaLabel abortLabel = CreateLabel(
-            LocMan.Loc("MOD_IMPORT_ABORT", "Abort Operation"),
-            24,
-            HorizontalAlignment.Left);
-        abortLabel.Name = "AbortOperationLabel";
-        abortLabel.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
-        abortLabel.OffsetLeft = 32f;
-        abortLabel.OffsetTop = -72f;
-        abortLabel.OffsetRight = 280f;
-        abortLabel.OffsetBottom = -24f;
-        screen.AddChild(abortLabel);
 
         if (screen.GetNodeOrNull<Control>("BackButton") is { } back)
         {
@@ -103,7 +91,10 @@ public static class ModificationImportScreenUi
         return label;
     }
 
-    public static void RefreshExactCardView(Control view, CardModel? model)
+    public static void RefreshExactCardView(
+        Control view,
+        CardModel? model,
+        bool refreshDeferred = true)
     {
         if (model is null || !GodotObject.IsInstanceValid(view))
             return;
@@ -126,10 +117,17 @@ public static class ModificationImportScreenUi
             }
         }
 
-        if (view.IsNodeReady())
+        void RefreshReadyView()
+        {
             Refresh();
+            if (refreshDeferred)
+                Callable.From(Refresh).CallDeferred();
+        }
+
+        if (view.IsNodeReady())
+            RefreshReadyView();
         else
-            view.Connect(Node.SignalName.Ready, Callable.From(Refresh), (uint)GodotObject.ConnectFlags.OneShot);
+            view.Connect(Node.SignalName.Ready, Callable.From(RefreshReadyView), (uint)GodotObject.ConnectFlags.OneShot);
     }
 
     private static NLoadoutSettingsActionButton CreateButton(string id, string label, Action action)

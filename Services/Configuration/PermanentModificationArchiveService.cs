@@ -69,9 +69,12 @@ public sealed class CardModificationImportEntry
     public CardModificationDelta? IncomingDelta { get; init; }
     public PermanentCardPortraitSnapshot? LocalPortrait { get; init; }
     public ImportedCardPortrait? IncomingPortrait { get; init; }
-    public required bool HasConflict { get; init; }
+    public required bool HasModificationConflict { get; init; }
+    public required bool HasPortraitConflict { get; init; }
     public ModificationImportDecision Decision { get; private set; }
     public ModelId Id => Canonical.Id;
+    public bool HasConflict => HasModificationConflict || HasPortraitConflict;
+    public bool HasPortraitOnlyConflict => HasPortraitConflict && !HasModificationConflict;
     public bool IsSelected => Decision == ModificationImportDecision.UseIncoming;
     public bool HasUpgradeModification => IncomingDelta is { } delta && !delta.UpgradeModification.IsEmpty;
 
@@ -400,7 +403,8 @@ public static class PermanentModificationArchiveService
                 IncomingDelta = incomingDelta?.Clone(),
                 LocalPortrait = localPortrait,
                 IncomingPortrait = incomingPortrait,
-                HasConflict = deltaConflict || portraitConflict
+                HasModificationConflict = deltaConflict,
+                HasPortraitConflict = portraitConflict
             };
             entry.InitializeDecision();
             entries.Add(entry);

@@ -223,8 +223,13 @@ public partial class NRelicModificationImportScreen : NRelicSelectScreen, IScree
     private void ApplyBulk(ModificationImportDecision decision)
     {
         foreach (RelicModificationImportEntry entry in _session!.Entries)
+        {
+            if (!entry.HasConflict)
+                continue;
             entry.SetDecision(decision);
-        RefreshMaterializedEntries();
+            RefreshItemView(entry.Id.ToString());
+        }
+        RefreshConfirmAvailability();
     }
 
     private void MergeNonConflicts()
@@ -232,7 +237,7 @@ public partial class NRelicModificationImportScreen : NRelicSelectScreen, IScree
         foreach (RelicModificationImportEntry entry in _session!.Entries)
         {
             entry.SetDecision(entry.HasConflict
-                ? ModificationImportDecision.Unresolved
+                ? ModificationImportDecision.KeepLocal
                 : ModificationImportDecision.UseIncoming);
         }
         RefreshMaterializedEntries();
