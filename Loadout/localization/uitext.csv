@@ -749,6 +749,7 @@ MOD_IMPORT_RELIC_CONFLICT,Choose Relic Version,选择遗物版本,Choisir la ver
 MOD_IMPORT_RELIC_DETAILS,Relic Modification,遗物修改,Modification de relique,レリック変更,유물 변경,Modificación de reliquia
 MOD_IMPORT_LOCAL_VERSION,Local Version,本地版本,Version locale,ローカル版,로컬 버전,Versión local
 MOD_IMPORT_THEIR_VERSION,Their Version,对方版本,Leur version,相手のバージョン,상대 버전,Su versión
+MOD_IMPORT_IDENTICAL_LOCAL,Identical with Local,与本地相同,Identique à la version locale,ローカル版と同一,로컬 버전과 동일,Idéntica a la versión local
 MOD_EXPORT_DIALOG_TITLE,Export Loadout Modifications,导出 Loadout 修改,Exporter les modifications Loadout,Loadout の変更をエクスポート,Loadout 변경 내보내기,Exportar modificaciones de Loadout
 MOD_IMPORT_DIALOG_TITLE,Import Loadout Modifications,导入 Loadout 修改,Importer les modifications Loadout,Loadout の変更をインポート,Loadout 변경 가져오기,Importar modificaciones de Loadout
 MOD_ARCHIVE_PORTRAIT_SAVE_FAILED,The card portraits could not be saved.,无法保存卡牌图片。,Impossible d’enregistrer les illustrations de cartes.,カード画像を保存できませんでした。,카드 초상화를 저장할 수 없습니다.,No se pudieron guardar las ilustraciones de cartas.

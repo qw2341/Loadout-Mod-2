@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using Godot;
 using Loadout.PanelItems;
 using Loadout.Services.Configuration;
+using Loadout.UI.Managers;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.UI;
@@ -121,18 +123,21 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
             {
                 RefreshEntryCard(entry, view, refreshDeferred: false);
                 EnsureSmithBadge(entry, view);
+                UpdateIdenticalLabel(entry, view);
                 ApplyEntryVisual(entry, view);
                 Callable.From(() =>
                 {
                     if (!GodotObject.IsInstanceValid(view))
                         return;
                     RefreshEntryCard(entry, view, refreshDeferred: false);
+                    UpdateIdenticalLabel(entry, view);
                     ApplyEntryVisual(entry, view);
                 }).CallDeferred();
             },
             UpdateView = (entry, view, _) =>
             {
                 RefreshEntryCard(entry, view, refreshDeferred: false);
+                UpdateIdenticalLabel(entry, view);
                 ApplyEntryVisual(entry, view);
             },
             BindActivationWithCleanup = (entry, view, activate) =>
@@ -399,6 +404,42 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
             card.CardHighlight.Modulate = NCardHighlight.playableColor;
             card.CardHighlight.AnimHideInstantly();
         }
+    }
+
+    private static void UpdateIdenticalLabel(CardModificationImportEntry entry, Control view)
+    {
+        if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder))
+            return;
+
+        Control? existing = holder.GetNodeOrNull<Control>("ImportIdenticalLabel");
+        if (!entry.IsIdenticalToLocal)
+        {
+            if (existing is not null)
+                existing.Visible = false;
+            return;
+        }
+
+        if (existing is null)
+        {
+            var label = ModificationImportScreenUi.CreateLabel(
+                LocMan.Loc("MOD_IMPORT_IDENTICAL_LOCAL", "Identical with Local"),
+                24,
+                HorizontalAlignment.Center);
+            label.Name = "ImportIdenticalLabel";
+            label.Position = new Vector2(-135f, -34f);
+            label.Size = new Vector2(270f, 68f);
+            label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            label.ZIndex = 95;
+            holder.AddChild(label);
+            existing = label;
+        }
+
+        if (existing is MegaLabel textLabel)
+        {
+            textLabel.Text = LocMan.Loc("MOD_IMPORT_IDENTICAL_LOCAL", "Identical with Local");
+            textLabel.Visible = true;
+        }
+        holder.MoveChild(existing, holder.GetChildCount() - 1);
     }
 
     private void EnsureSmithBadge(CardModificationImportEntry entry, Control view)
