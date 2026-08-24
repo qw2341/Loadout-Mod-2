@@ -339,9 +339,11 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     {
         foreach (CardModificationImportEntry entry in _session!.Entries)
         {
-            entry.SetDecision(entry.HasConflict
-                ? ModificationImportDecision.KeepLocal
-                : ModificationImportDecision.UseIncoming);
+            entry.SetDecision(entry.HasNonConflictingConflict
+                ? ModificationImportDecision.UseMerged
+                : entry.HasConflict
+                    ? ModificationImportDecision.KeepLocal
+                    : ModificationImportDecision.UseIncoming);
         }
         RefreshMaterializedEntries();
     }
@@ -379,10 +381,10 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
                                 && entry.Decision == ModificationImportDecision.Unresolved
             ? entry.HasPortraitOnlyConflict
                 ? new Color(0.18f, 1f, 0.34f, 1f)
-                : NCardHighlight.red
-            : !entry.HasConflict && entry.IsSelected
-                ? NCardHighlight.gold
-                : null;
+                : entry.HasNonConflictingConflict
+                    ? NCardHighlight.gold
+                    : NCardHighlight.red
+            : null;
         if (highlightColor is { } color)
         {
             card.CardHighlight.SelfModulate = Colors.White;
@@ -431,7 +433,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     private void ShowUpgradePreview(CardModificationImportEntry entry, Control source)
     {
         HideUpgradePreview();
-        CardModel? model = entry.GetIncomingPreview(upgraded: true);
+        CardModel? model = entry.GetDisplayPreview(upgraded: true);
         NCard? card = model is null ? null : NCard.Create(model);
         NPreviewCardHolder? preview = card is null
             ? null
@@ -531,7 +533,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     {
         ModificationImportScreenUi.RefreshExactCardView(
             view,
-            entry.GetIncomingPreview(),
+            entry.GetDisplayPreview(),
             refreshDeferred);
     }
 

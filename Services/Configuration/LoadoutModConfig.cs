@@ -16,6 +16,7 @@ using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.Configuration;
 using Loadout.Services.RelicModification;
+using Loadout.UI;
 using Loadout.UI.ImageEditing;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
@@ -284,6 +285,9 @@ public sealed class LoadoutModConfig : SimpleModConfig
             return;
 
         _modificationTransferBusy = true;
+        bool suppressConfigPanel = NLoadoutPanel.ConfigPreviewVisible;
+        if (suppressConfigPanel)
+            LoadoutConfigService.SetConfigPanelPreviewSuppressed(true);
         try
         {
             ModificationTransferResult result = await operation();
@@ -317,6 +321,8 @@ public sealed class LoadoutModConfig : SimpleModConfig
         }
         finally
         {
+            if (suppressConfigPanel)
+                LoadoutConfigService.SetConfigPanelPreviewSuppressed(false);
             _modificationTransferBusy = false;
         }
     }

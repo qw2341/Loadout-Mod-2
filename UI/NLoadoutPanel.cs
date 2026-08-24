@@ -88,6 +88,7 @@ public partial class NLoadoutPanel : Panel
 
 	public static NLoadoutPanel? Instance;
 	private static bool _configPreviewVisible;
+	private static bool _configPreviewSuppressed;
 	public static bool ConfigPreviewVisible => _configPreviewVisible;
 
 	private bool _loadoutItemInitializationAttempted;
@@ -157,6 +158,12 @@ public partial class NLoadoutPanel : Panel
 	
 	private void InitializePanelState()
 	{
+		if (_configPreviewSuppressed)
+		{
+			SetPanelState(hidden: true, shown: false, notify: false);
+			return;
+		}
+
 		if (_configPreviewVisible)
 		{
 			SetPanelState(hidden: false, shown: true, notify: false);
@@ -252,6 +259,23 @@ public partial class NLoadoutPanel : Panel
 	public static void SetConfigPreviewVisible(bool visible)
 	{
 		_configPreviewVisible = visible;
+		if (!visible)
+			_configPreviewSuppressed = false;
+		if (Instance is null || !IsInstanceValid(Instance))
+			return;
+
+		Instance.InitializePanelState();
+		Instance.SnapToTargetPosition();
+		Instance.VisibilityStateChanged?.Invoke();
+	}
+
+	public static void SetConfigPreviewSuppressed(bool suppressed)
+	{
+		bool next = suppressed && _configPreviewVisible;
+		if (_configPreviewSuppressed == next)
+			return;
+
+		_configPreviewSuppressed = next;
 		if (Instance is null || !IsInstanceValid(Instance))
 			return;
 

@@ -258,6 +258,26 @@ public static class PermanentCardModificationStore
         }, JsonOptions);
     }
 
+    public static string ExportProfileEntriesSnapshotJson(
+        IReadOnlyDictionary<ModelId, CardModificationDelta> entries)
+    {
+        EnsureLoaded();
+        Dictionary<string, CardModificationDelta> cards = new(StringComparer.Ordinal);
+        foreach ((ModelId id, CardModificationDelta source) in entries)
+        {
+            CardModificationDelta delta = source.Clone();
+            delta.Normalize();
+            if (!delta.IsEmpty)
+                cards[id.ToString()] = delta;
+        }
+
+        return JsonSerializer.Serialize(new PermanentSaveData
+        {
+            SchemaVersion = CurrentSchemaVersion,
+            Cards = cards
+        }, JsonOptions);
+    }
+
     public static bool TryDeserializeProfileSnapshot(
         string? json,
         out IReadOnlyDictionary<ModelId, CardModificationDelta> snapshot)

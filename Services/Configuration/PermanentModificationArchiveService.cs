@@ -29,7 +29,8 @@ public enum ModificationImportDecision
 {
     Unresolved,
     KeepLocal,
-    UseIncoming
+    UseIncoming,
+    UseMerged
 }
 
 public sealed record ModificationTransferResult(bool Cancelled, bool Succeeded, int Count, string? Error = null)
@@ -63,10 +64,13 @@ public sealed class CardModificationImportEntry
     private CardModel? _localPreview;
     private CardModel? _incomingPreview;
     private CardModel? _upgradedIncomingPreview;
+    private CardModel? _mergedPreview;
+    private CardModel? _upgradedMergedPreview;
 
     public required CardModel Canonical { get; init; }
     public CardModificationDelta? LocalDelta { get; init; }
     public CardModificationDelta? IncomingDelta { get; init; }
+    public CardModificationDelta? MergedDelta { get; init; }
     public PermanentCardPortraitSnapshot? LocalPortrait { get; init; }
     public ImportedCardPortrait? IncomingPortrait { get; init; }
     public required bool HasModificationConflict { get; init; }
@@ -75,7 +79,10 @@ public sealed class CardModificationImportEntry
     public ModelId Id => Canonical.Id;
     public bool HasConflict => HasModificationConflict || HasPortraitConflict;
     public bool HasPortraitOnlyConflict => HasPortraitConflict && !HasModificationConflict;
-    public bool IsSelected => Decision == ModificationImportDecision.UseIncoming;
+    public bool HasNonConflictingConflict =>
+        HasModificationConflict && MergedDelta is not null && !HasPortraitConflict;
+    public bool IsSelected => Decision is ModificationImportDecision.UseIncoming
+        or ModificationImportDecision.UseMerged;
     public bool HasUpgradeModification => IncomingDelta is { } delta && !delta.UpgradeModification.IsEmpty;
 
     public void InitializeDecision()
@@ -125,6 +132,80 @@ public sealed class CardModificationImportEntry
             _incomingPreview = preview;
         return preview;
     }
+
+    public CardModel? GetDisplayPreview(bool upgraded = false)
+    {
+        if (Decision != ModificationImportDecision.UseMerged || MergedDelta is null)
+            return GetIncomingPreview(upgraded);
+        if (upgraded && _upgradedMergedPreview is not null)
+            return _upgradedMergedPreview;
+        if (!upgraded && _mergedPreview is not null)
+            return _mergedPreview;
+
+        CardModel? preview = CardModificationRuntime.CreateExactPermanentPreview(Id, MergedDelta, upgraded);
+        AttachIncomingPortrait(preview);
+        if (upgraded)
+            _upgradedMergedPreview = preview;
+        else
+            _mergedPreview = preview;
+        return preview;
+    }
+
+    public CardModificationDelta? GetAppliedDelta() => Decision switch
+    {
+        ModificationImportDecision.UseIncoming => IncomingDelta,
+        ModificationImportDecision.UseMerged => MergedDelta,
+        _ => null
+    };
+
+    private void AttachIncomingPortrait(CardModel? preview)
+    {
+        if (preview is null || IncomingPortrait is null)
+            return;
+        CardPortraitRuntime.AttachPreview(
+            preview,
+            IncomingPortrait.GetDocument(),
+            IncomingPortrait.Record.File,
+            IncomingPortrait.Record.FrameId);
+    }
+}
+
+public sealed class CardModificationExportEntry
+{
+    private CardModel? _preview;
+
+    public required CardModel Canonical { get; init; }
+    public CardModificationDelta? Delta { get; init; }
+    public PermanentCardPortraitSnapshot? Portrait { get; init; }
+    public ModelId Id => Canonical.Id;
+    public bool IsSelected { get; private set; } = true;
+
+    public void SetSelected(bool selected) => IsSelected = selected;
+    public void Toggle() => IsSelected = !IsSelected;
+
+    public CardModel? GetPreview()
+    {
+        if (_preview is not null)
+            return _preview;
+
+        CardModel? preview = CardModificationRuntime.CreateExactPermanentPreview(Id, Delta);
+        if (preview is not null && Portrait is not null)
+        {
+            byte[] data = File.ReadAllBytes(Portrait.GlobalPath);
+            CardPortraitRuntime.AttachPreview(
+                preview,
+                ImageMediaLoader.LoadDocumentFromBytes(data, Path.GetExtension(Portrait.FileName)),
+                Portrait.FileName,
+                Portrait.FrameId);
+        }
+        return _preview = preview;
+    }
+}
+
+public sealed class CardModificationExportSession
+{
+    public required IReadOnlyList<CardModificationExportEntry> Entries { get; init; }
+    public required bool IncludePortraits { get; init; }
 }
 
 public sealed class RelicModificationImportEntry
@@ -198,8 +279,8 @@ public sealed class CardModificationImportSession
             CardPortraitRuntime.PrepareQuietPermanentImport();
 
         Dictionary<ModelId, CardModificationDelta> deltas = selected
-            .Where(entry => entry.IncomingDelta is not null)
-            .ToDictionary(entry => entry.Id, entry => entry.IncomingDelta!.Clone());
+            .Where(entry => entry.GetAppliedDelta() is not null)
+            .ToDictionary(entry => entry.Id, entry => entry.GetAppliedDelta()!.Clone());
         IReadOnlyList<ModelId> changed = PermanentCardModificationStore.ApplyProfileEntriesQuiet(deltas);
         CardModificationRuntime.ReconcileQuietPermanentImport(changed);
         HashSet<ModelId> refreshIds = new(changed);
@@ -256,34 +337,77 @@ public static class PermanentModificationArchiveService
 
     public static async Task<ModificationTransferResult> ExportCardsAsync(bool includePortraits)
     {
-        string? path = await PickArchivePathAsync(save: true, "Loadout-Card-Modifications.zip");
-        if (path is null)
-            return ModificationTransferResult.Cancel();
-
         try
         {
-            IReadOnlyDictionary<ModelId, PermanentCardPortraitSnapshot> portraits = includePortraits
-                ? CardPortraitStore.GetPermanentSnapshot()
-                : new Dictionary<ModelId, PermanentCardPortraitSnapshot>();
-            IReadOnlyCollection<string> cardIds = PermanentCardModificationStore.GetProfileEntryIdsSnapshot();
-            string cardsJson = PermanentCardModificationStore.ExportProfileSnapshotJson();
+            CardModificationExportSession session = CreateCardExportSession(includePortraits);
+            NCardModificationExportScreen screen = NCardModificationExportScreen.Create();
+            screen.Initialize(session);
+            if (!TryOpenModal(screen))
+                return ModificationTransferResult.Failure(LocMan.Loc(
+                    "MOD_ARCHIVE_MODAL_BUSY",
+                    "The game's modal UI is unavailable or busy."));
+            if (!await screen.Completion)
+                return ModificationTransferResult.Cancel();
+
+            string? path = await PickArchivePathAsync(save: true, "Loadout-Card-Modifications.zip");
+            if (path is null)
+                return ModificationTransferResult.Cancel();
+
+            CardModificationExportEntry[] selected = session.Entries
+                .Where(entry => entry.IsSelected)
+                .ToArray();
+            Dictionary<ModelId, CardModificationDelta> deltas = selected
+                .Where(entry => entry.Delta is not null)
+                .ToDictionary(entry => entry.Id, entry => entry.Delta!.Clone());
+            PermanentCardPortraitSnapshot[] portraits = selected
+                .Where(entry => entry.Portrait is not null)
+                .Select(entry => entry.Portrait!)
+                .ToArray();
+            string cardsJson = PermanentCardModificationStore.ExportProfileEntriesSnapshotJson(deltas);
             WriteArchiveAtomically(path, archive =>
             {
-                WriteJson(archive, ManifestEntry, new ArchiveManifest(Format, Version, "cards", includePortraits));
+                WriteJson(archive, ManifestEntry, new ArchiveManifest(Format, Version, "cards", session.IncludePortraits));
                 WriteText(archive, CardsEntry, cardsJson);
-                if (includePortraits)
-                    WritePortraits(archive, portraits.Values);
+                if (session.IncludePortraits)
+                    WritePortraits(archive, portraits);
             });
-            HashSet<string> exportedIds = new(cardIds, StringComparer.Ordinal);
-            exportedIds.UnionWith(portraits.Keys.Select(id => id.ToString()));
-            int count = exportedIds.Count;
-            return ModificationTransferResult.Success(count);
+            return ModificationTransferResult.Success(selected.Length);
         }
         catch (Exception exception)
         {
             GD.PushError($"Loadout: card modification export failed. {exception}");
             return ModificationTransferResult.Failure(exception.Message);
         }
+    }
+
+    private static CardModificationExportSession CreateCardExportSession(bool includePortraits)
+    {
+        IReadOnlyDictionary<ModelId, CardModificationDelta> deltas =
+            PermanentCardModificationStore.GetProfileDeltasSnapshot();
+        IReadOnlyDictionary<ModelId, PermanentCardPortraitSnapshot> portraits = includePortraits
+            ? CardPortraitStore.GetPermanentSnapshot()
+            : new Dictionary<ModelId, PermanentCardPortraitSnapshot>();
+        Dictionary<ModelId, CardModel> cards = ModelDb.AllCards.ToDictionary(card => card.Id);
+        List<CardModificationExportEntry> entries = [];
+        foreach (ModelId id in deltas.Keys.Union(portraits.Keys).Distinct())
+        {
+            if (!cards.TryGetValue(id, out CardModel? canonical))
+                continue;
+            deltas.TryGetValue(id, out CardModificationDelta? delta);
+            portraits.TryGetValue(id, out PermanentCardPortraitSnapshot? portrait);
+            entries.Add(new CardModificationExportEntry
+            {
+                Canonical = canonical,
+                Delta = delta?.Clone(),
+                Portrait = portrait
+            });
+        }
+
+        return new CardModificationExportSession
+        {
+            Entries = entries.OrderBy(entry => SafeCardTitle(entry.Canonical), StringComparer.Ordinal).ToArray(),
+            IncludePortraits = includePortraits
+        };
     }
 
     public static async Task<ModificationTransferResult> ExportRelicsAsync()
@@ -358,6 +482,172 @@ public static class PermanentModificationArchiveService
         }
     }
 
+    private static bool TryMergeNonConflictingCardDeltas(
+        CardModificationDelta localSource,
+        CardModificationDelta incomingSource,
+        out CardModificationDelta merged)
+    {
+        CardModificationDelta local = localSource.Clone();
+        CardModificationDelta incoming = incomingSource.Clone();
+        local.Normalize();
+        incoming.Normalize();
+        merged = new CardModificationDelta();
+
+        bool localEnergy = local.EnergyDelta.HasValue || local.EnergyOverride.HasValue;
+        bool incomingEnergy = incoming.EnergyDelta.HasValue || incoming.EnergyOverride.HasValue;
+        if (localEnergy && incomingEnergy
+            && (local.EnergyDelta != incoming.EnergyDelta
+                || local.EnergyOverride != incoming.EnergyOverride))
+        {
+            return false;
+        }
+        merged.EnergyDelta = incomingEnergy ? incoming.EnergyDelta : local.EnergyDelta;
+        merged.EnergyOverride = incomingEnergy ? incoming.EnergyOverride : local.EnergyOverride;
+
+        if (!TryMergeOptionalValue(local.BaseReplayCountDelta, incoming.BaseReplayCountDelta, out int? replay)
+            || !TryMergeOptionalValue(local.BaseStarCostDelta, incoming.BaseStarCostDelta, out int? starCost)
+            || !TryMergeDictionary(local.DynamicVarDeltas, incoming.DynamicVarDeltas, out Dictionary<string, decimal> dynamicVars)
+            || !TryMergeReference(local.PoolId, incoming.PoolId, StringEquals, out string? pool)
+            || !TryMergeReference(local.Type, incoming.Type, StringEquals, out string? type)
+            || !TryMergeReference(local.Rarity, incoming.Rarity, StringEquals, out string? rarity)
+            || !TryMergeReference(local.CustomTitle, incoming.CustomTitle, StringEquals, out string? title)
+            || !TryMergeReference(local.CustomDescription, incoming.CustomDescription, StringEquals, out string? description)
+            || !TryMergeReference(local.PortraitPath, incoming.PortraitPath, StringEquals, out string? portraitPath)
+            || !TryMergeReference(local.BetaPortraitPath, incoming.BetaPortraitPath, StringEquals, out string? betaPortraitPath)
+            || !TryMergeOptionalValue(
+                local.ForceAncientPortraitRendering,
+                incoming.ForceAncientPortraitRendering,
+                out bool? ancientRendering)
+            || !TryMergeDictionary(local.KeywordOverrides, incoming.KeywordOverrides, out Dictionary<string, bool> keywords)
+            || !TryMergeReference(
+                local.Enchantments,
+                incoming.Enchantments,
+                AttachmentListsEqual,
+                out List<CardAttachmentSpec>? enchantments)
+            || !TryMergeReference(
+                local.Affliction,
+                incoming.Affliction,
+                AttachmentsEqual,
+                out CardAttachmentSpec? affliction)
+            || !TryMergeUpgradeModifications(
+                local.UpgradeModification,
+                incoming.UpgradeModification,
+                out CardUpgradeModificationSpec upgrade))
+        {
+            return false;
+        }
+
+        merged.BaseReplayCountDelta = replay;
+        merged.BaseStarCostDelta = starCost;
+        merged.DynamicVarDeltas = dynamicVars;
+        merged.PoolId = pool;
+        merged.Type = type;
+        merged.Rarity = rarity;
+        merged.CustomTitle = title;
+        merged.CustomDescription = description;
+        merged.PortraitPath = portraitPath;
+        merged.BetaPortraitPath = betaPortraitPath;
+        merged.ForceAncientPortraitRendering = ancientRendering;
+        merged.KeywordOverrides = keywords;
+        merged.Enchantments = CardAttachmentSpec.CloneList(enchantments);
+        merged.Affliction = affliction?.Clone();
+        merged.UpgradeModification = upgrade;
+        merged.Normalize();
+        return true;
+    }
+
+    private static bool TryMergeUpgradeModifications(
+        CardUpgradeModificationSpec local,
+        CardUpgradeModificationSpec incoming,
+        out CardUpgradeModificationSpec merged)
+    {
+        merged = new CardUpgradeModificationSpec();
+        if (!TryMergeOptionalValue(local.EnergyCostDelta, incoming.EnergyCostDelta, out int? energy)
+            || !TryMergeOptionalValue(local.BaseReplayCountDelta, incoming.BaseReplayCountDelta, out int? replay)
+            || !TryMergeOptionalValue(local.BaseStarCostDelta, incoming.BaseStarCostDelta, out int? starCost)
+            || !TryMergeDictionary(local.DynamicVarDeltas, incoming.DynamicVarDeltas, out Dictionary<string, decimal> dynamicVars)
+            || !TryMergeDictionary(local.KeywordOverrides, incoming.KeywordOverrides, out Dictionary<string, bool> keywords))
+        {
+            return false;
+        }
+
+        merged.EnergyCostDelta = energy;
+        merged.BaseReplayCountDelta = replay;
+        merged.BaseStarCostDelta = starCost;
+        merged.DynamicVarDeltas = dynamicVars;
+        merged.KeywordOverrides = keywords;
+        merged.Normalize(removeZeroValues: true);
+        return true;
+    }
+
+    private static bool TryMergeOptionalValue<T>(T? local, T? incoming, out T? merged)
+        where T : struct
+    {
+        if (!local.HasValue)
+        {
+            merged = incoming;
+            return true;
+        }
+        if (!incoming.HasValue)
+        {
+            merged = local;
+            return true;
+        }
+        merged = local;
+        return EqualityComparer<T>.Default.Equals(local.Value, incoming.Value);
+    }
+
+    private static bool TryMergeReference<T>(
+        T? local,
+        T? incoming,
+        Func<T, T, bool> equivalent,
+        out T? merged)
+        where T : class
+    {
+        if (local is null)
+        {
+            merged = incoming;
+            return true;
+        }
+        if (incoming is null)
+        {
+            merged = local;
+            return true;
+        }
+        merged = local;
+        return equivalent(local, incoming);
+    }
+
+    private static bool TryMergeDictionary<T>(
+        IReadOnlyDictionary<string, T> local,
+        IReadOnlyDictionary<string, T> incoming,
+        out Dictionary<string, T> merged)
+    {
+        merged = new Dictionary<string, T>(local, StringComparer.Ordinal);
+        foreach ((string key, T value) in incoming)
+        {
+            if (merged.TryGetValue(key, out T? localValue)
+                && !EqualityComparer<T>.Default.Equals(localValue, value))
+            {
+                return false;
+            }
+            merged[key] = value;
+        }
+        return true;
+    }
+
+    private static bool AttachmentListsEqual(List<CardAttachmentSpec> left, List<CardAttachmentSpec> right) =>
+        left.Count == right.Count
+        && left.Zip(right).All(pair => AttachmentsEqual(pair.First, pair.Second));
+
+    private static bool AttachmentsEqual(CardAttachmentSpec left, CardAttachmentSpec right) =>
+        string.Equals(left.ModelId, right.ModelId, StringComparison.Ordinal)
+        && left.Amount == right.Amount
+        && left.Clear == right.Clear;
+
+    private static bool StringEquals(string left, string right) =>
+        string.Equals(left, right, StringComparison.Ordinal);
+
     private static CardModificationImportSession ReadCardSession(string path)
     {
         using FileStream stream = new(path, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read);
@@ -390,6 +680,12 @@ public static class PermanentModificationArchiveService
             bool deltaConflict = incomingDelta is not null
                                  && localDelta is not null
                                  && !CardModificationRuntime.PermanentDeltasEquivalent(localDelta, incomingDelta);
+            CardModificationDelta? mergedDelta = null;
+            if (deltaConflict
+                && TryMergeNonConflictingCardDeltas(localDelta!, incomingDelta!, out CardModificationDelta merged))
+            {
+                mergedDelta = merged;
+            }
             bool portraitConflict = incomingPortrait is not null
                                     && localPortrait is not null
                                     && !string.Equals(
@@ -401,6 +697,7 @@ public static class PermanentModificationArchiveService
                 Canonical = canonical,
                 LocalDelta = localDelta?.Clone(),
                 IncomingDelta = incomingDelta?.Clone(),
+                MergedDelta = mergedDelta,
                 LocalPortrait = localPortrait,
                 IncomingPortrait = incomingPortrait,
                 HasModificationConflict = deltaConflict,

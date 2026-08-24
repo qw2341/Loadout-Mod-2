@@ -82,4 +82,9 @@ public static class LoadoutConfigService
 
         NLoadoutPanel.SetConfigPreviewVisible(visible);
     }
+
+    public static void SetConfigPanelPreviewSuppressed(bool suppressed)
+    {
+        NLoadoutPanel.SetConfigPreviewSuppressed(suppressed);
+    }
 }
