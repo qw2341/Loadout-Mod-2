@@ -368,7 +368,9 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     {
         view.Modulate = entry.Decision == ModificationImportDecision.KeepLocal
             ? new Color(0.42f, 0.42f, 0.42f, 0.5f)
-            : Colors.White;
+            : entry.IsIdenticalToLocal
+                ? new Color(1f, 1f, 1f, 0.85f)
+                : Colors.White;
 
         if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder)
             || holder.CardNode is not { } card
@@ -516,8 +518,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
         {
             if (item.View is { } view
                 && GodotObject.IsInstanceValid(view)
-                && view.IsVisibleInTree()
-                && view.GetGlobalRect().HasPoint(pointer)
+                && ModificationImportScreenUi.ContainsCardPoint(view, pointer)
                 && item.UntypedModel is CardModificationImportEntry entry)
             {
                 return entry;

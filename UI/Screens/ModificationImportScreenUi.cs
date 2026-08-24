@@ -130,6 +130,19 @@ public static class ModificationImportScreenUi
             view.Connect(Node.SignalName.Ready, Callable.From(RefreshReadyView), (uint)GodotObject.ConnectFlags.OneShot);
     }
 
+    public static bool ContainsCardPoint(Control view, Vector2 globalPoint)
+    {
+        if (!GodotObject.IsInstanceValid(view) || !view.IsVisibleInTree())
+            return false;
+        if (CommonHelpers.TryFindDescendantOrSelf(view, out NCardHolder holder)
+            && holder.GetNodeOrNull<Control>("Hitbox") is { } hitbox
+            && hitbox.IsVisibleInTree())
+        {
+            return hitbox.GetGlobalRect().HasPoint(globalPoint);
+        }
+        return view.GetGlobalRect().HasPoint(globalPoint);
+    }
+
     private static NLoadoutSettingsActionButton CreateButton(string id, string label, Action action)
     {
         NLoadoutSettingsActionButton button = new()

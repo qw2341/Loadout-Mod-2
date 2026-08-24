@@ -245,8 +245,7 @@ public partial class NCardModificationExportScreen : NCardSelectScreen, IScreenC
         {
             if (item.View is { } view
                 && GodotObject.IsInstanceValid(view)
-                && view.IsVisibleInTree()
-                && view.GetGlobalRect().HasPoint(pointer)
+                && ModificationImportScreenUi.ContainsCardPoint(view, pointer)
                 && item.UntypedModel is CardModificationExportEntry entry)
             {
                 return entry;

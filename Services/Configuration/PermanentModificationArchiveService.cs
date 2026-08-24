@@ -75,6 +75,7 @@ public sealed class CardModificationImportEntry
     public ImportedCardPortrait? IncomingPortrait { get; init; }
     public required bool HasModificationConflict { get; init; }
     public required bool HasPortraitConflict { get; init; }
+    public required bool IsIdenticalToLocal { get; init; }
     public ModificationImportDecision Decision { get; private set; }
     public ModelId Id => Canonical.Id;
     public bool HasConflict => HasModificationConflict || HasPortraitConflict;
@@ -677,21 +678,23 @@ public static class PermanentModificationArchiveService
             localDeltas.TryGetValue(id, out CardModificationDelta? localDelta);
             incomingPortraits.TryGetValue(id, out ImportedCardPortrait? incomingPortrait);
             localPortraits.TryGetValue(id, out PermanentCardPortraitSnapshot? localPortrait);
-            bool deltaConflict = incomingDelta is not null
-                                 && localDelta is not null
-                                 && !CardModificationRuntime.PermanentDeltasEquivalent(localDelta, incomingDelta);
+            bool deltaWouldChange = incomingDelta is not null
+                                    && (localDelta is null
+                                        || !CardModificationRuntime.PermanentDeltasEquivalent(localDelta, incomingDelta));
+            bool deltaConflict = deltaWouldChange && localDelta is not null;
             CardModificationDelta? mergedDelta = null;
             if (deltaConflict
                 && TryMergeNonConflictingCardDeltas(localDelta!, incomingDelta!, out CardModificationDelta merged))
             {
                 mergedDelta = merged;
             }
-            bool portraitConflict = incomingPortrait is not null
-                                    && localPortrait is not null
-                                    && !string.Equals(
-                                        HashFile(localPortrait.GlobalPath),
-                                        incomingPortrait.Record.Sha256,
-                                        StringComparison.OrdinalIgnoreCase);
+            bool portraitWouldChange = incomingPortrait is not null
+                                       && (localPortrait is null
+                                           || !string.Equals(
+                                               HashFile(localPortrait.GlobalPath),
+                                               incomingPortrait.Record.Sha256,
+                                               StringComparison.OrdinalIgnoreCase));
+            bool portraitConflict = portraitWouldChange && localPortrait is not null;
             CardModificationImportEntry entry = new()
             {
                 Canonical = canonical,
@@ -701,7 +704,8 @@ public static class PermanentModificationArchiveService
                 LocalPortrait = localPortrait,
                 IncomingPortrait = incomingPortrait,
                 HasModificationConflict = deltaConflict,
-                HasPortraitConflict = portraitConflict
+                HasPortraitConflict = portraitConflict,
+                IsIdenticalToLocal = !deltaWouldChange && !portraitWouldChange
             };
             entry.InitializeDecision();
             entries.Add(entry);
