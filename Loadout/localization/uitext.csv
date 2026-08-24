@@ -739,3 +739,25 @@ CARD_MOD_FORCE_ANCIENT_PORTRAIT_RENDERING,Force Ancient Portrait Rendering,强�
 CARD_PORTRAIT_EDITOR_TITLE,Change Card Portrait,更换卡牌图片,Modifier l’illustration de la carte,カード画像を変更,카드 초상화 변경,Cambiar ilustración de la carta
 CARD_PORTRAIT_SAVE_TEMPORARY,Save Temporary,临时保存,Enregistrer temporairement,一時保存,임시 저장,Guardar temporalmente
 CARD_PORTRAIT_SAVE_PERMANENT,Save Permanent,永久保存,Enregistrer définitivement,永久保存,영구 저장,Guardar permanentemente
+BACK,Back,返回,Retour,戻る,뒤로,Atrás
+MOD_IMPORT_ABORT,Abort Operation,中止操作,Abandonner l’opération,操作を中止,작업 중단,Abortar operación
+MOD_IMPORT_KEEP_LOCAL,Keep All Local Changes,保留所有本地修改,Conserver toutes les modifications locales,ローカルの変更をすべて保持,모든 로컬 변경 유지,Conservar todos los cambios locales
+MOD_IMPORT_MERGE,Merge Non-Conflicting Changes,合并无冲突的修改,Fusionner les modifications sans conflit,競合しない変更を統合,충돌하지 않는 변경 병합,Fusionar cambios sin conflictos
+MOD_IMPORT_ACCEPT_INCOMING,Accept All Incoming Changes,接受所有传入修改,Accepter toutes les modifications reçues,受信した変更をすべて適用,모든 가져온 변경 수락,Aceptar todos los cambios entrantes
+MOD_IMPORT_CARD_CONFLICT,Choose Card Version,选择卡牌版本,Choisir la version de la carte,カードのバージョンを選択,카드 버전 선택,Elegir versión de la carta
+MOD_IMPORT_RELIC_CONFLICT,Choose Relic Version,选择遗物版本,Choisir la version de la relique,レリックのバージョンを選択,유물 버전 선택,Elegir versión de la reliquia
+MOD_IMPORT_RELIC_DETAILS,Relic Modification,遗物修改,Modification de relique,レリック変更,유물 변경,Modificación de reliquia
+MOD_IMPORT_LOCAL_VERSION,Local Version,本地版本,Version locale,ローカル版,로컬 버전,Versión local
+MOD_IMPORT_THEIR_VERSION,Their Version,对方版本,Leur version,相手のバージョン,상대 버전,Su versión
+MOD_EXPORT_DIALOG_TITLE,Export Loadout Modifications,导出 Loadout 修改,Exporter les modifications Loadout,Loadout の変更をエクスポート,Loadout 변경 내보내기,Exportar modificaciones de Loadout
+MOD_IMPORT_DIALOG_TITLE,Import Loadout Modifications,导入 Loadout 修改,Importer les modifications Loadout,Loadout の変更をインポート,Loadout 변경 가져오기,Importar modificaciones de Loadout
+MOD_ARCHIVE_PORTRAIT_SAVE_FAILED,The card portraits could not be saved.,无法保存卡牌图片。,Impossible d’enregistrer les illustrations de cartes.,カード画像を保存できませんでした。,카드 초상화를 저장할 수 없습니다.,No se pudieron guardar las ilustraciones de cartas.
+MOD_ARCHIVE_MODAL_BUSY,The game’s modal UI is unavailable or busy.,游戏模态界面不可用或正忙。,L’interface modale du jeu est indisponible ou occupée.,ゲームのモーダル UI は使用できないか処理中です。,게임 모달 UI를 사용할 수 없거나 사용 중입니다.,La interfaz modal del juego no está disponible o está ocupada.
+MOD_ARCHIVE_INVALID_CARD_PAYLOAD,The card modification data is invalid.,卡牌修改数据无效。,Les données de modification de cartes sont invalides.,カード変更データが無効です。,카드 변경 데이터가 올바르지 않습니다.,Los datos de modificación de cartas no son válidos.
+MOD_ARCHIVE_INVALID_RELIC_PAYLOAD,The relic modification data is invalid.,遗物修改数据无效。,Les données de modification de reliques sont invalides.,レリック変更データが無効です。,유물 변경 데이터가 올바르지 않습니다.,Los datos de modificación de reliquias no son válidos.
+MOD_ARCHIVE_CARD_NOT_INSTALLED,Card '{0}' is not installed.,未安装卡牌“{0}”。,La carte « {0} » n’est pas installée.,カード「{0}」がインストールされていません。,카드 '{0}'이(가) 설치되어 있지 않습니다.,La carta «{0}» no está instalada.
+MOD_ARCHIVE_RELIC_NOT_INSTALLED,Relic '{0}' is not installed.,未安装遗物“{0}”。,La relique « {0} » n’est pas installée.,レリック「{0}」がインストールされていません。,유물 '{0}'이(가) 설치되어 있지 않습니다.,La reliquia «{0}» no está instalada.
+MOD_ARCHIVE_INVALID_PORTRAIT_INDEX,The portrait index is invalid.,卡牌图片索引无效。,L’index des illustrations est invalide.,画像インデックスが無効です。,초상화 색인이 올바르지 않습니다.,El índice de ilustraciones no es válido.
+MOD_ARCHIVE_PORTRAIT_DAMAGED,Portrait for '{0}' is damaged.,“{0}”的卡牌图片已损坏。,L’illustration de « {0} » est endommagée.,「{0}」の画像が破損しています。,카드 '{0}'의 초상화가 손상되었습니다.,La ilustración de «{0}» está dañada.
+MOD_ARCHIVE_UNSUPPORTED,The selected archive is not a supported Loadout modification package.,所选压缩包不是受支持的 Loadout 修改包。,L’archive sélectionnée n’est pas un paquet de modifications Loadout pris en charge.,選択したアーカイブは対応する Loadout 変更パッケージではありません。,선택한 압축 파일은 지원되는 Loadout 변경 패키지가 아닙니다.,El archivo seleccionado no es un paquete de modificaciones de Loadout compatible.
+MOD_ARCHIVE_ENTRY_MISSING,Archive entry '{0}' is missing.,压缩包条目“{0}”缺失。,L’entrée « {0} » manque dans l’archive.,アーカイブ項目「{0}」がありません。,압축 파일 항목 '{0}'이(가) 없습니다.,Falta la entrada «{0}» en el archivo.

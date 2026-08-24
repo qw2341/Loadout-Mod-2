@@ -86,6 +86,18 @@ internal static class CanonicalCardModificationRegistry
         return true;
     }
 
+    public static CardModel? CreatePristineMutable(ModelId cardId)
+    {
+        CardModel? canonical = ResolveCanonical(cardId);
+        if (canonical is null)
+            return null;
+
+        CanonicalCardBaseline baseline = GetBaseline(canonical);
+        CardModel mutable = canonical.ToMutable();
+        RestoreFields(mutable, baseline);
+        return mutable;
+    }
+
     public static void Reconcile(ModelId cardId, CardModificationDelta? delta)
     {
         CardModel? canonical = ResolveCanonical(cardId);
@@ -139,21 +151,26 @@ internal static class CanonicalCardModificationRegistry
 
     private static void Restore(CardModel canonical, CanonicalCardBaseline baseline)
     {
-        EnergyCostField.SetValue(canonical, new CardEnergyCost(canonical, baseline.EnergyCost, baseline.CostsX));
-        ReplayCountField.SetValue(canonical, baseline.BaseReplayCount);
-        StarCostField.SetValue(canonical, baseline.BaseStarCost);
-        StarCostSetField.SetValue(canonical, true);
+        RestoreFields(canonical, baseline);
+        CanonicalStarCosts.Remove(canonical.Id);
+    }
+
+    private static void RestoreFields(CardModel card, CanonicalCardBaseline baseline)
+    {
+        EnergyCostField.SetValue(card, new CardEnergyCost(card, baseline.EnergyCost, baseline.CostsX));
+        ReplayCountField.SetValue(card, baseline.BaseReplayCount);
+        StarCostField.SetValue(card, baseline.BaseStarCost);
+        StarCostSetField.SetValue(card, true);
         foreach ((string name, decimal value) in baseline.DynamicVars)
         {
-            if (canonical.DynamicVars.TryGetValue(name, out DynamicVar? variable))
+            if (card.DynamicVars.TryGetValue(name, out DynamicVar? variable))
                 variable.BaseValue = value;
         }
-        PoolField.SetValue(canonical, baseline.Pool);
-        TypeField.SetValue(canonical, baseline.Type);
-        RarityField.SetValue(canonical, baseline.Rarity);
-        KeywordsField.SetValue(canonical, new HashSet<CardKeyword>(baseline.Keywords));
-        LoadoutKeywordRegistry.SynchronizeDynamicVars(canonical);
-        CanonicalStarCosts.Remove(canonical.Id);
+        PoolField.SetValue(card, baseline.Pool);
+        TypeField.SetValue(card, baseline.Type);
+        RarityField.SetValue(card, baseline.Rarity);
+        KeywordsField.SetValue(card, new HashSet<CardKeyword>(baseline.Keywords));
+        LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
     }
 
     private static void Apply(CardModel canonical, CanonicalCardBaseline baseline, CardModificationDelta delta)

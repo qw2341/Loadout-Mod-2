@@ -45,6 +45,24 @@ internal readonly record struct CardPortraitAsset(
     CardPortraitRecord Record,
     string GlobalPath);
 
+public sealed record PermanentCardPortraitSnapshot(
+    ModelId CardId,
+    string FileName,
+    string FrameId,
+    int Width,
+    int Height,
+    bool Animated,
+    string GlobalPath);
+
+public sealed record PermanentCardPortraitImport(
+    ModelId CardId,
+    string FileName,
+    string FrameId,
+    int Width,
+    int Height,
+    bool Animated,
+    byte[] Data);
+
 internal static class CardPortraitStore
 {
     private const int CurrentSchemaVersion = 2;
@@ -234,6 +252,125 @@ internal static class CardPortraitStore
     public static bool TryGetPermanent(ModelId cardId, out CardPortraitAsset asset)
     {
         return PermanentAssets.TryGetValue(cardId, out asset);
+    }
+
+    public static IReadOnlyDictionary<ModelId, PermanentCardPortraitSnapshot> GetPermanentSnapshot()
+    {
+        EnsurePermanentLoaded();
+        lock (Gate)
+        {
+            return PermanentAssets.ToDictionary(
+                pair => pair.Key,
+                pair => new PermanentCardPortraitSnapshot(
+                    pair.Key,
+                    pair.Value.Record.File,
+                    pair.Value.Record.FrameId,
+                    pair.Value.Record.Width,
+                    pair.Value.Record.Height,
+                    pair.Value.Record.Animated,
+                    pair.Value.GlobalPath));
+        }
+    }
+
+    public static bool ApplyPermanentImportsQuiet(
+        IReadOnlyCollection<PermanentCardPortraitImport> imports,
+        out int changedCount)
+    {
+        changedCount = 0;
+        if (imports.Count == 0)
+            return true;
+
+        EnsurePermanentLoaded();
+        string directory = GetPermanentImagesDirectory(_loadedPermanentScope);
+        string resolvedDirectory = ResolveDirectory(directory);
+        Directory.CreateDirectory(resolvedDirectory);
+        List<(ModelId CardId, CardPortraitRecord Record, string Path, string? PreviousFile)> prepared = [];
+
+        try
+        {
+            foreach (PermanentCardPortraitImport import in imports)
+            {
+                string sourceFileName = Path.GetFileName(import.FileName);
+                if (import.Data.Length == 0 || !IsSafeFileName(sourceFileName))
+                    throw new InvalidDataException($"Portrait for '{import.CardId}' is invalid.");
+
+                string extension = Path.GetExtension(sourceFileName).ToLowerInvariant();
+                string portraitId = Guid.NewGuid().ToString("N");
+                string fileName = $"{SanitizeCardId(import.CardId)}--{portraitId}{extension}";
+                string outputPath = Path.Combine(resolvedDirectory, fileName);
+                string temporaryPath = Path.Combine(resolvedDirectory, $".{portraitId}.tmp{extension}");
+                try
+                {
+                    File.WriteAllBytes(temporaryPath, import.Data);
+                    File.Move(temporaryPath, outputPath, overwrite: true);
+                }
+                finally
+                {
+                    if (File.Exists(temporaryPath))
+                        File.Delete(temporaryPath);
+                }
+
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                CardPortraitRecord record = new(
+                    portraitId,
+                    import.CardId.ToString(),
+                    fileName,
+                    import.FrameId,
+                    import.Width,
+                    import.Height,
+                    import.Animated,
+                    null,
+                    now,
+                    now);
+                string? previousFile = _permanent.Assignments is not null
+                                       && _permanent.Assignments.TryGetValue(import.CardId.ToString(), out CardPortraitRecord? previous)
+                    ? previous.File
+                    : null;
+                prepared.Add((import.CardId, record, outputPath, previousFile));
+            }
+
+            lock (Gate)
+            {
+                Dictionary<string, CardPortraitRecord> next = _permanent.Assignments is null
+                    ? new Dictionary<string, CardPortraitRecord>(StringComparer.Ordinal)
+                    : new Dictionary<string, CardPortraitRecord>(_permanent.Assignments, StringComparer.Ordinal);
+                foreach ((ModelId cardId, CardPortraitRecord record, _, _) in prepared)
+                    next[cardId.ToString()] = record;
+
+                Dictionary<string, CardPortraitRecord>? previousAssignments = _permanent.Assignments;
+                _permanent.Assignments = next;
+                if (!SavePermanentLocked())
+                {
+                    _permanent.Assignments = previousAssignments;
+                    throw new IOException("The portrait index could not be saved.");
+                }
+
+                foreach ((ModelId cardId, CardPortraitRecord record, string path, _) in prepared)
+                    PermanentAssets[cardId] = new CardPortraitAsset(record, path);
+            }
+
+            foreach ((_, CardPortraitRecord record, _, string? previousFile) in prepared)
+            {
+                if (!string.IsNullOrWhiteSpace(previousFile)
+                    && !string.Equals(previousFile, record.File, StringComparison.OrdinalIgnoreCase))
+                {
+                    TryDeleteImage(directory, previousFile);
+                }
+            }
+
+            changedCount = prepared.Count;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            foreach ((_, _, string path, _) in prepared)
+            {
+                try { File.Delete(path); }
+                catch { }
+            }
+            GD.PushWarning($"CardPortrait: permanent portrait import failed. {exception.Message}");
+            return false;
+        }
     }
 
     public static bool TryGetTemporary(CardPortraitReference reference, out CardPortraitAsset asset)

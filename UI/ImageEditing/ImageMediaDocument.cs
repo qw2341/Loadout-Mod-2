@@ -139,7 +139,21 @@ public static class ImageAnimationPackage
             throw new InvalidDataException("The animation package is empty or too large.");
 
         using FileStream stream = new(file.FullName, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read);
-        using ZipArchive archive = new(stream, ZipArchiveMode.Read, leaveOpen: false);
+        return Load(stream);
+    }
+
+    public static ImageMediaDocument Load(byte[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (data.Length == 0 || data.LongLength > MaxPackageBytes)
+            throw new InvalidDataException("The animation package is empty or too large.");
+        using MemoryStream stream = new(data, writable: false);
+        return Load(stream);
+    }
+
+    private static ImageMediaDocument Load(Stream stream)
+    {
+        using ZipArchive archive = new(stream, ZipArchiveMode.Read, leaveOpen: true);
         ZipArchiveEntry manifestEntry = archive.GetEntry(ManifestEntryName)
             ?? throw new InvalidDataException("The animation package manifest is missing.");
         if (manifestEntry.Length <= 0 || manifestEntry.Length > MaxEntryBytes)

@@ -231,6 +231,7 @@ public static class RelicModificationStateService
     private static long _permanentDisplayRevision;
     private static int _knownFeatureFlags;
     private static readonly ConditionalWeakTable<RelicModel, EffectiveStateCache> EffectiveStates = new();
+    private static ConditionalWeakTable<RelicModel, RelicModificationState> ExactPreviewStates = new();
     private static readonly ConditionalWeakTable<LocString, LocStringOwner> LocStringOwners = new();
     [ThreadStatic] private static Stack<(RelicModel Relic, string Kind)>? _locContext;
 
@@ -265,6 +266,7 @@ public static class RelicModificationStateService
         FlushSave();
         SaveManager.Instance.ProfileIdChanged -= OnProfileChanged;
         RelicModificationMultiplayerSyncService.Unregister();
+        ExactPreviewStates = new ConditionalWeakTable<RelicModel, RelicModificationState>();
         _registered = false;
     }
 
@@ -292,6 +294,22 @@ public static class RelicModificationStateService
     {
         EnsureLoaded();
         lock (Gate) return GetPermanentLocked(id).Clone();
+    }
+
+    public static IReadOnlyDictionary<ModelId, RelicModificationState> GetPermanentSnapshot()
+    {
+        EnsureLoaded();
+        Dictionary<string, RelicModificationState> source;
+        lock (Gate)
+            source = _permanent.Relics.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal);
+
+        Dictionary<ModelId, RelicModificationState> result = new();
+        foreach (RelicModel relic in ModelDb.AllRelics)
+        {
+            if (source.TryGetValue(relic.Id.ToString(), out RelicModificationState? state))
+                result[relic.Id] = state;
+        }
+        return result;
     }
 
     public static int GetPermanentModificationCount()
@@ -334,6 +352,9 @@ public static class RelicModificationStateService
 
     private static RelicModificationState GetEffectiveStateReadOnly(RelicModel relic)
     {
+        if (ExactPreviewStates.TryGetValue(relic, out RelicModificationState? previewState))
+            return previewState;
+
         EnsureLoaded();
         RelicModificationInstanceSnapshot attached = RelicModificationInstanceState.GetSnapshot(relic);
         int revision = Volatile.Read(ref _stateRevision);
@@ -499,6 +520,39 @@ public static class RelicModificationStateService
         return preview;
     }
 
+    public static RelicModel CreateExactPreviewRelic(RelicModel source, RelicModificationState state)
+    {
+        RelicModificationState normalized = state.Clone();
+        normalized.Normalize();
+        MarkFeaturePresence(normalized);
+        RelicModel preview = (RelicModel)source.ClonePreservingMutability();
+        ExactPreviewStates.Remove(preview);
+        ExactPreviewStates.Add(preview, normalized);
+        ApplyState(preview, normalized, refresh: false);
+        return preview;
+    }
+
+    public static bool StatesEquivalent(RelicModificationState? left, RelicModificationState? right)
+    {
+        RelicModificationState a = left?.Clone() ?? new RelicModificationState();
+        RelicModificationState b = right?.Clone() ?? new RelicModificationState();
+        a.Normalize();
+        b.Normalize();
+        return string.Equals(a.Rarity, b.Rarity, StringComparison.Ordinal)
+               && string.Equals(a.CustomTitle, b.CustomTitle, StringComparison.Ordinal)
+               && string.Equals(a.CustomDescription, b.CustomDescription, StringComparison.Ordinal)
+               && string.Equals(a.CustomFlavor, b.CustomFlavor, StringComparison.Ordinal)
+               && a.IsWax == b.IsWax
+               && a.IsMelted == b.IsMelted
+               && string.Equals(a.Status, b.Status, StringComparison.Ordinal)
+               && a.NeverMelt == b.NeverMelt
+               && a.NeverUsed == b.NeverUsed
+               && string.Equals(a.CounterMember, b.CounterMember, StringComparison.Ordinal)
+               && a.CounterValue == b.CounterValue
+               && DictionaryEquivalent(a.DynamicVars, b.DynamicVars)
+               && PrimitiveDictionaryEquivalent(a.PrimitiveValues, b.PrimitiveValues);
+    }
+
     public static RelicModel GetEffectivePermanentRelicForDisplay(RelicModel relic)
     {
         EnsureLoaded();
@@ -639,6 +693,85 @@ public static class RelicModificationStateService
         lock (Gate) return JsonSerializer.Serialize(_permanent.Relics);
     }
 
+    public static string ExportPermanentArchiveSnapshot()
+    {
+        EnsureLoaded();
+        lock (Gate) return JsonSerializer.Serialize(_permanent.Clone());
+    }
+
+    public static bool TryDeserializePermanentArchiveSnapshot(
+        string json,
+        out IReadOnlyDictionary<ModelId, RelicModificationState> snapshot)
+    {
+        try
+        {
+            PermanentSaveData parsed = JsonSerializer.Deserialize<PermanentSaveData>(json);
+            Dictionary<string, RelicModificationState> states = parsed.Relics
+                ?? new Dictionary<string, RelicModificationState>(StringComparer.Ordinal);
+            Dictionary<ModelId, RelicModificationState> resolved = new();
+            foreach ((string key, RelicModificationState state) in states)
+            {
+                RelicModel? relic = ModelDb.AllRelics.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Id.ToString(), key, StringComparison.Ordinal)
+                    || string.Equals(candidate.Id.Entry, key, StringComparison.OrdinalIgnoreCase));
+                if (relic is null)
+                {
+                    snapshot = new Dictionary<ModelId, RelicModificationState>();
+                    return false;
+                }
+
+                RelicModificationState normalized = state.Clone();
+                normalized.Normalize();
+                if (!normalized.IsEmpty)
+                    resolved[relic.Id] = normalized;
+            }
+
+            snapshot = resolved;
+            return true;
+        }
+        catch
+        {
+            snapshot = new Dictionary<ModelId, RelicModificationState>();
+            return false;
+        }
+    }
+
+    public static IReadOnlyList<ModelId> ApplyPermanentEntriesQuiet(
+        IReadOnlyDictionary<ModelId, RelicModificationState> entries)
+    {
+        EnsureLoaded();
+        if (entries.Count == 0)
+            return [];
+
+        List<ModelId> changed = [];
+        lock (Gate)
+        {
+            Dictionary<string, RelicModificationState> next = _permanent.Relics
+                .ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal);
+            foreach ((ModelId id, RelicModificationState incoming) in entries)
+            {
+                RelicModificationState normalized = incoming.Clone();
+                normalized.Normalize();
+                next.TryGetValue(id.ToString(), out RelicModificationState? current);
+                if (StatesEquivalent(current, normalized))
+                    continue;
+                next[id.ToString()] = normalized;
+                changed.Add(id);
+            }
+
+            if (changed.Count == 0)
+                return changed;
+
+            _permanent.Relics = next;
+            MarkFeaturePresence(next.Values);
+            QueueSave();
+            Interlocked.Increment(ref _stateRevision);
+        }
+
+        FlushSave();
+        return changed;
+    }
+
     public static void SetHostPermanentOverlay(string json)
     {
         Dictionary<string, RelicModificationState>? states = JsonSerializer.Deserialize<Dictionary<string, RelicModificationState>>(json);
@@ -717,7 +850,11 @@ public static class RelicModificationStateService
     private static void ApplyEffectiveState(RelicModel relic)
     {
         if (relic.IsCanonical) return;
-        RelicModificationState state = GetEffectiveState(relic);
+        ApplyState(relic, GetEffectiveState(relic), refresh: true);
+    }
+
+    private static void ApplyState(RelicModel relic, RelicModificationState state, bool refresh)
+    {
         foreach ((string name, decimal value) in state.DynamicVars)
             if (relic.DynamicVars.TryGetValue(name, out var dynamicVar)) dynamicVar.BaseValue = value;
 
@@ -738,7 +875,26 @@ public static class RelicModificationStateService
                 TrySetDescriptor(relic, descriptor, value);
         if (state.CounterMember is not null && state.CounterValue.HasValue)
             TildeKeyStateService.ReconcileRelicCounterValue(relic, state.CounterMember, state.CounterValue.Value);
-        RefreshRelic(relic);
+        if (refresh)
+            RefreshRelic(relic);
+    }
+
+    private static bool DictionaryEquivalent(
+        IReadOnlyDictionary<string, decimal> left,
+        IReadOnlyDictionary<string, decimal> right)
+    {
+        return left.Count == right.Count
+               && left.All(pair => right.TryGetValue(pair.Key, out decimal value) && value == pair.Value);
+    }
+
+    private static bool PrimitiveDictionaryEquivalent(
+        IReadOnlyDictionary<string, RelicPrimitiveValue> left,
+        IReadOnlyDictionary<string, RelicPrimitiveValue> right)
+    {
+        return left.Count == right.Count
+               && left.All(pair => right.TryGetValue(pair.Key, out RelicPrimitiveValue? value)
+                                   && value.Kind == pair.Value.Kind
+                                   && string.Equals(value.Value, pair.Value.Value, StringComparison.Ordinal));
     }
 
     private static RelicModificationState CaptureCurrentState(RelicModel relic)

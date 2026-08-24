@@ -202,6 +202,10 @@ public partial class NGenericSelectScreen : Control
     private Control? _multiplierBadge;
     private MegaLabel? _multiplierBadgeLabel;
     private Func<IGenericSelectItem, bool>? _customVisibilityPredicate;
+    private Func<bool>? _confirmAvailabilityPredicate;
+    private bool _hideConfirmWhenUnavailable;
+    private bool _showConfirmWithoutSelection;
+    private Control? _bottomActionControl;
     private bool _isSubscribedToLocaleChanges;
     private string _configuredLocaleLanguage = string.Empty;
     private float _lastCullScrollY = float.NaN;
@@ -246,6 +250,43 @@ public partial class NGenericSelectScreen : Control
     public bool IsFirstOpenPrewarmed => _hiddenPrewarmCompleted;
     public bool IsScreenActive => _isScreenActive;
     public bool IsReusedSelectionActive => _reusedSelectionSession is not null;
+
+    public void SetConfirmAvailability(
+        Func<bool>? predicate,
+        bool hideWhenUnavailable,
+        bool showWithoutSelection = false)
+    {
+        _confirmAvailabilityPredicate = predicate;
+        _hideConfirmWhenUnavailable = hideWhenUnavailable;
+        _showConfirmWithoutSelection = showWithoutSelection;
+        UpdateConfirmButtonState();
+    }
+
+    public void RefreshConfirmAvailability()
+    {
+        UpdateConfirmButtonState();
+    }
+
+    public void SetBottomActionControl(Control control, float height)
+    {
+        ArgumentNullException.ThrowIfNull(control);
+        Control? cardGrid = GetNodeOrNull<Control>("CardGrid");
+        Control? screenContents = GetNodeOrNull<Control>("CardGrid/ScreenContents");
+        if (cardGrid is null || screenContents is null)
+            return;
+
+        if (_bottomActionControl is { } previous && GodotObject.IsInstanceValid(previous))
+            previous.QueueFree();
+
+        float reservedHeight = Math.Max(1f, height);
+        screenContents.OffsetBottom = -reservedHeight;
+        control.Name = "BottomActionControl";
+        control.SetAnchorsPreset(LayoutPreset.BottomWide);
+        control.OffsetTop = -reservedHeight;
+        control.OffsetBottom = 0f;
+        cardGrid.AddChild(control);
+        _bottomActionControl = control;
+    }
 
     public override void _Ready()
     {
@@ -539,19 +580,22 @@ public partial class NGenericSelectScreen : Control
             ResetActionButtonVisualState(_cancelClickable);
         }
 
-        bool usesSelection = _options.SelectionMode != SelectSelectionMode.None
+        bool usesSelection = _showConfirmWithoutSelection
+                             || _options.SelectionMode != SelectSelectionMode.None
                              && _reusedSelectionSession?.ShowSelectionChrome != false;
 
+        bool confirmAvailable = IsConfirmAllowed();
+        bool showConfirm = active && usesSelection && (!_hideConfirmWhenUnavailable || confirmAvailable);
         if (_confirmButton is not null)
         {
-            _confirmButton.Visible = active && usesSelection;
-            _confirmButton.Disabled = !active || !usesSelection || !IsConfirmAllowed();
+            _confirmButton.Visible = showConfirm;
+            _confirmButton.Disabled = !showConfirm || !confirmAvailable;
         }
 
         if (_confirmClickable is not null)
         {
-            _confirmClickable.Visible = active && usesSelection;
-            _confirmClickable.SetEnabled(active && usesSelection && IsConfirmAllowed());
+            _confirmClickable.Visible = showConfirm;
+            _confirmClickable.SetEnabled(showConfirm && confirmAvailable);
             ResetActionButtonVisualState(_confirmClickable);
         }
 
@@ -5273,7 +5317,8 @@ public partial class NGenericSelectScreen : Control
             ? _selectedAmounts.Values.Sum(Math.Abs)
             : _selectedAmounts.Values.Sum();
         return selectedCount >= _options.MinSelection
-            && selectedCount <= _options.MaxTotalSelection;
+            && selectedCount <= _options.MaxTotalSelection
+            && (_confirmAvailabilityPredicate?.Invoke() ?? true);
     }
 
     private void UpdateConfirmButtonState()
@@ -5281,6 +5326,7 @@ public partial class NGenericSelectScreen : Control
         bool isActive = IsVisibleInTree();
         bool usesSelection = _options.SelectionMode != SelectSelectionMode.None
                              && _reusedSelectionSession?.ShowSelectionChrome != false;
+        bool usesConfirm = _showConfirmWithoutSelection || usesSelection;
         int selectedCount = _reusedSelectionSession?.AllowSignedAmounts == true
             ? _selectedAmounts.Values.Sum(Math.Abs)
             : _selectedAmounts.Values.Sum();
@@ -5295,16 +5341,18 @@ public partial class NGenericSelectScreen : Control
             _selectedCountLabel.Visible = isActive && usesSelection;
         }
 
+        bool confirmAvailable = IsConfirmAllowed();
+        bool showConfirm = isActive && usesConfirm && (!_hideConfirmWhenUnavailable || confirmAvailable);
         if (_confirmButton is not null)
         {
-            _confirmButton.Visible = isActive && usesSelection;
-            _confirmButton.Disabled = !isActive || !usesSelection || !IsConfirmAllowed();
+            _confirmButton.Visible = showConfirm;
+            _confirmButton.Disabled = !showConfirm || !confirmAvailable;
         }
 
         if (_confirmClickable is not null)
         {
-            _confirmClickable.Visible = isActive && usesSelection;
-            _confirmClickable.SetEnabled(isActive && usesSelection && IsConfirmAllowed());
+            _confirmClickable.Visible = showConfirm;
+            _confirmClickable.SetEnabled(showConfirm && confirmAvailable);
         }
 
         bool canCancel = _reusedSelectionSession?.AllowCancellation != false;

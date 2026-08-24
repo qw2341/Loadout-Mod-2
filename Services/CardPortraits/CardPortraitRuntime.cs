@@ -142,6 +142,7 @@ internal static class CardPortraitRuntime
     private static readonly Dictionary<CardPortraitCacheKey, CardPortraitCacheEntry> SequenceCache = [];
     private static readonly LinkedList<CardPortraitCacheKey> SequenceLru = [];
     private static readonly HashSet<CardPortraitCacheKey> WarnedAssets = [];
+    private static ConditionalWeakTable<CardModel, PreviewPortraitSource> PreviewSources = new();
     private static long _sequenceCacheBytes;
     private static bool _registered;
 
@@ -166,6 +167,7 @@ internal static class CardPortraitRuntime
         CardPortraitStore.PermanentReloaded -= OnPermanentReloaded;
         ClearSequenceCache();
         WarnedAssets.Clear();
+        PreviewSources = new ConditionalWeakTable<CardModel, PreviewPortraitSource>();
         CardPortraitFields.ClearAll();
         CardPortraitDynamicPatches.Clear();
         CardPortraitStore.Unregister();
@@ -182,6 +184,37 @@ internal static class CardPortraitRuntime
     public static bool TryResolve(CardModel card, out CardPortraitTextureSequence sequence)
     {
         Register();
+        if (PreviewSources.TryGetValue(card, out PreviewPortraitSource? preview))
+        {
+            if (preview.Sequence is not null)
+            {
+                sequence = preview.Sequence;
+                return true;
+            }
+
+            CardPortraitRecord record = new(
+                preview.PortraitId,
+                card.Id.ToString(),
+                preview.FileName,
+                preview.FrameId,
+                preview.Document.Width,
+                preview.Document.Height,
+                preview.Document.IsAnimated,
+                null,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow);
+            ImageEditFrameDefinition frame = ImageEditFramePresets.ForCard(
+                card.Type,
+                CardModificationRuntime.ShouldUseAncientRendering(card));
+            sequence = CreateSequence(
+                new CardPortraitAsset(record, string.Empty),
+                card,
+                frame,
+                preview.Document);
+            preview.Sequence = sequence;
+            return true;
+        }
+
         if (CardPortraitFields.TryGet(GetTemporaryOwner(card), out CardPortraitReference? reference)
             && CardPortraitStore.TryGetTemporary(reference, out CardPortraitAsset temporary)
             && TryLoadSequence(temporary, card, out sequence))
@@ -197,6 +230,29 @@ internal static class CardPortraitRuntime
 
         sequence = null!;
         return false;
+    }
+
+    public static void AttachPreview(
+        CardModel card,
+        ImageMediaDocument document,
+        string fileName,
+        string frameId)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        ArgumentNullException.ThrowIfNull(document);
+        PreviewSources.Remove(card);
+        PreviewSources.Add(card, new PreviewPortraitSource(
+            Guid.NewGuid().ToString("N"),
+            fileName,
+            frameId,
+            document));
+        CardPortraitDynamicPatches.EnsureVisualInstalled();
+    }
+
+    public static void PrepareQuietPermanentImport()
+    {
+        Register();
+        CardPortraitDynamicPatches.EnsureVisualInstalled();
     }
 
     public static bool SaveTemporary(
@@ -589,6 +645,19 @@ internal static class CardPortraitRuntime
     }
 
     private static CardModel GetTemporaryOwner(CardModel card) => card.DeckVersion ?? card;
+
+    private sealed class PreviewPortraitSource(
+        string portraitId,
+        string fileName,
+        string frameId,
+        ImageMediaDocument document)
+    {
+        public string PortraitId { get; } = portraitId;
+        public string FileName { get; } = fileName;
+        public string FrameId { get; } = frameId;
+        public ImageMediaDocument Document { get; } = document;
+        public CardPortraitTextureSequence? Sequence { get; set; }
+    }
 
     private readonly record struct CardPortraitCacheKey(
         string PortraitId,

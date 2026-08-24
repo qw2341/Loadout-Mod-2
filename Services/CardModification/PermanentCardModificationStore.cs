@@ -171,6 +171,12 @@ public static class PermanentCardModificationStore
         return source.ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
     }
 
+    public static IReadOnlyDictionary<ModelId, CardModificationDelta> GetProfileDeltasSnapshot()
+    {
+        EnsureLoaded();
+        return _profileLookup.ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
+    }
+
     public static bool SetProfile(ModelId cardId, CardModificationSpec? value)
     {
         return SetProfileDelta(cardId, CardModificationRuntime.CreatePermanentDelta(cardId, value));
@@ -229,6 +235,73 @@ public static class PermanentCardModificationStore
             SchemaVersion = CurrentSchemaVersion,
             Cards = CloneDictionary(source)
         }, JsonOptions);
+    }
+
+    public static string ExportProfileSnapshotJson()
+    {
+        EnsureLoaded();
+        return JsonSerializer.Serialize(new PermanentSaveData
+        {
+            SchemaVersion = CurrentSchemaVersion,
+            Cards = CloneDictionary(_profileCards)
+        }, JsonOptions);
+    }
+
+    public static bool TryDeserializeProfileSnapshot(
+        string? json,
+        out IReadOnlyDictionary<ModelId, CardModificationDelta> snapshot)
+    {
+        if (!TryDeserializeSnapshot(json, out Dictionary<string, CardModificationDelta> parsed))
+        {
+            snapshot = new Dictionary<ModelId, CardModificationDelta>();
+            return false;
+        }
+
+        Dictionary<ModelId, CardModificationDelta> resolved = new();
+        foreach ((string key, CardModificationDelta delta) in parsed)
+        {
+            if (!TryResolveId(key, out ModelId id))
+            {
+                snapshot = new Dictionary<ModelId, CardModificationDelta>();
+                return false;
+            }
+
+            resolved[id] = delta.Clone();
+        }
+
+        snapshot = resolved;
+        return true;
+    }
+
+    public static IReadOnlyList<ModelId> ApplyProfileEntriesQuiet(
+        IReadOnlyDictionary<ModelId, CardModificationDelta> entries)
+    {
+        EnsureLoaded();
+        if (entries.Count == 0)
+            return [];
+
+        Dictionary<string, CardModificationDelta> next = CloneDictionary(_profileCards);
+        List<ModelId> changed = [];
+        foreach ((ModelId id, CardModificationDelta incoming) in entries)
+        {
+            CardModificationDelta normalized = incoming.Clone();
+            normalized.Normalize();
+            if (SetInDictionary(next, id.ToString(), normalized))
+                changed.Add(id);
+        }
+
+        if (changed.Count == 0)
+            return changed;
+
+        lock (Gate)
+        {
+            _profileCards = next;
+            _profileLookup = BuildLookup(next);
+            QueueSaveLocked();
+        }
+
+        FlushPendingSave();
+        return changed;
     }
 
     public static IReadOnlyList<ModelId> ApplyHostSnapshot(string? json)
@@ -435,7 +508,7 @@ public static class PermanentCardModificationStore
             return dictionary.Remove(key);
 
         if (dictionary.TryGetValue(key, out CardModificationDelta? current)
-            && CardModificationCodec.SerializeDelta(current) == CardModificationCodec.SerializeDelta(value))
+            && CardModificationRuntime.PermanentDeltasEquivalent(current, value))
         {
             return false;
         }
@@ -515,10 +588,7 @@ public static class PermanentCardModificationStore
         {
             previous.TryGetValue(key, out CardModificationDelta? left);
             next.TryGetValue(key, out CardModificationDelta? right);
-            return !string.Equals(
-                left is null ? string.Empty : CardModificationCodec.SerializeDelta(left),
-                right is null ? string.Empty : CardModificationCodec.SerializeDelta(right),
-                StringComparison.Ordinal);
+            return !CardModificationRuntime.PermanentDeltasEquivalent(left, right);
         }));
     }
 

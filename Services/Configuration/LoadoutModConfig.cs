@@ -53,6 +53,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
     private NLoadoutDropdown? _companionDropdown;
     private Control? _editCustomCompanionButton;
     private Control? _deleteCustomCompanionButton;
+    private bool _modificationTransferBusy;
 
     public static bool EnableDeckLoadoutScreen
     {
@@ -140,6 +141,31 @@ public sealed class LoadoutModConfig : SimpleModConfig
         resetStatus.CustomMinimumSize = new Vector2(0f, 44f);
         resetStatus.HorizontalAlignment = HorizontalAlignment.Center;
 
+        NLoadoutToggle includePortraits = new()
+        {
+            Name = "IncludeCardPortraits",
+            CustomMinimumSize = new Vector2(0f, 60f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        includePortraits.Init(
+            "IncludeCardPortraits",
+            GetLabelText("IncludeCardPortraits"),
+            checkedByDefault: false);
+        optionContainer.AddChild(includePortraits);
+        AddModificationTransferActions(
+            optionContainer,
+            "CardModificationTransferActions",
+            "ExportCardModifications",
+            "ImportCardModifications",
+            () => RunModificationTransferAsync(
+                () => PermanentModificationArchiveService.ExportCardsAsync(includePortraits.IsChecked),
+                resetStatus,
+                isImport: false),
+            () => RunModificationTransferAsync(
+                PermanentModificationArchiveService.ImportCardsAsync,
+                resetStatus,
+                isImport: true));
+
         optionContainer.AddChild(CreateButton(
             "PermanentCardModifications",
             "ResetAllPermanentCardModifications",
@@ -151,6 +177,20 @@ public sealed class LoadoutModConfig : SimpleModConfig
         relicResetStatus.Name = "PermanentRelicModificationResetStatus";
         relicResetStatus.CustomMinimumSize = new Vector2(0f, 44f);
         relicResetStatus.HorizontalAlignment = HorizontalAlignment.Center;
+
+        AddModificationTransferActions(
+            optionContainer,
+            "RelicModificationTransferActions",
+            "ExportRelicModifications",
+            "ImportRelicModifications",
+            () => RunModificationTransferAsync(
+                PermanentModificationArchiveService.ExportRelicsAsync,
+                relicResetStatus,
+                isImport: false),
+            () => RunModificationTransferAsync(
+                PermanentModificationArchiveService.ImportRelicsAsync,
+                relicResetStatus,
+                isImport: true));
 
         optionContainer.AddChild(CreateButton(
             "PermanentRelicModifications",
@@ -196,6 +236,88 @@ public sealed class LoadoutModConfig : SimpleModConfig
             status.Text = GetLabelText("RelicResetStatusFailed");
             status.AddThemeColorOverride("default_color", new Color("F07C72"));
             GD.PushError($"Loadout: failed to reset permanent relic modifications. {exception}");
+        }
+    }
+
+    private void AddModificationTransferActions(
+        Control optionContainer,
+        string name,
+        string exportLabelKey,
+        string importLabelKey,
+        Func<Task> export,
+        Func<Task> import)
+    {
+        HBoxContainer actions = new()
+        {
+            Name = name,
+            Alignment = BoxContainer.AlignmentMode.Center,
+            CustomMinimumSize = new Vector2(0f, BaseLibDropdownHeight),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        actions.AddThemeConstantOverride("separation", 16);
+
+        Control exportButton = CreateRawButtonControl(
+            GetLabelText(exportLabelKey),
+            () => TaskHelper.RunSafely(export()));
+        exportButton.Name = exportLabelKey;
+        exportButton.CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight);
+        exportButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        actions.AddChild(exportButton);
+
+        Control importButton = CreateRawButtonControl(
+            GetLabelText(importLabelKey),
+            () => TaskHelper.RunSafely(import()));
+        importButton.Name = importLabelKey;
+        importButton.CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight);
+        importButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        actions.AddChild(importButton);
+
+        optionContainer.AddChild(actions);
+    }
+
+    private async Task RunModificationTransferAsync(
+        Func<Task<ModificationTransferResult>> operation,
+        MegaRichTextLabel status,
+        bool isImport)
+    {
+        if (_modificationTransferBusy)
+            return;
+
+        _modificationTransferBusy = true;
+        try
+        {
+            ModificationTransferResult result = await operation();
+            if (result.Cancelled)
+            {
+                status.Text = GetLabelText("ModificationOperationCancelled");
+                status.AddThemeColorOverride("default_color", StsColors.cream);
+                return;
+            }
+
+            if (result.Succeeded)
+            {
+                status.Text = GetLabelText(isImport
+                        ? "ModificationImportSucceeded"
+                        : "ModificationExportSucceeded")
+                    .Replace("{Count}", result.Count.ToString(), StringComparison.Ordinal);
+                status.AddThemeColorOverride("default_color", new Color("85D98B"));
+                return;
+            }
+
+            status.Text = GetLabelText("ModificationOperationFailed")
+                .Replace("{Error}", result.Error ?? GetLabelText("ModificationUnknownError"), StringComparison.Ordinal);
+            status.AddThemeColorOverride("default_color", new Color("F07C72"));
+        }
+        catch (Exception exception)
+        {
+            status.Text = GetLabelText("ModificationOperationFailed")
+                .Replace("{Error}", exception.Message, StringComparison.Ordinal);
+            status.AddThemeColorOverride("default_color", new Color("F07C72"));
+            GD.PushError($"Loadout: modification transfer failed. {exception}");
+        }
+        finally
+        {
+            _modificationTransferBusy = false;
         }
     }
 

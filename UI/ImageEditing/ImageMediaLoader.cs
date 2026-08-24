@@ -76,6 +76,29 @@ public static class ImageMediaLoader
         return ImageMediaDocument.FromImage(image);
     }
 
+    public static ImageMediaDocument LoadDocumentFromBytes(byte[] data, string extension)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (data.Length == 0 || data.LongLength > MaxInputBytes)
+            throw new InvalidDataException("The selected image data is empty or too large.");
+
+        string normalizedExtension = extension.StartsWith('.')
+            ? extension.ToLowerInvariant()
+            : $".{extension.ToLowerInvariant()}";
+        if (normalizedExtension == ImageAnimationPackage.Extension)
+            return ImageAnimationPackage.Load(data);
+
+        Image image = new();
+        Error error = normalizedExtension switch
+        {
+            ".png" => image.LoadPngFromBuffer(data),
+            _ => LoadBySignature(image, data)
+        };
+        if (error != Error.Ok || image.IsEmpty())
+            throw new InvalidDataException($"The portrait data could not be decoded ({error}).");
+        return ImageMediaDocument.FromImage(image);
+    }
+
     public static ImageMediaMetadata ReadMetadata(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);

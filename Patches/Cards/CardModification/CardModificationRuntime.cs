@@ -344,6 +344,52 @@ public static class CardModificationRuntime
         return string.Equals(a, b, StringComparison.Ordinal);
     }
 
+    public static bool PermanentDeltasEquivalent(CardModificationDelta? left, CardModificationDelta? right)
+    {
+        CardModificationDelta a = left?.Clone() ?? new CardModificationDelta();
+        CardModificationDelta b = right?.Clone() ?? new CardModificationDelta();
+        a.Normalize();
+        b.Normalize();
+        return a.EnergyDelta == b.EnergyDelta
+               && a.EnergyOverride == b.EnergyOverride
+               && a.BaseReplayCountDelta == b.BaseReplayCountDelta
+               && a.BaseStarCostDelta == b.BaseStarCostDelta
+               && DecimalDictionariesEqual(a.DynamicVarDeltas, b.DynamicVarDeltas)
+               && string.Equals(a.PoolId, b.PoolId, StringComparison.Ordinal)
+               && string.Equals(a.Type, b.Type, StringComparison.Ordinal)
+               && string.Equals(a.Rarity, b.Rarity, StringComparison.Ordinal)
+               && string.Equals(a.CustomTitle, b.CustomTitle, StringComparison.Ordinal)
+               && string.Equals(a.CustomDescription, b.CustomDescription, StringComparison.Ordinal)
+               && string.Equals(a.PortraitPath, b.PortraitPath, StringComparison.Ordinal)
+               && string.Equals(a.BetaPortraitPath, b.BetaPortraitPath, StringComparison.Ordinal)
+               && a.ForceAncientPortraitRendering == b.ForceAncientPortraitRendering
+               && BoolDictionariesEqual(a.KeywordOverrides, b.KeywordOverrides)
+               && AttachmentListsEqual(a.Enchantments, b.Enchantments)
+               && AttachmentEquals(a.Affliction, b.Affliction)
+               && UpgradeDeltasEqual(a.UpgradeModification, b.UpgradeModification);
+    }
+
+    private static bool DecimalDictionariesEqual(
+        IReadOnlyDictionary<string, decimal> left,
+        IReadOnlyDictionary<string, decimal> right) =>
+        left.Count == right.Count
+        && left.All(pair => right.TryGetValue(pair.Key, out decimal value) && value == pair.Value);
+
+    private static bool BoolDictionariesEqual(
+        IReadOnlyDictionary<string, bool> left,
+        IReadOnlyDictionary<string, bool> right) =>
+        left.Count == right.Count
+        && left.All(pair => right.TryGetValue(pair.Key, out bool value) && value == pair.Value);
+
+    private static bool UpgradeDeltasEqual(
+        CardUpgradeModificationSpec left,
+        CardUpgradeModificationSpec right) =>
+        left.EnergyCostDelta == right.EnergyCostDelta
+        && left.BaseReplayCountDelta == right.BaseReplayCountDelta
+        && left.BaseStarCostDelta == right.BaseStarCostDelta
+        && DecimalDictionariesEqual(left.DynamicVarDeltas, right.DynamicVarDeltas)
+        && BoolDictionariesEqual(left.KeywordOverrides, right.KeywordOverrides);
+
     /// <summary>Called only while a permanent attachment definition exists.</summary>
     public static void ApplyPermanentResidualAtCreation(CardModel card)
     {
@@ -975,6 +1021,63 @@ public static class CardModificationRuntime
         {
             GD.PushWarning($"CardModification: failed creating preview for '{source.Id}'. {exception.Message}");
             return source;
+        }
+    }
+
+    public static CardModel? CreateExactPermanentPreview(
+        ModelId cardId,
+        CardModificationDelta? delta,
+        bool upgraded = false)
+    {
+        try
+        {
+            CardModel? preview;
+            using (SuppressPermanentApplication())
+                preview = CanonicalCardModificationRegistry.CreatePristineMutable(cardId);
+            if (preview is null)
+                throw new InvalidOperationException($"Card '{cardId}' is not available.");
+
+            CardModificationDelta normalized = delta?.Clone() ?? new CardModificationDelta();
+            normalized.Normalize();
+            PreviewDeltas.Remove(preview);
+            PreviewDeltas.Add(preview, normalized);
+            if (!normalized.IsEmpty)
+            {
+                ApplyDeltaToCard(preview, normalized);
+                if (normalized.HasCustomText) MarkCustomTextOverridesPresent();
+                if (normalized.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+                if (normalized.HasAncientRenderingOverride) CardModificationDynamicPatches.EnableAncientRenderingPatches();
+            }
+
+            if (upgraded && preview.IsUpgradable)
+            {
+                CardModificationSpec materialized = MaterializePermanentSpec(cardId, normalized);
+                using (CardUpgradeModificationRuntimePatches.BeginOverride(materialized.UpgradeModification))
+                    preview.UpgradeInternal();
+                preview.FinalizeUpgradeInternal();
+            }
+
+            return preview;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"CardModification: failed creating exact preview for '{cardId}'. {exception.Message}");
+            return null;
+        }
+    }
+
+    public static void ReconcileQuietPermanentImport(IEnumerable<ModelId> changedIds)
+    {
+        foreach (ModelId id in changedIds.Distinct())
+        {
+            PermanentCardModificationStore.TryGetDelta(id, out CardModificationDelta? delta);
+            CanonicalCardModificationRegistry.Reconcile(id, delta);
+            if (delta is null)
+                continue;
+            if (delta.HasCustomText) MarkCustomTextOverridesPresent();
+            if (delta.HasPortraitOverride) CardModificationDynamicPatches.EnablePortraitPatches();
+            if (delta.HasAncientRenderingOverride) CardModificationDynamicPatches.EnableAncientRenderingPatches();
+            if (!delta.UpgradeModification.IsEmpty) CardUpgradeModificationRuntimePatches.Enable();
         }
     }
 
