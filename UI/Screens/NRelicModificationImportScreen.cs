@@ -176,7 +176,48 @@ public partial class NRelicModificationImportScreen : NRelicSelectScreen, IScree
             this,
             entry,
             allowChoice: entry.HasConflict,
-            resolved: () => RefreshEntry(entry));
+            resolved: () => OnConflictResolved(entry));
+    }
+
+    private void OnConflictResolved(RelicModificationImportEntry entry)
+    {
+        RefreshEntry(entry);
+        Callable.From(() => OpenNextUnresolvedConflict(entry)).CallDeferred();
+    }
+
+    private void OpenNextUnresolvedConflict(RelicModificationImportEntry current)
+    {
+        if (_session is null
+            || !GodotObject.IsInstanceValid(this)
+            || GetNodeOrNull<NModificationConflictOverlay>("RelicModificationConflictChoice") is not null)
+        {
+            return;
+        }
+
+        int currentIndex = -1;
+        for (int index = 0; index < _session.Entries.Count; index++)
+        {
+            if (ReferenceEquals(_session.Entries[index], current))
+            {
+                currentIndex = index;
+                break;
+            }
+        }
+        if (currentIndex < 0)
+            return;
+        for (int offset = 1; offset <= _session.Entries.Count; offset++)
+        {
+            RelicModificationImportEntry candidate = _session.Entries[(currentIndex + offset) % _session.Entries.Count];
+            if (candidate.HasConflict && candidate.Decision == ModificationImportDecision.Unresolved)
+            {
+                NModificationConflictOverlay.ShowRelic(
+                    this,
+                    candidate,
+                    allowChoice: true,
+                    resolved: () => OnConflictResolved(candidate));
+                return;
+            }
+        }
     }
 
     private void ApplyBulk(ModificationImportDecision decision)

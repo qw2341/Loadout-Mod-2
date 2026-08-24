@@ -37,6 +37,20 @@ public class CardPrinter
 	private const string MultiplayerFilterId = "play_mode_multiplayer";
 	private const string SingleplayerFilterId = "play_mode_singleplayer";
 	private static string _currentCardFilterId;
+	private static Action<IReadOnlyCollection<ModelId>> _refreshImportedPermanentCards;
+
+	public static void RefreshImportedPermanentCards(IEnumerable<ModelId> cardIds)
+	{
+		if (!RunManager.Instance.IsInProgress)
+			return;
+
+		ModelId[] affected = cardIds.Distinct().ToArray();
+		if (affected.Length == 0)
+			return;
+
+		CardPrinterRunRecipeStore.InvalidatePermanentDisplays(affected);
+		_refreshImportedPermanentCards?.Invoke(affected);
+	}
 	
     public static void Initialize()
     {
@@ -155,14 +169,17 @@ public class CardPrinter
 	    void RefreshVisibleCardPrinterCards(
 		    NGenericSelectScreen screen,
 		    IReadOnlyCollection<string> cardIds,
-		    long targetRevision)
+		    long targetRevision,
+		    bool requireActive = true)
 	    {
 		    if (cardIds.Count == 0)
 			    return;
 
 		    Callable.From(() =>
 		    {
-			    if (!GodotObject.IsInstanceValid(screen) || !screen.IsInsideTree() || !screen.IsScreenActive)
+			    if (!GodotObject.IsInstanceValid(screen)
+			        || !screen.IsInsideTree()
+			        || (requireActive && !screen.IsScreenActive))
 				    return;
 
 			    if (screen is NCardSelectScreen cardScreen)
@@ -195,6 +212,18 @@ public class CardPrinter
 			    observedPermanentDisplayRevision = Math.Max(observedPermanentDisplayRevision, targetRevision);
 		    }).CallDeferred();
 	    }
+
+	    _refreshImportedPermanentCards = cardIds =>
+	    {
+		    if (cardPrinterScreen is null)
+			    return;
+		    string[] keys = cardIds.Select(id => id.ToString()).ToArray();
+		    RefreshVisibleCardPrinterCards(
+			    cardPrinterScreen,
+			    keys,
+			    CardModificationRuntime.PermanentDisplayRevision,
+			    requireActive: false);
+	    };
 
 		NLoadoutPanelItem printerItem = CommonHelpers.CreateAndAddLoadoutItem(
 			allCards,

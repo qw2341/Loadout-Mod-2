@@ -153,6 +153,12 @@ public static class CardPrinterRunRecipeStore
     private static void OnPermanentCardDisplayChanged(ModelId cardId) =>
         DisplayCache.Remove(cardId);
 
+    public static void InvalidatePermanentDisplays(IEnumerable<ModelId> cardIds)
+    {
+        foreach (ModelId cardId in cardIds)
+            DisplayCache.Remove(cardId);
+    }
+
     private static Player? GetLocalPlayer()
     {
         try

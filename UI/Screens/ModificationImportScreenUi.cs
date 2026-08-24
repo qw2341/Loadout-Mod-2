@@ -8,7 +8,12 @@ using Loadout.PanelItems;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 
 public static class ModificationImportScreenUi
@@ -96,6 +101,35 @@ public static class ModificationImportScreenUi
         label.AddThemeColorOverride("font_outline_color", new Color(0f, 0f, 0f, 0.72f));
         label.AddThemeConstantOverride("outline_size", 10);
         return label;
+    }
+
+    public static void RefreshExactCardView(Control view, CardModel? model)
+    {
+        if (model is null || !GodotObject.IsInstanceValid(view))
+            return;
+
+        void Refresh()
+        {
+            if (!GodotObject.IsInstanceValid(view))
+                return;
+            if (CommonHelpers.TryFindDescendantOrSelf(view, out NCardHolder holder)
+                && holder.CardNode is not null
+                && GodotObject.IsInstanceValid(holder.CardNode))
+            {
+                holder.ReassignToCard(model, PileType.None, null, ModelVisibility.Visible);
+                return;
+            }
+            if (CommonHelpers.TryFindDescendantOrSelf(view, out NCard card))
+            {
+                card.Model = model;
+                card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+            }
+        }
+
+        if (view.IsNodeReady())
+            Refresh();
+        else
+            view.Connect(Node.SignalName.Ready, Callable.From(Refresh), (uint)GodotObject.ConnectFlags.OneShot);
     }
 
     private static NLoadoutSettingsActionButton CreateButton(string id, string label, Action action)

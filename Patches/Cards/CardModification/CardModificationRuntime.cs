@@ -1072,6 +1072,7 @@ public static class CardModificationRuntime
         {
             PermanentCardModificationStore.TryGetDelta(id, out CardModificationDelta? delta);
             CanonicalCardModificationRegistry.Reconcile(id, delta);
+            AttachmentDisplayCards.Remove(id);
             if (delta is null)
                 continue;
             if (delta.HasCustomText) MarkCustomTextOverridesPresent();

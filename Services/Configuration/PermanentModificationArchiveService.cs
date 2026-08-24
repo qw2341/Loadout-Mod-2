@@ -199,6 +199,13 @@ public sealed class CardModificationImportSession
             .ToDictionary(entry => entry.Id, entry => entry.IncomingDelta!.Clone());
         IReadOnlyList<ModelId> changed = PermanentCardModificationStore.ApplyProfileEntriesQuiet(deltas);
         CardModificationRuntime.ReconcileQuietPermanentImport(changed);
+        HashSet<ModelId> refreshIds = new(changed);
+        foreach (CardModificationImportEntry entry in selected)
+        {
+            if (entry.IncomingPortrait is not null)
+                refreshIds.Add(entry.Id);
+        }
+        CardPrinter.RefreshImportedPermanentCards(refreshIds);
         return ModificationTransferResult.Success(selected.Length);
     }
 }
@@ -255,16 +262,18 @@ public static class PermanentModificationArchiveService
             IReadOnlyDictionary<ModelId, PermanentCardPortraitSnapshot> portraits = includePortraits
                 ? CardPortraitStore.GetPermanentSnapshot()
                 : new Dictionary<ModelId, PermanentCardPortraitSnapshot>();
+            IReadOnlyCollection<string> cardIds = PermanentCardModificationStore.GetProfileEntryIdsSnapshot();
+            string cardsJson = PermanentCardModificationStore.ExportProfileSnapshotJson();
             WriteArchiveAtomically(path, archive =>
             {
                 WriteJson(archive, ManifestEntry, new ArchiveManifest(Format, Version, "cards", includePortraits));
-                WriteText(archive, CardsEntry, PermanentCardModificationStore.ExportProfileSnapshotJson());
+                WriteText(archive, CardsEntry, cardsJson);
                 if (includePortraits)
                     WritePortraits(archive, portraits.Values);
             });
-            int count = PermanentCardModificationStore.GetProfileDeltasSnapshot().Keys
-                .Union(portraits.Keys)
-                .Count();
+            HashSet<string> exportedIds = new(cardIds, StringComparer.Ordinal);
+            exportedIds.UnionWith(portraits.Keys.Select(id => id.ToString()));
+            int count = exportedIds.Count;
             return ModificationTransferResult.Success(count);
         }
         catch (Exception exception)

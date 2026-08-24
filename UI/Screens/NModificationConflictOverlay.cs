@@ -9,6 +9,7 @@ using Loadout.PanelItems;
 using Loadout.Services.Configuration;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
@@ -20,6 +21,7 @@ using MegaCrit.Sts2.Core.Nodes.Relics;
 
 public partial class NModificationConflictOverlay : Control
 {
+    private const string NativeBackButtonScenePath = "res://scenes/ui/back_button.tscn";
     private Action? _closed;
 
     public static void ShowCard(
@@ -63,42 +65,35 @@ public partial class NModificationConflictOverlay : Control
         titleLabel.OffsetBottom = 84f;
         AddChild(titleLabel);
 
-        NBackButton back = NLoadoutBackButtonFactory.Create();
+        NBackButton back = CreateNativeBackButton();
         back.Name = "BackButton";
-        back.OffsetTop = -154f;
-        back.OffsetBottom = -44f;
+        back.ZIndex = 500;
         back.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ => Close()));
         AddChild(back);
-
-        var backLabel = ModificationImportScreenUi.CreateLabel(
-            LocMan.Loc("BACK", "Back"),
-            24,
-            HorizontalAlignment.Left);
-        backLabel.SetAnchorsPreset(LayoutPreset.BottomLeft);
-        backLabel.OffsetLeft = 32f;
-        backLabel.OffsetTop = -72f;
-        backLabel.OffsetRight = 210f;
-        backLabel.OffsetBottom = -24f;
-        AddChild(backLabel);
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(back))
+                back.Enable();
+        }).CallDeferred();
     }
 
     private void BuildCard(CardModificationImportEntry entry, Action resolved)
     {
         Prepare(LocMan.Loc("MOD_IMPORT_CARD_CONFLICT", "Choose Card Version"));
         _closed = resolved;
-        HBoxContainer row = CreateChoiceRow();
-        AddChild(row);
-        row.AddChild(CreateCardChoice(
+        AddChild(CreateCardChoice(
             entry.GetLocalPreview(),
             LocMan.Loc("MOD_IMPORT_LOCAL_VERSION", "Local Version"),
+            1f / 3f,
             () =>
             {
                 entry.SetDecision(ModificationImportDecision.KeepLocal);
                 ResolveAndClose();
             }));
-        row.AddChild(CreateCardChoice(
+        AddChild(CreateCardChoice(
             entry.GetIncomingPreview(),
             LocMan.Loc("MOD_IMPORT_THEIR_VERSION", "Their Version"),
+            2f / 3f,
             () =>
             {
                 entry.SetDecision(ModificationImportDecision.UseIncoming);
@@ -156,29 +151,40 @@ public partial class NModificationConflictOverlay : Control
         return row;
     }
 
-    private static Control CreateCardChoice(CardModel? model, string label, Action choose)
+    private static Control CreateCardChoice(CardModel? model, string label, float centerX, Action choose)
     {
-        VBoxContainer column = CreateColumn();
-        Control mount = new()
+        Control choice = new()
         {
-            CustomMinimumSize = new Vector2(420f, 600f),
             MouseFilter = MouseFilterEnum.Ignore
         };
-        column.AddChild(mount);
+        choice.SetAnchorsPreset(LayoutPreset.FullRect);
         if (model is not null && NCard.Create(model) is { } card)
         {
             NPreviewCardHolder? holder = NPreviewCardHolder.Create(card, showHoverTips: true, scaleOnHover: true);
             if (holder is not null)
             {
-                holder.Position = new Vector2(210f, 300f);
-                holder.Scale = Vector2.One * 0.9f;
+                holder.AnchorLeft = centerX;
+                holder.AnchorTop = 0.5f;
+                holder.AnchorRight = centerX;
+                holder.AnchorBottom = 0.5f;
+                holder.Position = Vector2.Zero;
+                holder.SetCardScale(Vector2.One * 0.9f);
                 holder.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => choose()));
-                mount.AddChild(holder);
-                card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+                choice.AddChild(holder);
+                ModificationImportScreenUi.RefreshExactCardView(holder, model);
             }
         }
-        column.AddChild(CreateVersionLabel(label));
-        return column;
+        Control versionLabel = CreateVersionLabel(label);
+        versionLabel.AnchorLeft = centerX;
+        versionLabel.AnchorTop = 0.5f;
+        versionLabel.AnchorRight = centerX;
+        versionLabel.AnchorBottom = 0.5f;
+        versionLabel.OffsetLeft = -210f;
+        versionLabel.OffsetTop = 305f;
+        versionLabel.OffsetRight = 210f;
+        versionLabel.OffsetBottom = 359f;
+        choice.AddChild(versionLabel);
+        return choice;
     }
 
     private static Control CreateRelicChoice(RelicModel model, string label, Action? choose)
@@ -239,6 +245,7 @@ public partial class NModificationConflictOverlay : Control
     {
         Action? closed = _closed;
         _closed = null;
+        GetParent()?.RemoveChild(this);
         QueueFree();
         closed?.Invoke();
     }
@@ -246,6 +253,21 @@ public partial class NModificationConflictOverlay : Control
     private void Close()
     {
         _closed = null;
+        GetParent()?.RemoveChild(this);
         QueueFree();
+    }
+
+    private static NBackButton CreateNativeBackButton()
+    {
+        try
+        {
+            return PreloadManager.Cache.GetScene(NativeBackButtonScenePath)
+                .Instantiate<NBackButton>(PackedScene.GenEditState.Disabled);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Modification import: native back button could not be instantiated. {exception.Message}");
+            return NLoadoutBackButtonFactory.Create();
+        }
     }
 }

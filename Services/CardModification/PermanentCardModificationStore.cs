@@ -174,7 +174,18 @@ public static class PermanentCardModificationStore
     public static IReadOnlyDictionary<ModelId, CardModificationDelta> GetProfileDeltasSnapshot()
     {
         EnsureLoaded();
-        return _profileLookup.ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
+        lock (Gate)
+        {
+            _profileLookup = BuildLookup(_profileCards);
+            return _profileLookup.ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
+        }
+    }
+
+    public static IReadOnlyCollection<string> GetProfileEntryIdsSnapshot()
+    {
+        EnsureLoaded();
+        lock (Gate)
+            return _profileCards.Keys.ToArray();
     }
 
     public static bool SetProfile(ModelId cardId, CardModificationSpec? value)

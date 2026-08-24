@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
 
 public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenContext
@@ -34,6 +35,8 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     private bool _painting;
     private string? _suppressActivationId;
     private NPreviewCardHolder? _upgradePreview;
+    private NInspectCardScreen? _foregroundInspect;
+    private NModalContainer? _hiddenModal;
     private bool _completed;
 
     public Control? DefaultFocusedControl => GetNodeOrNull<Control>(CancelButtonPath);
@@ -73,6 +76,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     public override void _ExitTree()
     {
         HideUpgradePreview();
+        RestoreModalAfterInspect();
         if (!_completed)
             Complete(false, closeModal: false);
         base._ExitTree();
@@ -80,6 +84,8 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
 
     public override void _Input(InputEvent inputEvent)
     {
+        if (!IsVisibleInTree())
+            return;
         base._Input(inputEvent);
         if (!IsScreenActive
             || GetNodeOrNull<NModificationConflictOverlay>("CardModificationConflictChoice") is not null)
@@ -110,6 +116,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
             CreateView = (entry, _) => CreateCardView(entry),
             ViewReady = (entry, view) =>
             {
+                ModificationImportScreenUi.RefreshExactCardView(view, entry.GetIncomingPreview());
                 EnsureSmithBadge(entry, view);
                 ApplyEntryVisual(entry, view);
             },
@@ -131,7 +138,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
                 NCard.defaultSize * NCardHolder.smallScale,
                 32,
                 40,
-                paddingTop: 130f,
+                paddingTop: 250f,
                 paddingBottom: 80f);
         });
 
@@ -192,13 +199,87 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
     {
         if (entry.HasConflict)
         {
-            NModificationConflictOverlay.ShowCard(this, entry, () => RefreshEntry(entry));
+            NModificationConflictOverlay.ShowCard(this, entry, () => OnConflictResolved(entry));
             return;
         }
 
         CardModel? preview = entry.GetIncomingPreview();
         if (preview is not null && NGame.Instance is { } game)
-            game.GetInspectCardScreen().Open([preview], 0, false);
+            OpenInspectInForeground(game.GetInspectCardScreen(), preview);
+    }
+
+    private void OnConflictResolved(CardModificationImportEntry entry)
+    {
+        RefreshEntry(entry);
+        Callable.From(() => OpenNextUnresolvedConflict(entry)).CallDeferred();
+    }
+
+    private void OpenNextUnresolvedConflict(CardModificationImportEntry current)
+    {
+        if (_session is null
+            || !GodotObject.IsInstanceValid(this)
+            || GetNodeOrNull<NModificationConflictOverlay>("CardModificationConflictChoice") is not null)
+        {
+            return;
+        }
+
+        int currentIndex = -1;
+        for (int index = 0; index < _session.Entries.Count; index++)
+        {
+            if (ReferenceEquals(_session.Entries[index], current))
+            {
+                currentIndex = index;
+                break;
+            }
+        }
+        if (currentIndex < 0)
+            return;
+        for (int offset = 1; offset <= _session.Entries.Count; offset++)
+        {
+            CardModificationImportEntry candidate = _session.Entries[(currentIndex + offset) % _session.Entries.Count];
+            if (candidate.HasConflict && candidate.Decision == ModificationImportDecision.Unresolved)
+            {
+                NModificationConflictOverlay.ShowCard(this, candidate, () => OnConflictResolved(candidate));
+                return;
+            }
+        }
+    }
+
+    private void OpenInspectInForeground(NInspectCardScreen inspect, CardModel preview)
+    {
+        if (inspect.Visible || NModalContainer.Instance is not { } modal)
+            return;
+
+        _foregroundInspect = inspect;
+        _hiddenModal = modal;
+        inspect.VisibilityChanged += OnForegroundInspectVisibilityChanged;
+        modal.Hide();
+        try
+        {
+            inspect.Open([preview], 0, false);
+        }
+        catch
+        {
+            RestoreModalAfterInspect();
+            throw;
+        }
+    }
+
+    private void OnForegroundInspectVisibilityChanged()
+    {
+        if (_foregroundInspect is null || _foregroundInspect.Visible)
+            return;
+        RestoreModalAfterInspect();
+    }
+
+    private void RestoreModalAfterInspect()
+    {
+        if (_foregroundInspect is not null && GodotObject.IsInstanceValid(_foregroundInspect))
+            _foregroundInspect.VisibilityChanged -= OnForegroundInspectVisibilityChanged;
+        if (_hiddenModal is not null && GodotObject.IsInstanceValid(_hiddenModal))
+            _hiddenModal.Show();
+        _foregroundInspect = null;
+        _hiddenModal = null;
     }
 
     private void ApplyBulk(ModificationImportDecision decision)
