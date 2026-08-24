@@ -141,10 +141,17 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
                 ApplyEntryVisual(entry, view);
             },
             BindActivationWithCleanup = (entry, view, activate) =>
-                CardPrinter.BindCardActivationWithCleanup(
+            {
+                Action? activationCleanup = CardPrinter.BindCardActivationWithCleanup(
                     view,
                     activate,
-                    () => InspectEntry(entry))
+                    () => InspectEntry(entry));
+                return () =>
+                {
+                    activationCleanup?.Invoke();
+                    RemoveIdenticalLabel(view);
+                };
+            }
         };
 
         Configure(session.Entries, adapter, builder =>
@@ -440,6 +447,18 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
             textLabel.Visible = true;
         }
         holder.MoveChild(existing, holder.GetChildCount() - 1);
+    }
+
+    private static void RemoveIdenticalLabel(Control view)
+    {
+        if (!CommonHelpers.TryFindDescendantOrSelf(view, out NGridCardHolder holder)
+            || holder.GetNodeOrNull<Control>("ImportIdenticalLabel") is not { } label)
+        {
+            return;
+        }
+
+        holder.RemoveChild(label);
+        label.QueueFree();
     }
 
     private void EnsureSmithBadge(CardModificationImportEntry entry, Control view)
