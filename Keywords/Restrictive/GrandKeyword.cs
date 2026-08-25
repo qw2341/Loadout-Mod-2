@@ -22,6 +22,9 @@ public sealed class GrandKeyword : LoadoutRestrictiveKeywordModel
     public override string? CardTextLocKey =>
         "LOADOUT-RESTRICTIVE_GRAND.cardText";
 
+    public override LoadoutKeywordTextPosition TextPosition =>
+        LoadoutKeywordTextPosition.Before;
+
     public override bool HasPlayRestriction => true;
 
     public static bool CanPlay(CardModel card)

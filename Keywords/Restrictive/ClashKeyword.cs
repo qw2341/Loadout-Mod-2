@@ -21,5 +21,8 @@ public sealed class ClashKeyword : LoadoutRestrictiveKeywordModel
     public override string? CardTextLocKey =>
         "LOADOUT-RESTRICTIVE_CLASH.cardText";
 
+    public override LoadoutKeywordTextPosition TextPosition =>
+        LoadoutKeywordTextPosition.Before;
+
     public override bool HasPlayRestriction => true;
 }

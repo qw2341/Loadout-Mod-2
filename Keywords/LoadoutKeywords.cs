@@ -156,16 +156,19 @@ public static class LoadoutKeywords
     [CustomEnum("RESTRICTIVE_IN_HAND_LOSE_GOLD")]
     public static CardKeyword InHandLoseGold;
 
-    [CustomEnum("RESTRICTIVE_ENTHRALLED")]
+    [CustomEnum("RESTRICTIVE_ENTHRALLED"),
+     KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Enthralled;
 
-    [CustomEnum("RESTRICTIVE_CLASH")]
+    [CustomEnum("RESTRICTIVE_CLASH"),
+     KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Clash;
 
     [CustomEnum("RESTRICTIVE_END_TURN")]
     public static CardKeyword EndTurn;
 
-    [CustomEnum("RESTRICTIVE_GRAND")]
+    [CustomEnum("RESTRICTIVE_GRAND"),
+     KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Grand;
 
     [CustomEnum("RESTRICTIVE_BORROWED")]

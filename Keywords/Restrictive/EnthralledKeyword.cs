@@ -22,5 +22,8 @@ public sealed class EnthralledKeyword : LoadoutRestrictiveKeywordModel
     public override string? CardTextLocKey =>
         "LOADOUT-RESTRICTIVE_ENTHRALLED.cardText";
 
+    public override LoadoutKeywordTextPosition TextPosition =>
+        LoadoutKeywordTextPosition.Before;
+
     public override bool HasPlayRestriction => true;
 }
