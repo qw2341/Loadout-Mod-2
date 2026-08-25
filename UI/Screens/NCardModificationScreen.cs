@@ -69,6 +69,8 @@ public partial class NCardModificationScreen : Control
     private VBoxContainer? _leftControls;
     private VBoxContainer? _numericControls;
     private Control? _numericScrollHost;
+    private Control? _numericScrollMask;
+    private NScrollableContainer? _numericScroll;
     private VBoxContainer? _rightControls;
     private VBoxContainer? _attachmentControls;
     private VBoxContainer? _actionControls;
@@ -97,6 +99,7 @@ public partial class NCardModificationScreen : Control
     private bool _awaitingResetConfirmation;
     private bool _customRunAuthoringMode;
     private bool _cardPrinterMode;
+    private NCardKeywordEditor? _keywordEditor;
     private Action? _cardPrinterRecipeChanged;
     private Func<LoadoutOwnedItem<CardModel>, CardModificationSpec>? _customRunStateProvider;
     private Action<LoadoutOwnedItem<CardModel>, CardModificationSpec>? _customRunStateSaved;
@@ -460,7 +463,10 @@ public partial class NCardModificationScreen : Control
 
         if (_numericScrollHost.GetNodeOrNull<NScrollableContainer>("NumericScroll") is { } existing)
         {
+            _numericScroll = existing;
+            _numericScrollMask = existing.GetNodeOrNull<Control>("Mask");
             _numericControls = existing.GetNodeOrNull<VBoxContainer>("Mask/Content");
+            BindNumericScrollViewport();
             return;
         }
 
@@ -509,15 +515,50 @@ public partial class NCardModificationScreen : Control
         scroll.DisableScrollingIfContentFits();
 
         _numericScrollHost.AddChild(scroll);
+        _numericScroll = scroll;
+        _numericScrollMask = mask;
         _numericControls = content;
+        BindNumericScrollViewport();
+        RefreshNumericScroll(resetToTop: false);
+    }
+
+    private void BindNumericScrollViewport()
+    {
+        if (_numericScrollMask is null)
+            return;
+
+        Callable refresh = Callable.From(RefreshNumericScrollBounds);
+        if (!_numericScrollMask.IsConnected(Control.SignalName.Resized, refresh))
+            _numericScrollMask.Connect(Control.SignalName.Resized, refresh);
+    }
+
+    private void RefreshNumericScroll(bool resetToTop)
+    {
         Callable.From(() =>
         {
-            if (GodotObject.IsInstanceValid(scroll)
-                && GodotObject.IsInstanceValid(content))
+            if (_numericScroll is null
+                || _numericControls is null
+                || !GodotObject.IsInstanceValid(_numericScroll)
+                || !GodotObject.IsInstanceValid(_numericControls))
             {
-                scroll.SetContent(content);
+                return;
             }
+
+            _numericScroll.SetContent(_numericControls);
+            if (resetToTop)
+                _numericScroll.InstantlyScrollToTop();
         }).CallDeferred();
+    }
+
+    private void RefreshNumericScrollBounds()
+    {
+        if (_numericScroll is not null
+            && _numericControls is not null
+            && GodotObject.IsInstanceValid(_numericScroll)
+            && GodotObject.IsInstanceValid(_numericControls))
+        {
+            _numericScroll.SetContent(_numericControls);
+        }
     }
 
     private static NButton? EnsureInspectArrowButton(Control? mount, bool isLeft)
@@ -673,6 +714,7 @@ public partial class NCardModificationScreen : Control
         LoadItem(_items[_itemIndex]);
         RefreshPreview();
         RebuildControls();
+        RefreshNumericScroll(resetToTop: true);
     }
 
     private void LayoutPreviewNavigation()
@@ -711,7 +753,7 @@ public partial class NCardModificationScreen : Control
             || _item is null)
             return;
 
-        ClearChildren(_rightControls);
+        ClearRightControls();
         ClearChildren(_actionControls);
         if (_cardEditActions is not null)
             ClearChildren(_cardEditActions);
@@ -774,6 +816,28 @@ public partial class NCardModificationScreen : Control
 
         AddDropdownControls();
         AddNumericControls();
+        RefreshNumericScroll(resetToTop: false);
+    }
+
+    private void ClearRightControls()
+    {
+        if (_rightControls is null)
+            return;
+
+        if (_keywordEditor is not null
+            && !GodotObject.IsInstanceValid(_keywordEditor))
+        {
+            _keywordEditor = null;
+        }
+
+        foreach (Node child in _rightControls.GetChildren())
+        {
+            if (ReferenceEquals(child, _keywordEditor))
+                continue;
+
+            _rightControls.RemoveChild(child);
+            child.QueueFree();
+        }
     }
 
     private void AddCardEditActions()
@@ -1439,7 +1503,7 @@ public partial class NCardModificationScreen : Control
 
         IReadOnlySet<CardKeyword> localKeywords =
             GetKeywordsSafely(_item.Model).ToHashSet();
-        NCardKeywordEditor editor = new();
+        NCardKeywordEditor editor = _keywordEditor ??= new NCardKeywordEditor();
         editor.Init(
             _items.Select(item => item.Model).Append(_item.Model).ToList(),
             keyword =>
@@ -1497,7 +1561,8 @@ public partial class NCardModificationScreen : Control
         {
             _selectedKeywordModId = selectedId;
         });
-        _rightControls.AddChild(editor);
+        if (editor.GetParent() is null)
+            _rightControls.AddChild(editor);
     }
 
     private void AddAttachmentEditor<TModel>(

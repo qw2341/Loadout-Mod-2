@@ -80,6 +80,15 @@ public partial class NCardKeywordEditor : VBoxContainer
 
     private void Rebuild()
     {
+        NScrollableContainer? preservedScroll =
+            GetNodeOrNull<NScrollableContainer>(
+                "KeywordContentHost/KeywordScroll");
+        if (preservedScroll is not null
+            && GodotObject.IsInstanceValid(preservedScroll))
+        {
+            preservedScroll.GetParent()?.RemoveChild(preservedScroll);
+        }
+
         ClearChildren(this);
         AddChild(CreateSectionLabel(LocMan.Loc("FILTER_GROUP_KEYWORD", "Keyword")));
 
@@ -128,7 +137,7 @@ public partial class NCardKeywordEditor : VBoxContainer
             MouseFilter = MouseFilterEnum.Ignore
         };
         AddChild(contentHost);
-        RebuildContent(contentHost, catalog);
+        RebuildContent(contentHost, catalog, preservedScroll);
 
         modFilter.SelectedItemChanged += selectedId =>
         {
@@ -145,7 +154,8 @@ public partial class NCardKeywordEditor : VBoxContainer
 
     private void RebuildContent(
         VBoxContainer contentHost,
-        IReadOnlyList<CatalogEntry> catalog)
+        IReadOnlyList<CatalogEntry> catalog,
+        NScrollableContainer? preservedScroll = null)
     {
         if (!GodotObject.IsInstanceValid(contentHost))
             return;
@@ -164,40 +174,69 @@ public partial class NCardKeywordEditor : VBoxContainer
         content.CustomMinimumSize = new Vector2(contentWidth, contentHeight);
         if (!needsScrolling)
         {
+            if (preservedScroll is not null
+                && GodotObject.IsInstanceValid(preservedScroll))
+            {
+                preservedScroll.QueueFree();
+            }
             contentHost.AddChild(content);
             return;
         }
 
-        NScrollableContainer scroll = new()
+        NScrollableContainer scroll;
+        Control mask;
+        float preservedContentY = 0f;
+        if (preservedScroll is not null
+            && GodotObject.IsInstanceValid(preservedScroll))
         {
-            Name = "KeywordScroll",
-            CustomMinimumSize = new Vector2(ContentWidth, visibleHeight),
-            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-            MouseFilter = MouseFilterEnum.Stop
-        };
-        Control mask = new()
+            scroll = preservedScroll;
+            mask = scroll.GetNode<Control>("Mask");
+            preservedContentY = mask
+                .GetNodeOrNull<Control>("Content")?
+                .Position.Y ?? 0f;
+            scroll.SetContent(null);
+            ClearChildren(mask);
+        }
+        else
         {
-            Name = "Mask",
-            ClipContents = true,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        mask.SetAnchorsPreset(LayoutPreset.FullRect);
-        mask.OffsetRight = -NLoadoutNativeScrollbar.Width;
-        scroll.AddChild(mask);
+            scroll = new NScrollableContainer
+            {
+                Name = "KeywordScroll",
+                SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+                MouseFilter = MouseFilterEnum.Stop
+            };
+            mask = new Control
+            {
+                Name = "Mask",
+                ClipContents = true,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            mask.SetAnchorsPreset(LayoutPreset.FullRect);
+            mask.OffsetRight = -NLoadoutNativeScrollbar.Width;
+            scroll.AddChild(mask);
+
+            NScrollbar scrollbar = NLoadoutNativeScrollbar.Create();
+            scrollbar.Name = "Scrollbar";
+            scrollbar.CustomMinimumSize = new Vector2(NLoadoutNativeScrollbar.Width, 0f);
+            scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
+            scrollbar.OffsetLeft = -NLoadoutNativeScrollbar.Width;
+            scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
+            scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
+            scroll.AddChild(scrollbar);
+            scroll.DisableScrollingIfContentFits();
+        }
+
+        scroll.CustomMinimumSize = new Vector2(ContentWidth, visibleHeight);
 
         content.Name = "Content";
         content.SetAnchorsPreset(LayoutPreset.TopWide);
         mask.AddChild(content);
-
-        NScrollbar scrollbar = NLoadoutNativeScrollbar.Create();
-        scrollbar.Name = "Scrollbar";
-        scrollbar.CustomMinimumSize = new Vector2(NLoadoutNativeScrollbar.Width, 0f);
-        scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
-        scrollbar.OffsetLeft = -NLoadoutNativeScrollbar.Width;
-        scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
-        scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
-        scroll.AddChild(scrollbar);
-        scroll.DisableScrollingIfContentFits();
+        if (preservedContentY != 0f)
+        {
+            Vector2 position = content.Position;
+            position.Y = preservedContentY;
+            content.Position = position;
+        }
         contentHost.AddChild(scroll);
         Callable.From(() =>
         {
