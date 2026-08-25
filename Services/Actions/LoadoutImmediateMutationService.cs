@@ -101,6 +101,7 @@ public static class LoadoutImmediateMutationService
     private static int _lastAppliedHostSequence;
     private static bool _clientApplyQueued;
     private static int _runGeneration;
+    private static long? _synchronizedCardRunStartTime;
     private static readonly AsyncLocal<int> RemoveAllCardsDepth = new();
 
     internal static bool IsRemovingAllCards => RemoveAllCardsDepth.Value > 0;
@@ -112,6 +113,7 @@ public static class LoadoutImmediateMutationService
         LoadoutMutationSerialExecutor.Reset();
         _nextRequestId = 0;
         _nextHostSequence = 0;
+        _synchronizedCardRunStartTime = null;
         lock (SequenceGate)
         {
             _lastAppliedHostSequence = 0;
@@ -141,6 +143,7 @@ public static class LoadoutImmediateMutationService
         LoadoutRunContentChangeService.ResetQueuedChanges();
         _nextRequestId = 0;
         _nextHostSequence = 0;
+        _synchronizedCardRunStartTime = null;
         lock (SequenceGate)
         {
             _lastAppliedHostSequence = 0;
@@ -868,7 +871,7 @@ public static class LoadoutImmediateMutationService
         if (!LoadoutCardPileTargets.IsSupportedCreationTarget(pileTarget)
             || pileTarget.IsCombatPile() && !CombatManager.Instance.IsInProgress)
             return false;
-        long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+        long? runStartTime = GetOrCaptureSynchronizedCardRunStartTime();
         if (!runStartTime.HasValue)
             return false;
 
@@ -979,7 +982,7 @@ public static class LoadoutImmediateMutationService
             ulong requesterNetId = hasPrinterRecipe ? parsedRequesterNetId : action.Player!.NetId;
             long runStartTime = hasPrinterRecipe
                 ? parsedRunStartTime
-                : SaveUtility.GetCurrentRunStartTime() ?? 0;
+                : GetOrCaptureSynchronizedCardRunStartTime() ?? 0;
             string deltaJson = hasPrinterRecipe ? parsedDeltaJson : string.Empty;
             string portraitReference = hasPrinterRecipe ? parsedPortraitReference : string.Empty;
             result = ExecuteSynchronizedAddCardsAsync(
@@ -1069,13 +1072,15 @@ public static class LoadoutImmediateMutationService
             || ResolveCanonicalCard(modelId) is not { } canonicalCard
             || requesterNetId == 0
             || runStartTime <= 0
-            || SaveUtility.GetCurrentRunStartTime() != runStartTime
             || !TryParsePrinterDelta(printerDeltaJson, out CardModificationDelta? printerDelta)
             || !CardModificationRuntime.IsValidPrinterDelta(modelId, printerDelta)
             || !IsValidPrinterPortraitReference(printerPortraitReference))
         {
             return;
         }
+
+        if (!TryAcceptSynchronizedCardRunStartTime(runStartTime))
+            return;
 
         ulong[] orderedTargetIds = targetNetIds
             .Where(netId => netId != 0)
@@ -1135,6 +1140,39 @@ public static class LoadoutImmediateMutationService
                         printerPortraitReference);
             }
         }
+    }
+
+    private static long? GetOrCaptureSynchronizedCardRunStartTime()
+    {
+        if (_synchronizedCardRunStartTime.HasValue)
+            return _synchronizedCardRunStartTime;
+
+        long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+        if (runStartTime is > 0)
+            _synchronizedCardRunStartTime = runStartTime;
+        return _synchronizedCardRunStartTime;
+    }
+
+    private static bool TryAcceptSynchronizedCardRunStartTime(long runStartTime)
+    {
+        if (runStartTime <= 0)
+            return false;
+
+        if (!_synchronizedCardRunStartTime.HasValue)
+        {
+            // The action owner was already verified as the host. Cache its
+            // run token once instead of serializing the local run during combat.
+            _synchronizedCardRunStartTime = runStartTime;
+            return true;
+        }
+
+        if (_synchronizedCardRunStartTime.Value == runStartTime)
+            return true;
+
+        GD.PushWarning(
+            $"LoadoutImmediateMutation: ignored synchronized card grant for stale run {runStartTime}; " +
+            $"active run is {_synchronizedCardRunStartTime.Value}.");
+        return false;
     }
 
     private static async Task ExecuteSynchronizedDeckCardCopiesAsync(

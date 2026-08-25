@@ -1262,10 +1262,12 @@ public static class CardModificationRuntime
     public static void SaveTemporary(LoadoutOwnedItem<CardModel> item, CardModificationSpec state)
     {
         CardModificationSpec previous = GetEffectiveSpec(item.Model);
+        CardModificationDelta? previousDelta = GetStoredTemporaryDelta(item.Model);
         if (!CardModificationFields.Set(item.Model, state))
             return;
 
         RebuildOwnedCard(item, previous);
+        SynchronizeLinkedCombatCards(item, previousDelta, GetStoredTemporaryDelta(item.Model));
         CardModificationSpec next = GetEffectiveSpec(item.Model);
         NotifyCardUpdated(item, previous, next);
         LoadoutKeywordRuntimePatches.Reconcile();
@@ -1702,11 +1704,13 @@ public static class CardModificationRuntime
         CardModificationSpec? state)
     {
         CardModificationSpec previous = GetEffectiveSpec(item.Model);
+        CardModificationDelta? previousDelta = GetStoredTemporaryDelta(item.Model);
         bool changed = CardModificationFields.Set(item.Model, state);
         if (!changed && state is { IsEmpty: false })
             return;
 
         RebuildOwnedCard(item, previous, forceAllOwnedFields: state is null || state.IsEmpty);
+        SynchronizeLinkedCombatCards(item, previousDelta, GetStoredTemporaryDelta(item.Model));
         NotifyCardUpdated(item, previous, GetEffectiveSpec(item.Model));
         LoadoutKeywordRuntimePatches.Reconcile();
     }
@@ -1716,11 +1720,13 @@ public static class CardModificationRuntime
         CardModificationDelta? delta)
     {
         CardModificationSpec previous = GetEffectiveSpec(item.Model);
+        CardModificationDelta? previousDelta = GetStoredTemporaryDelta(item.Model);
         bool changed = CardModificationFields.SetDelta(item.Model, delta);
         if (!changed && delta is { IsEmpty: false })
             return;
 
         RebuildOwnedCard(item, previous, forceAllOwnedFields: delta is null || delta.IsEmpty);
+        SynchronizeLinkedCombatCards(item, previousDelta, GetStoredTemporaryDelta(item.Model));
         NotifyCardUpdated(item, previous, GetEffectiveSpec(item.Model));
         LoadoutKeywordRuntimePatches.Reconcile();
     }
@@ -1747,10 +1753,12 @@ public static class CardModificationRuntime
             return true;
         }
 
+        CardModificationDelta? previousDelta = GetStoredTemporaryDelta(item.Model);
         if (!TryReplaceOwnedCardWithFresh(item, out CardModel? freshCard) || freshCard is null)
             return false;
 
         replacement = new LoadoutOwnedItem<CardModel>(item.Owner, item.Index, freshCard);
+        SynchronizeLinkedCombatCards(replacement, previousDelta, nextDelta: null);
         RefreshLiveCardVisuals(freshCard, LoadoutCardVisualRefreshKind.Reload);
         LoadoutRunContentChangeService.NotifyCardUpdated(replacement, LoadoutCardVisualRefreshKind.Reload);
         OwnedCardChanged?.Invoke(replacement, LoadoutCardVisualRefreshKind.Reload);
@@ -1898,6 +1906,44 @@ public static class CardModificationRuntime
             NotifyCardUpdated(item, selectedPrevious, GetEffectiveSpec(item.Model));
         }
         LoadoutKeywordRuntimePatches.Reconcile();
+    }
+
+    private static CardModificationDelta? GetStoredTemporaryDelta(CardModel card)
+    {
+        return CardModificationFields.TryGet(card, out CardModificationCardData data)
+            ? data.Delta.Clone()
+            : null;
+    }
+
+    private static void SynchronizeLinkedCombatCards(
+        LoadoutOwnedItem<CardModel> item,
+        CardModificationDelta? previousDelta,
+        CardModificationDelta? nextDelta)
+    {
+        if (item.CardPileType is not null and not PileType.Deck
+            || item.Model.Pile?.Type != PileType.Deck
+            || item.Index < 0
+            || item.Index >= item.Owner.Deck.Cards.Count
+            || !ReferenceEquals(item.Owner.Deck.Cards[item.Index], item.Model)
+            || item.Owner.PlayerCombatState?.AllCards is not { } combatCards)
+        {
+            return;
+        }
+
+        foreach (CardModel combatCard in combatCards)
+        {
+            if (!ReferenceEquals(combatCard.DeckVersion, item.Model)
+                || !CardModificationFields.MatchesDelta(combatCard, previousDelta)
+                || CardModificationFields.MatchesDelta(combatCard, nextDelta))
+            {
+                continue;
+            }
+
+            CardModificationSpec combatPrevious = GetEffectiveSpec(combatCard);
+            CardModificationFields.SetDelta(combatCard, nextDelta);
+            RebuildCard(combatCard, combatPrevious, forceAllOwnedFields: nextDelta is null || nextDelta.IsEmpty);
+            NotifyCombatCardChanged(combatCard, combatPrevious);
+        }
     }
 
     private static void RebuildOwnedCard(
