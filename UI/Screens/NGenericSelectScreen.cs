@@ -198,6 +198,9 @@ public partial class NGenericSelectScreen : Control
     private ulong _scheduledEagerRefreshGeneration;
     private ulong _scheduledVisibleRefreshGeneration = ulong.MaxValue;
     private SelectScrollOffsetState? _pendingScrollRestore;
+    private bool _layoutRefreshPending;
+    private bool _pendingLayoutResetScroll;
+    private bool _pendingLayoutUpdateExistingViews;
     private ulong _lastEagerMismatchWarningGeneration;
     private Control? _multiplierBadge;
     private MegaLabel? _multiplierBadgeLabel;
@@ -363,6 +366,7 @@ public partial class NGenericSelectScreen : Control
         SetActionButtonsActive(true);
         UpdateConfirmButtonState();
         ScreenOpened?.Invoke();
+        FlushPendingLayoutRefresh();
         ScheduleDeferredVisibleRefresh();
     }
 
@@ -1147,6 +1151,7 @@ public partial class NGenericSelectScreen : Control
         UpdateConfirmButtonState();
         UpdateScrollBounds();
         ScrollToTop();
+        ClearPendingLayoutRefresh();
     }
 
     protected virtual int GetHiddenPrewarmBatchSize()
@@ -1391,6 +1396,7 @@ public partial class NGenericSelectScreen : Control
         SetQuery(string.Empty);
         _isConfigured = false;
         _pendingScrollRestore = null;
+        ClearPendingLayoutRefresh();
         _hiddenPrewarmCompleted = false;
         _hiddenPrewarmEnabled = true;
         _hiddenPrewarmMaterializeViews = true;
@@ -1594,9 +1600,32 @@ public partial class NGenericSelectScreen : Control
             return;
 
         if (_itemGrid is null || !IsInsideTree() || !IsVisibleInTree())
+        {
+            _layoutRefreshPending = true;
+            _pendingLayoutResetScroll |= resetScroll;
+            _pendingLayoutUpdateExistingViews |= updateExistingViews;
+            return;
+        }
+
+        resetScroll |= _pendingLayoutResetScroll;
+        updateExistingViews |= _pendingLayoutUpdateExistingViews;
+        ClearPendingLayoutRefresh();
+        RebuildCurrentLayout(resetScroll, updateExistingViews);
+    }
+
+    private void FlushPendingLayoutRefresh()
+    {
+        if (!_layoutRefreshPending)
             return;
 
-        RebuildCurrentLayout(resetScroll, updateExistingViews);
+        RefreshLayout(_pendingLayoutResetScroll, _pendingLayoutUpdateExistingViews);
+    }
+
+    private void ClearPendingLayoutRefresh()
+    {
+        _layoutRefreshPending = false;
+        _pendingLayoutResetScroll = false;
+        _pendingLayoutUpdateExistingViews = false;
     }
 
     protected virtual void OnItemsConfigured()
@@ -3782,7 +3811,9 @@ public partial class NGenericSelectScreen : Control
         if (generation != _layoutGeneration || !IsInsideTree() || !IsVisibleInTree())
             return;
 
-        if (_itemLayoutOrder.Count == 0)
+        if (_layoutRefreshPending)
+            FlushPendingLayoutRefresh();
+        else if (_itemLayoutOrder.Count == 0)
             RefreshNow(resetScroll: true);
         else
             ResumeRetainedLayout();
