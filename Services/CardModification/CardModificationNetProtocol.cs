@@ -984,7 +984,14 @@ public static class CardModificationNetProtocol
         Dictionary<ModelId, CardModificationSpec> previousPermanent = CaptureCurrentPermanentSpecs();
         IReadOnlyList<ModelId> changedPermanent =
             PermanentCardModificationStore.ApplyHostSnapshot(snapshot.PermanentJson);
-        CardModificationRuntime.RetrofitChangedPermanentCards(changedPermanent, previousPermanent);
+        // The lobby snapshot can install this same overlay before live cards exist.
+        // Rebuild every active host definition once when the run snapshot arrives.
+        HashSet<ModelId> permanentIdsToRebuild = new(changedPermanent);
+        permanentIdsToRebuild.UnionWith(
+            PermanentCardModificationStore.GetEffectiveDeltasSnapshot().Keys);
+        CardModificationRuntime.RetrofitChangedPermanentCards(
+            permanentIdsToRebuild.ToList(),
+            previousPermanent);
         CardModificationRuntime.ReconcileAuthoritativeDeckDeltas(temporaryDeltas);
     }
 

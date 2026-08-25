@@ -1428,7 +1428,19 @@ public static class CardModificationRuntime
             expectedModelId,
             actionPlayer);
         if (resolved is not { } item)
+        {
+            // Permanent definitions are card-id scoped; a moved source card must not drop host state.
+            if (authoritativeRemote
+                && operation is CardModificationOperation.ApplyPermanent
+                    or CardModificationOperation.ResetPermanentToBasic)
+            {
+                ApplyCatalogPermanentDelta(
+                    modelId,
+                    operation == CardModificationOperation.ApplyPermanent ? delta : null,
+                    authoritativeRemote: true);
+            }
             return;
+        }
 
         switch (operation)
         {
