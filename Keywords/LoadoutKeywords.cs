@@ -50,6 +50,12 @@ public static class LoadoutKeywords
     public const string BorrowedKey = "RestrictiveBorrowed";
     public const string LoseStrengthKey = "RestrictiveLoseStrength";
     public const string LoseDexterityKey = "RestrictiveLoseDexterity";
+    public const string FeedKey = "FatalFeed";
+    public const string GreedKey = "FatalGreed";
+    public const string HuntKey = "FatalHunt";
+    public const string SunderKey = "FatalSunder";
+    public const string AlchemyKey = "FatalAlchemy";
+    public const string VintageKey = "FatalVintage";
     public const string DamageOnPlayKey = "ImprovementDamageOnPlay";
     public const string DoubleDamageOnPlayKey =
         "ImprovementDoubleDamageOnPlay";
@@ -229,6 +235,24 @@ public static class LoadoutKeywords
 
     [CustomEnum("IMPROVEMENT_DOUBLE_VARIABLES_ON_PLAY")]
     public static CardKeyword DoubleVariablesOnPlay;
+
+    [CustomEnum("FATAL_FEED")]
+    public static CardKeyword Feed;
+
+    [CustomEnum("FATAL_GREED")]
+    public static CardKeyword Greed;
+
+    [CustomEnum("FATAL_HUNT")]
+    public static CardKeyword Hunt;
+
+    [CustomEnum("FATAL_SUNDER")]
+    public static CardKeyword Sunder;
+
+    [CustomEnum("FATAL_ALCHEMY")]
+    public static CardKeyword Alchemy;
+
+    [CustomEnum("FATAL_VINTAGE")]
+    public static CardKeyword Vintage;
 
     public static IEnumerable<CardKeyword> All =>
         LoadoutKeywordRegistry.All.Select(model => model.Keyword);

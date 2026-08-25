@@ -3,7 +3,9 @@
 namespace Loadout.Keywords;
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 
@@ -46,9 +48,13 @@ public sealed class PermanentVariablesOnFatalKeyword : LoadoutImprovementKeyword
 
     public override bool HasFatalEffect => true;
 
-    public override void AfterFatal(CardModel card, int fatalCount)
+    public override Task AfterFatal(
+        CardModel card,
+        PlayerChoiceContext choiceContext,
+        int fatalCount)
     {
         decimal increase = GetAmount(card, AmountVar) * fatalCount;
         IncreaseOtherVariablesPermanently(card, increase);
+        return Task.CompletedTask;
     }
 }

@@ -36,11 +36,13 @@ internal static class FatalKeywordAttackPatch
 
     private sealed record FatalAttackState(
         CardModel Source,
+        PlayerChoiceContext ChoiceContext,
         HashSet<Creature> EligibleTargets);
 
     [HarmonyPrefix]
     private static void Prefix(
         AttackCommand __instance,
+        PlayerChoiceContext choiceContext,
         out FatalAttackState? __state)
     {
         __state = null;
@@ -63,7 +65,12 @@ internal static class FatalKeywordAttackPatch
         }
 
         if (eligibleTargets is not null)
-            __state = new FatalAttackState(source, eligibleTargets);
+        {
+            __state = new FatalAttackState(
+                source,
+                choiceContext,
+                eligibleTargets);
+        }
     }
 
     private static bool IsFatalEligible(Creature target)
@@ -107,7 +114,10 @@ internal static class FatalKeywordAttackPatch
             }
         }
 
-        LoadoutKeywordRegistry.ApplyFatalEffects(state.Source, fatalCount);
+        await LoadoutKeywordRegistry.ApplyFatalEffects(
+            state.Source,
+            state.ChoiceContext,
+            fatalCount);
         return command;
     }
 }

@@ -4,10 +4,12 @@ namespace Loadout.Keywords;
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Audio.Debug;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
@@ -15,7 +17,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 
-public sealed class LessonLearnedKeyword : LoadoutKeywordModel
+public sealed class LessonLearnedKeyword : LoadoutFatalKeywordModel
 {
     public const string CardsVar = "LoadoutLessonLearnedCards";
 
@@ -44,19 +46,18 @@ public sealed class LessonLearnedKeyword : LoadoutKeywordModel
 
     public override string TitleLocKey => "LOADOUT-LESSON_LEARNED.title";
 
-    public override LoadoutKeywordPresentation Presentation =>
-        LoadoutKeywordPresentation.DescriptionOnly;
-
     public override string? CardTextLocKey => "LOADOUT-LESSON_LEARNED.cardText";
 
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         VariableDefinitions;
 
-    public override bool HasFatalEffect => true;
-
-    public override void AfterFatal(CardModel card, int fatalCount)
+    public override Task AfterFatal(
+        CardModel card,
+        PlayerChoiceContext choiceContext,
+        int fatalCount)
     {
         Apply(card, fatalCount);
+        return Task.CompletedTask;
     }
 
     internal static void Apply(CardModel source, int fatalCount)

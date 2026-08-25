@@ -31,6 +31,7 @@ public enum LoadoutKeywordEditorSection
     Default,
     Basic,
     Restrictive,
+    Fatal,
     Improvement
 }
 
@@ -150,8 +151,12 @@ public abstract class LoadoutKeywordModel
         return Task.CompletedTask;
     }
 
-    public virtual void AfterFatal(CardModel card, int fatalCount)
+    public virtual Task AfterFatal(
+        CardModel card,
+        PlayerChoiceContext choiceContext,
+        int fatalCount)
     {
+        return Task.CompletedTask;
     }
 
     public virtual Task AfterTurnEndInHand(

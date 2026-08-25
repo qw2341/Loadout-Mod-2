@@ -6,8 +6,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
@@ -27,7 +29,6 @@ public static class LoadoutKeywordRegistry
         LividKeyword.Instance,
         XCostKeyword.Instance,
         InfiniteUpgradeKeyword.Instance,
-        LessonLearnedKeyword.Instance,
         HeavenlyKeyword.Instance,
         AltHeavenlyKeyword.Instance,
         LifestealKeyword.Instance,
@@ -58,6 +59,13 @@ public static class LoadoutKeywordRegistry
         BorrowedKeyword.Instance,
         LoseStrengthKeyword.Instance,
         LoseDexterityKeyword.Instance,
+        LessonLearnedKeyword.Instance,
+        FeedKeyword.Instance,
+        GreedKeyword.Instance,
+        HuntKeyword.Instance,
+        SunderKeyword.Instance,
+        AlchemyKeyword.Instance,
+        VintageKeyword.Instance,
         DamageOnPlayKeyword.Instance,
         DoubleDamageOnPlayKeyword.Instance,
         AllDamageOnPlayKeyword.Instance,
@@ -206,7 +214,10 @@ public static class LoadoutKeywordRegistry
         return false;
     }
 
-    public static void ApplyFatalEffects(CardModel card, int fatalCount)
+    public static async Task ApplyFatalEffects(
+        CardModel card,
+        PlayerChoiceContext choiceContext,
+        int fatalCount)
     {
         if (fatalCount <= 0)
             return;
@@ -214,7 +225,7 @@ public static class LoadoutKeywordRegistry
         foreach (LoadoutKeywordModel model in FatalModels)
         {
             if (model.IsEnabled(card))
-                model.AfterFatal(card, fatalCount);
+                await model.AfterFatal(card, choiceContext, fatalCount);
         }
     }
 
