@@ -243,6 +243,7 @@ DYNAMIC_VAR_LOADOUT_BASIC_BLOCK,Block,格挡,Blocage,ブロック,방어도,Bloq
 DYNAMIC_VAR_LOADOUT_BASIC_DRAW,Cards to Draw,抽牌数,Cartes à piocher,引くカード枚数,뽑을 카드 수,Cartas a robar
 DYNAMIC_VAR_LOADOUT_BASIC_DISCARD,Cards to Discard,丢弃牌数,Cartes à défausser,捨てるカード枚数,버릴 카드 수,Cartas a descartar
 DYNAMIC_VAR_LOADOUT_BASIC_EXHAUST,Cards to Exhaust,消耗牌数,Cartes à Épuiser,廃棄するカード枚数,소멸시킬 카드 수,Cartas a Agotar
+DYNAMIC_VAR_LOADOUT_BASIC_TRANSFORM,Cards to Transform,变化牌数,Cartes à Transformer,変化させるカード枚数,변화시킬 카드 수,Cartas a Transformar
 DYNAMIC_VAR_LOADOUT_BASIC_HEAL,Health to Heal,回复生命,PV à soigner,回復するHP,회복할 체력,PV a curar
 DYNAMIC_VAR_LOADOUT_BASIC_HP_LOSS,HP to Lose,失去生命,PV à perdre,失うHP,잃을 체력,PV a perder
 DYNAMIC_VAR_LOADOUT_BASIC_ENERGY,Energy to Gain,获得能量,Énergie à gagner,得るエナジー,얻을 에너지,Energía a obtener
