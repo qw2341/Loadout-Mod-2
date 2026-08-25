@@ -67,7 +67,7 @@ internal static class LoadoutBasicKeywordGainsBlockPatch
 {
     public static IEnumerable<MethodBase> TargetMethods()
     {
-        return LoadoutBasicKeywordModel.GetPropertyGetters(
+        return LoadoutKeywordModel.GetCardPropertyGetters(
             nameof(CardModel.GainsBlock));
     }
 

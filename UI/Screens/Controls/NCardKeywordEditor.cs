@@ -258,6 +258,12 @@ public partial class NCardKeywordEditor : VBoxContainer
         AddLoadoutSection(
             blocks,
             catalog,
+            LoadoutKeywordEditorSection.Restrictive,
+            "CARD_MOD_LOADOUT_RESTRICTIVE_KEYWORDS",
+            "Loadout Restrictive Keywords");
+        AddLoadoutSection(
+            blocks,
+            catalog,
             LoadoutKeywordEditorSection.Improvement,
             "CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS",
             "Loadout Improvement Keywords");
@@ -293,6 +299,12 @@ public partial class NCardKeywordEditor : VBoxContainer
             LoadoutKeywordEditorSection.Basic,
             "CARD_MOD_LOADOUT_BASIC_KEYWORDS",
             "Loadout Basic Keywords");
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.Restrictive,
+            "CARD_MOD_LOADOUT_RESTRICTIVE_KEYWORDS",
+            "Loadout Restrictive Keywords");
         AddLoadoutSection(
             blocks,
             entries,

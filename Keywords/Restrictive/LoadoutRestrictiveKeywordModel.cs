@@ -2,20 +2,17 @@
 
 namespace Loadout.Keywords;
 
-using System;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 
-public abstract class LoadoutBasicKeywordModel : LoadoutKeywordModel
+public abstract class LoadoutRestrictiveKeywordModel : LoadoutKeywordModel
 {
     public override LoadoutKeywordPresentation Presentation =>
         LoadoutKeywordPresentation.DescriptionOnly;
 
     public override LoadoutKeywordEditorSection EditorSection =>
-        LoadoutKeywordEditorSection.Basic;
-
-    public override bool HasOnPlayEffect => true;
+        LoadoutKeywordEditorSection.Restrictive;
 
     protected static DynamicVar GetAmount(CardModel card, string name)
     {
@@ -23,14 +20,4 @@ public abstract class LoadoutBasicKeywordModel : LoadoutKeywordModel
             ? value
             : new DynamicVar(name, 0m);
     }
-
-    protected static int GetClampedHandCount(
-        CardModel card,
-        string variableName)
-    {
-        int requested = Math.Max(0, GetAmount(card, variableName).IntValue);
-        int available = PileType.Hand.GetPile(card.Owner).Cards.Count;
-        return Math.Min(requested, available);
-    }
-
 }

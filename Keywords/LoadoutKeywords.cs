@@ -34,6 +34,16 @@ public static class LoadoutKeywords
     public const string BasicHealKey = "BasicHeal";
     public const string BasicLoseHealthKey = "BasicLoseHealth";
     public const string BasicEnergyKey = "BasicEnergy";
+    public const string DiscardHandKey = "RestrictiveDiscardHand";
+    public const string NoDrawKey = "RestrictiveNoDraw";
+    public const string InHandLoseHealthKey =
+        "RestrictiveInHandLoseHealth";
+    public const string InHandTakeDamageKey =
+        "RestrictiveInHandTakeDamage";
+    public const string InHandLoseGoldKey = "RestrictiveInHandLoseGold";
+    public const string EnthralledKey = "RestrictiveEnthralled";
+    public const string ClashKey = "RestrictiveClash";
+    public const string EndTurnKey = "RestrictiveEndTurn";
     public const string DamageOnPlayKey = "ImprovementDamageOnPlay";
     public const string DoubleDamageOnPlayKey =
         "ImprovementDoubleDamageOnPlay";
@@ -126,6 +136,30 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_ENERGY")]
     public static CardKeyword BasicEnergy;
+
+    [CustomEnum("RESTRICTIVE_DISCARD_HAND")]
+    public static CardKeyword DiscardHand;
+
+    [CustomEnum("RESTRICTIVE_NO_DRAW")]
+    public static CardKeyword NoDraw;
+
+    [CustomEnum("RESTRICTIVE_IN_HAND_LOSE_HEALTH")]
+    public static CardKeyword InHandLoseHealth;
+
+    [CustomEnum("RESTRICTIVE_IN_HAND_TAKE_DAMAGE")]
+    public static CardKeyword InHandTakeDamage;
+
+    [CustomEnum("RESTRICTIVE_IN_HAND_LOSE_GOLD")]
+    public static CardKeyword InHandLoseGold;
+
+    [CustomEnum("RESTRICTIVE_ENTHRALLED")]
+    public static CardKeyword Enthralled;
+
+    [CustomEnum("RESTRICTIVE_CLASH")]
+    public static CardKeyword Clash;
+
+    [CustomEnum("RESTRICTIVE_END_TURN")]
+    public static CardKeyword EndTurn;
 
     [CustomEnum("IMPROVEMENT_DAMAGE_ON_PLAY")]
     public static CardKeyword DamageOnPlay;

@@ -13,7 +13,7 @@ internal static class LoadoutBasicKeywordTargetTypePatch
 {
     public static IEnumerable<MethodBase> TargetMethods()
     {
-        return LoadoutBasicKeywordModel.GetPropertyGetters(
+        return LoadoutKeywordModel.GetCardPropertyGetters(
             nameof(CardModel.TargetType));
     }
 

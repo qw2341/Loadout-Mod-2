@@ -220,6 +220,7 @@ DYNAMIC_VAR_LOADOUT_LESSON_LEARNED_CARDS,Cards to Upgrade,升级牌数,Cartes de
 DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
 DYNAMIC_VAR_LOADOUT_ALT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
 CARD_MOD_LOADOUT_BASIC_KEYWORDS,Loadout Basic Keywords,Loadout 基础关键词,Mots-clés de base Loadout,Loadout基本キーワード,Loadout 기본 키워드,Palabras clave básicas de Loadout
+CARD_MOD_LOADOUT_RESTRICTIVE_KEYWORDS,Loadout Restrictive Keywords,Loadout 限制关键词,Mots-clés restrictifs Loadout,Loadout制限キーワード,Loadout 제한 키워드,Palabras clave restrictivas de Loadout
 CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS,Loadout Improvement Keywords,Loadout 强化关键词,Mots-clés d’amélioration Loadout,Loadout強化キーワード,Loadout 강화 키워드,Palabras clave de mejora de Loadout
 DYNAMIC_VAR_LOADOUT_IMPROVEMENT_DAMAGE_ON_PLAY,Damage Increase,伤害增加,Augmentation des dégâts,ダメージ増加,피해 증가,Aumento de daño
 DYNAMIC_VAR_LOADOUT_IMPROVEMENT_ALL_DAMAGE_ON_PLAY,All Damage Increase,所有伤害增加,Augmentation de tous les dégâts,全同IDカードのダメージ増加,동일 ID 카드 피해 증가,Aumento de daño de copias
@@ -245,6 +246,9 @@ DYNAMIC_VAR_LOADOUT_BASIC_EXHAUST,Cards to Exhaust,消耗牌数,Cartes à Épuis
 DYNAMIC_VAR_LOADOUT_BASIC_HEAL,Health to Heal,回复生命,PV à soigner,回復するHP,회복할 체력,PV a curar
 DYNAMIC_VAR_LOADOUT_BASIC_HP_LOSS,HP to Lose,失去生命,PV à perdre,失うHP,잃을 체력,PV a perder
 DYNAMIC_VAR_LOADOUT_BASIC_ENERGY,Energy to Gain,获得能量,Énergie à gagner,得るエナジー,얻을 에너지,Energía a obtener
+DYNAMIC_VAR_LOADOUT_RESTRICTIVE_HP_LOSS,HP to Lose,失去生命,PV à perdre,失うHP,잃을 체력,PV a perder
+DYNAMIC_VAR_LOADOUT_RESTRICTIVE_DAMAGE,Damage to Take,受到伤害,Dégâts à subir,受けるダメージ,받을 피해,Daño a recibir
+DYNAMIC_VAR_LOADOUT_RESTRICTIVE_GOLD,Gold to Lose,失去金币,Or à perdre,失うゴールド,잃을 골드,Oro a perder
 DYNAMIC_VAR_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
 DYNAMIC_VAR_EXTRA_DAMAGE,Extra Damage,额外伤害,Dégâts supplémentaires,追加ダメージ,추가 피해,Daño adicional
 DYNAMIC_VAR_HEAL,Heal,治疗,Soins,回復,회복,Curación

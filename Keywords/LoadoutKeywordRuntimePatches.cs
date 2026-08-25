@@ -38,6 +38,10 @@ internal static class LoadoutKeywordRuntimePatches
     private const string DescriptionKeywordHarmonyId =
         "Loadout.Keyword.Description";
     private const string PostOnPlayHarmonyId = "Loadout.Keyword.PostOnPlay";
+    private const string TurnEndInHandHarmonyId =
+        "Loadout.Keyword.TurnEndInHand";
+    private const string PlayRestrictionHarmonyId =
+        "Loadout.Keyword.PlayRestriction";
 
     private static readonly Harmony InfiniteHarmony = new(InfiniteHarmonyId);
     private static readonly Harmony XCostHarmony = new(XCostHarmonyId);
@@ -47,6 +51,10 @@ internal static class LoadoutKeywordRuntimePatches
     private static readonly Harmony DescriptionKeywordHarmony =
         new(DescriptionKeywordHarmonyId);
     private static readonly Harmony PostOnPlayHarmony = new(PostOnPlayHarmonyId);
+    private static readonly Harmony TurnEndInHandHarmony =
+        new(TurnEndInHandHarmonyId);
+    private static readonly Harmony PlayRestrictionHarmony =
+        new(PlayRestrictionHarmonyId);
 
     public static bool InfiniteUpgradeEnabled { get; private set; }
     public static bool XCostEnabled { get; private set; }
@@ -58,6 +66,8 @@ internal static class LoadoutKeywordRuntimePatches
     private static bool DescriptionKeywordPostOnPlayEnabled { get; set; }
     private static bool CardResultLocationEnabled { get; set; }
     private static bool PostOnPlayEnabled { get; set; }
+    private static bool TurnEndInHandEnabled { get; set; }
+    private static bool PlayRestrictionEnabled { get; set; }
     private static bool RunKeywordPatchesPrepared { get; set; }
 
     public static void EnableFromDelta(CardModificationDelta delta)
@@ -170,6 +180,8 @@ internal static class LoadoutKeywordRuntimePatches
             RunKeywordPatchesPrepared || required.DescriptionKeywords);
         SetDescriptionKeywordPostOnPlayEnabled(
             required.DescriptionKeywordPostOnPlay);
+        SetTurnEndInHandEnabled(required.TurnEndInHand);
+        SetPlayRestrictionEnabled(required.PlayRestriction);
     }
 
     public static void ResetRunPatches()
@@ -183,6 +195,8 @@ internal static class LoadoutKeywordRuntimePatches
         RunKeywordPatchesPrepared = false;
         SetDescriptionKeywordsEnabled(false);
         SetDescriptionKeywordPostOnPlayEnabled(false);
+        SetTurnEndInHandEnabled(false);
+        SetPlayRestrictionEnabled(false);
     }
 
     private static KeywordFeatureState GetRequiredFeatures()
@@ -266,6 +280,8 @@ internal static class LoadoutKeywordRuntimePatches
 
                 state.DescriptionKeywords = true;
                 state.DescriptionKeywordPostOnPlay |= model.HasOnPlayEffect;
+                state.TurnEndInHand |= model.HasTurnEndInHandEffect;
+                state.PlayRestriction |= model.HasPlayRestriction;
             }
             if (state.All)
                 return;
@@ -283,6 +299,8 @@ internal static class LoadoutKeywordRuntimePatches
 
             state.DescriptionKeywords = true;
             state.DescriptionKeywordPostOnPlay |= model.HasOnPlayEffect;
+            state.TurnEndInHand |= model.HasTurnEndInHandEffect;
+            state.PlayRestriction |= model.HasPlayRestriction;
         }
     }
 
@@ -291,6 +309,8 @@ internal static class LoadoutKeywordRuntimePatches
     {
         bool anyEnabled = false;
         bool anyOnPlayEnabled = false;
+        bool anyTurnEndInHandEnabled = false;
+        bool anyPlayRestrictionEnabled = false;
         foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.DescriptionOnly)
         {
             if (!IsEnabled(overrides, model.StorageKey))
@@ -298,12 +318,18 @@ internal static class LoadoutKeywordRuntimePatches
 
             anyEnabled = true;
             anyOnPlayEnabled |= model.HasOnPlayEffect;
+            anyTurnEndInHandEnabled |= model.HasTurnEndInHandEffect;
+            anyPlayRestrictionEnabled |= model.HasPlayRestriction;
         }
 
         if (anyEnabled)
             SetDescriptionKeywordsEnabled(true);
         if (anyOnPlayEnabled)
             SetDescriptionKeywordPostOnPlayEnabled(true);
+        if (anyTurnEndInHandEnabled)
+            SetTurnEndInHandEnabled(true);
+        if (anyPlayRestrictionEnabled)
+            SetPlayRestrictionEnabled(true);
     }
 
     private static bool IsEnabled(CardModificationDelta delta, string key) =>
@@ -540,6 +566,107 @@ internal static class LoadoutKeywordRuntimePatches
         RefreshPostOnPlayPatch();
     }
 
+    private static void SetTurnEndInHandEnabled(bool enabled)
+    {
+        if (enabled == TurnEndInHandEnabled)
+            return;
+
+        if (!enabled)
+        {
+            TurnEndInHandHarmony.UnpatchAll(TurnEndInHandHarmonyId);
+            TurnEndInHandEnabled = false;
+            return;
+        }
+
+        TryEnable(TurnEndInHandHarmony, TurnEndInHandHarmonyId, () =>
+        {
+            HarmonyMethod hasEffectPostfix = new(
+                typeof(RestrictiveHasTurnEndInHandEffectPatch),
+                nameof(RestrictiveHasTurnEndInHandEffectPatch.Postfix));
+            foreach (MethodBase target in
+                     RestrictiveHasTurnEndInHandEffectPatch.TargetMethods())
+            {
+                TurnEndInHandHarmony.Patch(
+                    target,
+                    postfix: hasEffectPostfix);
+            }
+
+            HarmonyMethod effectPostfix = new(
+                typeof(TurnEndInHandKeywordDispatcher),
+                nameof(TurnEndInHandKeywordDispatcher.Postfix));
+            MethodBase[] targets =
+                TurnEndInHandKeywordDispatcher.TargetMethods().ToArray();
+            if (targets.Length == 0)
+            {
+                throw new MissingMethodException(
+                    typeof(CardModel).FullName,
+                    "OnTurnEndInHand(PlayerChoiceContext) implementations");
+            }
+
+            foreach (MethodBase target in targets)
+                TurnEndInHandHarmony.Patch(target, postfix: effectPostfix);
+        }, () => TurnEndInHandEnabled = true);
+    }
+
+    private static void SetPlayRestrictionEnabled(bool enabled)
+    {
+        if (enabled == PlayRestrictionEnabled)
+            return;
+
+        if (!enabled)
+        {
+            PlayRestrictionHarmony.UnpatchAll(PlayRestrictionHarmonyId);
+            PlayRestrictionEnabled = false;
+            return;
+        }
+
+        TryEnable(PlayRestrictionHarmony, PlayRestrictionHarmonyId, () =>
+        {
+            HarmonyMethod clashPostfix = new(
+                typeof(RestrictiveClashIsPlayablePatch),
+                nameof(RestrictiveClashIsPlayablePatch.Postfix));
+            foreach (MethodBase target in
+                     RestrictiveClashIsPlayablePatch.TargetMethods())
+            {
+                PlayRestrictionHarmony.Patch(
+                    target,
+                    postfix: clashPostfix);
+            }
+
+            HarmonyMethod enthralledPostfix = new(
+                typeof(RestrictiveEnthralledShouldPlayPatch),
+                nameof(RestrictiveEnthralledShouldPlayPatch.Postfix));
+            foreach (MethodBase target in
+                     RestrictiveEnthralledShouldPlayPatch.TargetMethods())
+            {
+                PlayRestrictionHarmony.Patch(
+                    target,
+                    postfix: enthralledPostfix);
+            }
+
+            PlayRestrictionHarmony.Patch(
+                AccessTools.PropertyGetter(
+                    typeof(CardModel),
+                    nameof(CardModel.ShouldGlowGold))
+                ?? throw new MissingMethodException(
+                    typeof(CardModel).FullName,
+                    $"get_{nameof(CardModel.ShouldGlowGold)}"),
+                postfix: new HarmonyMethod(
+                    typeof(RestrictiveKeywordGlowPatch),
+                    nameof(RestrictiveKeywordGlowPatch.ShouldGlowGoldPostfix)));
+            PlayRestrictionHarmony.Patch(
+                AccessTools.PropertyGetter(
+                    typeof(CardModel),
+                    nameof(CardModel.ShouldGlowRed))
+                ?? throw new MissingMethodException(
+                    typeof(CardModel).FullName,
+                    $"get_{nameof(CardModel.ShouldGlowRed)}"),
+                postfix: new HarmonyMethod(
+                    typeof(RestrictiveKeywordGlowPatch),
+                    nameof(RestrictiveKeywordGlowPatch.ShouldGlowRedPostfix)));
+        }, () => PlayRestrictionEnabled = true);
+    }
+
     private static void RefreshPostOnPlayPatch()
     {
         bool enabled =
@@ -622,6 +749,8 @@ internal static class LoadoutKeywordRuntimePatches
         public bool Livid;
         public bool DescriptionKeywords;
         public bool DescriptionKeywordPostOnPlay;
+        public bool TurnEndInHand;
+        public bool PlayRestriction;
         public readonly bool All =>
             InfiniteUpgrade
             && XCost
@@ -630,6 +759,8 @@ internal static class LoadoutKeywordRuntimePatches
             && Inevitable
             && Livid
             && DescriptionKeywords
-            && DescriptionKeywordPostOnPlay;
+            && DescriptionKeywordPostOnPlay
+            && TurnEndInHand
+            && PlayRestriction;
     }
 }

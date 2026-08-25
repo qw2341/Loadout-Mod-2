@@ -30,6 +30,7 @@ public enum LoadoutKeywordEditorSection
 {
     Default,
     Basic,
+    Restrictive,
     Improvement
 }
 
@@ -77,9 +78,15 @@ public abstract class LoadoutKeywordModel
 
     public virtual bool HasOnPlayEffect => false;
 
+    public virtual int OnPlayPriority => 0;
+
     public virtual bool HasUnblockedDamageEffect => false;
 
     public virtual bool HasFatalEffect => false;
+
+    public virtual bool HasTurnEndInHandEffect => false;
+
+    public virtual bool HasPlayRestriction => false;
 
     public virtual bool ChangesTargeting => false;
 
@@ -147,6 +154,13 @@ public abstract class LoadoutKeywordModel
     {
     }
 
+    public virtual Task AfterTurnEndInHand(
+        CardModel card,
+        PlayerChoiceContext choiceContext)
+    {
+        return Task.CompletedTask;
+    }
+
     internal static MethodInfo GetDescriptionTarget()
     {
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -172,5 +186,31 @@ public abstract class LoadoutKeywordModel
         return method ?? throw new MissingMethodException(
             typeof(CardModel).FullName,
             "private GetDescriptionForPile(PileType, DescriptionPreviewType, Creature)");
+    }
+
+    internal static IEnumerable<MethodBase> GetCardPropertyGetters(
+        string propertyName)
+    {
+        HashSet<MethodBase> targets = [];
+        const BindingFlags flags = BindingFlags.Instance
+                                   | BindingFlags.Public
+                                   | BindingFlags.NonPublic
+                                   | BindingFlags.DeclaredOnly;
+        foreach (Type type in ModelDb.AllCards
+                     .Select(card => card.GetType())
+                     .Append(typeof(CardModel))
+                     .Distinct())
+        {
+            MethodInfo? getter = type.GetProperty(propertyName, flags)?.GetMethod;
+            if (getter is not null
+                && !getter.IsStatic
+                && !getter.IsAbstract
+                && getter.GetMethodBody() is not null)
+            {
+                targets.Add(getter);
+            }
+        }
+
+        return targets;
     }
 }

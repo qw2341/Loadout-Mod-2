@@ -44,6 +44,14 @@ public static class LoadoutKeywordRegistry
         BasicHealKeyword.Instance,
         BasicLoseHealthKeyword.Instance,
         BasicEnergyKeyword.Instance,
+        DiscardHandKeyword.Instance,
+        NoDrawKeyword.Instance,
+        InHandLoseHealthKeyword.Instance,
+        InHandTakeDamageKeyword.Instance,
+        InHandLoseGoldKeyword.Instance,
+        EnthralledKeyword.Instance,
+        ClashKeyword.Instance,
+        EndTurnKeyword.Instance,
         DamageOnPlayKeyword.Instance,
         DoubleDamageOnPlayKeyword.Instance,
         AllDamageOnPlayKeyword.Instance,
@@ -72,6 +80,7 @@ public static class LoadoutKeywordRegistry
         PostOnPlayModels =
         Models
             .Where(model => model.HasOnPlayEffect)
+            .OrderBy(model => model.OnPlayPriority)
             .ToArray();
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
@@ -84,6 +93,12 @@ public static class LoadoutKeywordRegistry
         FatalModels =
         Models
             .Where(model => model.HasFatalEffect)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        TurnEndInHandModels =
+        Models
+            .Where(model => model.HasTurnEndInHandEffect)
             .ToArray();
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
@@ -105,6 +120,9 @@ public static class LoadoutKeywordRegistry
 
     public static IReadOnlyList<LoadoutKeywordModel> WithFatalEffect =>
         FatalModels;
+
+    public static IReadOnlyList<LoadoutKeywordModel> WithTurnEndInHandEffect =>
+        TurnEndInHandModels;
 
     public static bool TryGet(
         CardKeyword keyword,
@@ -163,6 +181,17 @@ public static class LoadoutKeywordRegistry
     public static bool HasFatalEffect(CardModel card)
     {
         foreach (LoadoutKeywordModel model in FatalModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool HasTurnEndInHandEffect(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in TurnEndInHandModels)
         {
             if (model.IsEnabled(card))
                 return true;
