@@ -225,6 +225,13 @@ DYNAMIC_VAR_LOADOUT_IMPROVEMENT_DAMAGE_ON_PLAY,Damage Increase,伤害增加,Augm
 DYNAMIC_VAR_LOADOUT_IMPROVEMENT_ALL_DAMAGE_ON_PLAY,All Damage Increase,所有伤害增加,Augmentation de tous les dégâts,全同IDカードのダメージ増加,동일 ID 카드 피해 증가,Aumento de daño de copias
 DYNAMIC_VAR_LOADOUT_IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY,Permanent Damage Increase,永久伤害增加,Augmentation permanente des dégâts,永続ダメージ増加,영구 피해 증가,Aumento permanente de daño
 DYNAMIC_VAR_LOADOUT_IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL,Fatal Damage Increase,斩杀伤害增加,Augmentation des dégâts en Coup de grâce,リーサル時ダメージ増加,치명타 피해 증가,Aumento de daño letal
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_BLOCK_ON_PLAY,Block Increase,格挡增加,Augmentation du Blocage,ブロック増加,방어도 증가,Aumento de Bloqueo
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_ALL_BLOCK_ON_PLAY,All Block Increase,所有格挡增加,Augmentation de tous les Blocages,全同名カードのブロック増加,동일 카드 방어도 증가,Aumento de Bloqueo de copias
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_PERMANENT_BLOCK_ON_PLAY,Permanent Block Increase,永久格挡增加,Augmentation permanente du Blocage,永続ブロック増加,영구 방어도 증가,Aumento permanente de Bloqueo
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_VARIABLES_ON_PLAY,Variable Increase,变量增加,Augmentation des variables,変数増加,변수 증가,Aumento de variables
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_ALL_VARIABLES_ON_PLAY,All Variable Increase,所有变量增加,Augmentation des variables de toutes les copies,全同名カードの変数増加,동일 카드 변수 증가,Aumento de variables de copias
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_PERMANENT_VARIABLES_ON_PLAY,Permanent Variable Increase,永久变量增加,Augmentation permanente des variables,永続変数増加,영구 변수 증가,Aumento permanente de variables
+DYNAMIC_VAR_LOADOUT_IMPROVEMENT_PERMANENT_VARIABLES_ON_FATAL,Fatal Variable Increase,斩杀变量增加,Augmentation des variables en Coup de grâce,リーサル時変数増加,치명타 변수 증가,Aumento de variables letales
 DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Daño
 DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE_AOE,AOE Damage,群体伤害,Dégâts de zone,全体ダメージ,광역 피해,Daño en área
 DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_DAMAGE,Damage per Hit,每次伤害,Dégâts par coup,1ヒットのダメージ,타격당 피해,Daño por golpe

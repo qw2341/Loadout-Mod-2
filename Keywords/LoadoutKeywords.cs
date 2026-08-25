@@ -42,6 +42,21 @@ public static class LoadoutKeywords
         "ImprovementPermanentDamageOnPlay";
     public const string PermanentDamageOnFatalKey =
         "ImprovementPermanentDamageOnFatal";
+    public const string BlockOnPlayKey = "ImprovementBlockOnPlay";
+    public const string AllBlockOnPlayKey = "ImprovementAllBlockOnPlay";
+    public const string PermanentBlockOnPlayKey =
+        "ImprovementPermanentBlockOnPlay";
+    public const string DoubleBlockOnPlayKey =
+        "ImprovementDoubleBlockOnPlay";
+    public const string VariablesOnPlayKey = "ImprovementVariablesOnPlay";
+    public const string AllVariablesOnPlayKey =
+        "ImprovementAllVariablesOnPlay";
+    public const string PermanentVariablesOnPlayKey =
+        "ImprovementPermanentVariablesOnPlay";
+    public const string PermanentVariablesOnFatalKey =
+        "ImprovementPermanentVariablesOnFatal";
+    public const string DoubleVariablesOnPlayKey =
+        "ImprovementDoubleVariablesOnPlay";
 
     [CustomEnum, KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Inevitable;
@@ -126,6 +141,33 @@ public static class LoadoutKeywords
 
     [CustomEnum("IMPROVEMENT_PERMANENT_DAMAGE_ON_FATAL")]
     public static CardKeyword PermanentDamageOnFatal;
+
+    [CustomEnum("IMPROVEMENT_BLOCK_ON_PLAY")]
+    public static CardKeyword BlockOnPlay;
+
+    [CustomEnum("IMPROVEMENT_ALL_BLOCK_ON_PLAY")]
+    public static CardKeyword AllBlockOnPlay;
+
+    [CustomEnum("IMPROVEMENT_PERMANENT_BLOCK_ON_PLAY")]
+    public static CardKeyword PermanentBlockOnPlay;
+
+    [CustomEnum("IMPROVEMENT_DOUBLE_BLOCK_ON_PLAY")]
+    public static CardKeyword DoubleBlockOnPlay;
+
+    [CustomEnum("IMPROVEMENT_VARIABLES_ON_PLAY")]
+    public static CardKeyword VariablesOnPlay;
+
+    [CustomEnum("IMPROVEMENT_ALL_VARIABLES_ON_PLAY")]
+    public static CardKeyword AllVariablesOnPlay;
+
+    [CustomEnum("IMPROVEMENT_PERMANENT_VARIABLES_ON_PLAY")]
+    public static CardKeyword PermanentVariablesOnPlay;
+
+    [CustomEnum("IMPROVEMENT_PERMANENT_VARIABLES_ON_FATAL")]
+    public static CardKeyword PermanentVariablesOnFatal;
+
+    [CustomEnum("IMPROVEMENT_DOUBLE_VARIABLES_ON_PLAY")]
+    public static CardKeyword DoubleVariablesOnPlay;
 
     public static IEnumerable<CardKeyword> All =>
         LoadoutKeywordRegistry.All.Select(model => model.Keyword);

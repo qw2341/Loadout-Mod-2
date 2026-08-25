@@ -48,7 +48,16 @@ public static class LoadoutKeywordRegistry
         DoubleDamageOnPlayKeyword.Instance,
         AllDamageOnPlayKeyword.Instance,
         PermanentDamageOnPlayKeyword.Instance,
-        PermanentDamageOnFatalKeyword.Instance
+        PermanentDamageOnFatalKeyword.Instance,
+        BlockOnPlayKeyword.Instance,
+        AllBlockOnPlayKeyword.Instance,
+        PermanentBlockOnPlayKeyword.Instance,
+        DoubleBlockOnPlayKeyword.Instance,
+        VariablesOnPlayKeyword.Instance,
+        AllVariablesOnPlayKeyword.Instance,
+        PermanentVariablesOnPlayKeyword.Instance,
+        PermanentVariablesOnFatalKeyword.Instance,
+        DoubleVariablesOnPlayKeyword.Instance
     ];
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
