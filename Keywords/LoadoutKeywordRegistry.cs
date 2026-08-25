@@ -44,6 +44,7 @@ public static class LoadoutKeywordRegistry
         BasicHealKeyword.Instance,
         BasicLoseHealthKeyword.Instance,
         BasicEnergyKeyword.Instance,
+        BasicStarsKeyword.Instance,
         DiscardHandKeyword.Instance,
         NoDrawKeyword.Instance,
         InHandLoseHealthKeyword.Instance,

@@ -34,6 +34,7 @@ public static class LoadoutKeywords
     public const string BasicHealKey = "BasicHeal";
     public const string BasicLoseHealthKey = "BasicLoseHealth";
     public const string BasicEnergyKey = "BasicEnergy";
+    public const string BasicStarsKey = "BasicStars";
     public const string DiscardHandKey = "RestrictiveDiscardHand";
     public const string NoDrawKey = "RestrictiveNoDraw";
     public const string InHandLoseHealthKey =
@@ -140,6 +141,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_ENERGY")]
     public static CardKeyword BasicEnergy;
+
+    [CustomEnum("BASIC_STARS")]
+    public static CardKeyword BasicStars;
 
     [CustomEnum("RESTRICTIVE_DISCARD_HAND")]
     public static CardKeyword DiscardHand;

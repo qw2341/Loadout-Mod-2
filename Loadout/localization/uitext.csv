@@ -246,6 +246,7 @@ DYNAMIC_VAR_LOADOUT_BASIC_EXHAUST,Cards to Exhaust,消耗牌数,Cartes à Épuis
 DYNAMIC_VAR_LOADOUT_BASIC_HEAL,Health to Heal,回复生命,PV à soigner,回復するHP,회복할 체력,PV a curar
 DYNAMIC_VAR_LOADOUT_BASIC_HP_LOSS,HP to Lose,失去生命,PV à perdre,失うHP,잃을 체력,PV a perder
 DYNAMIC_VAR_LOADOUT_BASIC_ENERGY,Energy to Gain,获得能量,Énergie à gagner,得るエナジー,얻을 에너지,Energía a obtener
+DYNAMIC_VAR_LOADOUT_BASIC_STARS,Stars to Gain,获得辉星,Étoiles à gagner,得る星,얻을 별,Estrellas a obtener
 DYNAMIC_VAR_LOADOUT_RESTRICTIVE_HP_LOSS,HP to Lose,失去生命,PV à perdre,失うHP,잃을 체력,PV a perder
 DYNAMIC_VAR_LOADOUT_RESTRICTIVE_DAMAGE,Damage to Take,受到伤害,Dégâts à subir,受けるダメージ,받을 피해,Daño a recibir
 DYNAMIC_VAR_LOADOUT_RESTRICTIVE_GOLD,Gold to Lose,失去金币,Or à perdre,失うゴールド,잃을 골드,Oro a perder
