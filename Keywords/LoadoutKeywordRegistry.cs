@@ -44,6 +44,7 @@ public static class LoadoutKeywordRegistry
         BasicLoseHealthKeyword.Instance,
         BasicEnergyKeyword.Instance,
         DamageOnPlayKeyword.Instance,
+        DoubleDamageOnPlayKeyword.Instance,
         AllDamageOnPlayKeyword.Instance,
         PermanentDamageOnPlayKeyword.Instance,
         PermanentDamageOnFatalKeyword.Instance

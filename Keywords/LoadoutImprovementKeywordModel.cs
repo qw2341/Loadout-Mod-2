@@ -29,6 +29,24 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
         return IncreaseDamage(card, amount, persistentDelta: null);
     }
 
+    protected static bool MultiplyDamage(CardModel card, decimal multiplier)
+    {
+        if (multiplier < 0m || card.IsCanonical)
+            return false;
+
+        bool changed = false;
+        foreach (DynamicVar dynamicVar in card.DynamicVars.Values)
+        {
+            if (dynamicVar is not DamageVar damage)
+                continue;
+
+            damage.BaseValue *= multiplier;
+            changed = true;
+        }
+
+        return changed;
+    }
+
     protected static void IncreaseDamagePermanently(
         CardModel card,
         decimal amount)

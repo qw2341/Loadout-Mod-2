@@ -34,6 +34,8 @@ public static class LoadoutKeywords
     public const string BasicLoseHealthKey = "BasicLoseHealth";
     public const string BasicEnergyKey = "BasicEnergy";
     public const string DamageOnPlayKey = "ImprovementDamageOnPlay";
+    public const string DoubleDamageOnPlayKey =
+        "ImprovementDoubleDamageOnPlay";
     public const string AllDamageOnPlayKey = "ImprovementAllDamageOnPlay";
     public const string PermanentDamageOnPlayKey =
         "ImprovementPermanentDamageOnPlay";
@@ -108,6 +110,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("IMPROVEMENT_DAMAGE_ON_PLAY")]
     public static CardKeyword DamageOnPlay;
+
+    [CustomEnum("IMPROVEMENT_DOUBLE_DAMAGE_ON_PLAY")]
+    public static CardKeyword DoubleDamageOnPlay;
 
     [CustomEnum("IMPROVEMENT_ALL_DAMAGE_ON_PLAY")]
     public static CardKeyword AllDamageOnPlay;
