@@ -26,6 +26,8 @@
   "LOADOUT-WALLOP.title": "Golpe contundente",
   "LOADOUT-WALLOP.description": "Otorga Bloqueo igual al daño no bloqueado infligido.",
   "LOADOUT-WALLOP.cardText": "Obtén [gold]Bloqueo[/gold] igual al daño no bloqueado infligido.",
+  "LOADOUT-AUTOPLAY.title": "Juego automático",
+  "LOADOUT-AUTOPLAY.description": "Se juega automáticamente al robarse.",
   "LOADOUT-BASIC_DAMAGE.title": "Daño",
   "LOADOUT-BASIC_DAMAGE.description": "Inflige daño a la criatura seleccionada.",
   "LOADOUT-BASIC_DAMAGE.cardText": "Inflige {LoadoutBasicDamage:diff()} de daño.",

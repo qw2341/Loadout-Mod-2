@@ -26,6 +26,8 @@
   "LOADOUT-WALLOP.title": "当头",
   "LOADOUT-WALLOP.description": "获得等同于此牌造成的未被格挡伤害的格挡。",
   "LOADOUT-WALLOP.cardText": "获得等同于造成的未被格挡伤害的[gold]格挡[/gold]。",
+  "LOADOUT-AUTOPLAY.title": "自动打出",
+  "LOADOUT-AUTOPLAY.description": "抽到时自动打出。",
   "LOADOUT-BASIC_DAMAGE.title": "伤害",
   "LOADOUT-BASIC_DAMAGE.description": "对选中的生物造成伤害。",
   "LOADOUT-BASIC_DAMAGE.cardText": "造成{LoadoutBasicDamage:diff()}点伤害。",

@@ -26,6 +26,8 @@
   "LOADOUT-WALLOP.title": "Coup écrasant",
   "LOADOUT-WALLOP.description": "Confère autant de Blocage que de dégâts non bloqués infligés.",
   "LOADOUT-WALLOP.cardText": "Gagne autant de [gold]Blocage[/gold] que de dégâts non bloqués infligés.",
+  "LOADOUT-AUTOPLAY.title": "Lecture automatique",
+  "LOADOUT-AUTOPLAY.description": "Se joue automatiquement lorsqu'elle est piochée.",
   "LOADOUT-BASIC_DAMAGE.title": "Dégâts",
   "LOADOUT-BASIC_DAMAGE.description": "Inflige des dégâts à la créature ciblée.",
   "LOADOUT-BASIC_DAMAGE.cardText": "Inflige {LoadoutBasicDamage:diff()} dégâts.",

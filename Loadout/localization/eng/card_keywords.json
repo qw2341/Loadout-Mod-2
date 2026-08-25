@@ -26,6 +26,8 @@
   "LOADOUT-WALLOP.title": "Wallop",
   "LOADOUT-WALLOP.description": "Gains Block equal to the unblocked damage dealt.",
   "LOADOUT-WALLOP.cardText": "Gain [gold]Block[/gold] equal to unblocked damage dealt.",
+  "LOADOUT-AUTOPLAY.title": "Autoplay",
+  "LOADOUT-AUTOPLAY.description": "Automatically plays when drawn.",
   "LOADOUT-BASIC_DAMAGE.title": "Damage",
   "LOADOUT-BASIC_DAMAGE.description": "Deals damage to the selected creature.",
   "LOADOUT-BASIC_DAMAGE.cardText": "Deal {LoadoutBasicDamage:diff()} damage.",

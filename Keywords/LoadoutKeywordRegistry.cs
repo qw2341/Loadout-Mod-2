@@ -32,6 +32,7 @@ public static class LoadoutKeywordRegistry
         AltHeavenlyKeyword.Instance,
         LifestealKeyword.Instance,
         WallopKeyword.Instance,
+        AutoplayKeyword.Instance,
         BasicDamageKeyword.Instance,
         BasicDamageAoeKeyword.Instance,
         BasicMultiHitKeyword.Instance,
