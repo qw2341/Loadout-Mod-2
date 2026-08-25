@@ -226,6 +226,9 @@ CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS,Loadout Improvement Keywords,Loadout 强�
 DYNAMIC_VAR_LOADOUT_FATAL_MAX_HP,Max HP Gain,最大生命值增加,Gain de PV Max,最大HP増加,최대 체력 증가,Aumento de PV máx.
 DYNAMIC_VAR_LOADOUT_FATAL_GOLD,Gold Gain,金币获得,Gain d’or,ゴールド獲得,골드 획득,Oro obtenido
 DYNAMIC_VAR_LOADOUT_FATAL_ENERGY,Energy Gain,能量获得,Gain d’énergie,エナジー獲得,에너지 획득,Energía obtenida
+DYNAMIC_VAR_LOADOUT_FATAL_CARD_REWARDS,Card Rewards,卡牌奖励,Récompenses de carte,カード報酬,카드 보상,Recompensas de cartas
+DYNAMIC_VAR_LOADOUT_FATAL_POTIONS,Potions,药水,Potions,ポーション,포션,Pociones
+DYNAMIC_VAR_LOADOUT_FATAL_RELIC_REWARDS,Relic Rewards,遗物奖励,Récompenses de relique,レリック報酬,유물 보상,Recompensas de reliquias
 DYNAMIC_VAR_LOADOUT_IMPROVEMENT_DAMAGE_ON_PLAY,Damage Increase,伤害增加,Augmentation des dégâts,ダメージ増加,피해 증가,Aumento de daño
 DYNAMIC_VAR_LOADOUT_IMPROVEMENT_ALL_DAMAGE_ON_PLAY,All Damage Increase,所有伤害增加,Augmentation de tous les dégâts,全同IDカードのダメージ増加,동일 ID 카드 피해 증가,Aumento de daño de copias
 DYNAMIC_VAR_LOADOUT_IMPROVEMENT_PERMANENT_DAMAGE_ON_PLAY,Permanent Damage Increase,永久伤害增加,Augmentation permanente des dégâts,永続ダメージ増加,영구 피해 증가,Aumento permanente de daño
