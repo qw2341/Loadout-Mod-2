@@ -19,7 +19,7 @@ public sealed class VariablesOnPlayKeyword : LoadoutImprovementKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_IMPROVEMENT_VARIABLES_ON_PLAY",
                 (name, value) => new IntVar(name, value))

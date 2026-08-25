@@ -27,7 +27,7 @@ public sealed class LessonLearnedKeyword : LoadoutKeywordModel
             new(
                 CardsVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_LESSON_LEARNED_CARDS")
         ];

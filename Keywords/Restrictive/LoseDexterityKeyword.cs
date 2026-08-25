@@ -21,7 +21,7 @@ public sealed class LoseDexterityKeyword : LoadoutRestrictiveKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_RESTRICTIVE_DEXTERITY_LOSS",
                 (name, value) => new PowerVar<DexterityPower>(name, value))

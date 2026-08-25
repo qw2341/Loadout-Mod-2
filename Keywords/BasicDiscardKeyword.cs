@@ -22,7 +22,7 @@ public sealed class BasicDiscardKeyword : LoadoutBasicKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_DISCARD",
                 (name, value) => new CardsVar(name, decimal.ToInt32(value)))

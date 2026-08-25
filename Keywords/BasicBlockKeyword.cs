@@ -24,7 +24,7 @@ public sealed class BasicBlockKeyword : LoadoutBasicKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_BLOCK",
                 (name, value) => new BlockVar(name, value, ValueProp.Move))

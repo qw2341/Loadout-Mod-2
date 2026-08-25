@@ -22,7 +22,7 @@ public sealed class InHandLoseHealthKeyword : LoadoutRestrictiveKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_RESTRICTIVE_HP_LOSS",
                 (name, value) => new HpLossVar(name, value))

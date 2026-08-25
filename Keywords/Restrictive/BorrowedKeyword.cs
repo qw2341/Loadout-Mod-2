@@ -22,7 +22,7 @@ public sealed class BorrowedKeyword : LoadoutRestrictiveKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_RESTRICTIVE_EXTRA_COST",
                 (name, value) => new EnergyVar(name, decimal.ToInt32(value)))

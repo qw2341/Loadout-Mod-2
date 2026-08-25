@@ -21,7 +21,7 @@ public sealed class InHandLoseGoldKeyword : LoadoutRestrictiveKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_RESTRICTIVE_GOLD",
                 (name, value) => new GoldVar(name, decimal.ToInt32(value)))

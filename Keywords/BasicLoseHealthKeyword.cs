@@ -22,7 +22,7 @@ public sealed class BasicLoseHealthKeyword : LoadoutBasicKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_HP_LOSS",
                 (name, value) => new HpLossVar(name, value))

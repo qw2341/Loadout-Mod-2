@@ -21,7 +21,7 @@ public sealed class BasicEnergyKeyword : LoadoutBasicKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_ENERGY",
                 (name, value) => new EnergyVar(name, decimal.ToInt32(value)))

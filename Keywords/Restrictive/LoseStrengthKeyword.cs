@@ -21,7 +21,7 @@ public sealed class LoseStrengthKeyword : LoadoutRestrictiveKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_RESTRICTIVE_STRENGTH_LOSS",
                 (name, value) => new PowerVar<StrengthPower>(name, value))

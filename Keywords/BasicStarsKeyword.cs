@@ -21,7 +21,7 @@ public sealed class BasicStarsKeyword : LoadoutBasicKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_STARS",
                 (name, value) => new StarsVar(name, decimal.ToInt32(value)))

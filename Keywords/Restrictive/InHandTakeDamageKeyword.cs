@@ -21,7 +21,7 @@ public sealed class InHandTakeDamageKeyword : LoadoutRestrictiveKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_RESTRICTIVE_DAMAGE",
                 (name, value) => new DamageVar(

@@ -21,7 +21,7 @@ public sealed class BasicHealKeyword : LoadoutBasicKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_HEAL",
                 (name, value) => new HealVar(name, value))

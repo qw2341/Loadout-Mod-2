@@ -18,7 +18,7 @@ public sealed class HeavenlyKeyword : LoadoutKeywordModel
             new(
                 EnergyVar,
                 4m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY")
         ];

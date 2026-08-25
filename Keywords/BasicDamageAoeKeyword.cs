@@ -22,7 +22,7 @@ public sealed class BasicDamageAoeKeyword : LoadoutBasicKeywordModel
             new(
                 AmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE_AOE",
                 (name, value) => new DamageVar(name, value, ValueProp.Move))

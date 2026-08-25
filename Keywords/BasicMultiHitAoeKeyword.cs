@@ -23,7 +23,7 @@ public sealed class BasicMultiHitAoeKeyword : LoadoutBasicKeywordModel
             new(
                 DamageAmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_AOE_DAMAGE",
                 (name, value) =>
@@ -31,7 +31,7 @@ public sealed class BasicMultiHitAoeKeyword : LoadoutBasicKeywordModel
             new(
                 RepeatAmountVar,
                 1m,
-                0,
+                int.MinValue,
                 int.MaxValue,
                 "DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_AOE_REPEAT",
                 (name, value) =>
