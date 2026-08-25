@@ -126,5 +126,17 @@
   "LOADOUT-RESTRICTIVE_CLASH.cardText": "[gold]手札[/gold]のカードがすべてアタックの場合にのみプレイできる。",
   "LOADOUT-RESTRICTIVE_END_TURN.title": "ターン終了",
   "LOADOUT-RESTRICTIVE_END_TURN.description": "ターンを終了する。",
-  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "ターンを終了する。"
+  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "ターンを終了する。",
+  "LOADOUT-RESTRICTIVE_GRAND.title": "グランド",
+  "LOADOUT-RESTRICTIVE_GRAND.description": "[gold]山札[/gold]にカードが1枚もない場合のみプレイできる。",
+  "LOADOUT-RESTRICTIVE_GRAND.cardText": "[gold]山札[/gold]にカードが1枚もない場合のみプレイできる。",
+  "LOADOUT-RESTRICTIVE_BORROWED.title": "借用",
+  "LOADOUT-RESTRICTIVE_BORROWED.description": "このターン、カードのコストが増加する。",
+  "LOADOUT-RESTRICTIVE_BORROWED.cardText": "このターン、カードのコストは{LoadoutRestrictiveExtraCost:energyIcons()}増加する。",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.title": "筋力低下",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.description": "プレイ時に[gold]筋力[/gold]を失う。",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.cardText": "[gold]筋力[/gold]{LoadoutRestrictiveStrengthLoss:inverseDiff()}を失う。",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "敏捷低下",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "プレイ時に[gold]敏捷[/gold]を失う。",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "[gold]敏捷[/gold]{LoadoutRestrictiveDexterityLoss:inverseDiff()}を失う。"
 }

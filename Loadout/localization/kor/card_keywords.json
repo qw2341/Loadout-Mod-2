@@ -126,5 +126,17 @@
   "LOADOUT-RESTRICTIVE_CLASH.cardText": "[gold]손[/gold]에 있는 모든 카드가 공격 카드일 때만 사용할 수 있습니다.",
   "LOADOUT-RESTRICTIVE_END_TURN.title": "턴 종료",
   "LOADOUT-RESTRICTIVE_END_TURN.description": "내 턴을 종료합니다.",
-  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "내 턴을 종료합니다."
+  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "내 턴을 종료합니다.",
+  "LOADOUT-RESTRICTIVE_GRAND.title": "그랜드",
+  "LOADOUT-RESTRICTIVE_GRAND.description": "[gold]뽑을 카드 더미[/gold]에 카드가 없을 때만 사용할 수 있습니다.",
+  "LOADOUT-RESTRICTIVE_GRAND.cardText": "[gold]뽑을 카드 더미[/gold]에 카드가 없을 때만 사용할 수 있습니다.",
+  "LOADOUT-RESTRICTIVE_BORROWED.title": "차용",
+  "LOADOUT-RESTRICTIVE_BORROWED.description": "이번 턴 동안 카드의 비용이 증가합니다.",
+  "LOADOUT-RESTRICTIVE_BORROWED.cardText": "이번 턴 동안 카드의 비용이 {LoadoutRestrictiveExtraCost:energyIcons()} 증가합니다.",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.title": "힘 상실",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.description": "사용 시 [gold]힘[/gold]을 잃습니다.",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.cardText": "[gold]힘[/gold]을 {LoadoutRestrictiveStrengthLoss:inverseDiff()} 잃습니다.",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "민첩 상실",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "사용 시 [gold]민첩[/gold]을 잃습니다.",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "[gold]민첩[/gold]을 {LoadoutRestrictiveDexterityLoss:inverseDiff()} 잃습니다."
 }

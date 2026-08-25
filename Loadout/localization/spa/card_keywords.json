@@ -126,5 +126,17 @@
   "LOADOUT-RESTRICTIVE_CLASH.cardText": "Solo se puede jugar si todas las cartas de tu [gold]Mano[/gold] son Ataques.",
   "LOADOUT-RESTRICTIVE_END_TURN.title": "Terminar turno",
   "LOADOUT-RESTRICTIVE_END_TURN.description": "Termina tu turno.",
-  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "Termina tu turno."
+  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "Termina tu turno.",
+  "LOADOUT-RESTRICTIVE_GRAND.title": "Grandioso",
+  "LOADOUT-RESTRICTIVE_GRAND.description": "Solo puede jugarse si no tienes cartas en la [gold]Pila de robo[/gold].",
+  "LOADOUT-RESTRICTIVE_GRAND.cardText": "Solo puede jugarse si no tienes cartas en la [gold]Pila de robo[/gold].",
+  "LOADOUT-RESTRICTIVE_BORROWED.title": "Prestado",
+  "LOADOUT-RESTRICTIVE_BORROWED.description": "Las cartas cuestan más este turno.",
+  "LOADOUT-RESTRICTIVE_BORROWED.cardText": "Las cartas cuestan {LoadoutRestrictiveExtraCost:energyIcons()} más este turno.",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.title": "Perder Fuerza",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.description": "Pierde [gold]Fuerza[/gold] al jugar esta carta.",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.cardText": "Pierde {LoadoutRestrictiveStrengthLoss:inverseDiff()} de [gold]Fuerza[/gold].",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "Perder Destreza",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "Pierde [gold]Destreza[/gold] al jugar esta carta.",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "Pierde {LoadoutRestrictiveDexterityLoss:inverseDiff()} de [gold]Destreza[/gold]."
 }

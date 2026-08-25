@@ -126,5 +126,17 @@
   "LOADOUT-RESTRICTIVE_CLASH.cardText": "Ne peut être joué que si toutes les cartes dans votre [gold]Main[/gold] sont des Attaques.",
   "LOADOUT-RESTRICTIVE_END_TURN.title": "Fin du tour",
   "LOADOUT-RESTRICTIVE_END_TURN.description": "Terminez votre tour.",
-  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "Terminez votre tour."
+  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "Terminez votre tour.",
+  "LOADOUT-RESTRICTIVE_GRAND.title": "Grand",
+  "LOADOUT-RESTRICTIVE_GRAND.description": "Ne peut être joué que si votre [gold]Pioche[/gold] est vide.",
+  "LOADOUT-RESTRICTIVE_GRAND.cardText": "Ne peut être joué que si votre [gold]Pioche[/gold] est vide.",
+  "LOADOUT-RESTRICTIVE_BORROWED.title": "Emprunté",
+  "LOADOUT-RESTRICTIVE_BORROWED.description": "Les cartes coûtent plus cher ce tour.",
+  "LOADOUT-RESTRICTIVE_BORROWED.cardText": "Les cartes coûtent {LoadoutRestrictiveExtraCost:energyIcons()} de plus ce tour.",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.title": "Perte de Force",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.description": "Perdez de la [gold]Force[/gold] quand cette carte est jouée.",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.cardText": "Perdez {LoadoutRestrictiveStrengthLoss:inverseDiff()} de [gold]Force[/gold].",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "Perte de Dextérité",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "Perdez de la [gold]Dextérité[/gold] quand cette carte est jouée.",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "Perdez {LoadoutRestrictiveDexterityLoss:inverseDiff()} de [gold]Dextérité[/gold]."
 }

@@ -44,6 +44,10 @@ public static class LoadoutKeywords
     public const string EnthralledKey = "RestrictiveEnthralled";
     public const string ClashKey = "RestrictiveClash";
     public const string EndTurnKey = "RestrictiveEndTurn";
+    public const string GrandKey = "RestrictiveGrand";
+    public const string BorrowedKey = "RestrictiveBorrowed";
+    public const string LoseStrengthKey = "RestrictiveLoseStrength";
+    public const string LoseDexterityKey = "RestrictiveLoseDexterity";
     public const string DamageOnPlayKey = "ImprovementDamageOnPlay";
     public const string DoubleDamageOnPlayKey =
         "ImprovementDoubleDamageOnPlay";
@@ -160,6 +164,18 @@ public static class LoadoutKeywords
 
     [CustomEnum("RESTRICTIVE_END_TURN")]
     public static CardKeyword EndTurn;
+
+    [CustomEnum("RESTRICTIVE_GRAND")]
+    public static CardKeyword Grand;
+
+    [CustomEnum("RESTRICTIVE_BORROWED")]
+    public static CardKeyword Borrowed;
+
+    [CustomEnum("RESTRICTIVE_LOSE_STRENGTH")]
+    public static CardKeyword LoseStrength;
+
+    [CustomEnum("RESTRICTIVE_LOSE_DEXTERITY")]
+    public static CardKeyword LoseDexterity;
 
     [CustomEnum("IMPROVEMENT_DAMAGE_ON_PLAY")]
     public static CardKeyword DamageOnPlay;

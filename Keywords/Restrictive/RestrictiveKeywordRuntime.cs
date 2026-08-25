@@ -90,7 +90,7 @@ internal static class RestrictiveHasTurnEndInHandEffectPatch
     }
 }
 
-internal static class RestrictiveClashIsPlayablePatch
+internal static class RestrictiveIsPlayablePatch
 {
     public static IEnumerable<MethodBase> TargetMethods()
     {
@@ -100,16 +100,22 @@ internal static class RestrictiveClashIsPlayablePatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref bool __result)
     {
-        if (!__result
-            || !LoadoutKeywords.Has(__instance, LoadoutKeywords.Clash))
-        {
+        if (!__result)
             return;
+
+        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.Clash))
+        {
+            __result = PileType.Hand
+                .GetPile(__instance.Owner)
+                .Cards
+                .All(card => card.Type == CardType.Attack);
         }
 
-        __result = PileType.Hand
-            .GetPile(__instance.Owner)
-            .Cards
-            .All(card => card.Type == CardType.Attack);
+        if (__result
+            && LoadoutKeywords.Has(__instance, LoadoutKeywords.Grand))
+        {
+            __result = GrandKeyword.CanPlay(__instance);
+        }
     }
 }
 
@@ -192,15 +198,25 @@ internal static class RestrictiveKeywordGlowPatch
         ref bool __result)
     {
         if (__result
-            || !LoadoutKeywords.Has(__instance, LoadoutKeywords.Clash))
+            || !LoadoutKeywords.Has(__instance, LoadoutKeywords.Clash)
+            && !LoadoutKeywords.Has(__instance, LoadoutKeywords.Grand))
         {
             return;
         }
 
-        __result = PileType.Hand
-            .GetPile(__instance.Owner)
-            .Cards
-            .All(card => card.Type == CardType.Attack);
+        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.Clash))
+        {
+            __result = PileType.Hand
+                .GetPile(__instance.Owner)
+                .Cards
+                .All(card => card.Type == CardType.Attack);
+        }
+
+        if (!__result
+            && LoadoutKeywords.Has(__instance, LoadoutKeywords.Grand))
+        {
+            __result = GrandKeyword.CanPlay(__instance);
+        }
     }
 
     [HarmonyPostfix]

@@ -126,5 +126,17 @@
   "LOADOUT-RESTRICTIVE_CLASH.cardText": "只有在[gold]手牌[/gold]中每一张牌都是攻击牌时才能被打出。",
   "LOADOUT-RESTRICTIVE_END_TURN.title": "结束回合",
   "LOADOUT-RESTRICTIVE_END_TURN.description": "结束你的回合。",
-  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "结束你的回合。"
+  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "结束你的回合。",
+  "LOADOUT-RESTRICTIVE_GRAND.title": "华丽",
+  "LOADOUT-RESTRICTIVE_GRAND.description": "只有当你的[gold]抽牌堆[/gold]中没有牌时才能打出。",
+  "LOADOUT-RESTRICTIVE_GRAND.cardText": "只有当你的[gold]抽牌堆[/gold]中没有牌时才能打出。",
+  "LOADOUT-RESTRICTIVE_BORROWED.title": "预借",
+  "LOADOUT-RESTRICTIVE_BORROWED.description": "所有卡牌在本回合耗能增加。",
+  "LOADOUT-RESTRICTIVE_BORROWED.cardText": "所有卡牌在本回合耗能增加{LoadoutRestrictiveExtraCost:energyIcons()}。",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.title": "失去力量",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.description": "打出时失去[gold]力量[/gold]。",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.cardText": "失去{LoadoutRestrictiveStrengthLoss:inverseDiff()}点[gold]力量[/gold]。",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "失去敏捷",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "打出时失去[gold]敏捷[/gold]。",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "失去{LoadoutRestrictiveDexterityLoss:inverseDiff()}点[gold]敏捷[/gold]。"
 }

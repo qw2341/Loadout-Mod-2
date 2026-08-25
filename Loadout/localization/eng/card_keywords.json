@@ -126,5 +126,17 @@
   "LOADOUT-RESTRICTIVE_CLASH.cardText": "Can only be played if every card in your [gold]Hand[/gold] is an Attack.",
   "LOADOUT-RESTRICTIVE_END_TURN.title": "End Turn",
   "LOADOUT-RESTRICTIVE_END_TURN.description": "End your turn.",
-  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "End your turn."
+  "LOADOUT-RESTRICTIVE_END_TURN.cardText": "End your turn.",
+  "LOADOUT-RESTRICTIVE_GRAND.title": "Grand",
+  "LOADOUT-RESTRICTIVE_GRAND.description": "Can only be played if there are no cards in your [gold]Draw Pile[/gold].",
+  "LOADOUT-RESTRICTIVE_GRAND.cardText": "Can only be played if there are no cards in your [gold]Draw Pile[/gold].",
+  "LOADOUT-RESTRICTIVE_BORROWED.title": "Borrowed",
+  "LOADOUT-RESTRICTIVE_BORROWED.description": "Cards cost more this turn.",
+  "LOADOUT-RESTRICTIVE_BORROWED.cardText": "Cards cost an additional {LoadoutRestrictiveExtraCost:energyIcons()} this turn.",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.title": "Lose Strength",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.description": "Lose [gold]Strength[/gold] when played.",
+  "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.cardText": "Lose {LoadoutRestrictiveStrengthLoss:inverseDiff()} [gold]Strength[/gold].",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "Lose Dexterity",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "Lose [gold]Dexterity[/gold] when played.",
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "Lose {LoadoutRestrictiveDexterityLoss:inverseDiff()} [gold]Dexterity[/gold]."
 }

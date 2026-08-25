@@ -622,15 +622,15 @@ internal static class LoadoutKeywordRuntimePatches
 
         TryEnable(PlayRestrictionHarmony, PlayRestrictionHarmonyId, () =>
         {
-            HarmonyMethod clashPostfix = new(
-                typeof(RestrictiveClashIsPlayablePatch),
-                nameof(RestrictiveClashIsPlayablePatch.Postfix));
+            HarmonyMethod isPlayablePostfix = new(
+                typeof(RestrictiveIsPlayablePatch),
+                nameof(RestrictiveIsPlayablePatch.Postfix));
             foreach (MethodBase target in
-                     RestrictiveClashIsPlayablePatch.TargetMethods())
+                     RestrictiveIsPlayablePatch.TargetMethods())
             {
                 PlayRestrictionHarmony.Patch(
                     target,
-                    postfix: clashPostfix);
+                    postfix: isPlayablePostfix);
             }
 
             HarmonyMethod enthralledPostfix = new(
