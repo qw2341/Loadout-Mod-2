@@ -67,6 +67,8 @@ public partial class NCardModificationScreen : Control
     private CardModificationSpec _temporaryState = new();
     private CardModificationSpec _lastAppliedState = new();
     private VBoxContainer? _leftControls;
+    private VBoxContainer? _numericControls;
+    private Control? _numericScrollHost;
     private VBoxContainer? _rightControls;
     private VBoxContainer? _attachmentControls;
     private VBoxContainer? _actionControls;
@@ -433,6 +435,8 @@ public partial class NCardModificationScreen : Control
     {
         _backButtonMount = GetNodeOrNull<Control>("%BackButtonMount");
         _leftControls = GetNodeOrNull<VBoxContainer>("%LeftControls");
+        _numericScrollHost = GetNodeOrNull<Control>("%NumericScrollHost");
+        EnsureNumericScroll();
         _rightControls = GetNodeOrNull<VBoxContainer>("%RightControls");
         _actionControls = GetNodeOrNull<VBoxContainer>("%ActionRow");
         _cardEditActions = GetNodeOrNull<HBoxContainer>("%CardEditActions");
@@ -440,7 +444,6 @@ public partial class NCardModificationScreen : Control
         _previewHost = GetNodeOrNull<Control>("%PreviewCardHost");
         _leftArrowMount = GetNodeOrNull<Control>("%LeftArrow");
         _rightArrowMount = GetNodeOrNull<Control>("%RightArrow");
-        DisableHorizontalEditorScroll(_leftControls);
         if (GetNodeOrNull<Control>("RightEditor") is { } rightEditor)
             rightEditor.OffsetTop = KeywordPanelTopMargin;
         _leftArrow = EnsureInspectArrowButton(_leftArrowMount, isLeft: true);
@@ -450,14 +453,71 @@ public partial class NCardModificationScreen : Control
         BindSceneSignals();
     }
 
-    private static void DisableHorizontalEditorScroll(Control? controls)
+    private void EnsureNumericScroll()
     {
-        Node? ancestor = controls?.GetParent();
-        while (ancestor is not null && ancestor is not ScrollContainer)
-            ancestor = ancestor.GetParent();
+        if (_numericScrollHost is null)
+            return;
 
-        if (ancestor is ScrollContainer scroll)
-            scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+        if (_numericScrollHost.GetNodeOrNull<NScrollableContainer>("NumericScroll") is { } existing)
+        {
+            _numericControls = existing.GetNodeOrNull<VBoxContainer>("Mask/Content");
+            return;
+        }
+
+        NScrollableContainer scroll = new()
+        {
+            Name = "NumericScroll",
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        ApplyFullRectLayout(scroll);
+
+        Control mask = new()
+        {
+            Name = "Mask",
+            ClipContents = true,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        ApplyFullRectLayout(mask);
+        mask.OffsetRight = -NLoadoutNativeScrollbar.Width;
+        scroll.AddChild(mask);
+
+        VBoxContainer content = new()
+        {
+            Name = "Content",
+            CustomMinimumSize = new Vector2(
+                SidePanelWidth - 12f,
+                0f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        content.AddThemeConstantOverride("separation", 8);
+        content.SetAnchorsPreset(LayoutPreset.TopWide);
+        content.OffsetLeft = 6f;
+        content.OffsetRight = -6f;
+        mask.AddChild(content);
+
+        NScrollbar scrollbar = NLoadoutNativeScrollbar.Create();
+        scrollbar.Name = "Scrollbar";
+        scrollbar.CustomMinimumSize = new Vector2(
+            NLoadoutNativeScrollbar.Width,
+            0f);
+        scrollbar.SetAnchorsPreset(LayoutPreset.RightWide);
+        scrollbar.OffsetLeft = -NLoadoutNativeScrollbar.Width;
+        scrollbar.OffsetTop = NLoadoutNativeScrollbar.EndCapSize;
+        scrollbar.OffsetBottom = -NLoadoutNativeScrollbar.EndCapSize;
+        scroll.AddChild(scrollbar);
+        scroll.DisableScrollingIfContentFits();
+
+        _numericScrollHost.AddChild(scroll);
+        _numericControls = content;
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(scroll)
+                && GodotObject.IsInstanceValid(content))
+            {
+                scroll.SetContent(content);
+            }
+        }).CallDeferred();
     }
 
     private static NButton? EnsureInspectArrowButton(Control? mount, bool isLeft)
@@ -644,10 +704,13 @@ public partial class NCardModificationScreen : Control
 
     private void RebuildControls()
     {
-        if (_leftControls is null || _rightControls is null || _actionControls is null || _item is null)
+        if (_leftControls is null
+            || _numericControls is null
+            || _rightControls is null
+            || _actionControls is null
+            || _item is null)
             return;
 
-        ClearChildren(_leftControls);
         ClearChildren(_rightControls);
         ClearChildren(_actionControls);
         if (_cardEditActions is not null)
@@ -699,10 +762,11 @@ public partial class NCardModificationScreen : Control
 
     private void RebuildLeftControls()
     {
-        if (_leftControls is null || _item is null)
+        if (_leftControls is null || _numericControls is null || _item is null)
             return;
 
         ClearChildren(_leftControls);
+        ClearChildren(_numericControls);
         _titleLabel = CreateLabel(CardPrinter.FormatCardTitle(_item.Model), 32, StsColors.gold);
         _leftControls.AddChild(_titleLabel);
         _leftControls.AddChild(CreateCardIdLabel(_item.Model.Id.ToString()));
@@ -875,12 +939,12 @@ public partial class NCardModificationScreen : Control
 
     private void AddNumericControls()
     {
-        if (_item is null || _leftControls is null)
+        if (_item is null || _numericControls is null)
             return;
 
         CardModel card = _item.Model;
 
-        AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_ENERGY_COST", "Energy Cost"),
+        AddStepperRow(_numericControls, LocMan.Loc("CARD_MOD_ENERGY_COST", "Energy Cost"),
             _workingState.EnergyCost ?? (card.EnergyCost.CostsX ? 0 : card.EnergyCost.GetWithModifiers(CostModifiers.Local)),
             int.MinValue, int.MaxValue, value =>
             {
@@ -889,7 +953,7 @@ public partial class NCardModificationScreen : Control
                 ApplyWorkingState();
             });
 
-        AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_REPLAY_COUNT", "Replay Count"),
+        AddStepperRow(_numericControls, LocMan.Loc("CARD_MOD_REPLAY_COUNT", "Replay Count"),
             _workingState.BaseReplayCount ?? card.BaseReplayCount,
             int.MinValue, int.MaxValue, value =>
             {
@@ -898,7 +962,7 @@ public partial class NCardModificationScreen : Control
                 ApplyWorkingState();
             });
 
-        AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_STAR_COST", "Star Cost"),
+        AddStepperRow(_numericControls, LocMan.Loc("CARD_MOD_STAR_COST", "Star Cost"),
             _workingState.BaseStarCost ?? card.BaseStarCost,
             int.MinValue, int.MaxValue, value =>
             {
@@ -926,7 +990,7 @@ public partial class NCardModificationScreen : Control
                 maximum = keywordVarDefinition.Maximum;
             }
 
-            AddStepperRow(_leftControls, label, current, minimum, maximum, value =>
+            AddStepperRow(_numericControls, label, current, minimum, maximum, value =>
             {
                 _workingState.DynamicVars[name] = value;
                 _temporaryState.DynamicVars[name] = value;

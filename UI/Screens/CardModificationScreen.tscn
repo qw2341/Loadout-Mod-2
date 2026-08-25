@@ -113,33 +113,42 @@ mouse_filter = 2
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="LeftEditor" type="ScrollContainer" parent="."]
+[node name="LeftEditor" type="VBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 0.0
 anchor_bottom = 1.0
 offset_left = 36.0
-offset_top = 92.0
-offset_right = 474.0
+offset_top = 44.0
+offset_right = 522.0
 offset_bottom = -224.0
 grow_vertical = 2
-mouse_filter = 0
-horizontal_scroll_mode = 0
+mouse_filter = 2
+theme_override_constants/separation = 12
 
-[node name="Margin" type="MarginContainer" parent="LeftEditor"]
+[node name="StaticMargin" type="MarginContainer" parent="LeftEditor"]
 layout_mode = 2
-size_flags_horizontal = 3
+custom_minimum_size = Vector2(438, 0)
+size_flags_horizontal = 0
 theme_override_constants/margin_left = 6
 theme_override_constants/margin_top = 6
 theme_override_constants/margin_right = 6
 theme_override_constants/margin_bottom = 6
 
-[node name="LeftControls" type="VBoxContainer" parent="LeftEditor/Margin"]
+[node name="LeftControls" type="VBoxContainer" parent="LeftEditor/StaticMargin"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 8
+
+[node name="NumericScrollHost" type="Control" parent="LeftEditor"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(486, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 3
+mouse_filter = 2
 
 [node name="RightEditor" type="MarginContainer" parent="."]
 layout_mode = 1
