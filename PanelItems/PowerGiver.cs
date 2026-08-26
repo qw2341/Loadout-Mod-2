@@ -23,6 +23,11 @@ public class PowerGiver
 {
 	private static readonly Vector2 PowerButtonSize = new(220f, 104f);
 	private static readonly Vector2 PowerIconSize = new(62f, 62f);
+	private static NGenericSelectScreen _powerScreen;
+	private static IDisposable _keywordPickerLease;
+	private static Action<PowerModel> _keywordPickerAccepted;
+	private static bool _keywordPickerActive;
+	private static bool _keywordPickerAcceptScheduled;
 
     public static void Initialize()
     {
@@ -40,6 +45,7 @@ public class PowerGiver
 		var item = new NLoadoutPanelItem(textureFileName, title, description);
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
+		_powerScreen = screen;
 		bool showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
 		CommonHelpers.LastActionCaptureSession captureSession = null;
 		Dictionary<string, string> powerTitles = new(StringComparer.Ordinal);
@@ -176,6 +182,7 @@ public class PowerGiver
 		screen.Confirmed += _ => NLoadoutPanelRoot.CloseTopLoadoutScreen();
 		screen.ScreenClosed += () =>
 		{
+			CleanupKeywordPowerPicker();
 			captureSession?.Commit();
 			captureSession = null;
 		};
@@ -281,7 +288,7 @@ public class PowerGiver
 		return amount;
 	}
 
-	private static Texture2D GetLivePowerIcon(PowerModel model)
+	public static Texture2D GetLivePowerIcon(PowerModel model)
 	{
 		try
 		{
@@ -354,7 +361,7 @@ public class PowerGiver
 			: $"{model.Id} {displayName} {description}";
 	}
 
-	private static IEnumerable<IHoverTip> CreateSafePowerHoverTips(PowerModel model, int? amount)
+	public static IEnumerable<IHoverTip> CreateSafePowerHoverTips(PowerModel model, int? amount)
 	{
 		try
 		{
@@ -448,6 +455,14 @@ public class PowerGiver
 			if (mouseButton.ButtonIndex != MouseButton.Left && mouseButton.ButtonIndex != MouseButton.Right)
 				return;
 
+			if (_keywordPickerActive)
+			{
+				if (mouseButton.ButtonIndex == MouseButton.Left)
+					ScheduleKeywordPowerPickerAccept(power);
+				view.AcceptEvent();
+				return;
+			}
+
 			if (mouseButton.AltPressed || Input.IsKeyPressed(Key.Alt))
 			{
 				PowerGiverStateService.ToggleFavorite(powerId);
@@ -518,11 +533,89 @@ public class PowerGiver
 		return power.Id.ToString();
 	}
 
-	private static PowerModel ResolveCanonicalPower(string powerId)
+	public static PowerModel ResolveCanonicalPower(string powerId)
 	{
 		return ModelDb.AllPowers.FirstOrDefault(power =>
 			string.Equals(power.Id.ToString(), powerId, StringComparison.Ordinal)
 			|| string.Equals(power.Id.Entry, powerId, StringComparison.OrdinalIgnoreCase));
+	}
+
+	internal static bool TryOpenKeywordPowerPicker(
+		Action<PowerModel> accepted,
+		out string error)
+	{
+		error = string.Empty;
+		NGenericSelectScreen screen = _powerScreen;
+		NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance;
+		if (screen is null
+		    || !GodotObject.IsInstanceValid(screen)
+		    || root is null
+		    || !GodotObject.IsInstanceValid(root)
+		    || _keywordPickerActive
+		    || screen.IsReusedSelectionActive
+		    || screen.Visible)
+		{
+			error = LocMan.Loc(
+				"CARD_MOD_POWER_PICKER_UNAVAILABLE",
+				"The shared power picker is unavailable or already in use.");
+			return false;
+		}
+
+		try
+		{
+			_keywordPickerLease = screen.BeginReusedSelection(
+				new SelectScreenOptions
+				{
+					SelectionMode = SelectSelectionMode.Single,
+					MinSelection = 0,
+					MaxTotalSelection = 1,
+					MaxCopiesPerItem = 1
+				},
+				new Dictionary<string, int>(StringComparer.Ordinal),
+				visibilityPredicateOverride: _ => true,
+				showSelectionChrome: false,
+				allowCancellation: true);
+			_keywordPickerAccepted = accepted;
+			_keywordPickerActive = true;
+			_keywordPickerAcceptScheduled = false;
+			root.OpenScreen(screen);
+			return true;
+		}
+		catch (Exception exception)
+		{
+			CleanupKeywordPowerPicker();
+			error = LocMan.Loc(
+				"CARD_MOD_POWER_PICKER_OPEN_FAILED",
+				"Could not open the shared power picker: {0}",
+				exception.Message);
+			return false;
+		}
+	}
+
+	private static void ScheduleKeywordPowerPickerAccept(PowerModel power)
+	{
+		if (!_keywordPickerActive || _keywordPickerAcceptScheduled)
+			return;
+
+		_keywordPickerAcceptScheduled = true;
+		Callable.From(() =>
+		{
+			if (!_keywordPickerActive)
+				return;
+			Action<PowerModel> accepted = _keywordPickerAccepted;
+			CleanupKeywordPowerPicker();
+			NLoadoutPanelRoot.CloseTopLoadoutScreen();
+			accepted?.Invoke(power);
+		}).CallDeferred();
+	}
+
+	private static void CleanupKeywordPowerPicker()
+	{
+		_keywordPickerActive = false;
+		_keywordPickerAcceptScheduled = false;
+		_keywordPickerAccepted = null;
+		_keywordPickerLease?.Dispose();
+		_keywordPickerLease = null;
 	}
 
 	public static string FormatPowerCategory(PowerType type)

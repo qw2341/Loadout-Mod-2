@@ -7,7 +7,7 @@ using System.Globalization;
 using Godot;
 using MegaCrit.Sts2.Core.Helpers;
 
-public partial class NLoadoutDecimalStepper : HBoxContainer
+public partial class NLoadoutDecimalStepper : NLoadoutVariableControl
 {
     private const int ButtonWidth = 42;
     private const int EntryWidth = 104;

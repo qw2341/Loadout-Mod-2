@@ -87,6 +87,26 @@ internal static class LoadoutKeywordRuntimePatches
             SetLividEnabled(true);
         EnableDescriptionKeywordsFromOverrides(delta.KeywordOverrides);
         EnableFromOverrides(delta.UpgradeModification.KeywordOverrides);
+        EnableFromPowerKeywordEntries(
+            delta.PowerKeywordEntries,
+            delta.UpgradeModification.PowerKeywordEntries);
+    }
+
+    public static void EnableFromPowerKeywordEntries(
+        IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+        IReadOnlyList<LoadoutPowerKeywordEntry>? upgradeEntries)
+    {
+        KeywordFeatureState state = default;
+        AddPowerKeywordFeatures(baseEntries, ref state);
+        AddPowerKeywordFeatures(upgradeEntries, ref state);
+        if (state.DescriptionKeywords)
+            SetDescriptionKeywordsEnabled(true);
+        if (state.DescriptionKeywordOnPlay)
+            SetDescriptionKeywordOnPlayEnabled(true);
+        if (state.TurnEndInHand)
+            SetTurnEndInHandEnabled(true);
+        if (state.PlayRestriction)
+            SetPlayRestrictionEnabled(true);
     }
 
     public static void EnableFromOverrides(IReadOnlyDictionary<string, bool> overrides)
@@ -262,6 +282,34 @@ internal static class LoadoutKeywordRuntimePatches
         AddDescriptionKeywordFeatures(
             delta.UpgradeModification.KeywordOverrides,
             ref state);
+        AddPowerKeywordFeatures(delta.PowerKeywordEntries, ref state);
+        AddPowerKeywordFeatures(
+            delta.UpgradeModification.PowerKeywordEntries,
+            ref state);
+    }
+
+    private static void AddPowerKeywordFeatures(
+        IReadOnlyList<LoadoutPowerKeywordEntry>? entries,
+        ref KeywordFeatureState state)
+    {
+        if (entries is null)
+            return;
+
+        foreach (LoadoutPowerKeywordEntry entry in entries)
+        {
+            if (!LoadoutKeywords.TryResolve(entry.KeywordKey, out CardKeyword keyword)
+                || !LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
+                || model is not LoadoutPowerKeywordModel)
+            {
+                continue;
+            }
+
+            state.DescriptionKeywords = true;
+            state.DescriptionKeywordOnPlay |=
+                model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
+            state.TurnEndInHand |= model.HasTurnEndInHandEffect;
+            state.PlayRestriction |= model.HasPlayRestriction;
+        }
     }
 
     private static void AddCardFeatures(IEnumerable<CardModel> cards, ref KeywordFeatureState state)

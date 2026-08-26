@@ -67,10 +67,10 @@ public partial class NCardModificationScreen : Control
     private CardModificationSpec _temporaryState = new();
     private CardModificationSpec _lastAppliedState = new();
     private VBoxContainer? _leftControls;
-    private VBoxContainer? _numericControls;
-    private Control? _numericScrollHost;
-    private Control? _numericScrollMask;
-    private NScrollableContainer? _numericScroll;
+    private VBoxContainer? _variableControls;
+    private Control? _variableScrollHost;
+    private Control? _variableScrollMask;
+    private NScrollableContainer? _variableScroll;
     private VBoxContainer? _rightControls;
     private VBoxContainer? _attachmentControls;
     private VBoxContainer? _actionControls;
@@ -438,8 +438,8 @@ public partial class NCardModificationScreen : Control
     {
         _backButtonMount = GetNodeOrNull<Control>("%BackButtonMount");
         _leftControls = GetNodeOrNull<VBoxContainer>("%LeftControls");
-        _numericScrollHost = GetNodeOrNull<Control>("%NumericScrollHost");
-        EnsureNumericScroll();
+        _variableScrollHost = GetNodeOrNull<Control>("%VariableScrollHost");
+        EnsureVariableScroll();
         _rightControls = GetNodeOrNull<VBoxContainer>("%RightControls");
         _actionControls = GetNodeOrNull<VBoxContainer>("%ActionRow");
         _cardEditActions = GetNodeOrNull<HBoxContainer>("%CardEditActions");
@@ -456,23 +456,23 @@ public partial class NCardModificationScreen : Control
         BindSceneSignals();
     }
 
-    private void EnsureNumericScroll()
+    private void EnsureVariableScroll()
     {
-        if (_numericScrollHost is null)
+        if (_variableScrollHost is null)
             return;
 
-        if (_numericScrollHost.GetNodeOrNull<NScrollableContainer>("NumericScroll") is { } existing)
+        if (_variableScrollHost.GetNodeOrNull<NScrollableContainer>("VariableScroll") is { } existing)
         {
-            _numericScroll = existing;
-            _numericScrollMask = existing.GetNodeOrNull<Control>("Mask");
-            _numericControls = existing.GetNodeOrNull<VBoxContainer>("Mask/Content");
-            BindNumericScrollViewport();
+            _variableScroll = existing;
+            _variableScrollMask = existing.GetNodeOrNull<Control>("Mask");
+            _variableControls = existing.GetNodeOrNull<VBoxContainer>("Mask/Content");
+            BindVariableScrollViewport();
             return;
         }
 
         NScrollableContainer scroll = new()
         {
-            Name = "NumericScroll",
+            Name = "VariableScroll",
             MouseFilter = MouseFilterEnum.Stop
         };
         ApplyFullRectLayout(scroll);
@@ -514,50 +514,50 @@ public partial class NCardModificationScreen : Control
         scroll.AddChild(scrollbar);
         scroll.DisableScrollingIfContentFits();
 
-        _numericScrollHost.AddChild(scroll);
-        _numericScroll = scroll;
-        _numericScrollMask = mask;
-        _numericControls = content;
-        BindNumericScrollViewport();
-        RefreshNumericScroll(resetToTop: false);
+        _variableScrollHost.AddChild(scroll);
+        _variableScroll = scroll;
+        _variableScrollMask = mask;
+        _variableControls = content;
+        BindVariableScrollViewport();
+        RefreshVariableScroll(resetToTop: false);
     }
 
-    private void BindNumericScrollViewport()
+    private void BindVariableScrollViewport()
     {
-        if (_numericScrollMask is null)
+        if (_variableScrollMask is null)
             return;
 
-        Callable refresh = Callable.From(RefreshNumericScrollBounds);
-        if (!_numericScrollMask.IsConnected(Control.SignalName.Resized, refresh))
-            _numericScrollMask.Connect(Control.SignalName.Resized, refresh);
+        Callable refresh = Callable.From(RefreshVariableScrollBounds);
+        if (!_variableScrollMask.IsConnected(Control.SignalName.Resized, refresh))
+            _variableScrollMask.Connect(Control.SignalName.Resized, refresh);
     }
 
-    private void RefreshNumericScroll(bool resetToTop)
+    private void RefreshVariableScroll(bool resetToTop)
     {
         Callable.From(() =>
         {
-            if (_numericScroll is null
-                || _numericControls is null
-                || !GodotObject.IsInstanceValid(_numericScroll)
-                || !GodotObject.IsInstanceValid(_numericControls))
+            if (_variableScroll is null
+                || _variableControls is null
+                || !GodotObject.IsInstanceValid(_variableScroll)
+                || !GodotObject.IsInstanceValid(_variableControls))
             {
                 return;
             }
 
-            _numericScroll.SetContent(_numericControls);
+            _variableScroll.SetContent(_variableControls);
             if (resetToTop)
-                _numericScroll.InstantlyScrollToTop();
+                _variableScroll.InstantlyScrollToTop();
         }).CallDeferred();
     }
 
-    private void RefreshNumericScrollBounds()
+    private void RefreshVariableScrollBounds()
     {
-        if (_numericScroll is not null
-            && _numericControls is not null
-            && GodotObject.IsInstanceValid(_numericScroll)
-            && GodotObject.IsInstanceValid(_numericControls))
+        if (_variableScroll is not null
+            && _variableControls is not null
+            && GodotObject.IsInstanceValid(_variableScroll)
+            && GodotObject.IsInstanceValid(_variableControls))
         {
-            _numericScroll.SetContent(_numericControls);
+            _variableScroll.SetContent(_variableControls);
         }
     }
 
@@ -714,7 +714,7 @@ public partial class NCardModificationScreen : Control
         LoadItem(_items[_itemIndex]);
         RefreshPreview();
         RebuildControls();
-        RefreshNumericScroll(resetToTop: true);
+        RefreshVariableScroll(resetToTop: true);
     }
 
     private void LayoutPreviewNavigation()
@@ -747,7 +747,7 @@ public partial class NCardModificationScreen : Control
     private void RebuildControls()
     {
         if (_leftControls is null
-            || _numericControls is null
+            || _variableControls is null
             || _rightControls is null
             || _actionControls is null
             || _item is null)
@@ -804,19 +804,19 @@ public partial class NCardModificationScreen : Control
 
     private void RebuildLeftControls()
     {
-        if (_leftControls is null || _numericControls is null || _item is null)
+        if (_leftControls is null || _variableControls is null || _item is null)
             return;
 
         ClearChildren(_leftControls);
-        ClearChildren(_numericControls);
+        ClearChildren(_variableControls);
         _titleLabel = CreateLabel(CardPrinter.FormatCardTitle(_item.Model), 32, StsColors.gold);
         _leftControls.AddChild(_titleLabel);
         _leftControls.AddChild(CreateCardIdLabel(_item.Model.Id.ToString()));
         _leftControls.AddChild(CreateSpacer(6f));
 
         AddDropdownControls();
-        AddNumericControls();
-        RefreshNumericScroll(resetToTop: false);
+        AddVariableControls();
+        RefreshVariableScroll(resetToTop: false);
     }
 
     private void ClearRightControls()
@@ -1001,14 +1001,14 @@ public partial class NCardModificationScreen : Control
         }
     }
 
-    private void AddNumericControls()
+    private void AddVariableControls()
     {
-        if (_item is null || _numericControls is null)
+        if (_item is null || _variableControls is null)
             return;
 
         CardModel card = _item.Model;
 
-        AddStepperRow(_numericControls, LocMan.Loc("CARD_MOD_ENERGY_COST", "Energy Cost"),
+        AddStepperRow(_variableControls, LocMan.Loc("CARD_MOD_ENERGY_COST", "Energy Cost"),
             _workingState.EnergyCost ?? (card.EnergyCost.CostsX ? 0 : card.EnergyCost.GetWithModifiers(CostModifiers.Local)),
             int.MinValue, int.MaxValue, value =>
             {
@@ -1017,7 +1017,7 @@ public partial class NCardModificationScreen : Control
                 ApplyWorkingState();
             });
 
-        AddStepperRow(_numericControls, LocMan.Loc("CARD_MOD_REPLAY_COUNT", "Replay Count"),
+        AddStepperRow(_variableControls, LocMan.Loc("CARD_MOD_REPLAY_COUNT", "Replay Count"),
             _workingState.BaseReplayCount ?? card.BaseReplayCount,
             int.MinValue, int.MaxValue, value =>
             {
@@ -1026,7 +1026,7 @@ public partial class NCardModificationScreen : Control
                 ApplyWorkingState();
             });
 
-        AddStepperRow(_numericControls, LocMan.Loc("CARD_MOD_STAR_COST", "Star Cost"),
+        AddStepperRow(_variableControls, LocMan.Loc("CARD_MOD_STAR_COST", "Star Cost"),
             _workingState.BaseStarCost ?? card.BaseStarCost,
             int.MinValue, int.MaxValue, value =>
             {
@@ -1049,18 +1049,111 @@ public partial class NCardModificationScreen : Control
                     name,
                     out var keywordVarDefinition))
             {
+                if (!keywordVarDefinition.EditorVisible)
+                    continue;
                 label = LocMan.Loc(keywordVarDefinition.LabelLocKey, name);
                 minimum = keywordVarDefinition.Minimum;
                 maximum = keywordVarDefinition.Maximum;
             }
 
-            AddStepperRow(_numericControls, label, current, minimum, maximum, value =>
+            AddStepperRow(_variableControls, label, current, minimum, maximum, value =>
             {
                 _workingState.DynamicVars[name] = value;
                 _temporaryState.DynamicVars[name] = value;
                 ApplyWorkingState();
             });
         }
+
+        AddPowerKeywordVariableControls();
+    }
+
+    private void AddPowerKeywordVariableControls()
+    {
+        if (_variableControls is null)
+            return;
+
+        List<LoadoutPowerKeywordEntry> entries =
+            LoadoutPowerKeywordEntry.CloneList(
+                _workingState.PowerKeywordEntries) ?? [];
+        int number = 0;
+        for (int index = 0; index < entries.Count; index++)
+        {
+            if (!string.Equals(
+                    entries[index].KeywordKey,
+                    LoadoutKeywords.ApplyPowerKey,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            number++;
+            int capturedIndex = index;
+            string suffix = entries.Count > 1 ? $" {number}" : string.Empty;
+            AddStepperRow(
+                _variableControls,
+                LocMan.Loc(
+                    "CARD_MOD_APPLY_POWER_AMOUNT",
+                    "Apply Power Amount") + suffix,
+                entries[index].Amount,
+                int.MinValue,
+                int.MaxValue,
+                amount => UpdatePowerKeywordEntry(
+                    capturedIndex,
+                    entry => entry.Amount = amount,
+                    rebuildControls: false));
+
+            NLoadoutPowerSelector selector = new();
+            selector.Init(entries[index].PowerId);
+            selector.SelectRequested += () => OpenPowerKeywordPicker(
+                capturedIndex);
+            _variableControls.AddChild(CreateRow(
+                LocMan.Loc(
+                    "CARD_MOD_APPLY_POWER_POWER",
+                    "Apply Power") + suffix,
+                selector));
+        }
+    }
+
+    private void OpenPowerKeywordPicker(int entryIndex)
+    {
+        if (!PowerGiver.TryOpenKeywordPowerPicker(power =>
+            {
+                UpdatePowerKeywordEntry(
+                    entryIndex,
+                    entry => entry.PowerId = power.Id.ToString(),
+                    rebuildControls: true);
+            },
+            out string error))
+        {
+            GD.PushWarning(error);
+        }
+    }
+
+    private void UpdatePowerKeywordEntry(
+        int entryIndex,
+        Action<LoadoutPowerKeywordEntry> update,
+        bool rebuildControls)
+    {
+        List<LoadoutPowerKeywordEntry> entries =
+            LoadoutPowerKeywordEntry.CloneList(
+                _workingState.PowerKeywordEntries) ?? [];
+        if (entryIndex < 0 || entryIndex >= entries.Count)
+            return;
+
+        update(entries[entryIndex]);
+        SetPowerKeywordEntries(entries);
+        ApplyWorkingState();
+        if (rebuildControls)
+            Callable.From(RebuildLeftControls).CallDeferred();
+    }
+
+    private void SetPowerKeywordEntries(
+        IReadOnlyList<LoadoutPowerKeywordEntry> entries)
+    {
+        _workingState.PowerKeywordEntries =
+            LoadoutPowerKeywordEntry.CloneList(entries);
+        _temporaryState.PowerKeywordEntries =
+            LoadoutPowerKeywordEntry.CloneList(entries);
     }
 
     private void AddDropdownControls()
@@ -1560,9 +1653,61 @@ public partial class NCardModificationScreen : Control
             selectedId =>
         {
             _selectedKeywordModId = selectedId;
-        });
+        },
+            getRepeatCount: GetPowerKeywordEntryCount,
+            onRepeatAdded: AddPowerKeywordEntry,
+            onRepeatRemoved: RemovePowerKeywordEntry);
         if (editor.GetParent() is null)
             _rightControls.AddChild(editor);
+    }
+
+    private int GetPowerKeywordEntryCount(CardKeyword keyword)
+    {
+        string key = LoadoutKeywords.GetStorageKey(keyword);
+        return _workingState.PowerKeywordEntries?.Count(entry =>
+            string.Equals(
+                entry.KeywordKey,
+                key,
+                StringComparison.OrdinalIgnoreCase)) ?? 0;
+    }
+
+    private void AddPowerKeywordEntry(CardKeyword keyword)
+    {
+        if (!LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
+            || model is not LoadoutPowerKeywordModel)
+            return;
+
+        List<LoadoutPowerKeywordEntry> entries =
+            LoadoutPowerKeywordEntry.CloneList(
+                _workingState.PowerKeywordEntries) ?? [];
+        entries.Add(new LoadoutPowerKeywordEntry
+        {
+            KeywordKey = model.StorageKey,
+            PowerId = LoadoutPowerKeywordState.GetDefaultStrengthPowerId(),
+            Amount = 1
+        });
+        SetPowerKeywordEntries(entries);
+        ApplyWorkingState();
+        Callable.From(RebuildControls).CallDeferred();
+    }
+
+    private void RemovePowerKeywordEntry(CardKeyword keyword)
+    {
+        string key = LoadoutKeywords.GetStorageKey(keyword);
+        List<LoadoutPowerKeywordEntry> entries =
+            LoadoutPowerKeywordEntry.CloneList(
+                _workingState.PowerKeywordEntries) ?? [];
+        int index = entries.FindLastIndex(entry => string.Equals(
+            entry.KeywordKey,
+            key,
+            StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+            return;
+
+        entries.RemoveAt(index);
+        SetPowerKeywordEntries(entries);
+        ApplyWorkingState();
+        Callable.From(RebuildControls).CallDeferred();
     }
 
     private void AddAttachmentEditor<TModel>(

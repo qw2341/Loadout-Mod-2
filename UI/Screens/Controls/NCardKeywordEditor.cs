@@ -42,7 +42,8 @@ public partial class NCardKeywordEditor : VBoxContainer
         string ModId,
         string ModName,
         LoadoutKeywordEditorSection EditorSection,
-        int EditorOrder);
+        int EditorOrder,
+        LoadoutKeywordEditorControlKind ControlKind);
 
     private sealed record ContentBlock(
         string? Header,
@@ -52,6 +53,9 @@ public partial class NCardKeywordEditor : VBoxContainer
     private Func<CardKeyword, bool> _isChecked = _ => false;
     private Action<CardKeyword, bool> _onChanged = (_, _) => { };
     private Action<string>? _onSelectedModChanged;
+    private Func<CardKeyword, int> _getRepeatCount = _ => 0;
+    private Action<CardKeyword> _onRepeatAdded = _ => { };
+    private Action<CardKeyword> _onRepeatRemoved = _ => { };
     private string _selectedModId = AllModFilterId;
 
     public void Init(
@@ -59,13 +63,19 @@ public partial class NCardKeywordEditor : VBoxContainer
         Func<CardKeyword, bool> isChecked,
         Action<CardKeyword, bool> onChanged,
         string selectedModId = AllModFilterId,
-        Action<string>? onSelectedModChanged = null)
+        Action<string>? onSelectedModChanged = null,
+        Func<CardKeyword, int>? getRepeatCount = null,
+        Action<CardKeyword>? onRepeatAdded = null,
+        Action<CardKeyword>? onRepeatRemoved = null)
     {
         _contextCards = contextCards;
         _isChecked = isChecked;
         _onChanged = onChanged;
         _selectedModId = selectedModId;
         _onSelectedModChanged = onSelectedModChanged;
+        _getRepeatCount = getRepeatCount ?? (_ => 0);
+        _onRepeatAdded = onRepeatAdded ?? (_ => { });
+        _onRepeatRemoved = onRepeatRemoved ?? (_ => { });
         if (IsNodeReady())
             Rebuild();
     }
@@ -297,6 +307,12 @@ public partial class NCardKeywordEditor : VBoxContainer
         AddLoadoutSection(
             blocks,
             catalog,
+            LoadoutKeywordEditorSection.Power,
+            "CARD_MOD_LOADOUT_POWER_KEYWORDS",
+            "Loadout Power Keywords");
+        AddLoadoutSection(
+            blocks,
+            catalog,
             LoadoutKeywordEditorSection.Restrictive,
             "CARD_MOD_LOADOUT_RESTRICTIVE_KEYWORDS",
             "Loadout Restrictive Keywords");
@@ -344,6 +360,12 @@ public partial class NCardKeywordEditor : VBoxContainer
             LoadoutKeywordEditorSection.Basic,
             "CARD_MOD_LOADOUT_BASIC_KEYWORDS",
             "Loadout Basic Keywords");
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.Power,
+            "CARD_MOD_LOADOUT_POWER_KEYWORDS",
+            "Loadout Power Keywords");
         AddLoadoutSection(
             blocks,
             entries,
@@ -440,6 +462,13 @@ public partial class NCardKeywordEditor : VBoxContainer
         {
             CardKeyword keyword = entry.Keyword;
             string key = LoadoutKeywords.GetStorageKey(keyword);
+            if (entry.ControlKind
+                == LoadoutKeywordEditorControlKind.RepeatablePower)
+            {
+                grid.AddChild(CreateRepeatableControl(entry, toggleWidth));
+                continue;
+            }
+
             NLoadoutToggle toggle = new()
             {
                 CustomMinimumSize = new Vector2(toggleWidth, ToggleHeight),
@@ -452,6 +481,51 @@ public partial class NCardKeywordEditor : VBoxContainer
             grid.AddChild(toggle);
         }
         return grid;
+    }
+
+    private Control CreateRepeatableControl(
+        CatalogEntry entry,
+        float width)
+    {
+        HBoxContainer row = new()
+        {
+            CustomMinimumSize = new Vector2(width, ToggleHeight),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        row.AddThemeConstantOverride("separation", 4);
+        MegaLabel label = CreateLabel(entry.Label, 19, StsColors.cream);
+        label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        row.AddChild(label);
+
+        Button add = CreateRepeatButton("+");
+        add.Pressed += () => _onRepeatAdded(entry.Keyword);
+        row.AddChild(add);
+
+        int count = _getRepeatCount(entry.Keyword);
+        Button remove = CreateRepeatButton("-");
+        remove.Visible = count > 0;
+        remove.Pressed += () => _onRepeatRemoved(entry.Keyword);
+        row.AddChild(remove);
+        CommonHelpers.AttachHoverTips(
+            row,
+            () => GetKeywordHoverTips(entry.Keyword),
+            cacheResult: false);
+        return row;
+    }
+
+    private static Button CreateRepeatButton(string text)
+    {
+        Button button = new()
+        {
+            Text = text,
+            CustomMinimumSize = new Vector2(38f, ToggleHeight),
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        button.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
+        button.AddThemeFontSizeOverride("font_size", 24);
+        button.AddThemeColorOverride("font_color", StsColors.gold);
+        return button;
     }
 
     private IReadOnlyList<CatalogEntry> BuildCatalog()
@@ -502,6 +576,8 @@ public partial class NCardKeywordEditor : VBoxContainer
                 LoadoutKeywordEditorSection editorSection =
                     LoadoutKeywordEditorSection.Default;
                 int editorOrder = int.MaxValue;
+                LoadoutKeywordEditorControlKind controlKind =
+                    LoadoutKeywordEditorControlKind.Toggle;
                 for (int index = 0;
                      index < LoadoutKeywordRegistry.All.Count;
                      index++)
@@ -513,6 +589,7 @@ public partial class NCardKeywordEditor : VBoxContainer
 
                     editorSection = model.EditorSection;
                     editorOrder = index;
+                    controlKind = model.EditorControlKind;
                     break;
                 }
                 return new CatalogEntry(
@@ -521,7 +598,8 @@ public partial class NCardKeywordEditor : VBoxContainer
                     modId,
                     modName,
                     editorSection,
-                    editorOrder);
+                    editorOrder,
+                    controlKind);
             })
             .ToList();
     }

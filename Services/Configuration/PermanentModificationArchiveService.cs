@@ -521,6 +521,11 @@ public static class PermanentModificationArchiveService
                 out bool? ancientRendering)
             || !TryMergeDictionary(local.KeywordOverrides, incoming.KeywordOverrides, out Dictionary<string, bool> keywords)
             || !TryMergeReference(
+                local.PowerKeywordEntries,
+                incoming.PowerKeywordEntries,
+                PowerKeywordListsEqual,
+                out List<LoadoutPowerKeywordEntry>? powerKeywords)
+            || !TryMergeReference(
                 local.Enchantments,
                 incoming.Enchantments,
                 AttachmentListsEqual,
@@ -550,6 +555,7 @@ public static class PermanentModificationArchiveService
         merged.BetaPortraitPath = betaPortraitPath;
         merged.ForceAncientPortraitRendering = ancientRendering;
         merged.KeywordOverrides = keywords;
+        merged.PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(powerKeywords);
         merged.Enchantments = CardAttachmentSpec.CloneList(enchantments);
         merged.Affliction = affliction?.Clone();
         merged.UpgradeModification = upgrade;
@@ -567,7 +573,12 @@ public static class PermanentModificationArchiveService
             || !TryMergeOptionalValue(local.BaseReplayCountDelta, incoming.BaseReplayCountDelta, out int? replay)
             || !TryMergeOptionalValue(local.BaseStarCostDelta, incoming.BaseStarCostDelta, out int? starCost)
             || !TryMergeDictionary(local.DynamicVarDeltas, incoming.DynamicVarDeltas, out Dictionary<string, decimal> dynamicVars)
-            || !TryMergeDictionary(local.KeywordOverrides, incoming.KeywordOverrides, out Dictionary<string, bool> keywords))
+            || !TryMergeDictionary(local.KeywordOverrides, incoming.KeywordOverrides, out Dictionary<string, bool> keywords)
+            || !TryMergeReference(
+                local.PowerKeywordEntries,
+                incoming.PowerKeywordEntries,
+                PowerKeywordListsEqual,
+                out List<LoadoutPowerKeywordEntry>? powerKeywords))
         {
             return false;
         }
@@ -577,6 +588,7 @@ public static class PermanentModificationArchiveService
         merged.BaseStarCostDelta = starCost;
         merged.DynamicVarDeltas = dynamicVars;
         merged.KeywordOverrides = keywords;
+        merged.PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(powerKeywords);
         merged.Normalize(removeZeroValues: true);
         return true;
     }
@@ -640,6 +652,21 @@ public static class PermanentModificationArchiveService
     private static bool AttachmentListsEqual(List<CardAttachmentSpec> left, List<CardAttachmentSpec> right) =>
         left.Count == right.Count
         && left.Zip(right).All(pair => AttachmentsEqual(pair.First, pair.Second));
+
+    private static bool PowerKeywordListsEqual(
+        List<LoadoutPowerKeywordEntry> left,
+        List<LoadoutPowerKeywordEntry> right) =>
+        left.Count == right.Count
+        && left.Zip(right).All(pair =>
+            string.Equals(
+                pair.First.KeywordKey,
+                pair.Second.KeywordKey,
+                StringComparison.Ordinal)
+            && string.Equals(
+                pair.First.PowerId,
+                pair.Second.PowerId,
+                StringComparison.Ordinal)
+            && pair.First.Amount == pair.Second.Amount);
 
     private static bool AttachmentsEqual(CardAttachmentSpec left, CardAttachmentSpec right) =>
         string.Equals(left.ModelId, right.ModelId, StringComparison.Ordinal)

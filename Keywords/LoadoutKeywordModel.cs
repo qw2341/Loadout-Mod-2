@@ -30,9 +30,16 @@ public enum LoadoutKeywordEditorSection
 {
     Default,
     Basic,
+    Power,
     Restrictive,
     Fatal,
     Improvement
+}
+
+public enum LoadoutKeywordEditorControlKind
+{
+    Toggle,
+    RepeatablePower
 }
 
 public sealed record LoadoutKeywordDynamicVarDefinition(
@@ -41,7 +48,8 @@ public sealed record LoadoutKeywordDynamicVarDefinition(
     int Minimum,
     int Maximum,
     string LabelLocKey,
-    Func<string, decimal, DynamicVar>? Factory = null)
+    Func<string, decimal, DynamicVar>? Factory = null,
+    bool EditorVisible = true)
 {
     public DynamicVar Create() =>
         Factory?.Invoke(Name, DefaultValue)
@@ -66,6 +74,9 @@ public abstract class LoadoutKeywordModel
 
     public virtual LoadoutKeywordEditorSection EditorSection =>
         LoadoutKeywordEditorSection.Default;
+
+    public virtual LoadoutKeywordEditorControlKind EditorControlKind =>
+        LoadoutKeywordEditorControlKind.Toggle;
 
     public virtual string? CardTextLocKey => null;
 

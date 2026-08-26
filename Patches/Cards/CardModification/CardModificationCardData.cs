@@ -200,6 +200,7 @@ internal static class CardModificationCodec
         return serialized.Contains("\"energyCost\":", StringComparison.Ordinal)
                || serialized.Contains("\"dynamicVars\":", StringComparison.Ordinal)
                || serialized.Contains("\"keywordOverrides\":", StringComparison.Ordinal)
+               || serialized.Contains("\"powerKeywords\":", StringComparison.Ordinal)
                || serialized.Contains("\"upgradeModification\":", StringComparison.Ordinal)
                || serialized.Contains("\"customDescription\":", StringComparison.Ordinal)
                || serialized.Contains("\"forceAncientPortraitRendering\":", StringComparison.Ordinal)
@@ -248,6 +249,9 @@ internal static class CardModificationCodec
         [JsonPropertyName("k")]
         public SortedDictionary<string, bool>? KeywordOverrides { get; set; }
 
+        [JsonPropertyName("w")]
+        public List<LoadoutPowerKeywordEntry>? PowerKeywordEntries { get; set; }
+
         [JsonPropertyName("q")]
         [JsonConverter(typeof(CompactAttachmentListJsonConverter))]
         public List<CompactAttachment>? Enchantments { get; set; }
@@ -279,6 +283,8 @@ internal static class CardModificationCodec
                 KeywordOverrides = spec.KeywordOverrides.Count == 0
                     ? null
                     : new SortedDictionary<string, bool>(spec.KeywordOverrides, StringComparer.Ordinal),
+                PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
+                    spec.PowerKeywordEntries),
                 Enchantments = spec.Enchantments is null
                     ? null
                     : spec.Enchantments
@@ -314,6 +320,8 @@ internal static class CardModificationCodec
                 KeywordOverrides = KeywordOverrides is null
                     ? new Dictionary<string, bool>(StringComparer.Ordinal)
                     : new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
+                PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
+                    PowerKeywordEntries),
                 Enchantments = Enchantments?
                     .Select(attachment => attachment.ToSpec())
                     .ToList(),

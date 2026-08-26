@@ -114,6 +114,7 @@ public static class CardModificationRuntime
         CardModificationNetProtocol.Unregister();
         CardPortraitRuntime.Unregister();
         PermanentCardModificationStore.Unregister();
+        LoadoutPowerKeywordState.Reset();
         PermanentCardModificationStore.CardChanged -= OnPermanentCardChanged;
         PermanentCardModificationStore.Reloaded -= OnPermanentStoreReloaded;
         AttachmentDisplayCards.Clear();
@@ -320,9 +321,20 @@ public static class CardModificationRuntime
                && KeywordOverridesEquivalent(
                    previous?.UpgradeModification.KeywordOverrides,
                    next?.UpgradeModification.KeywordOverrides)
+               && PowerKeywordPresenceEquivalent(previous, next)
             ? LoadoutCardVisualRefreshKind.Lightweight
             : LoadoutCardVisualRefreshKind.Reload;
     }
+
+    private static bool PowerKeywordPresenceEquivalent(
+        CardModificationSpec? left,
+        CardModificationSpec? right) =>
+        LoadoutPowerKeywordState.HasConfiguredEntries(left?.PowerKeywordEntries)
+        == LoadoutPowerKeywordState.HasConfiguredEntries(right?.PowerKeywordEntries)
+        && LoadoutPowerKeywordState.HasConfiguredEntries(
+               left?.UpgradeModification.PowerKeywordEntries)
+           == LoadoutPowerKeywordState.HasConfiguredEntries(
+               right?.UpgradeModification.PowerKeywordEntries);
 
     private static bool KeywordOverridesEquivalent(
         IReadOnlyDictionary<string, bool>? left,
@@ -364,6 +376,7 @@ public static class CardModificationRuntime
                && string.Equals(a.BetaPortraitPath, b.BetaPortraitPath, StringComparison.Ordinal)
                && a.ForceAncientPortraitRendering == b.ForceAncientPortraitRendering
                && BoolDictionariesEqual(a.KeywordOverrides, b.KeywordOverrides)
+               && PowerKeywordListsEqual(a.PowerKeywordEntries, b.PowerKeywordEntries)
                && AttachmentListsEqual(a.Enchantments, b.Enchantments)
                && AttachmentEquals(a.Affliction, b.Affliction)
                && UpgradeDeltasEqual(a.UpgradeModification, b.UpgradeModification);
@@ -388,7 +401,36 @@ public static class CardModificationRuntime
         && left.BaseReplayCountDelta == right.BaseReplayCountDelta
         && left.BaseStarCostDelta == right.BaseStarCostDelta
         && DecimalDictionariesEqual(left.DynamicVarDeltas, right.DynamicVarDeltas)
-        && BoolDictionariesEqual(left.KeywordOverrides, right.KeywordOverrides);
+        && BoolDictionariesEqual(left.KeywordOverrides, right.KeywordOverrides)
+        && PowerKeywordListsEqual(
+            left.PowerKeywordEntries,
+            right.PowerKeywordEntries);
+
+    private static bool PowerKeywordListsEqual(
+        IReadOnlyList<LoadoutPowerKeywordEntry>? left,
+        IReadOnlyList<LoadoutPowerKeywordEntry>? right)
+    {
+        if (left is null)
+            return right is null;
+        if (right is null || left.Count != right.Count)
+            return false;
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (!string.Equals(
+                    left[i].KeywordKey,
+                    right[i].KeywordKey,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    left[i].PowerId,
+                    right[i].PowerId,
+                    StringComparison.Ordinal)
+                || left[i].Amount != right[i].Amount)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 
     /// <summary>Called only while a permanent attachment definition exists.</summary>
     public static void ApplyPermanentResidualAtCreation(CardModel card)
@@ -414,7 +456,7 @@ public static class CardModificationRuntime
             if (spec.BaseStarCost.HasValue)
                 SetBaseStarCost(card, spec.BaseStarCost.Value);
             ApplyKeywordOverrides(card, spec.KeywordOverrides);
-            LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
+            LoadoutPowerKeywordState.Synchronize(card);
             foreach ((string name, decimal value) in spec.DynamicVars)
             {
                 if (card.DynamicVars.TryGetValue(name, out var dynamicVar))
@@ -429,6 +471,9 @@ public static class CardModificationRuntime
                 CardRarityField?.SetValue(card, rarity);
 
             LoadoutKeywordRuntimePatches.EnableFromOverrides(spec.KeywordOverrides);
+            LoadoutKeywordRuntimePatches.EnableFromPowerKeywordEntries(
+                spec.PowerKeywordEntries,
+                spec.UpgradeModification.PowerKeywordEntries);
             XCostKeywordMechanics.SynchronizeEnergyCost(card, spec.KeywordOverrides, spec.EnergyCost);
             ApplyEnchantmentSpecs(card, spec.Enchantments);
             if (includeAffliction)
@@ -467,11 +512,14 @@ public static class CardModificationRuntime
             if (delta.BaseStarCostDelta.HasValue)
                 SetBaseStarCost(card, card.BaseStarCost + delta.BaseStarCostDelta.Value);
             ApplyKeywordOverrides(card, delta.KeywordOverrides);
-            LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
+            LoadoutPowerKeywordState.Synchronize(card);
             // Preview cards reach this path before their first visual refresh.
             // Enable description/runtime patches immediately even when no live
             // deck card currently carries the keyword.
             LoadoutKeywordRuntimePatches.EnableFromOverrides(delta.KeywordOverrides);
+            LoadoutKeywordRuntimePatches.EnableFromPowerKeywordEntries(
+                delta.PowerKeywordEntries,
+                delta.UpgradeModification.PowerKeywordEntries);
             foreach ((string name, decimal value) in delta.DynamicVarDeltas)
             {
                 if (card.DynamicVars.TryGetValue(name, out var dynamicVar)) dynamicVar.BaseValue += value;
@@ -508,7 +556,8 @@ public static class CardModificationRuntime
             card.CurrentUpgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(desired),
             desired.UpgradeModification,
-            desired.KeywordOverrides);
+            desired.KeywordOverrides,
+            basePowerKeywordEntries: desired.PowerKeywordEntries);
         return CreateDelta(baseline, desired, permanent);
     }
 
@@ -555,6 +604,15 @@ public static class CardModificationRuntime
                 !LoadoutKeywords.TryResolve(key, out CardKeyword keyword) || keyword == CardKeyword.None)
             || normalized.UpgradeModification.KeywordOverrides.Keys.Any(key =>
                 !LoadoutKeywords.TryResolve(key, out CardKeyword keyword) || keyword == CardKeyword.None))
+            return false;
+        if (normalized.PowerKeywordEntries?.Any(entry =>
+                !LoadoutKeywords.TryResolve(entry.KeywordKey, out CardKeyword keyword)
+                || !LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
+                || model is not LoadoutPowerKeywordModel) == true
+            || normalized.UpgradeModification.PowerKeywordEntries?.Any(entry =>
+                !LoadoutKeywords.TryResolve(entry.KeywordKey, out CardKeyword keyword)
+                || !LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
+                || model is not LoadoutPowerKeywordModel) == true)
             return false;
         if (normalized.Enchantments is not null
             && normalized.Enchantments.Any(spec =>
@@ -702,6 +760,9 @@ public static class CardModificationRuntime
         }
         foreach ((string key, bool value) in delta.KeywordOverrides)
             result.KeywordOverrides[key] = value;
+        if (delta.PowerKeywordEntries is not null)
+            result.PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
+                delta.PowerKeywordEntries);
         result.Normalize();
         return result;
     }
@@ -770,6 +831,13 @@ public static class CardModificationRuntime
             if (structuralBaseline?.KeywordOverrides.TryGetValue(key, out bool baselineValue) != true || baselineValue != value)
                 delta.KeywordOverrides[key] = value;
         }
+        if (!PowerKeywordListsEqual(
+                desired.PowerKeywordEntries,
+                structuralBaseline?.PowerKeywordEntries))
+        {
+            delta.PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
+                desired.PowerKeywordEntries);
+        }
         AddUpgradeScalarResiduals(
             desired.UpgradeModification,
             structuralBaseline?.UpgradeModification,
@@ -791,6 +859,14 @@ public static class CardModificationRuntime
             {
                 delta.UpgradeModification.KeywordOverrides[key] = value;
             }
+        }
+        if (!PowerKeywordListsEqual(
+                desired.UpgradeModification.PowerKeywordEntries,
+                structuralBaseline?.UpgradeModification.PowerKeywordEntries))
+        {
+            delta.UpgradeModification.PowerKeywordEntries =
+                LoadoutPowerKeywordEntry.CloneList(
+                    desired.UpgradeModification.PowerKeywordEntries);
         }
         if (!AttachmentListsEqual(desired.Enchantments, structuralBaseline?.Enchantments))
             delta.Enchantments = CardAttachmentSpec.CloneList(desired.Enchantments);
@@ -887,6 +963,8 @@ public static class CardModificationRuntime
         delta.BetaPortraitPath = desired.BetaPortraitPath;
         delta.ForceAncientPortraitRendering = desired.ForceAncientPortraitRendering == true ? true : null;
         delta.KeywordOverrides = new Dictionary<string, bool>(desired.KeywordOverrides, StringComparer.Ordinal);
+        delta.PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
+            desired.PowerKeywordEntries);
         delta.Enchantments = CardAttachmentSpec.CloneList(desired.Enchantments);
         delta.Affliction = desired.Affliction?.Clone();
         delta.UpgradeModification = desired.UpgradeModification.Clone();
@@ -946,6 +1024,10 @@ public static class CardModificationRuntime
             BetaPortraitPath = delta.BetaPortraitPath,
             ForceAncientPortraitRendering = delta.ForceAncientPortraitRendering,
             KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
+            PowerKeywordEntries = delta.PowerKeywordEntries is not null
+                ? LoadoutPowerKeywordEntry.CloneList(delta.PowerKeywordEntries)
+                : LoadoutPowerKeywordEntry.CloneList(
+                    structuralBaseline?.PowerKeywordEntries),
             Enchantments = CardAttachmentSpec.CloneList(delta.Enchantments),
             Affliction = delta.Affliction?.Clone(),
             UpgradeModification = MaterializeUpgradeModification(
@@ -989,6 +1071,8 @@ public static class CardModificationRuntime
             BetaPortraitPath = delta.BetaPortraitPath,
             ForceAncientPortraitRendering = delta.ForceAncientPortraitRendering,
             KeywordOverrides = new Dictionary<string, bool>(delta.KeywordOverrides, StringComparer.Ordinal),
+            PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
+                delta.PowerKeywordEntries),
             Enchantments = CardAttachmentSpec.CloneList(delta.Enchantments),
             Affliction = delta.Affliction?.Clone(),
             UpgradeModification = delta.UpgradeModification.Clone()
@@ -1021,7 +1105,10 @@ public static class CardModificationRuntime
                 source.CurrentUpgradeLevel,
                 LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
                 state.UpgradeModification,
-                state.KeywordOverrides);
+                state.KeywordOverrides,
+                basePowerKeywordEntries: state.PowerKeywordEntries);
+            LoadoutPowerKeywordState.SetExplicitState(preview, state);
+            LoadoutPowerKeywordState.Synchronize(preview);
             CardModificationDelta temporary = CreateDelta(preview, state, permanent);
             ApplyDeltaToCard(preview, temporary);
             if (temporary.HasCustomText || temporary.HasPortraitOverride || temporary.HasAncientRenderingOverride)
@@ -1058,6 +1145,10 @@ public static class CardModificationRuntime
             normalized.Normalize();
             PreviewDeltas.Remove(preview);
             PreviewDeltas.Add(preview, normalized);
+            CardModificationSpec materializedState =
+                MaterializePermanentSpec(cardId, normalized);
+            LoadoutPowerKeywordState.SetExplicitState(preview, materializedState);
+            LoadoutPowerKeywordState.Synchronize(preview);
             if (!normalized.IsEmpty)
             {
                 ApplyDeltaToCard(preview, normalized);
@@ -1068,8 +1159,7 @@ public static class CardModificationRuntime
 
             if (upgraded && preview.IsUpgradable)
             {
-                CardModificationSpec materialized = MaterializePermanentSpec(cardId, normalized);
-                using (CardUpgradeModificationRuntimePatches.BeginOverride(materialized.UpgradeModification))
+                using (CardUpgradeModificationRuntimePatches.BeginOverride(materializedState.UpgradeModification))
                     preview.UpgradeInternal();
                 preview.FinalizeUpgradeInternal();
             }
@@ -1116,12 +1206,14 @@ public static class CardModificationRuntime
             upgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
             state.UpgradeModification,
-            state.KeywordOverrides);
+            state.KeywordOverrides,
+            basePowerKeywordEntries: state.PowerKeywordEntries);
         if (!baseline.IsUpgradable)
             return null;
 
         CardModel scratch = cardScope.CloneCard(source);
         CardModificationFields.Clear(scratch);
+        LoadoutPowerKeywordState.SetExplicitState(scratch, state);
         CardCurrentUpgradeLevelField?.SetValue(scratch, upgradeLevel);
         CopyNativeFields(
             baseline,
@@ -1161,7 +1253,8 @@ public static class CardModificationRuntime
             upgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state),
             state.UpgradeModification,
-            state.KeywordOverrides);
+            state.KeywordOverrides,
+            basePowerKeywordEntries: state.PowerKeywordEntries);
         return baseline.IsUpgradable;
     }
 
@@ -1983,7 +2076,8 @@ public static class CardModificationRuntime
             card.CurrentUpgradeLevel,
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(next),
             next.UpgradeModification,
-            next.KeywordOverrides);
+            next.KeywordOverrides,
+            basePowerKeywordEntries: next.PowerKeywordEntries);
         CopyNativeFields(baseline, card, previous, next, forceAllOwnedFields);
         ApplySpecToCard(card, temporary);
         card.FinalizeUpgradeInternal();
@@ -1995,7 +2089,8 @@ public static class CardModificationRuntime
         bool? infiniteUpgradeOverride = null,
         CardUpgradeModificationSpec? upgradeModification = null,
         IReadOnlyDictionary<string, bool>? baseKeywordOverrides = null,
-        CardModificationDelta? baseEnergyDelta = null)
+        CardModificationDelta? baseEnergyDelta = null,
+        IReadOnlyList<LoadoutPowerKeywordEntry>? basePowerKeywordEntries = null)
     {
         CardModel baseline;
         using (SuppressPermanentApplication())
@@ -2003,6 +2098,17 @@ public static class CardModificationRuntime
 
         if (PermanentCardModificationStore.TryGetDelta(canonical.Id, out CardModificationDelta? permanent))
             ApplyPermanentResidual(baseline, permanent);
+
+        CardModificationSpec permanentState =
+            PermanentCardModificationStore.Get(canonical.Id);
+        LoadoutPowerKeywordState.SetExplicitState(
+            baseline,
+            basePowerKeywordEntries
+            ?? baseEnergyDelta?.PowerKeywordEntries
+            ?? permanentState.PowerKeywordEntries,
+            upgradeModification?.PowerKeywordEntries
+            ?? permanentState.UpgradeModification.PowerKeywordEntries);
+        LoadoutPowerKeywordState.Synchronize(baseline);
 
         if (baseKeywordOverrides is not null)
         {
@@ -2074,6 +2180,7 @@ public static class CardModificationRuntime
                     SetEnergyCost(baseline, energyReplay.UpgradedCost.Value);
                 }
                 baseline.FinalizeUpgradeInternal();
+                LoadoutPowerKeywordState.Synchronize(baseline);
             }
         }
         finally
@@ -2163,7 +2270,7 @@ public static class CardModificationRuntime
             }
         }
 
-        LoadoutKeywordRegistry.SynchronizeDynamicVars(destination);
+        LoadoutPowerKeywordState.Synchronize(destination);
         if (forceAllOwnedFields)
         {
             if (DynamicVarDictionaryField?.GetValue(destination.DynamicVars)
@@ -2695,6 +2802,7 @@ public static class CardModificationRuntime
     {
         ApplyEnchantmentSpecs(card, permanent.Enchantments);
         ApplyAfflictionSpec(card, permanent.Affliction);
+        LoadoutPowerKeywordState.Synchronize(card);
     }
 
     private static bool TryResolveModel<TModel>(

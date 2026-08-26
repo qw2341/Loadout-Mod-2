@@ -164,5 +164,8 @@
   "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.cardText": "[gold]筋力[/gold]{LoadoutRestrictiveStrengthLoss:inverseDiff()}を失う。",
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "敏捷低下",
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "プレイ時に[gold]敏捷[/gold]を失う。",
-  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "[gold]敏捷[/gold]{LoadoutRestrictiveDexterityLoss:inverseDiff()}を失う。"
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "[gold]敏捷[/gold]{LoadoutRestrictiveDexterityLoss:inverseDiff()}を失う。",
+  "LOADOUT-APPLY_POWER.title": "パワー付与",
+  "LOADOUT-APPLY_POWER.description": "選択したクリーチャーに設定済みのパワーを付与する。",
+  "LOADOUT-APPLY_POWER.cardText": "{LoadoutApplyPowerList}を付与する。"
 }

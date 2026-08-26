@@ -38,6 +38,9 @@ internal static class CardUpgradeModificationRuntimePatches
             prefix: new HarmonyMethod(
                 typeof(CardUpgradeModificationContextPatch),
                 nameof(CardUpgradeModificationContextPatch.Prefix)),
+            postfix: new HarmonyMethod(
+                typeof(CardUpgradeModificationContextPatch),
+                nameof(CardUpgradeModificationContextPatch.Postfix)),
             finalizer: new HarmonyMethod(
                 typeof(CardUpgradeModificationContextPatch),
                 nameof(CardUpgradeModificationContextPatch.Finalizer)));
@@ -84,6 +87,9 @@ internal static class CardUpgradeModificationRuntimePatches
             Enable();
             LoadoutKeywordRuntimePatches.EnableFromOverrides(
                 value.KeywordOverrides);
+            LoadoutKeywordRuntimePatches.EnableFromPowerKeywordEntries(
+                null,
+                value.PowerKeywordEntries);
         }
 
         _overrides ??= new Stack<CardUpgradeModificationSpec?>();
@@ -252,6 +258,11 @@ internal static class CardUpgradeModificationContextPatch
         LoadoutUpgradedEnergyCost = __state.LoadoutUpgradedEnergyCost;
         Applied = __state.Applied;
         return __exception;
+    }
+
+    public static void Postfix(CardModel __instance)
+    {
+        LoadoutPowerKeywordState.Synchronize(__instance);
     }
 }
 

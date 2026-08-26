@@ -45,6 +45,7 @@ public partial class NCardUpgradeModificationScreen : Control
     private Control? _previewHost;
     private Control? _backButtonMount;
     private NCardUpgradePreview? _upgradePreview;
+    private NCardKeywordEditor? _keywordEditor;
     private NBackButton? _backButton;
     private CardModel? _previewSource;
     private CardModel? _previewUpgrade;
@@ -199,6 +200,8 @@ public partial class NCardUpgradeModificationScreen : Control
             foreach (LoadoutKeywordDynamicVarDefinition dynamicVar
                      in keyword.DynamicVars)
             {
+                if (!dynamicVar.EditorVisible)
+                    continue;
                 definitions[dynamicVar.Name] =
                     new DynamicVarEditorDefinition(
                         dynamicVar.Name,
@@ -210,7 +213,8 @@ public partial class NCardUpgradeModificationScreen : Control
             }
         }
 
-        if (definitions.Count == 0)
+        if (definitions.Count == 0
+            && (_draft.PowerKeywordEntries?.Count ?? 0) == 0)
         {
             MegaLabel empty = CreateLabel(
                 LocMan.Loc(
@@ -220,7 +224,6 @@ public partial class NCardUpgradeModificationScreen : Control
                 StsColors.cream);
             empty.CustomMinimumSize = new Vector2(0f, 44f);
             _leftControls.AddChild(empty);
-            return;
         }
 
         foreach (DynamicVarEditorDefinition definition in definitions.Values
@@ -241,6 +244,8 @@ public partial class NCardUpgradeModificationScreen : Control
                     RefreshPreview();
                 });
         }
+
+        AddPowerKeywordVariableControls();
     }
 
     private void RebuildKeywordControls()
@@ -248,20 +253,39 @@ public partial class NCardUpgradeModificationScreen : Control
         if (_rightControls is null || _item is null)
             return;
 
-        ClearChildren(_rightControls);
-        NCardKeywordEditor editor = new();
+        if (_keywordEditor is not null
+            && !GodotObject.IsInstanceValid(_keywordEditor))
+            _keywordEditor = null;
+        foreach (Node child in _rightControls.GetChildren())
+        {
+            if (ReferenceEquals(child, _keywordEditor))
+                continue;
+            _rightControls.RemoveChild(child);
+            child.QueueFree();
+        }
+
+        NCardKeywordEditor editor = _keywordEditor ??= new NCardKeywordEditor();
         editor.Init(
             [_item.Model],
             IsKeywordEnabled,
             OnKeywordChanged,
             _selectedKeywordModId,
-            selected => _selectedKeywordModId = selected);
-        _rightControls.AddChild(editor);
+            selected => _selectedKeywordModId = selected,
+            getRepeatCount: GetPowerKeywordEntryCount,
+            onRepeatAdded: AddPowerKeywordEntry,
+            onRepeatRemoved: RemovePowerKeywordEntry);
+        if (editor.GetParent() is null)
+            _rightControls.AddChild(editor);
     }
 
     private bool IsKeywordEnabled(CardKeyword keyword)
     {
         string key = LoadoutKeywords.GetStorageKey(keyword);
+        if (LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
+            && model is LoadoutPowerKeywordModel)
+        {
+            return GetPowerKeywordEntryCount(keyword) > 0;
+        }
         return _draft.KeywordOverrides.TryGetValue(key, out bool enabled)
             ? enabled
             : _nativeUpgradeKeywords.Contains(keyword);
@@ -295,6 +319,8 @@ public partial class NCardUpgradeModificationScreen : Control
             foreach (LoadoutKeywordDynamicVarDefinition dynamicVar
                      in definition.DynamicVars)
             {
+                if (!dynamicVar.EditorVisible)
+                    continue;
                 if (enabled)
                     _draft.DynamicVarDeltas.TryAdd(dynamicVar.Name, 0m);
                 else
@@ -350,6 +376,8 @@ public partial class NCardUpgradeModificationScreen : Control
                         name,
                         out LoadoutKeywordDynamicVarDefinition definition))
                 {
+                    if (!definition.EditorVisible)
+                        continue;
                     label = LocMan.Loc(definition.LabelLocKey, name);
                     minimum = definition.Minimum;
                     maximum = definition.Maximum;
@@ -371,6 +399,120 @@ public partial class NCardUpgradeModificationScreen : Control
             CardModificationRuntime.ReleaseUpgradePreviewCard(upgraded);
             CardModificationRuntime.ReleaseUpgradePreviewCard(source);
         }
+    }
+
+    private int GetPowerKeywordEntryCount(CardKeyword keyword)
+    {
+        string key = LoadoutKeywords.GetStorageKey(keyword);
+        return _draft.PowerKeywordEntries?.Count(entry => string.Equals(
+            entry.KeywordKey,
+            key,
+            StringComparison.OrdinalIgnoreCase)) ?? 0;
+    }
+
+    private void AddPowerKeywordEntry(CardKeyword keyword)
+    {
+        if (!LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
+            || model is not LoadoutPowerKeywordModel)
+            return;
+
+        List<LoadoutPowerKeywordEntry> entries =
+            LoadoutPowerKeywordEntry.CloneList(_draft.PowerKeywordEntries) ?? [];
+        entries.Add(new LoadoutPowerKeywordEntry
+        {
+            KeywordKey = model.StorageKey,
+            PowerId = LoadoutPowerKeywordState.GetDefaultStrengthPowerId(),
+            Amount = 1
+        });
+        _draft.PowerKeywordEntries = entries;
+        QueueRebuild();
+    }
+
+    private void RemovePowerKeywordEntry(CardKeyword keyword)
+    {
+        string key = LoadoutKeywords.GetStorageKey(keyword);
+        List<LoadoutPowerKeywordEntry> entries =
+            LoadoutPowerKeywordEntry.CloneList(_draft.PowerKeywordEntries) ?? [];
+        int index = entries.FindLastIndex(entry => string.Equals(
+            entry.KeywordKey,
+            key,
+            StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+            return;
+        entries.RemoveAt(index);
+        _draft.PowerKeywordEntries = entries;
+        QueueRebuild();
+    }
+
+    private void AddPowerKeywordVariableControls()
+    {
+        if (_leftControls is null)
+            return;
+
+        List<LoadoutPowerKeywordEntry> entries =
+            LoadoutPowerKeywordEntry.CloneList(_draft.PowerKeywordEntries) ?? [];
+        int number = 0;
+        for (int index = 0; index < entries.Count; index++)
+        {
+            if (!string.Equals(
+                    entries[index].KeywordKey,
+                    LoadoutKeywords.ApplyPowerKey,
+                    StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            number++;
+            int capturedIndex = index;
+            string suffix = entries.Count > 1 ? $" {number}" : string.Empty;
+            AddStepperRow(
+                _leftControls,
+                LocMan.Loc(
+                    "CARD_MOD_APPLY_POWER_AMOUNT",
+                    "Apply Power Amount") + suffix,
+                entries[index].Amount,
+                int.MinValue,
+                int.MaxValue,
+                amount =>
+                {
+                    UpdatePowerKeywordEntry(
+                        capturedIndex,
+                        entry => entry.Amount = amount);
+                    RefreshPreview();
+                });
+
+            NLoadoutPowerSelector selector = new();
+            selector.Init(entries[index].PowerId);
+            selector.SelectRequested += () =>
+            {
+                if (!PowerGiver.TryOpenKeywordPowerPicker(power =>
+                    {
+                        UpdatePowerKeywordEntry(
+                            capturedIndex,
+                            entry => entry.PowerId = power.Id.ToString());
+                        QueueRebuild();
+                    },
+                    out string error))
+                {
+                    GD.PushWarning(error);
+                }
+            };
+            _leftControls.AddChild(CreateRow(
+                LocMan.Loc(
+                    "CARD_MOD_APPLY_POWER_POWER",
+                    "Apply Power") + suffix,
+                selector));
+        }
+    }
+
+    private void UpdatePowerKeywordEntry(
+        int index,
+        Action<LoadoutPowerKeywordEntry> update)
+    {
+        List<LoadoutPowerKeywordEntry> entries =
+            LoadoutPowerKeywordEntry.CloneList(_draft.PowerKeywordEntries) ?? [];
+        if (index < 0 || index >= entries.Count)
+            return;
+        update(entries[index]);
+        _draft.PowerKeywordEntries = entries;
     }
 
     private void RefreshPreview()
@@ -531,11 +673,14 @@ public partial class NCardUpgradeModificationScreen : Control
         text.Position = Vector2.Zero;
         text.Size = new Vector2(EditorLabelWidth, 44f);
         row.AddChild(text);
+        float inputWidth = input is NLoadoutPowerSelector
+            ? EditorRowWidth - EditorLabelWidth - 8f
+            : StepperWidth;
         input.Position = new Vector2(
-            EditorRowWidth - StepperWidth,
+            EditorRowWidth - inputWidth,
             1f);
-        input.Size = new Vector2(StepperWidth, 42f);
-        input.CustomMinimumSize = new Vector2(StepperWidth, 42f);
+        input.Size = new Vector2(inputWidth, 42f);
+        input.CustomMinimumSize = new Vector2(inputWidth, 42f);
         row.AddChild(input);
         return row;
     }

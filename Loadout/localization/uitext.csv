@@ -785,3 +785,12 @@ MOD_ARCHIVE_INVALID_PORTRAIT_INDEX,The portrait index is invalid.,卡牌图片�
 MOD_ARCHIVE_PORTRAIT_DAMAGED,Portrait for '{0}' is damaged.,“{0}”的卡牌图片已损坏。,L’illustration de « {0} » est endommagée.,「{0}」の画像が破損しています。,카드 '{0}'의 초상화가 손상되었습니다.,La ilustración de «{0}» está dañada.
 MOD_ARCHIVE_UNSUPPORTED,The selected archive is not a supported Loadout modification package.,所选压缩包不是受支持的 Loadout 修改包。,L’archive sélectionnée n’est pas un paquet de modifications Loadout pris en charge.,選択したアーカイブは対応する Loadout 変更パッケージではありません。,선택한 압축 파일은 지원되는 Loadout 변경 패키지가 아닙니다.,El archivo seleccionado no es un paquete de modificaciones de Loadout compatible.
 MOD_ARCHIVE_ENTRY_MISSING,Archive entry '{0}' is missing.,压缩包条目“{0}”缺失。,L’entrée « {0} » manque dans l’archive.,アーカイブ項目「{0}」がありません。,압축 파일 항목 '{0}'이(가) 없습니다.,Falta la entrada «{0}» en el archivo.
+CARD_MOD_LOADOUT_POWER_KEYWORDS,Loadout Power Keywords,Loadout 能力关键词,Mots-clés de pouvoir Loadout,Loadout パワーキーワード,Loadout 능력 키워드,Palabras clave de poder Loadout
+CARD_MOD_POWER_KEYWORD_ENTRY,{0} {1},{0}点{1},{0} {1},{0} {1},{0} {1},{0} {1}
+CARD_MOD_POWER_KEYWORD_SEPARATOR,", ","，",", ","、",", ",", "
+CARD_MOD_APPLY_POWER_AMOUNT,Apply Power Amount,施加能力数值,Quantité de pouvoir,付与するパワー量,능력 부여 수치,Cantidad de poder
+CARD_MOD_APPLY_POWER_POWER,Apply Power,施加能力,Appliquer un pouvoir,パワー付与,능력 부여,Aplicar poder
+CARD_MOD_SELECT_POWER,Select Power,选择能力,Sélectionner un pouvoir,パワーを選択,능력 선택,Seleccionar poder
+CARD_MOD_POWER_PICKER_UNAVAILABLE,The shared power picker is unavailable or already in use.,共享能力选择器不可用或正在使用。,Le sélecteur de pouvoir partagé est indisponible ou déjà utilisé.,共有パワー選択画面は使用できないか使用中です。,공유 능력 선택기를 사용할 수 없거나 사용 중입니다.,El selector de poder compartido no está disponible o ya está en uso.
+CARD_MOD_POWER_PICKER_OPEN_FAILED,Could not open the shared power picker: {0},无法打开共享能力选择器：{0},Impossible d’ouvrir le sélecteur de pouvoir partagé : {0},共有パワー選択画面を開けませんでした：{0},공유 능력 선택기를 열 수 없습니다: {0},No se pudo abrir el selector de poder compartido: {0}
+DYNAMIC_VAR_LOADOUT_APPLY_POWER_LIST,Configured Powers,已配置能力,Pouvoirs configurés,設定済みパワー,설정된 능력,Poderes configurados

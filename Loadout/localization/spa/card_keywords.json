@@ -164,5 +164,8 @@
   "LOADOUT-RESTRICTIVE_LOSE_STRENGTH.cardText": "Pierde {LoadoutRestrictiveStrengthLoss:inverseDiff()} de [gold]Fuerza[/gold].",
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "Perder Destreza",
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "Pierde [gold]Destreza[/gold] al jugar esta carta.",
-  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "Pierde {LoadoutRestrictiveDexterityLoss:inverseDiff()} de [gold]Destreza[/gold]."
+  "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "Pierde {LoadoutRestrictiveDexterityLoss:inverseDiff()} de [gold]Destreza[/gold].",
+  "LOADOUT-APPLY_POWER.title": "Aplicar poder",
+  "LOADOUT-APPLY_POWER.description": "Aplica los poderes configurados a la criatura seleccionada.",
+  "LOADOUT-APPLY_POWER.cardText": "Aplica {LoadoutApplyPowerList}."
 }

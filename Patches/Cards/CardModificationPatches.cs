@@ -43,7 +43,10 @@ public static class CardModelMutableCloneCardModificationPatch
     public static void Postfix(AbstractModel __instance, AbstractModel __result)
     {
         if (__instance is CardModel source && __result is CardModel clone)
+        {
             CardModificationFields.Copy(source, clone);
+            LoadoutPowerKeywordState.CopyExplicitState(source, clone);
+        }
     }
 }
 
@@ -82,6 +85,7 @@ public static class CardModelDowngradePermanentUpgradeModificationPatch
     public static void Postfix(CardModel __instance)
     {
         CardModificationRuntime.ReapplyPermanentUpgradeAfterDowngrade(__instance);
+        LoadoutPowerKeywordState.Synchronize(__instance);
     }
 }
 
@@ -102,7 +106,10 @@ public static class CardCmdUpgradeCardModificationPatch
             return;
 
         foreach (CardModel card in __state)
+        {
             CardModificationRuntime.ReapplyTemporaryDelta(card);
+            LoadoutPowerKeywordState.Synchronize(card);
+        }
 
         HashSet<ulong> changedPlayers = [];
         List<LoadoutChangedCard> changedCards = [];
