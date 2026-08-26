@@ -192,6 +192,13 @@ internal static class RestrictiveEnthralledShouldPlayPatch
 
 internal static class RestrictiveKeywordGlowPatch
 {
+    private static readonly Func<CardModel, bool> IsPlayableGetter =
+        AccessTools.MethodDelegate<Func<CardModel, bool>>(
+            AccessTools.PropertyGetter(typeof(CardModel), "IsPlayable")
+            ?? throw new MissingMethodException(
+                typeof(CardModel).FullName,
+                "get_IsPlayable"));
+
     [HarmonyPostfix]
     public static void ShouldGlowGoldPostfix(
         CardModel __instance,
@@ -204,19 +211,7 @@ internal static class RestrictiveKeywordGlowPatch
             return;
         }
 
-        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.Clash))
-        {
-            __result = PileType.Hand
-                .GetPile(__instance.Owner)
-                .Cards
-                .All(card => card.Type == CardType.Attack);
-        }
-
-        if (!__result
-            && LoadoutKeywords.Has(__instance, LoadoutKeywords.Grand))
-        {
-            __result = GrandKeyword.CanPlay(__instance);
-        }
+        __result = IsPlayableGetter(__instance);
     }
 
     [HarmonyPostfix]
