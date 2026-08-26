@@ -165,7 +165,7 @@
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.title": "Lose Dexterity",
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.description": "Lose [gold]Dexterity[/gold] when played.",
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "Lose {LoadoutRestrictiveDexterityLoss:inverseDiff()} [gold]Dexterity[/gold].",
-  "LOADOUT-APPLY_POWER.title": "Apply Power",
+  "LOADOUT-APPLY_POWER.title": "Apply Enemy",
   "LOADOUT-APPLY_POWER.description": "Apply configured powers to the selected creature.",
   "LOADOUT-APPLY_POWER.cardText": "Apply {LoadoutApplyPowerList}.",
   "LOADOUT-APPLY_SELF.title": "Apply Self",
