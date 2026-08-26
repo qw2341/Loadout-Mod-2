@@ -786,7 +786,8 @@ MOD_ARCHIVE_PORTRAIT_DAMAGED,Portrait for '{0}' is damaged.,“{0}”的卡牌�
 MOD_ARCHIVE_UNSUPPORTED,The selected archive is not a supported Loadout modification package.,所选压缩包不是受支持的 Loadout 修改包。,L’archive sélectionnée n’est pas un paquet de modifications Loadout pris en charge.,選択したアーカイブは対応する Loadout 変更パッケージではありません。,선택한 압축 파일은 지원되는 Loadout 변경 패키지가 아닙니다.,El archivo seleccionado no es un paquete de modificaciones de Loadout compatible.
 MOD_ARCHIVE_ENTRY_MISSING,Archive entry '{0}' is missing.,压缩包条目“{0}”缺失。,L’entrée « {0} » manque dans l’archive.,アーカイブ項目「{0}」がありません。,압축 파일 항목 '{0}'이(가) 없습니다.,Falta la entrada «{0}» en el archivo.
 CARD_MOD_LOADOUT_POWER_KEYWORDS,Loadout Power Keywords,Loadout 能力关键词,Mots-clés de pouvoir Loadout,Loadout パワーキーワード,Loadout 능력 키워드,Palabras clave de poder Loadout
-CARD_MOD_POWER_KEYWORD_ENTRY,{0} {1},{0}点{1},{0} {1},{0} {1},{0} {1},{0} {1}
+CARD_MOD_POWER_KEYWORD_ENTRY,{0} {1},{0}层{1},{0} {1},{0} {1},{0} {1},{0} {1}
+CARD_MOD_POWER_KEYWORD_ENTRY_POINT,{0} {1},{0}点{1},{0} {1},{0} {1},{0} {1},{0} {1}
 CARD_MOD_POWER_KEYWORD_SEPARATOR,", ","，",", ","、",", ",", "
 CARD_MOD_APPLY_POWER_AMOUNT,Apply Power Amount,施加能力数值,Quantité de pouvoir,付与するパワー量,능력 부여 수치,Cantidad de poder
 CARD_MOD_APPLY_POWER_POWER,Apply Power,施加能力,Appliquer un pouvoir,パワー付与,능력 부여,Aplicar poder

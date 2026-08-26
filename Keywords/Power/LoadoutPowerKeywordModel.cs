@@ -319,12 +319,17 @@ public static class LoadoutPowerKeywordState
             separator,
             GetEffectiveEntries(card, keywordKey).Select(entry =>
             {
-                string title = TryResolvePower(entry.PowerId, out PowerModel power)
+                bool resolved = TryResolvePower(entry.PowerId, out PowerModel power);
+                string title = resolved
                     ? CommonHelpers.FormatPowerTitle(power)
                     : GetPowerIdFallback(entry.PowerId);
                 title = $"[gold]{title}[/gold]";
+                bool usesPointClassifier = resolved
+                    && power is StrengthPower or DexterityPower or FocusPower;
                 return LocMan.Loc(
-                    "CARD_MOD_POWER_KEYWORD_ENTRY",
+                    usesPointClassifier
+                        ? "CARD_MOD_POWER_KEYWORD_ENTRY_POINT"
+                        : "CARD_MOD_POWER_KEYWORD_ENTRY",
                     "{0} {1}",
                     entry.Amount,
                     title);
