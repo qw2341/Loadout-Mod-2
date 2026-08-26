@@ -291,7 +291,7 @@ public sealed class CardModificationImportSession
                 refreshIds.Add(entry.Id);
         }
         CardPrinter.RefreshImportedPermanentCards(refreshIds);
-        return ModificationTransferResult.Success(selected.Length);
+        return ModificationTransferResult.Success(Entries.Count);
     }
 }
 
@@ -307,7 +307,7 @@ public sealed class RelicModificationImportSession
             entry => entry.Id,
             entry => entry.IncomingState.Clone());
         RelicModificationStateService.ApplyPermanentEntriesQuiet(states);
-        return ModificationTransferResult.Success(selected.Length);
+        return ModificationTransferResult.Success(Entries.Count);
     }
 }
 

@@ -171,6 +171,7 @@ public partial class NModificationConflictOverlay : Control
                 holder.SetCardScale(Vector2.One * 0.9f);
                 holder.Connect(NCardHolder.SignalName.Pressed, Callable.From<NCardHolder>(_ => choose()));
                 choice.AddChild(holder);
+                ModificationImportScreenUi.BindCardHoverTipsToFront(holder);
                 ModificationImportScreenUi.RefreshExactCardView(holder, model);
             }
         }

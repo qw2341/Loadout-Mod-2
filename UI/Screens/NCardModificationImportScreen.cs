@@ -146,9 +146,11 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
                     view,
                     activate,
                     () => InspectEntry(entry));
+                Action hoverTipCleanup = ModificationImportScreenUi.BindCardHoverTipsToFront(view);
                 return () =>
                 {
                     activationCleanup?.Invoke();
+                    hoverTipCleanup();
                     RemoveIdenticalLabel(view);
                 };
             }
@@ -508,6 +510,7 @@ public partial class NCardModificationImportScreen : NCardSelectScreen, IScreenC
         preview.Position = sourceCenter + new Vector2(direction * 250f, 0f) - GlobalPosition;
         preview.ZIndex = 350;
         AddChild(preview);
+        ModificationImportScreenUi.BindCardHoverTipsToFront(preview);
         card!.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
         _upgradePreview = preview;
     }

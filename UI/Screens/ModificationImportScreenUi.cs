@@ -54,6 +54,7 @@ public static class ModificationImportScreenUi
             acceptIncoming));
         margin.AddChild(buttons);
         screen.SetBottomActionControl(margin, BottomBarHeight);
+        RemoveLowerViewportFade(screen);
 
         if (screen.GetNodeOrNull<Control>("BackButton") is { } back)
         {
@@ -69,6 +70,27 @@ public static class ModificationImportScreenUi
             confirm.OffsetRight = 34f;
             confirm.OffsetBottom = -44f;
         }
+    }
+
+    public static Action BindCardHoverTipsToFront(Control view)
+    {
+        if (!CommonHelpers.TryFindDescendantOrSelf(view, out NCardHolder holder)
+            || holder.GetNodeOrNull<NClickableControl>("Hitbox") is not { } hitbox)
+        {
+            return static () => { };
+        }
+
+        Callable focused = Callable.From<NClickableControl>(_ =>
+            Callable.From(() => Loadout.UI.NLoadoutPanelRoot.Instance?.AdoptGameHoverTips()).CallDeferred());
+        hitbox.Connect(NClickableControl.SignalName.Focused, focused);
+        return () =>
+        {
+            if (GodotObject.IsInstanceValid(hitbox)
+                && hitbox.IsConnected(NClickableControl.SignalName.Focused, focused))
+            {
+                hitbox.Disconnect(NClickableControl.SignalName.Focused, focused);
+            }
+        };
     }
 
     public static MegaLabel CreateLabel(string text, int fontSize, HorizontalAlignment alignment)
@@ -141,6 +163,31 @@ public static class ModificationImportScreenUi
             return hitbox.GetGlobalRect().HasPoint(globalPoint);
         }
         return view.GetGlobalRect().HasPoint(globalPoint);
+    }
+
+    private static void RemoveLowerViewportFade(NGenericSelectScreen screen)
+    {
+        if (screen.GetNodeOrNull<TextureRect>("CardGrid/ScreenContents/BorderGradient") is not { } border)
+            return;
+
+        border.Texture = new GradientTexture2D
+        {
+            Width = 2,
+            Height = 256,
+            FillFrom = Vector2.Zero,
+            FillTo = Vector2.Down,
+            Gradient = new Gradient
+            {
+                InterpolationMode = Gradient.InterpolationModeEnum.Cubic,
+                Offsets = [0f, 0.05f, 1f],
+                Colors =
+                [
+                    new Color(0f, 0f, 0f, 0.9f),
+                    Colors.Transparent,
+                    Colors.Transparent
+                ]
+            }
+        };
     }
 
     private static NLoadoutSettingsActionButton CreateButton(string id, string label, Action action)
