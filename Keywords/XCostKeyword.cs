@@ -95,6 +95,11 @@ public static class XCostOnPlayPatch
         return false;
     }
 
+    internal static int ResolveExecutionCount(CardModel card)
+    {
+        return Math.Max(0, card.ResolveEnergyXValue());
+    }
+
     public static IEnumerable<MethodBase> TargetMethods()
     {
         foreach (MethodBase target in PostOnPlayKeywordDispatcher.TargetMethods())
@@ -121,7 +126,10 @@ public static class XCostOnPlayPatch
             return true;
         }
 
-        int executionCount = Math.Max(0, __instance.ResolveEnergyXValue());
+        if (LoadoutKeywordRegistry.SuppressesOriginalOnPlay(__instance))
+            return true;
+
+        int executionCount = ResolveExecutionCount(__instance);
         if (executionCount == 0)
         {
             __result = Task.CompletedTask;

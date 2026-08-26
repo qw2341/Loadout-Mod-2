@@ -34,6 +34,7 @@ public static class LoadoutKeywordRegistry
         LifestealKeyword.Instance,
         WallopKeyword.Instance,
         AutoplayKeyword.Instance,
+        BlankSlateKeyword.Instance,
         BasicDamageKeyword.Instance,
         BasicDamageAoeKeyword.Instance,
         BasicMultiHitKeyword.Instance,
@@ -98,6 +99,19 @@ public static class LoadoutKeywordRegistry
             .ToArray();
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
+        BaseDescriptionModels =
+        Models
+            .Where(model => model.TransformsBaseDescription)
+            .OrderBy(model => model.BaseDescriptionPriority)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        OriginalOnPlaySuppressorModels =
+        Models
+            .Where(model => model.SuppressesOriginalOnPlay)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
         UnblockedDamageModels =
         Models
             .Where(model => model.HasUnblockedDamageEffect)
@@ -120,6 +134,9 @@ public static class LoadoutKeywordRegistry
         Models
             .Where(model => model.ChangesTargeting)
             .ToArray();
+
+    [ThreadStatic]
+    private static Stack<CardModel>? _baseDescriptionContext;
 
     public static IReadOnlyList<LoadoutKeywordModel> All => Models;
 
@@ -212,6 +229,53 @@ public static class LoadoutKeywordRegistry
         }
 
         return false;
+    }
+
+    public static bool SuppressesOriginalOnPlay(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in OriginalOnPlaySuppressorModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static void PushBaseDescriptionContext(CardModel card)
+    {
+        _baseDescriptionContext ??= new Stack<CardModel>();
+        _baseDescriptionContext.Push(card);
+    }
+
+    public static void PopBaseDescriptionContext()
+    {
+        if (_baseDescriptionContext is { Count: > 0 })
+            _baseDescriptionContext.Pop();
+    }
+
+    public static void TransformBaseDescription(
+        LocString locString,
+        ref string description)
+    {
+        if (_baseDescriptionContext is not { Count: > 0 })
+            return;
+
+        CardModel card = _baseDescriptionContext.Peek();
+        if (!string.Equals(locString.LocTable, "cards", StringComparison.Ordinal)
+            || !string.Equals(
+                locString.LocEntryKey,
+                $"{card.Id.Entry}.description",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        foreach (LoadoutKeywordModel model in BaseDescriptionModels)
+        {
+            if (model.IsEnabled(card))
+                description = model.TransformBaseDescription(card, description);
+        }
     }
 
     public static async Task ApplyFatalEffects(
@@ -348,10 +412,33 @@ public static class LoadoutKeywordRegistry
 
 public static class LoadoutDescriptionKeywordPatch
 {
+    [HarmonyPrefix]
+    public static void Prefix(CardModel __instance)
+    {
+        LoadoutKeywordRegistry.PushBaseDescriptionContext(__instance);
+    }
+
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref string __result)
     {
         __result = LoadoutKeywordRegistry.AddDescriptionLines(__instance, __result);
+    }
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(Exception? __exception)
+    {
+        LoadoutKeywordRegistry.PopBaseDescriptionContext();
+
+        return __exception;
+    }
+}
+
+public static class LoadoutBaseDescriptionKeywordLocStringPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(LocString __instance, ref string __result)
+    {
+        LoadoutKeywordRegistry.TransformBaseDescription(__instance, ref __result);
     }
 }
 

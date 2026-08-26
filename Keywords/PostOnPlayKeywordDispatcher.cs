@@ -19,7 +19,8 @@ internal static class PostOnPlayKeywordDispatcher
         object? CapturedState);
 
     private sealed record DispatchState(
-        IReadOnlyList<KeywordEffectState> KeywordEffects);
+        IReadOnlyList<KeywordEffectState> KeywordEffects,
+        int ExecutionCount);
 
     internal static IEnumerable<MethodBase> TargetMethods()
     {
@@ -48,33 +49,56 @@ internal static class PostOnPlayKeywordDispatcher
     }
 
     [HarmonyPrefix]
-    public static void Prefix(
+    public static bool Prefix(
         CardModel __instance,
         CardPlay __1,
+        ref Task __result,
         out object? __state)
     {
+        bool suppressOriginal =
+            LoadoutKeywordRegistry.SuppressesOriginalOnPlay(__instance);
         if (XCostOnPlayPatch.IsRepeating(__instance, __1))
         {
             __state = null;
-            return;
+            if (!suppressOriginal)
+                return true;
+
+            __result = Task.CompletedTask;
+            return false;
         }
 
         CardPlay cardPlay = __1;
         List<KeywordEffectState>? effects = null;
+        int executionCount = suppressOriginal
+                             && LoadoutKeywords.Has(
+                                 __instance,
+                                 LoadoutKeywords.XCost)
+            ? XCostOnPlayPatch.ResolveExecutionCount(__instance)
+            : 1;
 
-        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.WithPostOnPlayEffect)
+        if (executionCount > 0)
         {
-            if (!model.HasOnPlayEffect || !model.IsEnabled(__instance))
-                continue;
+            foreach (LoadoutKeywordModel model in
+                     LoadoutKeywordRegistry.WithPostOnPlayEffect)
+            {
+                if (!model.HasOnPlayEffect || !model.IsEnabled(__instance))
+                    continue;
 
-            (effects ??= []).Add(new KeywordEffectState(
-                model,
-                model.CaptureBeforeOnPlay(__instance, cardPlay)));
+                (effects ??= []).Add(new KeywordEffectState(
+                    model,
+                    model.CaptureBeforeOnPlay(__instance, cardPlay)));
+            }
         }
 
         __state = effects is null
             ? null
-            : new DispatchState(effects);
+            : new DispatchState(effects, executionCount);
+
+        if (!suppressOriginal)
+            return true;
+
+        __result = Task.CompletedTask;
+        return false;
     }
 
     [HarmonyPostfix]
@@ -100,13 +124,16 @@ internal static class PostOnPlayKeywordDispatcher
     {
         await originalOnPlay;
 
-        foreach (KeywordEffectState effect in state.KeywordEffects)
+        for (int execution = 0; execution < state.ExecutionCount; execution++)
         {
-            await effect.Model.AfterOnPlay(
-                source,
-                choiceContext,
-                cardPlay,
-                effect.CapturedState);
+            foreach (KeywordEffectState effect in state.KeywordEffects)
+            {
+                await effect.Model.AfterOnPlay(
+                    source,
+                    choiceContext,
+                    cardPlay,
+                    effect.CapturedState);
+            }
         }
     }
 }

@@ -46,6 +46,8 @@
   "LOADOUT-WALLOP.cardText": "Gain [gold]Block[/gold] equal to unblocked damage dealt.",
   "LOADOUT-AUTOPLAY.title": "Autoplay",
   "LOADOUT-AUTOPLAY.description": "Automatically plays when drawn.",
+  "LOADOUT-BLANK_SLATE.title": "Blank Slate",
+  "LOADOUT-BLANK_SLATE.description": "Removes this card's base description and original On Play effect. Effects added by keywords and attachments still apply.",
   "LOADOUT-BASIC_DAMAGE.title": "Damage",
   "LOADOUT-BASIC_DAMAGE.description": "Deals damage to the selected creature.",
   "LOADOUT-BASIC_DAMAGE.cardText": "Deal {LoadoutBasicDamage:diff()} damage.",

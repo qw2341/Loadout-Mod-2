@@ -46,6 +46,8 @@
   "LOADOUT-WALLOP.cardText": "준 방어되지 않은 피해만큼 [gold]방어도[/gold]를 얻습니다.",
   "LOADOUT-AUTOPLAY.title": "자동 사용",
   "LOADOUT-AUTOPLAY.description": "뽑을 때 자동으로 사용됩니다.",
+  "LOADOUT-BLANK_SLATE.title": "백지",
+  "LOADOUT-BLANK_SLATE.description": "이 카드의 기본 설명과 원래 사용 효과를 제거합니다. 키워드와 부가 효과로 추가된 효과는 계속 적용됩니다.",
   "LOADOUT-BASIC_DAMAGE.title": "피해",
   "LOADOUT-BASIC_DAMAGE.description": "선택한 생명체에게 피해를 줍니다.",
   "LOADOUT-BASIC_DAMAGE.cardText": "피해를 {LoadoutBasicDamage:diff()} 줍니다.",

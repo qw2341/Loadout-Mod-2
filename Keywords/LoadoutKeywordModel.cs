@@ -77,9 +77,22 @@ public abstract class LoadoutKeywordModel
     public bool ShowKeywordHoverTip =>
         Presentation == LoadoutKeywordPresentation.Normal;
 
+    public virtual bool TransformsBaseDescription => false;
+
+    public virtual int BaseDescriptionPriority => 0;
+
+    public virtual string TransformBaseDescription(
+        CardModel card,
+        string description)
+    {
+        return description;
+    }
+
     public virtual bool HasOnPlayEffect => false;
 
     public virtual int OnPlayPriority => 0;
+
+    public virtual bool SuppressesOriginalOnPlay => false;
 
     public virtual bool HasUnblockedDamageEffect => false;
 

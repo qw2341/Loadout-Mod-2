@@ -14,6 +14,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
+using Loadout.Patches;
 using Loadout.Services.CardModification;
 using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Commands;
@@ -63,7 +64,7 @@ internal static class LoadoutKeywordRuntimePatches
     public static bool InevitableEnabled { get; private set; }
     public static bool LividEnabled { get; private set; }
     public static bool DescriptionKeywordsEnabled { get; private set; }
-    private static bool DescriptionKeywordPostOnPlayEnabled { get; set; }
+    private static bool DescriptionKeywordOnPlayEnabled { get; set; }
     private static bool CardResultLocationEnabled { get; set; }
     private static bool PostOnPlayEnabled { get; set; }
     private static bool TurnEndInHandEnabled { get; set; }
@@ -178,8 +179,8 @@ internal static class LoadoutKeywordRuntimePatches
         SetLividEnabled(required.Livid);
         SetDescriptionKeywordsEnabled(
             RunKeywordPatchesPrepared || required.DescriptionKeywords);
-        SetDescriptionKeywordPostOnPlayEnabled(
-            required.DescriptionKeywordPostOnPlay);
+        SetDescriptionKeywordOnPlayEnabled(
+            required.DescriptionKeywordOnPlay);
         SetTurnEndInHandEnabled(required.TurnEndInHand);
         SetPlayRestrictionEnabled(required.PlayRestriction);
     }
@@ -194,7 +195,7 @@ internal static class LoadoutKeywordRuntimePatches
         SetLividEnabled(false);
         RunKeywordPatchesPrepared = false;
         SetDescriptionKeywordsEnabled(false);
-        SetDescriptionKeywordPostOnPlayEnabled(false);
+        SetDescriptionKeywordOnPlayEnabled(false);
         SetTurnEndInHandEnabled(false);
         SetPlayRestrictionEnabled(false);
     }
@@ -279,7 +280,8 @@ internal static class LoadoutKeywordRuntimePatches
                     continue;
 
                 state.DescriptionKeywords = true;
-                state.DescriptionKeywordPostOnPlay |= model.HasOnPlayEffect;
+                state.DescriptionKeywordOnPlay |=
+                    model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
                 state.TurnEndInHand |= model.HasTurnEndInHandEffect;
                 state.PlayRestriction |= model.HasPlayRestriction;
             }
@@ -298,7 +300,8 @@ internal static class LoadoutKeywordRuntimePatches
                 continue;
 
             state.DescriptionKeywords = true;
-            state.DescriptionKeywordPostOnPlay |= model.HasOnPlayEffect;
+            state.DescriptionKeywordOnPlay |=
+                model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
             state.PlayRestriction |= model.HasPlayRestriction;
         }
@@ -317,7 +320,8 @@ internal static class LoadoutKeywordRuntimePatches
                 continue;
 
             anyEnabled = true;
-            anyOnPlayEnabled |= model.HasOnPlayEffect;
+            anyOnPlayEnabled |=
+                model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             anyTurnEndInHandEnabled |= model.HasTurnEndInHandEffect;
             anyPlayRestrictionEnabled |= model.HasPlayRestriction;
         }
@@ -325,7 +329,7 @@ internal static class LoadoutKeywordRuntimePatches
         if (anyEnabled)
             SetDescriptionKeywordsEnabled(true);
         if (anyOnPlayEnabled)
-            SetDescriptionKeywordPostOnPlayEnabled(true);
+            SetDescriptionKeywordOnPlayEnabled(true);
         if (anyTurnEndInHandEnabled)
             SetTurnEndInHandEnabled(true);
         if (anyPlayRestrictionEnabled)
@@ -518,11 +522,20 @@ internal static class LoadoutKeywordRuntimePatches
             DescriptionKeywordHarmonyId,
             () =>
         {
+            LocStringModificationDispatcher.EnsureInstalled();
+            MethodBase descriptionTarget =
+                LoadoutKeywordModel.GetDescriptionTarget();
             DescriptionKeywordHarmony.Patch(
-                LoadoutKeywordModel.GetDescriptionTarget(),
+                descriptionTarget,
+                prefix: new HarmonyMethod(
+                    typeof(LoadoutDescriptionKeywordPatch),
+                    nameof(LoadoutDescriptionKeywordPatch.Prefix)),
                 postfix: new HarmonyMethod(
                     typeof(LoadoutDescriptionKeywordPatch),
-                    nameof(LoadoutDescriptionKeywordPatch.Postfix)));
+                    nameof(LoadoutDescriptionKeywordPatch.Postfix)),
+                finalizer: new HarmonyMethod(
+                    typeof(LoadoutDescriptionKeywordPatch),
+                    nameof(LoadoutDescriptionKeywordPatch.Finalizer)));
             DescriptionKeywordHarmony.Patch(
                 AccessTools.PropertyGetter(
                     typeof(CardModel),
@@ -557,12 +570,12 @@ internal static class LoadoutKeywordRuntimePatches
         }, () => DescriptionKeywordsEnabled = true);
     }
 
-    private static void SetDescriptionKeywordPostOnPlayEnabled(bool enabled)
+    private static void SetDescriptionKeywordOnPlayEnabled(bool enabled)
     {
-        if (enabled == DescriptionKeywordPostOnPlayEnabled)
+        if (enabled == DescriptionKeywordOnPlayEnabled)
             return;
 
-        DescriptionKeywordPostOnPlayEnabled = enabled;
+        DescriptionKeywordOnPlayEnabled = enabled;
         RefreshPostOnPlayPatch();
     }
 
@@ -670,7 +683,7 @@ internal static class LoadoutKeywordRuntimePatches
     private static void RefreshPostOnPlayPatch()
     {
         bool enabled =
-            LividEnabled || DescriptionKeywordPostOnPlayEnabled;
+            LividEnabled || DescriptionKeywordOnPlayEnabled;
         if (enabled == PostOnPlayEnabled)
             return;
 
@@ -748,7 +761,7 @@ internal static class LoadoutKeywordRuntimePatches
         public bool Inevitable;
         public bool Livid;
         public bool DescriptionKeywords;
-        public bool DescriptionKeywordPostOnPlay;
+        public bool DescriptionKeywordOnPlay;
         public bool TurnEndInHand;
         public bool PlayRestriction;
         public readonly bool All =>
@@ -759,7 +772,7 @@ internal static class LoadoutKeywordRuntimePatches
             && Inevitable
             && Livid
             && DescriptionKeywords
-            && DescriptionKeywordPostOnPlay
+            && DescriptionKeywordOnPlay
             && TurnEndInHand
             && PlayRestriction;
     }

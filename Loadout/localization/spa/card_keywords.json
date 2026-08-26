@@ -46,6 +46,8 @@
   "LOADOUT-WALLOP.cardText": "Obtén [gold]Bloqueo[/gold] igual al daño no bloqueado infligido.",
   "LOADOUT-AUTOPLAY.title": "Juego automático",
   "LOADOUT-AUTOPLAY.description": "Se juega automáticamente al robarse.",
+  "LOADOUT-BLANK_SLATE.title": "Lienzo en blanco",
+  "LOADOUT-BLANK_SLATE.description": "Elimina la descripción base y el efecto original al jugar esta carta. Los efectos añadidos por palabras clave y accesorios se siguen aplicando.",
   "LOADOUT-BASIC_DAMAGE.title": "Daño",
   "LOADOUT-BASIC_DAMAGE.description": "Inflige daño a la criatura seleccionada.",
   "LOADOUT-BASIC_DAMAGE.cardText": "Inflige {LoadoutBasicDamage:diff()} de daño.",

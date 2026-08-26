@@ -23,6 +23,7 @@ public static class LoadoutKeywords
     public const string LifestealKey = "Lifesteal";
     public const string WallopKey = "Wallop";
     public const string AutoplayKey = "Autoplay";
+    public const string BlankSlateKey = "BlankSlate";
     public const string BasicDamageKey = "BasicDamage";
     public const string BasicDamageAoeKey = "BasicDamageAoe";
     public const string BasicMultiHitKey = "BasicMultiHit";
@@ -115,6 +116,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("AUTOPLAY"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Autoplay;
+
+    [CustomEnum("BLANK_SLATE")]
+    public static CardKeyword BlankSlate;
 
     [CustomEnum("BASIC_DAMAGE")]
     public static CardKeyword BasicDamage;

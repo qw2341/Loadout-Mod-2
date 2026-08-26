@@ -46,6 +46,8 @@
   "LOADOUT-WALLOP.cardText": "获得等同于造成的未被格挡伤害的[gold]格挡[/gold]。",
   "LOADOUT-AUTOPLAY.title": "自动打出",
   "LOADOUT-AUTOPLAY.description": "抽到时自动打出。",
+  "LOADOUT-BLANK_SLATE.title": "白板",
+  "LOADOUT-BLANK_SLATE.description": "移除此牌的基础描述和原始打出效果。由关键词和附加效果添加的效果仍会生效。",
   "LOADOUT-BASIC_DAMAGE.title": "伤害",
   "LOADOUT-BASIC_DAMAGE.description": "对选中的生物造成伤害。",
   "LOADOUT-BASIC_DAMAGE.cardText": "造成{LoadoutBasicDamage:diff()}点伤害。",

@@ -46,6 +46,8 @@
   "LOADOUT-WALLOP.cardText": "与えたブロックされなかったダメージと同じ値の[gold]ブロック[/gold]を得る。",
   "LOADOUT-AUTOPLAY.title": "自動プレイ",
   "LOADOUT-AUTOPLAY.description": "引いたとき、自動的にプレイされる。",
+  "LOADOUT-BLANK_SLATE.title": "白紙",
+  "LOADOUT-BLANK_SLATE.description": "このカードの元の説明文とプレイ時効果を取り除く。キーワードや付与効果によって追加された効果は引き続き適用される。",
   "LOADOUT-BASIC_DAMAGE.title": "ダメージ",
   "LOADOUT-BASIC_DAMAGE.description": "選択したクリーチャーにダメージを与える。",
   "LOADOUT-BASIC_DAMAGE.cardText": "{LoadoutBasicDamage:diff()}ダメージを与える。",
