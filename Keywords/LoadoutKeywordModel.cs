@@ -105,6 +105,10 @@ public abstract class LoadoutKeywordModel
 
     public virtual bool SuppressesOriginalOnPlay => false;
 
+    public virtual bool SuppressesOriginalIsPlayable => false;
+
+    public virtual bool SuppressesOriginalShouldGlowGold => false;
+
     public virtual bool HasUnblockedDamageEffect => false;
 
     public virtual bool HasFatalEffect => false;

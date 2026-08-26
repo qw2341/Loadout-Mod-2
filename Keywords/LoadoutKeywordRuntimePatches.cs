@@ -308,7 +308,7 @@ internal static class LoadoutKeywordRuntimePatches
             state.DescriptionKeywordOnPlay |=
                 model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
-            state.PlayRestriction |= model.HasPlayRestriction;
+            state.PlayRestriction |= RequiresCardLogicPatch(model);
         }
     }
 
@@ -331,7 +331,7 @@ internal static class LoadoutKeywordRuntimePatches
                 state.DescriptionKeywordOnPlay |=
                     model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
                 state.TurnEndInHand |= model.HasTurnEndInHandEffect;
-                state.PlayRestriction |= model.HasPlayRestriction;
+                state.PlayRestriction |= RequiresCardLogicPatch(model);
             }
             if (state.All)
                 return;
@@ -351,7 +351,7 @@ internal static class LoadoutKeywordRuntimePatches
             state.DescriptionKeywordOnPlay |=
                 model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
-            state.PlayRestriction |= model.HasPlayRestriction;
+            state.PlayRestriction |= RequiresCardLogicPatch(model);
         }
     }
 
@@ -371,7 +371,7 @@ internal static class LoadoutKeywordRuntimePatches
             anyOnPlayEnabled |=
                 model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             anyTurnEndInHandEnabled |= model.HasTurnEndInHandEffect;
-            anyPlayRestrictionEnabled |= model.HasPlayRestriction;
+            anyPlayRestrictionEnabled |= RequiresCardLogicPatch(model);
         }
 
         if (anyEnabled)
@@ -386,6 +386,11 @@ internal static class LoadoutKeywordRuntimePatches
 
     private static bool IsEnabled(CardModificationDelta delta, string key) =>
         IsEnabled(delta.KeywordOverrides, key);
+
+    private static bool RequiresCardLogicPatch(LoadoutKeywordModel model) =>
+        model.HasPlayRestriction
+        || model.SuppressesOriginalIsPlayable
+        || model.SuppressesOriginalShouldGlowGold;
 
     private static bool IsEnabled(IReadOnlyDictionary<string, bool> overrides, string key) =>
         overrides.TryGetValue(key, out bool enabled) && enabled;
@@ -683,6 +688,9 @@ internal static class LoadoutKeywordRuntimePatches
 
         TryEnable(PlayRestrictionHarmony, PlayRestrictionHarmonyId, () =>
         {
+            HarmonyMethod isPlayablePrefix = new(
+                typeof(BlankSlateCardLogicPatch),
+                nameof(BlankSlateCardLogicPatch.IsPlayablePrefix));
             HarmonyMethod isPlayablePostfix = new(
                 typeof(RestrictiveIsPlayablePatch),
                 nameof(RestrictiveIsPlayablePatch.Postfix));
@@ -691,7 +699,19 @@ internal static class LoadoutKeywordRuntimePatches
             {
                 PlayRestrictionHarmony.Patch(
                     target,
+                    prefix: isPlayablePrefix,
                     postfix: isPlayablePostfix);
+            }
+
+            HarmonyMethod shouldGlowGoldPrefix = new(
+                typeof(BlankSlateCardLogicPatch),
+                nameof(BlankSlateCardLogicPatch.ShouldGlowGoldPrefix));
+            foreach (MethodBase target in
+                     BlankSlateCardLogicPatch.ShouldGlowGoldTargets())
+            {
+                PlayRestrictionHarmony.Patch(
+                    target,
+                    prefix: shouldGlowGoldPrefix);
             }
 
             HarmonyMethod enthralledPostfix = new(

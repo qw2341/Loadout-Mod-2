@@ -119,6 +119,18 @@ public static class LoadoutKeywordRegistry
             .ToArray();
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
+        OriginalIsPlayableSuppressorModels =
+        Models
+            .Where(model => model.SuppressesOriginalIsPlayable)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        OriginalShouldGlowGoldSuppressorModels =
+        Models
+            .Where(model => model.SuppressesOriginalShouldGlowGold)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
         UnblockedDamageModels =
         Models
             .Where(model => model.HasUnblockedDamageEffect)
@@ -241,6 +253,30 @@ public static class LoadoutKeywordRegistry
     public static bool SuppressesOriginalOnPlay(CardModel card)
     {
         foreach (LoadoutKeywordModel model in OriginalOnPlaySuppressorModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool SuppressesOriginalIsPlayable(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in
+                 OriginalIsPlayableSuppressorModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool SuppressesOriginalShouldGlowGold(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in
+                 OriginalShouldGlowGoldSuppressorModels)
         {
             if (model.IsEnabled(card))
                 return true;
