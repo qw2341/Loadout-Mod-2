@@ -469,6 +469,7 @@ public static class LoadoutImmediateMutationService
 
     public static bool RequestTildeSetStat(string statId, int value, LoadoutTargetSelection target)
     {
+        target = NormalizeTildeStatTarget(statId, target);
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.TildeStatSet,
@@ -481,6 +482,7 @@ public static class LoadoutImmediateMutationService
 
     public static bool RequestTildeSetLock(string statId, int value, bool locked, LoadoutTargetSelection target)
     {
+        target = NormalizeTildeStatTarget(statId, target);
         return Request(new LoadoutImmediateMutationPayload
         {
             Kind = LoadoutImmediateMutationKind.TildeStatLock,
@@ -2347,12 +2349,39 @@ public static class LoadoutImmediateMutationService
 
     private static LoadoutImmediateMutationPayload HardenClientPayload(LoadoutImmediateMutationPayload payload, ulong hostNetId)
     {
+        if ((payload.Kind is LoadoutImmediateMutationKind.TildeStatSet or LoadoutImmediateMutationKind.TildeStatLock)
+            && TildeKeyStateService.IsGlobalStatId(GetTildeStatId(payload.TildePayloadJson)))
+        {
+            payload.Target = new LoadoutTargetSelection(LoadoutTargetScope.AllPlayers);
+        }
+
         if (payload.RequesterNetId == hostNetId)
             return payload;
 
         if (!AllowsGuestSelectedTarget(payload.Kind))
             payload.Target = LoadoutTargetSelection.ForPlayer(payload.RequesterNetId);
         return payload;
+    }
+
+    private static LoadoutTargetSelection NormalizeTildeStatTarget(
+        string statId,
+        LoadoutTargetSelection target)
+    {
+        return TildeKeyStateService.IsGlobalStatId(statId)
+            ? new LoadoutTargetSelection(LoadoutTargetScope.AllPlayers)
+            : target;
+    }
+
+    private static string GetTildeStatId(string payloadJson)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<TildeKeyMutationPayload>(payloadJson)?.StatId ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     private static bool AllowsGuestSelectedTarget(LoadoutImmediateMutationKind kind)

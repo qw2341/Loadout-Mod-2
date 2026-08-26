@@ -692,6 +692,16 @@ public static class TildeKeyStateService
         }
 
         EnsureLoaded();
+        if (IsGlobalStatId(definition.Id))
+        {
+            bool globalValueChanged = UpdateSavedValueAfterSet(0, definition.Id, value);
+            ApplyStat(definition, requester, value);
+            if (globalValueChanged)
+                SaveRunState();
+            RaiseStateChanged();
+            return;
+        }
+
         IReadOnlyList<Player> players = ResolveTargetPlayers(target, requester);
         bool savedValueChanged = false;
         foreach (Player player in players)
@@ -764,6 +774,16 @@ public static class TildeKeyStateService
         }
 
         EnsureLoaded();
+        if (IsGlobalStatId(definition.Id))
+        {
+            SetSavedLockState(0, definition.Id, value, payload.Enabled);
+            if (payload.Enabled)
+                ApplyStat(definition, requester, value);
+            SaveRunState();
+            RaiseStateChanged();
+            return;
+        }
+
         IReadOnlyList<Player> players = ResolveTargetPlayers(target, requester);
         foreach (Player player in players)
         {
@@ -2174,7 +2194,7 @@ public static class TildeKeyStateService
         EnsureLoaded();
         lock (SyncRoot)
         {
-            if (IsGlobalStat(statId) && _run.GlobalStats.TryGetValue(statId, out TildeKeySavedStat? global))
+            if (IsGlobalStatId(statId) && _run.GlobalStats.TryGetValue(statId, out TildeKeySavedStat? global))
             {
                 saved = global;
                 return true;
@@ -2198,7 +2218,7 @@ public static class TildeKeyStateService
         bool changed = false;
         lock (SyncRoot)
         {
-            if (IsGlobalStat(statId))
+            if (IsGlobalStatId(statId))
             {
                 if (_run.GlobalStats.TryGetValue(statId, out TildeKeySavedStat? global))
                 {
@@ -2244,7 +2264,7 @@ public static class TildeKeyStateService
     {
         lock (SyncRoot)
         {
-            if (IsGlobalStat(statId))
+            if (IsGlobalStatId(statId))
             {
                 _run.GlobalStats[statId] = new TildeKeySavedStat { Value = value, Locked = locked };
                 return;
@@ -2274,7 +2294,7 @@ public static class TildeKeyStateService
                || string.Equals(statId, EnemyDamageMultiplierStatId, StringComparison.Ordinal);
     }
 
-    private static bool IsGlobalStat(string statId)
+    public static bool IsGlobalStatId(string statId)
     {
         return string.Equals(statId, MonsterHealthMultiplierStatId, StringComparison.Ordinal);
     }
@@ -2575,7 +2595,7 @@ public static class TildeKeyStateService
 
         foreach ((string key, TildeKeySavedStat? value) in stats)
         {
-            if (!IsGlobalStat(key) || value is null)
+            if (!IsGlobalStatId(key) || value is null)
                 continue;
 
             normalized[key] = new TildeKeySavedStat
