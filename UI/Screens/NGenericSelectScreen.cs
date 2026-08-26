@@ -1924,7 +1924,8 @@ public partial class NGenericSelectScreen : Control
         bool showSelectionChrome = true,
         bool useCustomRunBackdrop = false,
         Action<string, int>? selectionAmountChanged = null,
-        bool allowCancellation = true)
+        bool allowCancellation = true,
+        IReadOnlyCollection<string>? visibleCustomSidebarControlNames = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (_reusedSelectionSession is not null)
@@ -1940,7 +1941,8 @@ public partial class NGenericSelectScreen : Control
             showSelectionChrome,
             useCustomRunBackdrop,
             selectionAmountChanged,
-            allowCancellation);
+            allowCancellation,
+            visibleCustomSidebarControlNames);
         _reusedSelectionSession = session;
         _options = options;
         _selectedAmounts.Clear();
@@ -4343,7 +4345,21 @@ public partial class NGenericSelectScreen : Control
         if (_bottomActionButtonsContainer is not null)
             _bottomActionButtonsContainer.Visible = visible;
         if (_customControlsContainer is not null)
-            _customControlsContainer.Visible = visible;
+        {
+            IReadOnlySet<string>? visibleControlNames =
+                _reusedSelectionSession?.VisibleCustomSidebarControlNames;
+            bool showSelectedControls = visibleControlNames is { Count: > 0 };
+            _customControlsContainer.Visible = visible || showSelectedControls;
+            if (showSelectedControls)
+            {
+                foreach (Control child in
+                         _customControlsContainer.GetChildren().OfType<Control>())
+                {
+                    child.Visible = visibleControlNames!.Contains(
+                        child.Name.ToString());
+                }
+            }
+        }
         if (_bottomCustomControlsContainer is not null)
             _bottomCustomControlsContainer.Visible = visible;
     }
@@ -4368,7 +4384,8 @@ public partial class NGenericSelectScreen : Control
             bool showSelectionChrome,
             bool useCustomRunBackdrop,
             Action<string, int>? selectionAmountChanged,
-            bool allowCancellation)
+            bool allowCancellation,
+            IReadOnlyCollection<string>? visibleCustomSidebarControlNames)
         {
             _owner = owner;
             _previousOptions = previousOptions;
@@ -4379,10 +4396,25 @@ public partial class NGenericSelectScreen : Control
             AllowSignedAmounts = allowSignedAmounts;
             ShowSelectionChrome = showSelectionChrome;
             AllowCancellation = allowCancellation;
+            VisibleCustomSidebarControlNames =
+                visibleCustomSidebarControlNames is { Count: > 0 }
+                    ? new HashSet<string>(
+                        visibleCustomSidebarControlNames,
+                        StringComparer.Ordinal)
+                    : null;
             CaptureVisibility(owner._actionButtonsContainer);
             CaptureVisibility(owner._bottomActionButtonsContainer);
             CaptureVisibility(owner._customControlsContainer);
             CaptureVisibility(owner._bottomCustomControlsContainer);
+            if (VisibleCustomSidebarControlNames is not null
+                && owner._customControlsContainer is not null)
+            {
+                foreach (Control child in
+                         owner._customControlsContainer.GetChildren().OfType<Control>())
+                {
+                    CaptureVisibility(child);
+                }
+            }
             if (useCustomRunBackdrop)
                 AddCustomRunBlurBackdrop(owner);
         }
@@ -4391,6 +4423,7 @@ public partial class NGenericSelectScreen : Control
         public bool AllowSignedAmounts { get; }
         public bool ShowSelectionChrome { get; }
         public bool AllowCancellation { get; }
+        public IReadOnlySet<string>? VisibleCustomSidebarControlNames { get; }
 
         public void NotifySelectionAmountChanged(string itemId, int amount)
         {

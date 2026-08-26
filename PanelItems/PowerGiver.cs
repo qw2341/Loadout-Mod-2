@@ -28,6 +28,7 @@ public class PowerGiver
 	private static Action<PowerModel> _keywordPickerAccepted;
 	private static bool _keywordPickerActive;
 	private static bool _keywordPickerAcceptScheduled;
+	private static bool _showPowerGiverFavoritesOnly;
 
     public static void Initialize()
     {
@@ -46,7 +47,7 @@ public class PowerGiver
 		var scene = GD.Load<PackedScene>("res://UI/Screens/GenericSelectScreen.tscn");
 		var screen = scene.Instantiate<NGenericSelectScreen>();
 		_powerScreen = screen;
-		bool showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
+		_showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
 		CommonHelpers.LastActionCaptureSession captureSession = null;
 		Dictionary<string, string> powerTitles = new(StringComparer.Ordinal);
 		Dictionary<string, PowerType> powerTypes = new(StringComparer.Ordinal);
@@ -99,18 +100,19 @@ public class PowerGiver
 				screen.IsReusedSelectionActive
 					? state.SelectionAmount
 					: PowerGiverStateService.GetCounter(PowerId(power)),
-				PowerGiverStateService.IsFavorite(PowerId(power)) && !showPowerGiverFavoritesOnly,
+				PowerGiverStateService.IsFavorite(PowerId(power))
+				&& !_showPowerGiverFavoritesOnly,
 				GetPowerTitle(power)),
 			UpdateView = (power, view, state) => UpdatePowerGridItem(
 				view,
 				power,
-				showPowerGiverFavoritesOnly,
+				_showPowerGiverFavoritesOnly,
 				screen.IsReusedSelectionActive ? state.SelectionAmount : int.MinValue),
 			BindActivationWithCleanup = (power, view, _) => BindPowerGiverActivationWithCleanup(
 				screen,
 				power,
 				view,
-				() => showPowerGiverFavoritesOnly,
+				() => _showPowerGiverFavoritesOnly,
 				entry => captureSession?.Add([entry]))
 		};
 
@@ -118,7 +120,7 @@ public class PowerGiver
 		{
 			PowerGiverStateService.EnsureLoaded();
 			if (resetFavoriteMode)
-				showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
+				_showPowerGiverFavoritesOnly = PowerGiverStateService.HasFavorites();
 
 			powerTitles.Clear();
 			powerTypes.Clear();
@@ -131,7 +133,7 @@ public class PowerGiver
 				builder.Layout(5, PowerButtonSize, 24, 24, fixedSlots: false);
 				builder.ActionButton("clear_current_buffs", LocMan.Loc("POWER_GIVER_CLEAR_CURRENT_BUFFS", "Clear Current Buffs"), _ => HandleClearCurrentPowers(PowerType.Buff));
 				builder.ActionButton("clear_current_debuffs", LocMan.Loc("POWER_GIVER_CLEAR_CURRENT_DEBUFFS", "Clear Current Debuffs"), _ => HandleClearCurrentPowers(PowerType.Debuff));
-				builder.CustomVisibilityPredicate(power => !showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
+				builder.CustomVisibilityPredicate(power => !_showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power)));
 				builder.FilterGroup("type", LocMan.Loc("FILTER_GROUP_TYPE", "Type"));
 				builder.Filter("buff", LocMan.Loc("POWER_TYPE_BUFF", "Buff"), power => GetPowerType(power) == PowerType.Buff, "type");
 				builder.Filter("debuff", LocMan.Loc("POWER_TYPE_DEBUFF", "Debuff"), power => GetPowerType(power) == PowerType.Debuff, "type");
@@ -148,8 +150,8 @@ public class PowerGiver
 			target.SetHiddenPrewarmAllItems(true);
 			AddPowerGiverSidebarDropdowns(
 				target,
-				() => showPowerGiverFavoritesOnly,
-				value => showPowerGiverFavoritesOnly = value);
+				() => _showPowerGiverFavoritesOnly,
+				value => _showPowerGiverFavoritesOnly = value);
 		}
 
 		void RefreshPowerGiverScreenForOpen(NGenericSelectScreen target)
@@ -163,9 +165,9 @@ public class PowerGiver
 			PowerGiverStateService.EnsureLoaded();
 			target.SetCustomVisibilityPredicate(item =>
 				item.UntypedModel is PowerModel power
-				&& (!showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power))));
+				&& (!_showPowerGiverFavoritesOnly || PowerGiverStateService.IsFavorite(PowerId(power))));
 			target.GetNodeOrNull<NLoadoutDropdown>("Sidebar/MarginContainer/TopVBox/CustomControls/PowerGiverFavoritesDropdown")
-				?.SetSelectedItem(showPowerGiverFavoritesOnly ? CommonHelpers.FavoriteModeFavoritesKey : CommonHelpers.FavoriteModeAllKey);
+				?.SetSelectedItem(_showPowerGiverFavoritesOnly ? CommonHelpers.FavoriteModeFavoritesKey : CommonHelpers.FavoriteModeAllKey);
 			AddPowerGiverTargetDropdown(target);
 			target.RefreshNow(resetScroll: true);
 			target.RefreshCurrentItemStates();
@@ -455,14 +457,6 @@ public class PowerGiver
 			if (mouseButton.ButtonIndex != MouseButton.Left && mouseButton.ButtonIndex != MouseButton.Right)
 				return;
 
-			if (_keywordPickerActive)
-			{
-				if (mouseButton.ButtonIndex == MouseButton.Left)
-					ScheduleKeywordPowerPickerAccept(power);
-				view.AcceptEvent();
-				return;
-			}
-
 			if (mouseButton.AltPressed || Input.IsKeyPressed(Key.Alt))
 			{
 				PowerGiverStateService.ToggleFavorite(powerId);
@@ -470,6 +464,14 @@ public class PowerGiver
 					screen.RefreshLayout(resetScroll: false, updateExistingViews: false);
 				else
 					screen.RefreshItemView(powerId);
+				view.AcceptEvent();
+				return;
+			}
+
+			if (_keywordPickerActive)
+			{
+				if (mouseButton.ButtonIndex == MouseButton.Left)
+					ScheduleKeywordPowerPickerAccept(power);
 				view.AcceptEvent();
 				return;
 			}
@@ -563,6 +565,9 @@ public class PowerGiver
 
 		try
 		{
+			_keywordPickerAccepted = accepted;
+			_keywordPickerActive = true;
+			_keywordPickerAcceptScheduled = false;
 			_keywordPickerLease = screen.BeginReusedSelection(
 				new SelectScreenOptions
 				{
@@ -572,12 +577,21 @@ public class PowerGiver
 					MaxCopiesPerItem = 1
 				},
 				new Dictionary<string, int>(StringComparer.Ordinal),
-				visibilityPredicateOverride: _ => true,
+				visibilityPredicateOverride: item =>
+					item.UntypedModel is PowerModel power
+					&& (!_showPowerGiverFavoritesOnly
+					    || PowerGiverStateService.IsFavorite(PowerId(power))),
 				showSelectionChrome: false,
-				allowCancellation: true);
-			_keywordPickerAccepted = accepted;
-			_keywordPickerActive = true;
-			_keywordPickerAcceptScheduled = false;
+				allowCancellation: true,
+				visibleCustomSidebarControlNames:
+				[
+					"PowerGiverFavoritesDropdown"
+				]);
+			screen.GetNodeOrNull<NLoadoutDropdown>(
+					"Sidebar/MarginContainer/TopVBox/CustomControls/PowerGiverFavoritesDropdown")
+				?.SetSelectedItem(_showPowerGiverFavoritesOnly
+					? CommonHelpers.FavoriteModeFavoritesKey
+					: CommonHelpers.FavoriteModeAllKey);
 			root.OpenScreen(screen);
 			return true;
 		}
