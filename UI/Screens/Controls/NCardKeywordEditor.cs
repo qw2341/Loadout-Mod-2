@@ -445,11 +445,14 @@ public partial class NCardKeywordEditor : VBoxContainer
         IReadOnlyList<CatalogEntry> entries,
         float gridWidth)
     {
-        int rowCount = (entries.Count + Columns - 1) / Columns;
-        float toggleWidth = (gridWidth - 8f) / Columns;
+        int columns = GetColumnCount(entries);
+        int rowCount = (entries.Count + columns - 1) / columns;
+        float toggleWidth = columns == 1
+            ? gridWidth
+            : (gridWidth - 8f) / columns;
         GridContainer grid = new()
         {
-            Columns = Columns,
+            Columns = columns,
             CustomMinimumSize = new Vector2(
                 gridWidth,
                 GetGridHeight(rowCount)),
@@ -691,11 +694,21 @@ public partial class NCardKeywordEditor : VBoxContainer
 
     private static float GetBlockHeight(ContentBlock block)
     {
-        int rows = (block.Entries.Count + Columns - 1) / Columns;
+        int columns = GetColumnCount(block.Entries);
+        int rows = (block.Entries.Count + columns - 1) / columns;
         float height = GetGridHeight(rows);
         if (block.Header is not null)
             height += GroupHeaderHeight + HeaderGridGap;
         return height;
+    }
+
+    private static int GetColumnCount(IReadOnlyList<CatalogEntry> entries)
+    {
+        return entries.Count > 0
+               && entries.All(entry =>
+                   entry.EditorSection == LoadoutKeywordEditorSection.Power)
+            ? 1
+            : Columns;
     }
 
     private static float GetGridHeight(int rows)
