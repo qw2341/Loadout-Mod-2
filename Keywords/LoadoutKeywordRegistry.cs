@@ -14,6 +14,8 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
+using Loadout.PanelItems;
+using Loadout.Services.CardModification;
 
 public static class LoadoutKeywordRegistry
 {
@@ -49,6 +51,10 @@ public static class LoadoutKeywordRegistry
         BasicEnergyKeyword.Instance,
         BasicStarsKeyword.Instance,
         ApplyPowerKeyword.Instance,
+        ApplySelfKeyword.Instance,
+        ApplyToAllEnemiesKeyword.Instance,
+        ApplyToAllPlayersKeyword.Instance,
+        ApplyToAnotherPlayerKeyword.Instance,
         DiscardHandKeyword.Instance,
         NoDrawKeyword.Instance,
         InHandLoseHealthKeyword.Instance,
@@ -382,7 +388,7 @@ public static class LoadoutKeywordRegistry
         return string.Join('\n', lines);
     }
 
-    public static IEnumerable<IHoverTip> RemoveDescriptionKeywordHoverTips(
+    public static IEnumerable<IHoverTip> AdjustDescriptionKeywordHoverTips(
         CardModel card,
         IEnumerable<IHoverTip> hoverTips)
     {
@@ -398,9 +404,34 @@ public static class LoadoutKeywordRegistry
             excludedIds.Add(HoverTipFactory.FromKeyword(model.Keyword).Id);
         }
 
-        return excludedIds is null
+        List<IHoverTip> result = (excludedIds is null
             ? hoverTips
-            : hoverTips.Where(tip => !excludedIds.Contains(tip.Id));
+            : hoverTips.Where(tip => !excludedIds.Contains(tip.Id)))
+            .ToList();
+
+        HashSet<string> addedPowerIds = new(StringComparer.Ordinal);
+        foreach (LoadoutPowerKeywordModel model in
+                 Models.OfType<LoadoutPowerKeywordModel>())
+        {
+            foreach (LoadoutPowerKeywordEntry entry in
+                     LoadoutPowerKeywordState.GetEffectiveEntries(
+                         card,
+                         model.StorageKey))
+            {
+                if (!addedPowerIds.Add(entry.PowerId)
+                    || !LoadoutPowerKeywordState.TryResolvePower(
+                        entry.PowerId,
+                        out PowerModel power))
+                {
+                    continue;
+                }
+
+                result.AddRange(
+                    PowerGiver.CreateSafePowerHoverTips(power, null));
+            }
+        }
+
+        return result;
     }
 
     private static Dictionary<string, DynamicVar> GetMutableVariables(DynamicVarSet dynamicVars)
@@ -450,7 +481,7 @@ public static class LoadoutDescriptionKeywordHoverTipsPatch
         CardModel __instance,
         ref IEnumerable<IHoverTip> __result)
     {
-        __result = LoadoutKeywordRegistry.RemoveDescriptionKeywordHoverTips(
+        __result = LoadoutKeywordRegistry.AdjustDescriptionKeywordHoverTips(
             __instance,
             __result);
     }

@@ -167,5 +167,17 @@
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "[gold]敏捷[/gold]{LoadoutRestrictiveDexterityLoss:inverseDiff()}を失う。",
   "LOADOUT-APPLY_POWER.title": "パワー付与",
   "LOADOUT-APPLY_POWER.description": "選択したクリーチャーに設定済みのパワーを付与する。",
-  "LOADOUT-APPLY_POWER.cardText": "{LoadoutApplyPowerList}を付与する。"
+  "LOADOUT-APPLY_POWER.cardText": "{LoadoutApplyPowerList}を付与する。",
+  "LOADOUT-APPLY_SELF.title": "自身に付与",
+  "LOADOUT-APPLY_SELF.description": "自身に設定済みのパワーを付与する。",
+  "LOADOUT-APPLY_SELF.cardText": "{LoadoutApplySelfList}を得る。",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.title": "すべての敵に付与",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.description": "すべての敵に設定済みのパワーを付与する。",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.cardText": "すべての敵に{LoadoutApplyToAllEnemiesList}を付与する。",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.title": "すべてのプレイヤーに付与",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.description": "すべてのプレイヤーに設定済みのパワーを付与する。",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.cardText": "すべてのプレイヤーに{LoadoutApplyToAllPlayersList}を付与する。",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.title": "他のプレイヤーに付与",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.description": "他のプレイヤーに設定済みのパワーを付与する。",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "他のプレイヤーに{LoadoutApplyToAnotherPlayerList}を付与する。"
 }

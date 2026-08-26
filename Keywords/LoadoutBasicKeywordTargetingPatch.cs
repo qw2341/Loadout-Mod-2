@@ -23,6 +23,14 @@ internal static class LoadoutBasicKeywordTargetTypePatch
         if (!LoadoutKeywordRegistry.ChangesTargeting(__instance))
             return;
 
+        if (LoadoutPowerKeywordState.HasEffectiveEntries(
+                __instance,
+                LoadoutKeywords.ApplyToAnotherPlayerKey))
+        {
+            __result = TargetType.AnyAlly;
+            return;
+        }
+
         if (__result == TargetType.Self)
         {
             __result = CustomTargetType.Anyone;

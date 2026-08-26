@@ -167,5 +167,17 @@
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "[gold]민첩[/gold]을 {LoadoutRestrictiveDexterityLoss:inverseDiff()} 잃습니다.",
   "LOADOUT-APPLY_POWER.title": "능력 부여",
   "LOADOUT-APPLY_POWER.description": "선택한 생명체에게 설정된 능력을 부여합니다.",
-  "LOADOUT-APPLY_POWER.cardText": "{LoadoutApplyPowerList}을 부여합니다."
+  "LOADOUT-APPLY_POWER.cardText": "{LoadoutApplyPowerList}을 부여합니다.",
+  "LOADOUT-APPLY_SELF.title": "자신에게 부여",
+  "LOADOUT-APPLY_SELF.description": "자신에게 설정된 능력을 부여합니다.",
+  "LOADOUT-APPLY_SELF.cardText": "{LoadoutApplySelfList}을 얻습니다.",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.title": "모든 적에게 부여",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.description": "모든 적에게 설정된 능력을 부여합니다.",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.cardText": "모든 적에게 {LoadoutApplyToAllEnemiesList}을 부여합니다.",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.title": "모든 플레이어에게 부여",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.description": "모든 플레이어에게 설정된 능력을 부여합니다.",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.cardText": "모든 플레이어에게 {LoadoutApplyToAllPlayersList}을 부여합니다.",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.title": "다른 플레이어에게 부여",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.description": "다른 플레이어에게 설정된 능력을 부여합니다.",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "다른 플레이어에게 {LoadoutApplyToAnotherPlayerList}을 부여합니다."
 }

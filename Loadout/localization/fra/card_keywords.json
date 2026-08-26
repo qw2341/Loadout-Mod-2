@@ -167,5 +167,17 @@
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "Perdez {LoadoutRestrictiveDexterityLoss:inverseDiff()} de [gold]Dextérité[/gold].",
   "LOADOUT-APPLY_POWER.title": "Appliquer un pouvoir",
   "LOADOUT-APPLY_POWER.description": "Applique les pouvoirs configurés à la créature sélectionnée.",
-  "LOADOUT-APPLY_POWER.cardText": "Applique {LoadoutApplyPowerList}."
+  "LOADOUT-APPLY_POWER.cardText": "Applique {LoadoutApplyPowerList}.",
+  "LOADOUT-APPLY_SELF.title": "S’appliquer un pouvoir",
+  "LOADOUT-APPLY_SELF.description": "Vous gagnez les pouvoirs configurés.",
+  "LOADOUT-APPLY_SELF.cardText": "Gagnez {LoadoutApplySelfList}.",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.title": "Appliquer à tous les ennemis",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.description": "Applique les pouvoirs configurés à tous les ennemis.",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.cardText": "Applique {LoadoutApplyToAllEnemiesList} à TOUS les ennemis.",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.title": "Appliquer à tous les joueurs",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.description": "Applique les pouvoirs configurés à tous les joueurs.",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.cardText": "Applique {LoadoutApplyToAllPlayersList} à TOUS les joueurs.",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.title": "Appliquer à un autre joueur",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.description": "Applique les pouvoirs configurés à un autre joueur.",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "Applique {LoadoutApplyToAnotherPlayerList} à un autre joueur."
 }

@@ -171,7 +171,7 @@ internal static class CanonicalCardModificationRegistry
         RarityField.SetValue(card, baseline.Rarity);
         KeywordsField.SetValue(card, new HashSet<CardKeyword>(baseline.Keywords));
         LoadoutPowerKeywordState.ClearExplicitState(card);
-        LoadoutPowerKeywordState.Synchronize(card);
+        LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
     }
 
     private static void Apply(CardModel canonical, CanonicalCardBaseline baseline, CardModificationDelta delta)
@@ -209,8 +209,21 @@ internal static class CanonicalCardModificationRegistry
             if (enabled) keywords.Add(keyword);
             else keywords.Remove(keyword);
         }
+
+        LoadoutPowerKeywordState.SetExplicitState(
+            canonical,
+            delta.PowerKeywordEntries,
+            delta.UpgradeModification.PowerKeywordEntries);
+        foreach (LoadoutPowerKeywordModel model in
+                 LoadoutKeywordRegistry.All.OfType<LoadoutPowerKeywordModel>())
+        {
+            if (LoadoutPowerKeywordState.HasEffectiveEntries(canonical, model.StorageKey))
+                keywords.Add(model.Keyword);
+            else
+                keywords.Remove(model.Keyword);
+        }
         KeywordsField.SetValue(canonical, keywords);
-        LoadoutPowerKeywordState.Synchronize(canonical);
+        LoadoutKeywordRegistry.SynchronizeDynamicVars(canonical);
 
         foreach ((string name, decimal difference) in delta.DynamicVarDeltas)
         {

@@ -794,3 +794,15 @@ CARD_MOD_SELECT_POWER,Select Power,选择能力,Sélectionner un pouvoir,パワ�
 CARD_MOD_POWER_PICKER_UNAVAILABLE,The shared power picker is unavailable or already in use.,共享能力选择器不可用或正在使用。,Le sélecteur de pouvoir partagé est indisponible ou déjà utilisé.,共有パワー選択画面は使用できないか使用中です。,공유 능력 선택기를 사용할 수 없거나 사용 중입니다.,El selector de poder compartido no está disponible o ya está en uso.
 CARD_MOD_POWER_PICKER_OPEN_FAILED,Could not open the shared power picker: {0},无法打开共享能力选择器：{0},Impossible d’ouvrir le sélecteur de pouvoir partagé : {0},共有パワー選択画面を開けませんでした：{0},공유 능력 선택기를 열 수 없습니다: {0},No se pudo abrir el selector de poder compartido: {0}
 DYNAMIC_VAR_LOADOUT_APPLY_POWER_LIST,Configured Powers,已配置能力,Pouvoirs configurés,設定済みパワー,설정된 능력,Poderes configurados
+CARD_MOD_APPLY_SELF_AMOUNT,Apply Self Amount,对自身施加数值,Quantité appliquée à soi,自身への付与量,자신에게 부여할 수치,Cantidad aplicada a ti
+CARD_MOD_APPLY_SELF_POWER,Apply Self,对自身施加,S’appliquer un pouvoir,自身に付与,자신에게 부여,Aplicar a ti
+CARD_MOD_APPLY_TO_ALL_ENEMIES_AMOUNT,All Enemies Amount,所有敌人数值,Quantité pour tous les ennemis,すべての敵への付与量,모든 적에게 부여할 수치,Cantidad para todos los enemigos
+CARD_MOD_APPLY_TO_ALL_ENEMIES_POWER,Apply to All Enemies,对所有敌人施加,Appliquer à tous les ennemis,すべての敵に付与,모든 적에게 부여,Aplicar a todos los enemigos
+CARD_MOD_APPLY_TO_ALL_PLAYERS_AMOUNT,All Players Amount,所有玩家数值,Quantité pour tous les joueurs,すべてのプレイヤーへの付与量,모든 플레이어에게 부여할 수치,Cantidad para todos los jugadores
+CARD_MOD_APPLY_TO_ALL_PLAYERS_POWER,Apply to All Players,对所有玩家施加,Appliquer à tous les joueurs,すべてのプレイヤーに付与,모든 플레이어에게 부여,Aplicar a todos los jugadores
+CARD_MOD_APPLY_TO_ANOTHER_PLAYER_AMOUNT,Another Player Amount,另一名玩家数值,Quantité pour un autre joueur,他のプレイヤーへの付与量,다른 플레이어에게 부여할 수치,Cantidad para otro jugador
+CARD_MOD_APPLY_TO_ANOTHER_PLAYER_POWER,Apply to Another Player,对另一名玩家施加,Appliquer à un autre joueur,他のプレイヤーに付与,다른 플레이어에게 부여,Aplicar a otro jugador
+DYNAMIC_VAR_LOADOUT_APPLY_SELF_LIST,Configured Self Powers,已配置自身能力,Pouvoirs personnels configurés,設定済みの自身用パワー,설정된 자신용 능력,Poderes propios configurados
+DYNAMIC_VAR_LOADOUT_APPLY_TO_ALL_ENEMIES_LIST,Configured Enemy Powers,已配置敌人能力,Pouvoirs ennemis configurés,設定済みの敵用パワー,설정된 적 능력,Poderes enemigos configurados
+DYNAMIC_VAR_LOADOUT_APPLY_TO_ALL_PLAYERS_LIST,Configured Player Powers,已配置玩家能力,Pouvoirs de joueurs configurés,設定済みのプレイヤー用パワー,설정된 플레이어 능력,Poderes de jugadores configurados
+DYNAMIC_VAR_LOADOUT_APPLY_TO_ANOTHER_PLAYER_LIST,Configured Other Player Powers,已配置其他玩家能力,Pouvoirs configurés pour un autre joueur,設定済みの他プレイヤー用パワー,설정된 다른 플레이어 능력,Poderes configurados para otro jugador

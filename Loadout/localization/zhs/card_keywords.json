@@ -167,5 +167,17 @@
   "LOADOUT-RESTRICTIVE_LOSE_DEXTERITY.cardText": "失去{LoadoutRestrictiveDexterityLoss:inverseDiff()}点[gold]敏捷[/gold]。",
   "LOADOUT-APPLY_POWER.title": "给予能力",
   "LOADOUT-APPLY_POWER.description": "对选中的生物给予已配置的能力。",
-  "LOADOUT-APPLY_POWER.cardText": "给予{LoadoutApplyPowerList}。"
+  "LOADOUT-APPLY_POWER.cardText": "给予{LoadoutApplyPowerList}。",
+  "LOADOUT-APPLY_SELF.title": "给予自身",
+  "LOADOUT-APPLY_SELF.description": "自身获得已配置的能力。",
+  "LOADOUT-APPLY_SELF.cardText": "获得{LoadoutApplySelfList}。",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.title": "给予所有敌人",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.description": "对所有敌人施加已配置的能力。",
+  "LOADOUT-APPLY_TO_ALL_ENEMIES.cardText": "对所有敌人施加{LoadoutApplyToAllEnemiesList}。",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.title": "给予所有玩家",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.description": "对所有玩家施加已配置的能力。",
+  "LOADOUT-APPLY_TO_ALL_PLAYERS.cardText": "对所有玩家施加{LoadoutApplyToAllPlayersList}。",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.title": "给予另一名玩家",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.description": "对另一名玩家施加已配置的能力。",
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "对另一名玩家施加{LoadoutApplyToAnotherPlayerList}。"
 }

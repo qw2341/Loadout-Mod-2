@@ -1075,25 +1075,32 @@ public partial class NCardModificationScreen : Control
         List<LoadoutPowerKeywordEntry> entries =
             LoadoutPowerKeywordEntry.CloneList(
                 _workingState.PowerKeywordEntries) ?? [];
-        int number = 0;
+        Dictionary<string, int> totals = entries
+            .GroupBy(entry => entry.KeywordKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Count(),
+                StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, int> numbers =
+            new(StringComparer.OrdinalIgnoreCase);
         for (int index = 0; index < entries.Count; index++)
         {
-            if (!string.Equals(
+            if (!LoadoutPowerKeywordState.TryResolveKeywordModel(
                     entries[index].KeywordKey,
-                    LoadoutKeywords.ApplyPowerKey,
-                    StringComparison.OrdinalIgnoreCase))
-            {
+                    out LoadoutPowerKeywordModel model))
                 continue;
-            }
 
-            number++;
+            int number = numbers.GetValueOrDefault(model.StorageKey) + 1;
+            numbers[model.StorageKey] = number;
             int capturedIndex = index;
-            string suffix = entries.Count > 1 ? $" {number}" : string.Empty;
+            string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
+                ? $" {number}"
+                : string.Empty;
             AddStepperRow(
                 _variableControls,
                 LocMan.Loc(
-                    "CARD_MOD_APPLY_POWER_AMOUNT",
-                    "Apply Power Amount") + suffix,
+                    model.AmountLabelLocKey,
+                    $"{model.GetTitle()} Amount") + suffix,
                 entries[index].Amount,
                 int.MinValue,
                 int.MaxValue,
@@ -1108,8 +1115,8 @@ public partial class NCardModificationScreen : Control
                 capturedIndex);
             _variableControls.AddChild(CreateRow(
                 LocMan.Loc(
-                    "CARD_MOD_APPLY_POWER_POWER",
-                    "Apply Power") + suffix,
+                    model.PowerLabelLocKey,
+                    model.GetTitle()) + suffix,
                 selector));
         }
     }

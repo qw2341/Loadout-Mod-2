@@ -38,6 +38,10 @@ public static class LoadoutKeywords
     public const string BasicEnergyKey = "BasicEnergy";
     public const string BasicStarsKey = "BasicStars";
     public const string ApplyPowerKey = "ApplyPower";
+    public const string ApplySelfKey = "ApplySelf";
+    public const string ApplyToAllEnemiesKey = "ApplyToAllEnemies";
+    public const string ApplyToAllPlayersKey = "ApplyToAllPlayers";
+    public const string ApplyToAnotherPlayerKey = "ApplyToAnotherPlayer";
     public const string DiscardHandKey = "RestrictiveDiscardHand";
     public const string NoDrawKey = "RestrictiveNoDraw";
     public const string InHandLoseHealthKey =
@@ -162,6 +166,18 @@ public static class LoadoutKeywords
 
     [CustomEnum("APPLY_POWER")]
     public static CardKeyword ApplyPower;
+
+    [CustomEnum("APPLY_SELF")]
+    public static CardKeyword ApplySelf;
+
+    [CustomEnum("APPLY_TO_ALL_ENEMIES")]
+    public static CardKeyword ApplyToAllEnemies;
+
+    [CustomEnum("APPLY_TO_ALL_PLAYERS")]
+    public static CardKeyword ApplyToAllPlayers;
+
+    [CustomEnum("APPLY_TO_ANOTHER_PLAYER")]
+    public static CardKeyword ApplyToAnotherPlayer;
 
     [CustomEnum("RESTRICTIVE_DISCARD_HAND")]
     public static CardKeyword DiscardHand;

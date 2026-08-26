@@ -12,8 +12,23 @@ using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.CardModification;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
+using MegaCrit.Sts2.Core.Commands;
+using System.Threading.Tasks;
+using BaseLib.Cards.Variables;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
+
+public enum LoadoutPowerKeywordTargetMode
+{
+    SelectedCreature,
+    Self,
+    AllEnemies,
+    AllPlayers,
+    AnotherPlayer
+}
 
 public abstract class LoadoutPowerKeywordModel : LoadoutKeywordModel
 {
@@ -25,6 +40,103 @@ public abstract class LoadoutPowerKeywordModel : LoadoutKeywordModel
 
     public override LoadoutKeywordEditorControlKind EditorControlKind =>
         LoadoutKeywordEditorControlKind.RepeatablePower;
+
+    public abstract LoadoutPowerKeywordTargetMode TargetMode { get; }
+
+    public abstract string DisplayVarName { get; }
+
+    public abstract string AmountLabelLocKey { get; }
+
+    public abstract string PowerLabelLocKey { get; }
+
+    public override bool HasOnPlayEffect => true;
+
+    public override bool ChangesTargeting =>
+        TargetMode is LoadoutPowerKeywordTargetMode.SelectedCreature
+            or LoadoutPowerKeywordTargetMode.AnotherPlayer;
+
+    protected static IReadOnlyList<LoadoutKeywordDynamicVarDefinition>
+        CreateDisplayVariables(
+            string displayVarName,
+            string labelLocKey,
+            string storageKey) =>
+        [
+            new(
+                displayVarName,
+                0m,
+                int.MinValue,
+                int.MaxValue,
+                labelLocKey,
+                (name, _) => new DisplayVar<CardModel>(
+                    name,
+                    card => LoadoutPowerKeywordState.FormatEntries(
+                        card,
+                        storageKey)),
+                EditorVisible: false)
+        ];
+
+    public override async Task AfterOnPlay(
+        CardModel card,
+        PlayerChoiceContext choiceContext,
+        CardPlay cardPlay,
+        object? capturedState)
+    {
+        IReadOnlyList<Creature> targets = ResolveTargets(card, cardPlay);
+        if (targets.Count == 0)
+            return;
+
+        foreach (LoadoutPowerKeywordEntry entry in
+                 LoadoutPowerKeywordState.GetEffectiveEntries(
+                     card,
+                     StorageKey))
+        {
+            if (!LoadoutPowerKeywordState.TryResolvePower(
+                    entry.PowerId,
+                    out PowerModel canonical))
+            {
+                LoadoutPowerKeywordState.WarnUnknownPower(entry.PowerId);
+                continue;
+            }
+
+            foreach (Creature target in targets)
+            {
+                if (target.IsDead)
+                    continue;
+                await PowerCmd.Apply(
+                    choiceContext,
+                    canonical.ToMutable(),
+                    target,
+                    entry.Amount,
+                    card.Owner.Creature,
+                    card,
+                    silent: false);
+            }
+        }
+    }
+
+    private IReadOnlyList<Creature> ResolveTargets(
+        CardModel card,
+        CardPlay cardPlay)
+    {
+        Creature source = card.Owner.Creature;
+        return TargetMode switch
+        {
+            LoadoutPowerKeywordTargetMode.Self => [source],
+            LoadoutPowerKeywordTargetMode.AllEnemies =>
+                source.CombatState?.Enemies.ToList() ?? [],
+            LoadoutPowerKeywordTargetMode.AllPlayers =>
+                source.CombatState?.PlayerCreatures.ToList() ?? [],
+            LoadoutPowerKeywordTargetMode.AnotherPlayer =>
+                cardPlay.Target is { IsDead: false } target
+                && !ReferenceEquals(target, source)
+                && source.CombatState?.PlayerCreatures.Contains(target) == true
+                    ? [target]
+                    : [],
+            _ => cardPlay.Target is { IsDead: false } target
+                ? [target]
+                : []
+        };
+    }
 }
 
 public static class LoadoutPowerKeywordState
@@ -96,6 +208,12 @@ public static class LoadoutPowerKeywordState
 
     public static void Synchronize(CardModel card)
     {
+        if (card.IsCanonical)
+        {
+            LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
+            return;
+        }
+
         foreach (LoadoutPowerKeywordModel model in
                  LoadoutKeywordRegistry.All.OfType<LoadoutPowerKeywordModel>())
         {
@@ -153,6 +271,24 @@ public static class LoadoutPowerKeywordState
         IReadOnlyList<LoadoutPowerKeywordEntry>? entries) =>
         entries?.Any(entry => !entry.IsEmpty) == true;
 
+    public static bool TryResolveKeywordModel(
+        string? keywordKey,
+        out LoadoutPowerKeywordModel model)
+    {
+        if (LoadoutKeywords.TryResolve(keywordKey, out CardKeyword keyword)
+            && LoadoutKeywordRegistry.TryGet(
+                keyword,
+                out LoadoutKeywordModel resolved)
+            && resolved is LoadoutPowerKeywordModel powerModel)
+        {
+            model = powerModel;
+            return true;
+        }
+
+        model = null!;
+        return false;
+    }
+
     public static bool TryResolvePower(string? powerId, out PowerModel power)
     {
         EnsurePowerCache();
@@ -186,6 +322,7 @@ public static class LoadoutPowerKeywordState
                 string title = TryResolvePower(entry.PowerId, out PowerModel power)
                     ? CommonHelpers.FormatPowerTitle(power)
                     : GetPowerIdFallback(entry.PowerId);
+                title = $"[gold]{title}[/gold]";
                 return LocMan.Loc(
                     "CARD_MOD_POWER_KEYWORD_ENTRY",
                     "{0} {1}",
