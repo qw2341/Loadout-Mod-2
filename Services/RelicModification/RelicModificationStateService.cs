@@ -318,6 +318,12 @@ public static class RelicModificationStateService
         lock (Gate) return _permanent.Relics.Count;
     }
 
+    public static bool HasPermanentModification(ModelId id)
+    {
+        EnsureLoaded();
+        lock (Gate) return TryGetPermanentLocked(id, out _);
+    }
+
     public static int ResetAllPermanent()
     {
         EnsureLoaded();
@@ -462,10 +468,8 @@ public static class RelicModificationStateService
 
     public static void ApplyPermanentToRelic(RelicModel relic)
     {
-        if (relic.IsCanonical) return;
-        if (GetEffectiveStateReadOnly(relic).IsEmpty) return;
-        EnsureBaseline(relic);
-        ApplyEffectiveState(relic);
+        if (relic.IsCanonical || !HasPermanentModification(relic.Id)) return;
+        ApplyEffectiveStateIfPresent(relic);
     }
 
     public static void ApplyLoadoutTemporaryState(RelicModel relic, RelicModificationState state)
@@ -491,9 +495,9 @@ public static class RelicModificationStateService
         if (clone.IsCanonical) return;
         // Canonical-to-mutable is also the first half of RelicModel.FromSerializable.
         // Avoid touching an unmodified clone before BaseLib imports its saved fields.
-        if (source.IsCanonical && GetEffectiveStateReadOnly(source).IsEmpty) return;
+        if (source.IsCanonical && !HasPermanentModification(source.Id)) return;
         EffectiveStates.Remove(clone);
-        ApplyPermanentToRelic(clone);
+        ApplyEffectiveStateIfPresent(clone);
     }
 
     public static void ApplyDeserializedState(RelicModel relic)
@@ -505,7 +509,7 @@ public static class RelicModificationStateService
         MarkFeaturePresence(RelicModificationInstanceState.GetStateReadOnly(relic));
         RecordRuntimeSavedPropertyValues(relic);
         EffectiveStates.Remove(relic);
-        ApplyPermanentToRelic(relic);
+        ApplyEffectiveStateIfPresent(relic);
     }
 
     public static RelicModel CreatePreviewRelic(RelicModel source, RelicModificationState state)
@@ -777,7 +781,7 @@ public static class RelicModificationStateService
         Dictionary<string, RelicModificationState>? states = JsonSerializer.Deserialize<Dictionary<string, RelicModificationState>>(json);
         if (states is not null) MarkFeaturePresence(states.Values);
         string[] changedKeys;
-        RestoreAllOverlayBaselines();
+        RestoreActivePermanentBaselines();
         lock (Gate)
         {
             changedKeys = _hostOverlay.Keys
@@ -795,7 +799,7 @@ public static class RelicModificationStateService
     public static void ClearHostPermanentOverlay()
     {
         string[] changedKeys;
-        RestoreAllOverlayBaselines();
+        RestoreActivePermanentBaselines();
         lock (Gate)
         {
             changedKeys = _hostOverlay.Keys.ToArray();
@@ -991,9 +995,24 @@ public static class RelicModificationStateService
 
     private static RelicModificationState GetPermanentLocked(ModelId id)
     {
+        return TryGetPermanentLocked(id, out RelicModificationState? state)
+            ? state
+            : new RelicModificationState();
+    }
+    private static bool TryGetPermanentLocked(ModelId id, out RelicModificationState state)
+    {
         string key = id.ToString();
-        if (_hasHostOverlay && _hostOverlay.TryGetValue(key, out RelicModificationState? host)) return host;
-        return _permanent.Relics.TryGetValue(key, out RelicModificationState? local) ? local : new RelicModificationState();
+        if (_hasHostOverlay)
+        {
+            if (_hostOverlay.TryGetValue(key, out state!))
+                return !state.IsEmpty;
+            state = null!;
+            return false;
+        }
+        if (_permanent.Relics.TryGetValue(key, out state!))
+            return !state.IsEmpty;
+        state = null!;
+        return false;
     }
     private static bool IsMultiplayerClient()
     {
@@ -1060,6 +1079,12 @@ public static class RelicModificationStateService
         attachment.Baseline = CaptureCurrentState(relic);
         RelicModificationInstanceState.Set(relic, attachment);
     }
+    private static void ApplyEffectiveStateIfPresent(RelicModel relic)
+    {
+        if (relic.IsCanonical || GetEffectiveStateReadOnly(relic).IsEmpty) return;
+        EnsureBaseline(relic);
+        ApplyEffectiveState(relic);
+    }
     private static void RestorePermanentBaselines(ModelId id)
     {
         if (!RunManager.Instance.IsInProgress || RunManager.Instance.DebugOnlyGetState() is not { } run) return;
@@ -1092,10 +1117,11 @@ public static class RelicModificationStateService
                 ApplyEffectiveState(relic);
         }
     }
-    private static void RestoreAllOverlayBaselines()
+    private static void RestoreActivePermanentBaselines()
     {
         string[] keys;
-        lock (Gate) keys = _hostOverlay.Keys.ToArray();
+        lock (Gate)
+            keys = (_hasHostOverlay ? _hostOverlay.Keys : _permanent.Relics.Keys).ToArray();
         if (keys.Length == 0 || !RunManager.Instance.IsInProgress || RunManager.Instance.DebugOnlyGetState() is not { } run) return;
         foreach (RelicModel relic in run.Players.SelectMany(player => player.Relics).Where(relic => keys.Contains(relic.Id.ToString(), StringComparer.Ordinal)))
         {
