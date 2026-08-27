@@ -56,6 +56,7 @@ public static class LoadoutKeywords
     public const string BorrowedKey = "RestrictiveBorrowed";
     public const string LoseStrengthKey = "RestrictiveLoseStrength";
     public const string LoseDexterityKey = "RestrictiveLoseDexterity";
+    public const string LoseMaxHealthKey = "RestrictiveLoseMaxHealth";
     public const string FeedKey = "FatalFeed";
     public const string GreedKey = "FatalGreed";
     public const string HuntKey = "FatalHunt";
@@ -214,6 +215,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("RESTRICTIVE_LOSE_DEXTERITY")]
     public static CardKeyword LoseDexterity;
+
+    [CustomEnum("RESTRICTIVE_LOSE_MAX_HEALTH")]
+    public static CardKeyword LoseMaxHealth;
 
     [CustomEnum("IMPROVEMENT_DAMAGE_ON_PLAY")]
     public static CardKeyword DamageOnPlay;

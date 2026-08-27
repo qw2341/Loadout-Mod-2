@@ -67,6 +67,7 @@ public static class LoadoutKeywordRegistry
         BorrowedKeyword.Instance,
         LoseStrengthKeyword.Instance,
         LoseDexterityKeyword.Instance,
+        LoseMaxHealthKeyword.Instance,
         LessonLearnedKeyword.Instance,
         FeedKeyword.Instance,
         GreedKeyword.Instance,
