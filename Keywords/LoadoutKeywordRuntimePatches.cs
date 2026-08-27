@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
 using Loadout.Patches;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.CardModification;
 using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Commands;
@@ -107,6 +108,8 @@ internal static class LoadoutKeywordRuntimePatches
         AddPowerKeywordFeatures(baseEntries, ref state);
         AddPowerKeywordUpgradeFeatures(entryUpgrades, ref state);
         AddPowerKeywordFeatures(addedEntries, ref state);
+        if (state.PowerKeywords)
+            CardUpgradeModificationRuntimePatches.Enable();
         if (state.DescriptionKeywords)
             SetDescriptionKeywordsEnabled(true);
         if (state.DescriptionKeywordOnPlay)
@@ -201,6 +204,8 @@ internal static class LoadoutKeywordRuntimePatches
     public static void Reconcile()
     {
         KeywordFeatureState required = GetRequiredFeatures();
+        if (required.PowerKeywords)
+            CardUpgradeModificationRuntimePatches.Enable();
         SetInfiniteUpgradeEnabled(required.InfiniteUpgrade);
         SetXCostEnabled(required.XCost);
         SetStickyEnabled(required.Sticky);
@@ -320,6 +325,7 @@ internal static class LoadoutKeywordRuntimePatches
             }
 
             state.DescriptionKeywords = true;
+            state.PowerKeywords = true;
             state.DescriptionKeywordOnPlay |=
                 model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
@@ -351,6 +357,7 @@ internal static class LoadoutKeywordRuntimePatches
         }
 
         state.DescriptionKeywords = true;
+        state.PowerKeywords = true;
         state.DescriptionKeywordOnPlay |=
             powerModel.HasOnPlayEffect || powerModel.SuppressesOriginalOnPlay;
         state.TurnEndInHand |= powerModel.HasTurnEndInHandEffect;
@@ -375,6 +382,7 @@ internal static class LoadoutKeywordRuntimePatches
                     continue;
 
                 state.DescriptionKeywords = true;
+                state.PowerKeywords |= model is LoadoutPowerKeywordModel;
                 state.DescriptionKeywordOnPlay |=
                     model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
                 state.TurnEndInHand |= model.HasTurnEndInHandEffect;
@@ -930,6 +938,7 @@ internal static class LoadoutKeywordRuntimePatches
         public bool Passing;
         public bool Inevitable;
         public bool Livid;
+        public bool PowerKeywords;
         public bool DescriptionKeywords;
         public bool DescriptionKeywordOnPlay;
         public bool TurnEndInHand;
@@ -942,6 +951,7 @@ internal static class LoadoutKeywordRuntimePatches
             && Passing
             && Inevitable
             && Livid
+            && PowerKeywords
             && DescriptionKeywords
             && DescriptionKeywordOnPlay
             && TurnEndInHand

@@ -360,13 +360,14 @@ public partial class NCardUpgradeModificationScreen : Control
             if (scope is null)
                 return;
 
-            upgraded = scope.CloneCard(source);
+            upgraded = CloneUpgradePreviewCard(scope, source);
             CardModificationFields.Clear(upgraded);
             using (CardUpgradeModificationRuntimePatches.BeginOverride(
                        new CardUpgradeModificationSpec()))
             {
                 upgraded.UpgradeInternal();
             }
+            LoadoutPowerKeywordState.Synchronize(upgraded);
             foreach (CardKeyword keyword in upgraded.GetKeywordsWithSources(
                          KeywordSources.Local))
             {
@@ -745,9 +746,10 @@ public partial class NCardUpgradeModificationScreen : Control
             ICardScope scope = source.CardScope
                                ?? throw new InvalidOperationException(
                                    "Upgrade preview source has no card scope.");
-            upgraded = scope.CloneCard(source);
+            upgraded = CloneUpgradePreviewCard(scope, source);
             using (CardUpgradeModificationRuntimePatches.BeginOverride(_draft))
                 upgraded.UpgradeInternal();
+            LoadoutPowerKeywordState.Synchronize(upgraded);
             upgraded.UpgradePreviewType = CardUpgradePreviewType.Deck;
 
             _upgradePreview.SetCards(source, upgraded);
@@ -780,6 +782,15 @@ public partial class NCardUpgradeModificationScreen : Control
         CardModificationRuntime.ReleaseUpgradePreviewCard(_previewSource);
         _previewUpgrade = null;
         _previewSource = null;
+    }
+
+    private static CardModel CloneUpgradePreviewCard(
+        ICardScope scope,
+        CardModel source)
+    {
+        CardModel clone = scope.CloneCard(source);
+        LoadoutPowerKeywordState.CopyExplicitState(source, clone);
+        return clone;
     }
 
     private void EnsureUpgradePreview()
