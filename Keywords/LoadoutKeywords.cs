@@ -34,6 +34,7 @@ public static class LoadoutKeywords
     public const string BasicExhaustKey = "BasicExhaust";
     public const string BasicTransformKey = "BasicTransform";
     public const string BasicHealKey = "BasicHeal";
+    public const string BasicGainMaxHpKey = "BasicGainMaxHp";
     public const string BasicLoseHealthKey = "BasicLoseHealth";
     public const string BasicEnergyKey = "BasicEnergy";
     public const string BasicStarsKey = "BasicStars";
@@ -155,6 +156,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_HEAL")]
     public static CardKeyword BasicHeal;
+
+    [CustomEnum("BASIC_GAIN_MAX_HP")]
+    public static CardKeyword BasicGainMaxHp;
 
     [CustomEnum("BASIC_LOSE_HEALTH")]
     public static CardKeyword BasicLoseHealth;
