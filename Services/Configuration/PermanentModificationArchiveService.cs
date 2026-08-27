@@ -575,10 +575,15 @@ public static class PermanentModificationArchiveService
             || !TryMergeDictionary(local.DynamicVarDeltas, incoming.DynamicVarDeltas, out Dictionary<string, decimal> dynamicVars)
             || !TryMergeDictionary(local.KeywordOverrides, incoming.KeywordOverrides, out Dictionary<string, bool> keywords)
             || !TryMergeReference(
-                local.PowerKeywordEntries,
-                incoming.PowerKeywordEntries,
+                local.PowerKeywordEntryUpgrades,
+                incoming.PowerKeywordEntryUpgrades,
+                PowerKeywordEntryUpgradeListsEqual,
+                out List<LoadoutPowerKeywordEntryUpgrade>? powerKeywordUpgrades)
+            || !TryMergeReference(
+                local.AddedPowerKeywordEntries,
+                incoming.AddedPowerKeywordEntries,
                 PowerKeywordListsEqual,
-                out List<LoadoutPowerKeywordEntry>? powerKeywords))
+                out List<LoadoutPowerKeywordEntry>? addedPowerKeywords))
         {
             return false;
         }
@@ -588,7 +593,10 @@ public static class PermanentModificationArchiveService
         merged.BaseStarCostDelta = starCost;
         merged.DynamicVarDeltas = dynamicVars;
         merged.KeywordOverrides = keywords;
-        merged.PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(powerKeywords);
+        merged.PowerKeywordEntryUpgrades =
+            LoadoutPowerKeywordEntryUpgrade.CloneList(powerKeywordUpgrades);
+        merged.AddedPowerKeywordEntries =
+            LoadoutPowerKeywordEntry.CloneList(addedPowerKeywords);
         merged.Normalize(removeZeroValues: true);
         return true;
     }
@@ -667,6 +675,26 @@ public static class PermanentModificationArchiveService
                 pair.Second.PowerId,
                 StringComparison.Ordinal)
             && pair.First.Amount == pair.Second.Amount);
+
+    private static bool PowerKeywordEntryUpgradeListsEqual(
+        List<LoadoutPowerKeywordEntryUpgrade> left,
+        List<LoadoutPowerKeywordEntryUpgrade> right) =>
+        left.Count == right.Count
+        && left.Zip(right).All(pair =>
+            string.Equals(
+                pair.First.KeywordKey,
+                pair.Second.KeywordKey,
+                StringComparison.Ordinal)
+            && string.Equals(
+                pair.First.OriginalPowerId,
+                pair.Second.OriginalPowerId,
+                StringComparison.Ordinal)
+            && pair.First.OccurrenceIndex == pair.Second.OccurrenceIndex
+            && pair.First.AmountDelta == pair.Second.AmountDelta
+            && string.Equals(
+                pair.First.ReplacementPowerId,
+                pair.Second.ReplacementPowerId,
+                StringComparison.Ordinal));
 
     private static bool AttachmentsEqual(CardAttachmentSpec left, CardAttachmentSpec right) =>
         string.Equals(left.ModelId, right.ModelId, StringComparison.Ordinal)

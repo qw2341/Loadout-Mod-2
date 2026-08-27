@@ -146,14 +146,17 @@ public static class LoadoutPowerKeywordState
     {
         public ExplicitState(
             IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
-            IReadOnlyList<LoadoutPowerKeywordEntry>? upgradeEntries)
+            IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
+            IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries)
         {
             BaseEntries = LoadoutPowerKeywordEntry.CloneList(baseEntries);
-            UpgradeEntries = LoadoutPowerKeywordEntry.CloneList(upgradeEntries);
+            EntryUpgrades = LoadoutPowerKeywordEntryUpgrade.CloneList(entryUpgrades);
+            AddedEntries = LoadoutPowerKeywordEntry.CloneList(addedEntries);
         }
 
         public List<LoadoutPowerKeywordEntry>? BaseEntries { get; }
-        public List<LoadoutPowerKeywordEntry>? UpgradeEntries { get; }
+        public List<LoadoutPowerKeywordEntryUpgrade>? EntryUpgrades { get; }
+        public List<LoadoutPowerKeywordEntry>? AddedEntries { get; }
     }
 
     private static ConditionalWeakTable<CardModel, ExplicitState> ExplicitStates = new();
@@ -180,16 +183,21 @@ public static class LoadoutPowerKeywordState
         SetExplicitState(
             card,
             state.PowerKeywordEntries,
-            state.UpgradeModification.PowerKeywordEntries);
+            state.UpgradeModification.PowerKeywordEntryUpgrades,
+            state.UpgradeModification.AddedPowerKeywordEntries);
     }
 
     public static void SetExplicitState(
         CardModel card,
         IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
-        IReadOnlyList<LoadoutPowerKeywordEntry>? upgradeEntries)
+        IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
+        IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries)
     {
         ExplicitStates.Remove(card);
-        ExplicitStates.Add(card, new ExplicitState(baseEntries, upgradeEntries));
+        ExplicitStates.Add(card, new ExplicitState(
+            baseEntries,
+            entryUpgrades,
+            addedEntries));
     }
 
     public static void CopyExplicitState(CardModel source, CardModel destination)
@@ -197,7 +205,11 @@ public static class LoadoutPowerKeywordState
         if (!ExplicitStates.TryGetValue(source, out ExplicitState? state))
             return;
 
-        SetExplicitState(destination, state.BaseEntries, state.UpgradeEntries);
+        SetExplicitState(
+            destination,
+            state.BaseEntries,
+            state.EntryUpgrades,
+            state.AddedEntries);
         Synchronize(destination);
     }
 
@@ -232,44 +244,119 @@ public static class LoadoutPowerKeywordState
         CardModel card,
         string keywordKey)
     {
-        ResolveLists(card, out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
-            out IReadOnlyList<LoadoutPowerKeywordEntry>? upgradeEntries);
+        ResolveLists(
+            card,
+            out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+            out IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
+            out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries);
+
+        foreach (LoadoutPowerKeywordEntry entry in GetEffectiveEntries(
+                     baseEntries,
+                     entryUpgrades,
+                     addedEntries,
+                     card.CurrentUpgradeLevel))
+        {
+            if (MatchesKeyword(entry, keywordKey))
+                yield return entry;
+        }
+    }
+
+    public static IEnumerable<LoadoutPowerKeywordEntry> GetEffectiveEntries(
+        IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+        IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
+        IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries,
+        int upgradeLevel)
+    {
+        int level = Math.Max(0, upgradeLevel);
+        Dictionary<EntryIdentity, LoadoutPowerKeywordEntryUpgrade>? upgradesByIdentity =
+            level > 0 && entryUpgrades is not null
+                ? entryUpgrades
+                    .Where(entry => entry.HasIdentity)
+                    .GroupBy(CreateIdentity)
+                    .ToDictionary(group => group.Key, group => group.Last())
+                : null;
+        Dictionary<(string KeywordKey, string PowerId), int> occurrences =
+            new(KeywordPowerIdentityComparer.Instance);
 
         if (baseEntries is not null)
         {
-            foreach (LoadoutPowerKeywordEntry entry in baseEntries)
+            foreach (LoadoutPowerKeywordEntry baseEntry in baseEntries)
             {
-                if (MatchesKeyword(entry, keywordKey))
-                    yield return entry;
+                LoadoutPowerKeywordEntry effective = baseEntry.Clone();
+                int occurrence = GetAndIncrementOccurrence(occurrences, baseEntry);
+                EntryIdentity identity = new(
+                    baseEntry.KeywordKey,
+                    baseEntry.PowerId,
+                    occurrence);
+                if (level > 0
+                    && upgradesByIdentity?.TryGetValue(
+                        identity,
+                        out LoadoutPowerKeywordEntryUpgrade? upgrade) == true)
+                {
+                    effective.Amount = SaturatingAmount(
+                        (long)baseEntry.Amount + (long)upgrade.AmountDelta * level);
+                    if (!string.IsNullOrWhiteSpace(upgrade.ReplacementPowerId))
+                        effective.PowerId = upgrade.ReplacementPowerId;
+                }
+
+                yield return effective;
             }
         }
 
-        int upgradeLevel = Math.Max(0, card.CurrentUpgradeLevel);
-        if (upgradeLevel == 0 || upgradeEntries is null)
+        if (level == 0 || addedEntries is null)
             yield break;
 
-        for (int level = 0; level < upgradeLevel; level++)
+        foreach (LoadoutPowerKeywordEntry addedEntry in addedEntries)
         {
-            foreach (LoadoutPowerKeywordEntry entry in upgradeEntries)
-            {
-                if (MatchesKeyword(entry, keywordKey))
-                    yield return entry;
-            }
+            LoadoutPowerKeywordEntry effective = addedEntry.Clone();
+            effective.Amount = SaturatingAmount((long)addedEntry.Amount * level);
+            yield return effective;
         }
     }
 
     public static bool HasEffectiveEntries(CardModel card, string keywordKey)
     {
-        ResolveLists(card, out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
-            out IReadOnlyList<LoadoutPowerKeywordEntry>? upgradeEntries);
+        ResolveLists(
+            card,
+            out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+            out _,
+            out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries);
         return baseEntries?.Any(entry => MatchesKeyword(entry, keywordKey)) == true
                || card.CurrentUpgradeLevel > 0
-               && upgradeEntries?.Any(entry => MatchesKeyword(entry, keywordKey)) == true;
+               && addedEntries?.Any(entry => MatchesKeyword(entry, keywordKey)) == true;
     }
 
     public static bool HasConfiguredEntries(
         IReadOnlyList<LoadoutPowerKeywordEntry>? entries) =>
         entries?.Any(entry => !entry.IsEmpty) == true;
+
+    public static List<LoadoutPowerKeywordEntryUpgrade>? PruneEntryUpgrades(
+        IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+        IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades)
+    {
+        if (entryUpgrades is null)
+            return null;
+
+        HashSet<EntryIdentity> validIdentities = [];
+        Dictionary<(string KeywordKey, string PowerId), int> occurrences =
+            new(KeywordPowerIdentityComparer.Instance);
+        if (baseEntries is not null)
+        {
+            foreach (LoadoutPowerKeywordEntry entry in baseEntries)
+            {
+                validIdentities.Add(new EntryIdentity(
+                    entry.KeywordKey,
+                    entry.PowerId,
+                    GetAndIncrementOccurrence(occurrences, entry)));
+            }
+        }
+
+        return entryUpgrades
+            .Where(entry => entry.HasIdentity
+                            && validIdentities.Contains(CreateIdentity(entry)))
+            .Select(entry => entry.Clone())
+            .ToList();
+    }
 
     public static bool TryResolveKeywordModel(
         string? keywordKey,
@@ -358,23 +445,27 @@ public static class LoadoutPowerKeywordState
     private static void ResolveLists(
         CardModel card,
         out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
-        out IReadOnlyList<LoadoutPowerKeywordEntry>? upgradeEntries)
+        out IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
+        out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries)
     {
         if (ExplicitStates.TryGetValue(card, out ExplicitState? explicitState))
         {
             baseEntries = explicitState.BaseEntries;
-            upgradeEntries = explicitState.UpgradeEntries;
+            entryUpgrades = explicitState.EntryUpgrades;
+            addedEntries = explicitState.AddedEntries;
             return;
         }
 
         baseEntries = null;
-        upgradeEntries = null;
+        entryUpgrades = null;
+        addedEntries = null;
         if (PermanentCardModificationStore.TryGetDelta(
                 card.Id,
                 out CardModificationDelta? permanent))
         {
             baseEntries = permanent.PowerKeywordEntries;
-            upgradeEntries = permanent.UpgradeModification.PowerKeywordEntries;
+            entryUpgrades = permanent.UpgradeModification.PowerKeywordEntryUpgrades;
+            addedEntries = permanent.UpgradeModification.AddedPowerKeywordEntries;
         }
 
         if (!CardModificationFields.TryGet(card, out CardModificationCardData temporary))
@@ -382,8 +473,68 @@ public static class LoadoutPowerKeywordState
 
         if (temporary.Delta.PowerKeywordEntries is not null)
             baseEntries = temporary.Delta.PowerKeywordEntries;
-        if (temporary.Delta.UpgradeModification.PowerKeywordEntries is not null)
-            upgradeEntries = temporary.Delta.UpgradeModification.PowerKeywordEntries;
+        if (temporary.Delta.UpgradeModification.PowerKeywordEntryUpgrades is not null)
+        {
+            entryUpgrades = temporary.Delta.UpgradeModification.PowerKeywordEntryUpgrades;
+        }
+        if (temporary.Delta.UpgradeModification.AddedPowerKeywordEntries is not null)
+        {
+            addedEntries = temporary.Delta.UpgradeModification.AddedPowerKeywordEntries;
+        }
+    }
+
+    private static EntryIdentity CreateIdentity(
+        LoadoutPowerKeywordEntryUpgrade entry) =>
+        new(entry.KeywordKey, entry.OriginalPowerId, entry.OccurrenceIndex);
+
+    private static int GetAndIncrementOccurrence(
+        Dictionary<(string KeywordKey, string PowerId), int> occurrences,
+        LoadoutPowerKeywordEntry entry)
+    {
+        (string KeywordKey, string PowerId) key = (entry.KeywordKey, entry.PowerId);
+        occurrences.TryGetValue(key, out int occurrence);
+        occurrences[key] = occurrence + 1;
+        return occurrence;
+    }
+
+    private static int SaturatingAmount(long amount) =>
+        amount > int.MaxValue
+            ? int.MaxValue
+            : amount < int.MinValue
+                ? int.MinValue
+                : (int)amount;
+
+    private readonly record struct EntryIdentity(
+        string KeywordKey,
+        string OriginalPowerId,
+        int OccurrenceIndex)
+    {
+        public bool Equals(EntryIdentity other) =>
+            OccurrenceIndex == other.OccurrenceIndex
+            && string.Equals(KeywordKey, other.KeywordKey, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(OriginalPowerId, other.OriginalPowerId, StringComparison.OrdinalIgnoreCase);
+
+        public override int GetHashCode() => HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(KeywordKey),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(OriginalPowerId),
+            OccurrenceIndex);
+    }
+
+    private sealed class KeywordPowerIdentityComparer
+        : IEqualityComparer<(string KeywordKey, string PowerId)>
+    {
+        public static readonly KeywordPowerIdentityComparer Instance = new();
+
+        public bool Equals(
+            (string KeywordKey, string PowerId) x,
+            (string KeywordKey, string PowerId) y) =>
+            string.Equals(x.KeywordKey, y.KeywordKey, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(x.PowerId, y.PowerId, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string KeywordKey, string PowerId) obj) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.KeywordKey),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.PowerId));
     }
 
     private static bool MatchesKeyword(

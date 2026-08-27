@@ -138,6 +138,78 @@ public sealed class LoadoutPowerKeywordEntry
     }
 }
 
+public sealed class LoadoutPowerKeywordEntryUpgrade
+{
+    [JsonPropertyName("k")]
+    public string KeywordKey { get; set; } = string.Empty;
+
+    [JsonPropertyName("p")]
+    public string OriginalPowerId { get; set; } = string.Empty;
+
+    [JsonPropertyName("o")]
+    public int OccurrenceIndex { get; set; }
+
+    [JsonPropertyName("d")]
+    public int AmountDelta { get; set; }
+
+    [JsonPropertyName("r")]
+    public string? ReplacementPowerId { get; set; }
+
+    [JsonIgnore]
+    public bool HasIdentity =>
+        !string.IsNullOrWhiteSpace(KeywordKey)
+        && !string.IsNullOrWhiteSpace(OriginalPowerId)
+        && OccurrenceIndex >= 0;
+
+    [JsonIgnore]
+    public bool IsEmpty =>
+        !HasIdentity
+        || (AmountDelta == 0 && string.IsNullOrWhiteSpace(ReplacementPowerId));
+
+    public LoadoutPowerKeywordEntryUpgrade Clone()
+    {
+        return new LoadoutPowerKeywordEntryUpgrade
+        {
+            KeywordKey = KeywordKey,
+            OriginalPowerId = OriginalPowerId,
+            OccurrenceIndex = OccurrenceIndex,
+            AmountDelta = AmountDelta,
+            ReplacementPowerId = ReplacementPowerId
+        };
+    }
+
+    public static List<LoadoutPowerKeywordEntryUpgrade>? CloneList(
+        IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? source) =>
+        source?.Select(entry => entry.Clone()).ToList();
+
+    public static List<LoadoutPowerKeywordEntryUpgrade>? NormalizeList(
+        List<LoadoutPowerKeywordEntryUpgrade>? source)
+    {
+        if (source is null)
+            return null;
+
+        List<LoadoutPowerKeywordEntryUpgrade> result = [];
+        foreach (LoadoutPowerKeywordEntryUpgrade? entry in source)
+        {
+            if (entry is null)
+                continue;
+
+            entry.KeywordKey = entry.KeywordKey.Trim();
+            entry.OriginalPowerId = entry.OriginalPowerId.Trim();
+            entry.ReplacementPowerId = string.IsNullOrWhiteSpace(entry.ReplacementPowerId)
+                || string.Equals(
+                    entry.ReplacementPowerId.Trim(),
+                    entry.OriginalPowerId,
+                    StringComparison.OrdinalIgnoreCase)
+                ? null
+                : entry.ReplacementPowerId.Trim();
+            if (!entry.IsEmpty)
+                result.Add(entry);
+        }
+        return result;
+    }
+}
+
 public sealed class CardAttachmentListJsonConverter
     : JsonConverter<List<CardAttachmentSpec>?>
 {
@@ -211,8 +283,11 @@ public sealed class CardUpgradeModificationSpec
     [JsonPropertyName("k")]
     public Dictionary<string, bool> KeywordOverrides { get; set; } = new(StringComparer.Ordinal);
 
-    [JsonPropertyName("p")]
-    public List<LoadoutPowerKeywordEntry>? PowerKeywordEntries { get; set; }
+    [JsonPropertyName("v")]
+    public List<LoadoutPowerKeywordEntryUpgrade>? PowerKeywordEntryUpgrades { get; set; }
+
+    [JsonPropertyName("w")]
+    public List<LoadoutPowerKeywordEntry>? AddedPowerKeywordEntries { get; set; }
 
     [JsonIgnore]
     public bool IsEmpty =>
@@ -221,7 +296,8 @@ public sealed class CardUpgradeModificationSpec
         && BaseStarCostDelta is null
         && DynamicVarDeltas.Count == 0
         && KeywordOverrides.Count == 0
-        && PowerKeywordEntries is null;
+        && PowerKeywordEntryUpgrades is null
+        && AddedPowerKeywordEntries is null;
 
     public CardUpgradeModificationSpec Clone()
     {
@@ -232,7 +308,10 @@ public sealed class CardUpgradeModificationSpec
             BaseStarCostDelta = BaseStarCostDelta,
             DynamicVarDeltas = new Dictionary<string, decimal>(DynamicVarDeltas, StringComparer.Ordinal),
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
-            PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(PowerKeywordEntries)
+            PowerKeywordEntryUpgrades = LoadoutPowerKeywordEntryUpgrade.CloneList(
+                PowerKeywordEntryUpgrades),
+            AddedPowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
+                AddedPowerKeywordEntries)
         };
     }
 
@@ -251,8 +330,16 @@ public sealed class CardUpgradeModificationSpec
             DynamicVarDeltas[key] = value;
         foreach ((string key, bool value) in other.KeywordOverrides)
             KeywordOverrides[key] = value;
-        if (other.PowerKeywordEntries is not null)
-            PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(other.PowerKeywordEntries);
+        if (other.PowerKeywordEntryUpgrades is not null)
+        {
+            PowerKeywordEntryUpgrades = LoadoutPowerKeywordEntryUpgrade.CloneList(
+                other.PowerKeywordEntryUpgrades);
+        }
+        if (other.AddedPowerKeywordEntries is not null)
+        {
+            AddedPowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
+                other.AddedPowerKeywordEntries);
+        }
     }
 
     public void Normalize(bool removeZeroValues = false)
@@ -273,7 +360,10 @@ public sealed class CardUpgradeModificationSpec
         KeywordOverrides = KeywordOverrides
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-        PowerKeywordEntries = LoadoutPowerKeywordEntry.NormalizeList(PowerKeywordEntries);
+        PowerKeywordEntryUpgrades = LoadoutPowerKeywordEntryUpgrade.NormalizeList(
+            PowerKeywordEntryUpgrades);
+        AddedPowerKeywordEntries = LoadoutPowerKeywordEntry.NormalizeList(
+            AddedPowerKeywordEntries);
     }
 }
 

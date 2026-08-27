@@ -82,6 +82,10 @@ public partial class NCardUpgradeModificationScreen : Control
             CardModificationRuntime.GetPermanentSpec(item.Model.Id)
                 .UpgradeModification.Clone();
         _draft = state.UpgradeModification.Clone();
+        _draft.PowerKeywordEntryUpgrades =
+            LoadoutPowerKeywordState.PruneEntryUpgrades(
+                _baseState.PowerKeywordEntries,
+                _draft.PowerKeywordEntryUpgrades);
         _save = save;
         if (IsNodeReady())
             QueueRebuild();
@@ -133,7 +137,7 @@ public partial class NCardUpgradeModificationScreen : Control
 
     private void QueueRebuild()
     {
-        if (_rebuildQueued)
+        if (!GodotObject.IsInstanceValid(this) || _rebuildQueued)
             return;
 
         _rebuildQueued = true;
@@ -214,7 +218,8 @@ public partial class NCardUpgradeModificationScreen : Control
         }
 
         if (definitions.Count == 0
-            && (_draft.PowerKeywordEntries?.Count ?? 0) == 0)
+            && (_baseState.PowerKeywordEntries?.Count ?? 0) == 0
+            && (_draft.AddedPowerKeywordEntries?.Count ?? 0) == 0)
         {
             MegaLabel empty = CreateLabel(
                 LocMan.Loc(
@@ -404,7 +409,7 @@ public partial class NCardUpgradeModificationScreen : Control
     private int GetPowerKeywordEntryCount(CardKeyword keyword)
     {
         string key = LoadoutKeywords.GetStorageKey(keyword);
-        return _draft.PowerKeywordEntries?.Count(entry => string.Equals(
+        return _draft.AddedPowerKeywordEntries?.Count(entry => string.Equals(
             entry.KeywordKey,
             key,
             StringComparison.OrdinalIgnoreCase)) ?? 0;
@@ -417,14 +422,15 @@ public partial class NCardUpgradeModificationScreen : Control
             return;
 
         List<LoadoutPowerKeywordEntry> entries =
-            LoadoutPowerKeywordEntry.CloneList(_draft.PowerKeywordEntries) ?? [];
+            LoadoutPowerKeywordEntry.CloneList(
+                _draft.AddedPowerKeywordEntries) ?? [];
         entries.Add(new LoadoutPowerKeywordEntry
         {
             KeywordKey = model.StorageKey,
             PowerId = LoadoutPowerKeywordState.GetDefaultStrengthPowerId(),
             Amount = 1
         });
-        _draft.PowerKeywordEntries = entries;
+        _draft.AddedPowerKeywordEntries = entries;
         QueueRebuild();
     }
 
@@ -432,7 +438,8 @@ public partial class NCardUpgradeModificationScreen : Control
     {
         string key = LoadoutKeywords.GetStorageKey(keyword);
         List<LoadoutPowerKeywordEntry> entries =
-            LoadoutPowerKeywordEntry.CloneList(_draft.PowerKeywordEntries) ?? [];
+            LoadoutPowerKeywordEntry.CloneList(
+                _draft.AddedPowerKeywordEntries) ?? [];
         int index = entries.FindLastIndex(entry => string.Equals(
             entry.KeywordKey,
             key,
@@ -440,7 +447,7 @@ public partial class NCardUpgradeModificationScreen : Control
         if (index < 0)
             return;
         entries.RemoveAt(index);
-        _draft.PowerKeywordEntries = entries;
+        _draft.AddedPowerKeywordEntries = entries;
         QueueRebuild();
     }
 
@@ -449,9 +456,13 @@ public partial class NCardUpgradeModificationScreen : Control
         if (_leftControls is null)
             return;
 
-        List<LoadoutPowerKeywordEntry> entries =
-            LoadoutPowerKeywordEntry.CloneList(_draft.PowerKeywordEntries) ?? [];
-        Dictionary<string, int> totals = entries
+        List<LoadoutPowerKeywordEntry> baseEntries =
+            LoadoutPowerKeywordEntry.CloneList(
+                _baseState.PowerKeywordEntries) ?? [];
+        List<LoadoutPowerKeywordEntry> addedEntries =
+            LoadoutPowerKeywordEntry.CloneList(
+                _draft.AddedPowerKeywordEntries) ?? [];
+        Dictionary<string, int> totals = baseEntries.Concat(addedEntries)
             .GroupBy(entry => entry.KeywordKey, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
@@ -459,10 +470,90 @@ public partial class NCardUpgradeModificationScreen : Control
                 StringComparer.OrdinalIgnoreCase);
         Dictionary<string, int> numbers =
             new(StringComparer.OrdinalIgnoreCase);
-        for (int index = 0; index < entries.Count; index++)
+        Dictionary<(string KeywordKey, string PowerId), int> occurrences =
+            new(KeywordPowerIdentityComparer.Instance);
+
+        if (baseEntries.Count > 0)
+        {
+            _leftControls.AddChild(CreateSectionLabel(
+                LocMan.Loc(
+                    "CARD_MOD_POWER_KEYWORD_ENTRY_UPGRADES",
+                    "Power Entry Upgrades")));
+        }
+
+        for (int index = 0; index < baseEntries.Count; index++)
         {
             if (!LoadoutPowerKeywordState.TryResolveKeywordModel(
-                    entries[index].KeywordKey,
+                    baseEntries[index].KeywordKey,
+                    out LoadoutPowerKeywordModel model))
+                continue;
+
+            LoadoutPowerKeywordEntry baseEntry = baseEntries[index];
+            int occurrence = GetAndIncrementOccurrence(occurrences, baseEntry);
+            LoadoutPowerKeywordEntryUpgrade? configured = FindEntryUpgrade(
+                model.StorageKey,
+                baseEntry.PowerId,
+                occurrence);
+            int number = numbers.GetValueOrDefault(model.StorageKey) + 1;
+            numbers[model.StorageKey] = number;
+            string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
+                ? $" {number}"
+                : string.Empty;
+            NLoadoutPowerSelector selector = new();
+            selector.Init(configured?.ReplacementPowerId ?? baseEntry.PowerId);
+            selector.SelectRequested += () =>
+            {
+                if (!PowerGiver.TryOpenKeywordPowerPicker(power =>
+                    {
+                        SetEntryUpgradeReplacement(
+                            model.StorageKey,
+                            baseEntry.PowerId,
+                            occurrence,
+                            power.Id.ToString());
+                        QueueRebuild();
+                    },
+                    out string error))
+                {
+                    GD.PushWarning(error);
+                }
+            };
+            _leftControls.AddChild(CreateRow(
+                LocMan.Loc(
+                    "CARD_MOD_POWER_KEYWORD_REPLACEMENT",
+                    "Replacement Power") + suffix,
+                selector));
+
+            AddStepperRow(
+                _leftControls,
+                LocMan.Loc(
+                    "CARD_MOD_POWER_KEYWORD_UPGRADE_AMOUNT",
+                    "Upgrade Amount") + suffix,
+                configured?.AmountDelta ?? 0,
+                int.MinValue,
+                int.MaxValue,
+                amount =>
+                {
+                    SetEntryUpgradeAmount(
+                        model.StorageKey,
+                        baseEntry.PowerId,
+                        occurrence,
+                        amount);
+                    RefreshPreview();
+                });
+        }
+
+        if (addedEntries.Count > 0)
+        {
+            _leftControls.AddChild(CreateSectionLabel(
+                LocMan.Loc(
+                    "CARD_MOD_POWER_KEYWORD_ADDED_ENTRIES",
+                    "Added on Upgrade")));
+        }
+
+        for (int index = 0; index < addedEntries.Count; index++)
+        {
+            if (!LoadoutPowerKeywordState.TryResolveKeywordModel(
+                    addedEntries[index].KeywordKey,
                     out LoadoutPowerKeywordModel model))
                 continue;
 
@@ -473,12 +564,12 @@ public partial class NCardUpgradeModificationScreen : Control
                 ? $" {number}"
                 : string.Empty;
             NLoadoutPowerSelector selector = new();
-            selector.Init(entries[index].PowerId);
+            selector.Init(addedEntries[index].PowerId);
             selector.SelectRequested += () =>
             {
                 if (!PowerGiver.TryOpenKeywordPowerPicker(power =>
                     {
-                        UpdatePowerKeywordEntry(
+                        UpdateAddedPowerKeywordEntry(
                             capturedIndex,
                             entry => entry.PowerId = power.Id.ToString());
                         QueueRebuild();
@@ -499,12 +590,12 @@ public partial class NCardUpgradeModificationScreen : Control
                 LocMan.Loc(
                     model.AmountLabelLocKey,
                     $"{model.GetTitle()} Amount") + suffix,
-                entries[index].Amount,
+                addedEntries[index].Amount,
                 int.MinValue,
                 int.MaxValue,
                 amount =>
                 {
-                    UpdatePowerKeywordEntry(
+                    UpdateAddedPowerKeywordEntry(
                         capturedIndex,
                         entry => entry.Amount = amount);
                     RefreshPreview();
@@ -512,16 +603,121 @@ public partial class NCardUpgradeModificationScreen : Control
         }
     }
 
-    private void UpdatePowerKeywordEntry(
+    private void UpdateAddedPowerKeywordEntry(
         int index,
         Action<LoadoutPowerKeywordEntry> update)
     {
         List<LoadoutPowerKeywordEntry> entries =
-            LoadoutPowerKeywordEntry.CloneList(_draft.PowerKeywordEntries) ?? [];
+            LoadoutPowerKeywordEntry.CloneList(
+                _draft.AddedPowerKeywordEntries) ?? [];
         if (index < 0 || index >= entries.Count)
             return;
         update(entries[index]);
-        _draft.PowerKeywordEntries = entries;
+        _draft.AddedPowerKeywordEntries = entries;
+    }
+
+    private LoadoutPowerKeywordEntryUpgrade? FindEntryUpgrade(
+        string keywordKey,
+        string originalPowerId,
+        int occurrenceIndex) =>
+        _draft.PowerKeywordEntryUpgrades?.LastOrDefault(entry =>
+            EntryUpgradeMatches(
+                entry,
+                keywordKey,
+                originalPowerId,
+                occurrenceIndex));
+
+    private void SetEntryUpgradeAmount(
+        string keywordKey,
+        string originalPowerId,
+        int occurrenceIndex,
+        int amountDelta)
+    {
+        UpdateEntryUpgrade(
+            keywordKey,
+            originalPowerId,
+            occurrenceIndex,
+            entry => entry.AmountDelta = amountDelta);
+    }
+
+    private void SetEntryUpgradeReplacement(
+        string keywordKey,
+        string originalPowerId,
+        int occurrenceIndex,
+        string selectedPowerId)
+    {
+        UpdateEntryUpgrade(
+            keywordKey,
+            originalPowerId,
+            occurrenceIndex,
+            entry => entry.ReplacementPowerId = string.Equals(
+                selectedPowerId,
+                originalPowerId,
+                StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : selectedPowerId);
+    }
+
+    private void UpdateEntryUpgrade(
+        string keywordKey,
+        string originalPowerId,
+        int occurrenceIndex,
+        Action<LoadoutPowerKeywordEntryUpgrade> update)
+    {
+        List<LoadoutPowerKeywordEntryUpgrade> entries =
+            LoadoutPowerKeywordEntryUpgrade.CloneList(
+                _draft.PowerKeywordEntryUpgrades) ?? [];
+        int index = entries.FindLastIndex(entry => EntryUpgradeMatches(
+            entry,
+            keywordKey,
+            originalPowerId,
+            occurrenceIndex));
+        LoadoutPowerKeywordEntryUpgrade entry = index >= 0
+            ? entries[index]
+            : new LoadoutPowerKeywordEntryUpgrade
+            {
+                KeywordKey = keywordKey,
+                OriginalPowerId = originalPowerId,
+                OccurrenceIndex = occurrenceIndex
+            };
+        update(entry);
+        if (entry.AmountDelta == 0
+            && string.IsNullOrWhiteSpace(entry.ReplacementPowerId))
+        {
+            if (index >= 0)
+                entries.RemoveAt(index);
+        }
+        else if (index < 0)
+        {
+            entries.Add(entry);
+        }
+        _draft.PowerKeywordEntryUpgrades = entries;
+    }
+
+    private static bool EntryUpgradeMatches(
+        LoadoutPowerKeywordEntryUpgrade entry,
+        string keywordKey,
+        string originalPowerId,
+        int occurrenceIndex) =>
+        entry.OccurrenceIndex == occurrenceIndex
+        && string.Equals(
+            entry.KeywordKey,
+            keywordKey,
+            StringComparison.OrdinalIgnoreCase)
+        && string.Equals(
+            entry.OriginalPowerId,
+            originalPowerId,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static int GetAndIncrementOccurrence(
+        Dictionary<(string KeywordKey, string PowerId), int> occurrences,
+        LoadoutPowerKeywordEntry entry)
+    {
+        (string KeywordKey, string PowerId) key =
+            (entry.KeywordKey, entry.PowerId);
+        occurrences.TryGetValue(key, out int occurrence);
+        occurrences[key] = occurrence + 1;
+        return occurrence;
     }
 
     private void RefreshPreview()
@@ -654,6 +850,8 @@ public partial class NCardUpgradeModificationScreen : Control
         _backButton?.SetEnabled(false);
         if (!_wasVisible)
             return;
+        if (NLoadoutPanelRoot.Instance?.ContainsScreen(this) == true)
+            return;
 
         SaveOnce();
         ReleasePreviewCards();
@@ -666,6 +864,10 @@ public partial class NCardUpgradeModificationScreen : Control
             return;
 
         _saved = true;
+        _draft.PowerKeywordEntryUpgrades =
+            LoadoutPowerKeywordState.PruneEntryUpgrades(
+                _baseState.PowerKeywordEntries,
+                _draft.PowerKeywordEntryUpgrades);
         _draft.Normalize();
         _save?.Invoke(_draft.Clone());
     }
@@ -692,6 +894,23 @@ public partial class NCardUpgradeModificationScreen : Control
         input.CustomMinimumSize = new Vector2(inputWidth, 42f);
         row.AddChild(input);
         return row;
+    }
+
+    private sealed class KeywordPowerIdentityComparer
+        : IEqualityComparer<(string KeywordKey, string PowerId)>
+    {
+        public static readonly KeywordPowerIdentityComparer Instance = new();
+
+        public bool Equals(
+            (string KeywordKey, string PowerId) x,
+            (string KeywordKey, string PowerId) y) =>
+            string.Equals(x.KeywordKey, y.KeywordKey, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(x.PowerId, y.PowerId, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string KeywordKey, string PowerId) obj) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.KeywordKey),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.PowerId));
     }
 
     private static void AddStepperRow(

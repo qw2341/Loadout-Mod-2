@@ -1161,6 +1161,14 @@ public partial class NCardModificationScreen : Control
             LoadoutPowerKeywordEntry.CloneList(entries);
         _temporaryState.PowerKeywordEntries =
             LoadoutPowerKeywordEntry.CloneList(entries);
+        _workingState.UpgradeModification.PowerKeywordEntryUpgrades =
+            LoadoutPowerKeywordState.PruneEntryUpgrades(
+                _workingState.PowerKeywordEntries,
+                _workingState.UpgradeModification.PowerKeywordEntryUpgrades);
+        _temporaryState.UpgradeModification.PowerKeywordEntryUpgrades =
+            LoadoutPowerKeywordState.PruneEntryUpgrades(
+                _temporaryState.PowerKeywordEntries,
+                _temporaryState.UpgradeModification.PowerKeywordEntryUpgrades);
     }
 
     private void AddDropdownControls()

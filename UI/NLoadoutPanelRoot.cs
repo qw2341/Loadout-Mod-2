@@ -623,6 +623,19 @@ public partial class NLoadoutPanelRoot : Control
 		return TryPeekScreen(out var activeScreen) ? activeScreen.Name : "";
 	}
 
+	public bool ContainsScreen(Control screen)
+	{
+		if (!IsInstanceValid(screen))
+			return false;
+
+		foreach (Control candidate in _screenHistory)
+		{
+			if (candidate == screen)
+				return true;
+		}
+		return false;
+	}
+
 	private bool TryGetScreen(StringName screenName, out Control screen)
 	{
 		if (_screens.TryGetValue(screenName, out screen))
@@ -962,7 +975,7 @@ public partial class NLoadoutPanelRoot : Control
 		{
 		}
 	}
-	
+
 	public static void CloseTopLoadoutScreen()
 	{
 		Instance?.CloseTopScreen();

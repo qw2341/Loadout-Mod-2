@@ -213,7 +213,8 @@ internal static class CanonicalCardModificationRegistry
         LoadoutPowerKeywordState.SetExplicitState(
             canonical,
             delta.PowerKeywordEntries,
-            delta.UpgradeModification.PowerKeywordEntries);
+            delta.UpgradeModification.PowerKeywordEntryUpgrades,
+            delta.UpgradeModification.AddedPowerKeywordEntries);
         foreach (LoadoutPowerKeywordModel model in
                  LoadoutKeywordRegistry.All.OfType<LoadoutPowerKeywordModel>())
         {

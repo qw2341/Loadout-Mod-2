@@ -89,7 +89,8 @@ internal static class CardUpgradeModificationRuntimePatches
                 value.KeywordOverrides);
             LoadoutKeywordRuntimePatches.EnableFromPowerKeywordEntries(
                 null,
-                value.PowerKeywordEntries);
+                value.PowerKeywordEntryUpgrades,
+                value.AddedPowerKeywordEntries);
         }
 
         _overrides ??= new Stack<CardUpgradeModificationSpec?>();

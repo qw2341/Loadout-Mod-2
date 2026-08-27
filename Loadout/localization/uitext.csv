@@ -800,6 +800,10 @@ CARD_MOD_POWER_KEYWORD_SEPARATOR,", ","，",", ","、",", ",", "
 CARD_MOD_APPLY_POWER_AMOUNT,Apply Power Amount,施加能力数值,Quantité de pouvoir,付与するパワー量,능력 부여 수치,Cantidad de poder
 CARD_MOD_APPLY_POWER_POWER,Apply Power,施加能力,Appliquer un pouvoir,パワー付与,능력 부여,Aplicar poder
 CARD_MOD_SELECT_POWER,Select Power,选择能力,Sélectionner un pouvoir,パワーを選択,능력 선택,Seleccionar poder
+CARD_MOD_POWER_KEYWORD_ENTRY_UPGRADES,Power Entry Upgrades,能力升级,Améliorations des entrées de pouvoir,パワー項目のアップグレード,능력 항목 강화,Mejoras de entradas de poder
+CARD_MOD_POWER_KEYWORD_REPLACEMENT,Replacement Power,替换能力,Pouvoir de remplacement,置換パワー,대체 능력,Poder de reemplazo
+CARD_MOD_POWER_KEYWORD_UPGRADE_AMOUNT,Upgrade Amount,升级数值,Quantité d'amélioration,アップグレード量,강화 수치,Cantidad de mejora
+CARD_MOD_POWER_KEYWORD_ADDED_ENTRIES,Added on Upgrade,新增能力,Ajoutés lors de l'amélioration,アップグレードで追加,강화 시 추가,Añadidos al mejorar
 CARD_MOD_POWER_PICKER_UNAVAILABLE,The shared power picker is unavailable or already in use.,共享能力选择器不可用或正在使用。,Le sélecteur de pouvoir partagé est indisponible ou déjà utilisé.,共有パワー選択画面は使用できないか使用中です。,공유 능력 선택기를 사용할 수 없거나 사용 중입니다.,El selector de poder compartido no está disponible o ya está en uso.
 CARD_MOD_POWER_PICKER_OPEN_FAILED,Could not open the shared power picker: {0},无法打开共享能力选择器：{0},Impossible d’ouvrir le sélecteur de pouvoir partagé : {0},共有パワー選択画面を開けませんでした：{0},공유 능력 선택기를 열 수 없습니다: {0},No se pudo abrir el selector de poder compartido: {0}
 DYNAMIC_VAR_LOADOUT_APPLY_POWER_LIST,Configured Powers,已配置能力,Pouvoirs configurés,設定済みパワー,설정된 능력,Poderes configurados
