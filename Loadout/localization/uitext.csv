@@ -621,6 +621,7 @@ CUSTOM_RUN_COMPONENT_CARD_DRAWN,Card Drawn,抽到卡牌,Carte piochée,カード
 CUSTOM_RUN_COMPONENT_CARD_DISCARDED,Card Discarded,弃置卡牌,Carte défaussée,カードを捨てた,카드 버림,Carta descartada
 CUSTOM_RUN_COMPONENT_CARD_EXHAUSTED,Card Exhausted,消耗卡牌,Carte épuisée,カードを廃棄,카드 소멸,Carta agotada
 CUSTOM_RUN_COMPONENT_CARD_GENERATED,Card Generated,生成卡牌,Carte générée,カード生成,카드 생성,Carta generada
+CUSTOM_RUN_COMPONENT_CARD_CREATED,Card Created,卡牌创建,Carte créée,カード作成,카드 생성됨,Carta creada
 CUSTOM_RUN_COMPONENT_CARD_OBTAINED,Card Obtained,获得卡牌,Carte obtenue,カード入手,카드 획득,Carta obtenida
 CUSTOM_RUN_COMPONENT_PLAYER_TAKES_DAMAGE,Player Takes Damage,玩家受到伤害,Le joueur subit des dégâts,プレイヤーがダメージを受ける,플레이어 피해,El jugador recibe daño
 CUSTOM_RUN_COMPONENT_PLAYER_GAINS_BLOCK,Player Gains Block,玩家获得格挡,Le joueur gagne du blocage,プレイヤーがブロックを得る,플레이어 방어도 획득,El jugador gana bloqueo
@@ -628,6 +629,7 @@ CUSTOM_RUN_COMPONENT_POWER_RECEIVED,Power Received,获得能力,Pouvoir reçu,�
 CUSTOM_RUN_COMPONENT_POTION_USED,Potion Used,使用药水,Potion utilisée,ポーション使用,포션 사용,Poción usada
 CUSTOM_RUN_COMPONENT_POTION_OBTAINED,Potion Obtained,获得药水,Potion obtenue,ポーション入手,포션 획득,Poción obtenida
 CUSTOM_RUN_COMPONENT_RELIC_OBTAINED,Relic Obtained,获得遗物,Relique obtenue,レリック入手,유물 획득,Reliquia obtenida
+CUSTOM_RUN_COMPONENT_RELIC_GENERATED,Relic Generated,生成遗物,Relique générée,レリック生成,유물 생성,Reliquia generada
 CUSTOM_RUN_COMPONENT_MONSTER_SPAWNED,Monster Spawned,怪物生成,Monstre apparu,モンスター出現,몬스터 생성,Monstruo generado
 CUSTOM_RUN_COMPONENT_MONSTER_MOVE_STARTED,Monster Move Started,怪物行动开始,Action du monstre commencée,モンスター行動開始,몬스터 행동 시작,Movimiento del monstruo iniciado
 CUSTOM_RUN_COMPONENT_ENERGY_SPENT,Energy Spent,消耗能量,Énergie dépensée,エナジー消費,에너지 소모,Energía gastada
@@ -730,6 +732,8 @@ CUSTOM_RUN_COMPONENT_SET_PLAYER_DAMAGE_MULTIPLIER,Set Player Damage Multiplier,�
 CUSTOM_RUN_COMPONENT_SET_MONSTER_DAMAGE_MULTIPLIER,Set Monster Damage Multiplier,设置怪物伤害倍率,Définir le multiplicateur de dégâts des monstres,モンスターのダメージ倍率を設定,몬스터 피해 배율 설정,Definir multiplicador de daño de monstruos
 CUSTOM_RUN_COMPONENT_ENTER_EVENT,Enter Event Now,立即进入事件,Entrer dans l'événement maintenant,今すぐイベントに入る,지금 이벤트 입장,Entrar al evento ahora
 CUSTOM_RUN_COMPONENT_SET_NEXT_EVENT,Set Next Event,设置下一个事件,Définir le prochain événement,次のイベントを設定,다음 이벤트 설정,Definir próximo evento
+CUSTOM_RUN_COMPONENT_REPLACE_CARD,Replace Card,替换卡牌,Remplacer la carte,カードを置換,카드 교체,Reemplazar carta
+CUSTOM_RUN_COMPONENT_REPLACE_RELIC,Replace Relic,替换遗物,Remplacer la relique,レリックを置換,유물 교체,Reemplazar reliquia
 CUSTOM_RUN_PARAMETER_EVENT,Event,事件,Événement,イベント,이벤트,Evento
 CUSTOM_RUN_PARAMETER_EVENT_MATCHER,Event matcher,事件匹配器,Filtre d'événements,イベント照合,이벤트 일치 조건,Filtro de eventos
 CUSTOM_RUN_PARAMETER_NUMBER_TO_SELECT,Number to select,选择数量,Nombre à sélectionner,選択する数,선택할 수,Número a seleccionar

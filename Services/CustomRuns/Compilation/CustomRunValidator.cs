@@ -236,8 +236,18 @@ public static class CustomRunValidator
             {
                 if (!CustomRunRegistry.TryGetAction(action.TypeId, out RuleComponentDescriptor actionDescriptor))
                     Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' uses unknown action '{action.TypeId}'.");
+                else if (!CustomRunRegistry.IsCompatibleWithTrigger(actionDescriptor, rule.Trigger.TypeId))
+                    Error(result, "Rules", rule.Id, $"Rule '{rule.Name}' cannot use '{actionDescriptor.DisplayName}' with its selected trigger.");
                 else
                     ValidateComponentParameters(definition, rule, action, actionDescriptor, result);
+            }
+            if (rule.Actions.Any(IsReplacementAction) && (rule.Actions.Count != 1 || !IsReplacementAction(rule.Actions[0])))
+            {
+                Error(
+                    result,
+                    "Rules",
+                    rule.Id,
+                    $"Rule '{rule.Name}' must contain exactly one replacement action and no ordinary actions.");
             }
             if (rule.Limit.Kind is RuleLimitKind.TimesPerTurn or RuleLimitKind.TimesPerCombat or RuleLimitKind.TimesPerRun)
             {
@@ -264,6 +274,9 @@ public static class CustomRunValidator
                 ValidateConditions(definition, rule.Limit.UntilConditions, rule, result);
         }
     }
+
+    private static bool IsReplacementAction(RuleComponentSpec action)
+        => action.TypeId is "Loadout2:ReplaceCard" or "Loadout2:ReplaceRelic";
 
     private static void ValidateConditions(
         CustomRunDefinition definition,

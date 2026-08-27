@@ -606,7 +606,7 @@ public partial class NCustomRunRuleEditorScreen : Control
     {
         VBoxContainer panel = CreateInsetPanel(0);
         IReadOnlyList<RuleComponentDescriptor> allDescriptors = CustomRunRegistry.GetDescriptors(kind);
-        IReadOnlyList<RuleComponentDescriptor> descriptors = kind == RuleComponentKind.Condition && _workingRule is not null
+        IReadOnlyList<RuleComponentDescriptor> descriptors = kind is RuleComponentKind.Condition or RuleComponentKind.Action && _workingRule is not null
             ? CustomRunRegistry.GetDescriptors(kind, _workingRule.Trigger.TypeId)
             : allDescriptors;
         RuleComponentDescriptor? currentDescriptor = allDescriptors.FirstOrDefault(candidate =>

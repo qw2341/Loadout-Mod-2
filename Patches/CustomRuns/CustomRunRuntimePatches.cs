@@ -5,6 +5,7 @@ namespace Loadout.Patches.CustomRuns;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,12 +24,14 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Random;
@@ -158,6 +161,214 @@ public static class CustomRunRuleRuntimeRunEndPatch
     public static void Prefix()
     {
         CustomRunRuleRuntimeService.Capture("Loadout2:RunEnd", 0);
+    }
+}
+
+public static class CustomRunCardCreatedPatch
+{
+    public static void Prefix(ref CardModel __0, Player __1, out GeneratedCardPatchState __state)
+    {
+        __state = new GeneratedCardPatchState();
+        if (!CustomRunRuleRuntimeService.TryResolveCreatedCard(__0, __1, out CardModel resolved, out bool replaced))
+            return;
+        __0 = resolved;
+        __state.Active = true;
+        __state.Replaced = replaced;
+        if (replaced)
+            __state.Provenance = CustomRunReplacementProvenance.BeginCardReplacement(resolved);
+    }
+
+    public static void Postfix(CardModel __result, Player __1, GeneratedCardPatchState __state)
+    {
+        if (!__state.Active)
+            return;
+        if (__state.Replaced)
+            CustomRunReplacementProvenance.MarkCard(__result);
+        __state.Dispose();
+        CustomRunRuleRuntimeService.CaptureGeneratedItem(
+            "Loadout2:CardCreated",
+            __1,
+            SelectionModelKind.Card,
+            __result);
+    }
+
+    public static Exception? Finalizer(Exception? __exception, GeneratedCardPatchState __state)
+    {
+        __state.Dispose();
+        return __exception;
+    }
+}
+
+public sealed class GeneratedCardPatchState : IDisposable
+{
+    public bool Active { get; set; }
+    public bool Replaced { get; set; }
+    public IDisposable? Provenance { get; set; }
+
+    public void Dispose()
+    {
+        Provenance?.Dispose();
+        Provenance = null;
+    }
+}
+
+public static class CustomRunCardToMutableProvenancePatch
+{
+    public static void Postfix(CardModel __instance, CardModel __result)
+    {
+        CustomRunReplacementProvenance.TransferCardToMutable(__instance, __result);
+    }
+}
+
+public static class CustomRunRelicFactoryGeneratedPatch
+{
+    public static void Postfix(Player __0, ref RelicModel __result)
+    {
+        if (__result is null
+            || !CustomRunRuleRuntimeService.TryResolveGeneratedRelic(
+                __result,
+                __0,
+                out RelicModel resolved,
+                out bool replaced))
+        {
+            return;
+        }
+
+        __result = resolved;
+        if (replaced)
+            CustomRunReplacementProvenance.RecordRelicReplacement(resolved, __0.NetId, sharedTreasure: false);
+        CustomRunRuleRuntimeService.CaptureGeneratedItem(
+            "Loadout2:RelicGenerated",
+            __0,
+            SelectionModelKind.Relic,
+            resolved);
+    }
+}
+
+public static class CustomRunRelicToMutableProvenancePatch
+{
+    public static void Postfix(RelicModel __instance, RelicModel __result)
+    {
+        CustomRunReplacementProvenance.TransferRelicToMutable(__instance, __result);
+    }
+}
+
+public static class CustomRunSharedTreasureGeneratedPatch
+{
+    private static readonly MethodInfo RelicListAddMethod = AccessTools.Method(
+        typeof(List<RelicModel>),
+        nameof(List<RelicModel>.Add),
+        [typeof(RelicModel)]);
+    private static readonly MethodInfo AddGeneratedRelicMethod = AccessTools.Method(
+        typeof(CustomRunSharedTreasureGeneratedPatch),
+        nameof(AddGeneratedRelic));
+
+    public static void Prefix(out bool __state)
+    {
+        __state = CustomRunRuleRuntimeService.UsesTrigger("Loadout2:RelicGenerated");
+        if (__state)
+            CustomRunSharedTreasureGenerationContext.Begin();
+    }
+
+    public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        bool replaced = false;
+        foreach (CodeInstruction instruction in instructions)
+        {
+            if (instruction.Calls(RelicListAddMethod))
+            {
+                instruction.opcode = OpCodes.Call;
+                instruction.operand = AddGeneratedRelicMethod;
+                replaced = true;
+            }
+            yield return instruction;
+        }
+        if (!replaced)
+            throw new MissingMethodException("Could not locate the shared-treasure relic-list insertion.");
+    }
+
+    private static void AddGeneratedRelic(List<RelicModel> relics, RelicModel source)
+    {
+        if (!CustomRunSharedTreasureGenerationContext.IsCapturing)
+        {
+            relics.Add(source);
+            return;
+        }
+        if (!CustomRunSharedTreasureGenerationContext.TryTakeContributor(out Player contributor))
+        {
+            relics.Add(source);
+            CustomRunRuleRuntimeService.WarnReplacement(
+                $"Could not identify the player who generated shared-treasure relic '{source.Id}'.");
+            return;
+        }
+        if (!CustomRunRuleRuntimeService.TryResolveGeneratedRelic(
+                source,
+                contributor,
+                out RelicModel resolved,
+                out bool replaced))
+        {
+            relics.Add(source);
+            return;
+        }
+
+        relics.Add(resolved);
+        if (replaced)
+            CustomRunReplacementProvenance.RecordRelicReplacement(resolved, contributor.NetId, sharedTreasure: true);
+        CustomRunRuleRuntimeService.CaptureGeneratedItem(
+            "Loadout2:RelicGenerated",
+            contributor,
+            SelectionModelKind.Relic,
+            resolved);
+    }
+
+    public static Exception? Finalizer(Exception? __exception, bool __state)
+    {
+        if (__state)
+            CustomRunSharedTreasureGenerationContext.Cancel();
+        return __exception;
+    }
+}
+
+public static class CustomRunSharedTreasureContributorPatch
+{
+    public static void Postfix(Player __1, bool __result)
+    {
+        if (__result)
+            CustomRunSharedTreasureGenerationContext.Record(__1);
+    }
+}
+
+internal static class CustomRunSharedTreasureGenerationContext
+{
+    private static readonly AsyncLocal<Queue<Player>?> Contributors = new();
+
+    internal static bool IsCapturing => Contributors.Value is not null;
+
+    internal static void Begin()
+    {
+        CustomRunReplacementProvenance.ClearSharedRelics();
+        Contributors.Value = new Queue<Player>();
+    }
+
+    internal static void Record(Player player)
+    {
+        Contributors.Value?.Enqueue(player);
+    }
+
+    internal static bool TryTakeContributor(out Player player)
+    {
+        if (Contributors.Value is { Count: > 0 } contributors)
+        {
+            player = contributors.Dequeue();
+            return true;
+        }
+        player = null!;
+        return false;
+    }
+
+    internal static void Cancel()
+    {
+        Contributors.Value = null;
     }
 }
 

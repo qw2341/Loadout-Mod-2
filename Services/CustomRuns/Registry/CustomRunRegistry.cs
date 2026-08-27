@@ -119,6 +119,7 @@ public static class CustomRunRegistry
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardDiscarded", "Card Discarded", "Cards");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardExhausted", "Card Exhausted", "Cards");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardGenerated", "Card Generated", "Cards");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardCreated", "Card Created", "Cards");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:CardObtained", "Card Obtained", "Cards");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PlayerTakesDamage", "Player Takes Damage", "Players");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PlayerGainsBlock", "Player Gains Block", "Players");
@@ -126,6 +127,7 @@ public static class CustomRunRegistry
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PotionUsed", "Potion Used", "Potions");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:PotionObtained", "Potion Obtained", "Potions");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:RelicObtained", "Relic Obtained", "Relics");
+            RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:RelicGenerated", "Relic Generated", "Relics");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:MonsterSpawned", "Monster Spawned", "Monsters");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:MonsterMoveStarted", "Monster Move Started", "Monsters");
             RegisterBuiltIn(Triggers, RuleComponentKind.Trigger, "Loadout2:EnergySpent", "Energy Spent", "Players");
@@ -239,14 +241,14 @@ public static class CustomRunRegistry
                 "Loadout2:CardMatches",
                 "Card Matches",
                 "Cards",
-                new HashSet<string>(["Loadout2:CardPlayed", "Loadout2:CardDrawn", "Loadout2:CardDiscarded", "Loadout2:CardExhausted", "Loadout2:CardGenerated", "Loadout2:CardObtained"], StringComparer.Ordinal),
+                new HashSet<string>(["Loadout2:CardPlayed", "Loadout2:CardDrawn", "Loadout2:CardDiscarded", "Loadout2:CardExhausted", "Loadout2:CardGenerated", "Loadout2:CardCreated", "Loadout2:CardObtained"], StringComparer.Ordinal),
                 cardMatcher);
             RegisterBuiltInScopedCondition(
                 Conditions,
                 "Loadout2:RelicMatches",
                 "Relic Matches",
                 "Relics",
-                new HashSet<string>(["Loadout2:RelicObtained"], StringComparer.Ordinal),
+                new HashSet<string>(["Loadout2:RelicObtained", "Loadout2:RelicGenerated"], StringComparer.Ordinal),
                 relicMatcher);
             RegisterBuiltInScopedCondition(
                 Conditions,
@@ -390,6 +392,20 @@ public static class CustomRunRegistry
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:ModifyMonsterDamageMultiplier", "Modify Monster Damage Multiplier", "Player", numericModification, multiplier, playerTarget);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:EnterEvent", "Enter Event Now", "Events", eventModel);
             RegisterBuiltIn(Actions, RuleComponentKind.Action, "Loadout2:SetNextEvent", "Set Next Event", "Events", eventModel);
+            RegisterBuiltInScopedAction(
+                Actions,
+                "Loadout2:ReplaceCard",
+                "Replace Card",
+                "Cards",
+                new HashSet<string>(["Loadout2:CardCreated"], StringComparer.Ordinal),
+                card);
+            RegisterBuiltInScopedAction(
+                Actions,
+                "Loadout2:ReplaceRelic",
+                "Replace Relic",
+                "Relics",
+                new HashSet<string>(["Loadout2:RelicGenerated"], StringComparer.Ordinal),
+                relic);
 
             RegisterBuiltIn(Targets, RuleComponentKind.Target, "Loadout2:TriggeringPlayer", "Triggering Player", "Players");
             RegisterBuiltIn(Targets, RuleComponentKind.Target, "Loadout2:Host", "Host", "Players");
@@ -449,7 +465,7 @@ public static class CustomRunRegistry
     public static IReadOnlyList<RuleComponentDescriptor> GetDescriptors(RuleComponentKind kind, string triggerId)
     {
         IReadOnlyList<RuleComponentDescriptor> descriptors = GetDescriptors(kind);
-        if (kind != RuleComponentKind.Condition)
+        if (kind is not (RuleComponentKind.Condition or RuleComponentKind.Action))
             return descriptors;
         return descriptors
             .Where(descriptor => descriptor.CompatibleTriggerIds.Count == 0
@@ -459,7 +475,7 @@ public static class CustomRunRegistry
 
     public static bool IsCompatibleWithTrigger(RuleComponentDescriptor descriptor, string triggerId)
     {
-        return descriptor.Kind != RuleComponentKind.Condition
+        return descriptor.Kind is not (RuleComponentKind.Condition or RuleComponentKind.Action)
                || descriptor.CompatibleTriggerIds.Count == 0
                || descriptor.CompatibleTriggerIds.Contains(triggerId);
     }
@@ -548,6 +564,27 @@ public static class CustomRunRegistry
             DisplayName = displayName,
             Category = category,
             Kind = RuleComponentKind.Condition,
+            CompatibleTriggerIds = compatibleTriggerIds,
+            Parameters = parameters,
+            CompilationHandler = new BuiltInRuleComponentHandler(id),
+            RuntimeHandler = new BuiltInRuleComponentHandler(id)
+        };
+    }
+
+    private static void RegisterBuiltInScopedAction(
+        Dictionary<string, RuleComponentDescriptor> dictionary,
+        string id,
+        string displayName,
+        string category,
+        IReadOnlySet<string> compatibleTriggerIds,
+        params RuleParameterDescriptor[] parameters)
+    {
+        dictionary[id] = new RuleComponentDescriptor
+        {
+            StableId = id,
+            DisplayName = displayName,
+            Category = category,
+            Kind = RuleComponentKind.Action,
             CompatibleTriggerIds = compatibleTriggerIds,
             Parameters = parameters,
             CompilationHandler = new BuiltInRuleComponentHandler(id),

@@ -111,6 +111,9 @@ public sealed class CustomRunRuntimeState
     [JsonPropertyName("eventSequence")]
     public long EventSequence { get; set; }
 
+    [JsonPropertyName("replacementSequence")]
+    public long ReplacementSequence { get; set; }
+
     [JsonPropertyName("revision")]
     public long Revision { get; set; }
 

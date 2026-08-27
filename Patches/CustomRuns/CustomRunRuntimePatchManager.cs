@@ -13,8 +13,11 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
@@ -166,6 +169,25 @@ public static class CustomRunRuntimePatchManager
             typeof(CustomRunAfterCardExhaustedPatch), postfix: true);
         PatchTrigger(triggers, "Loadout2:CardGenerated", typeof(Hook), nameof(Hook.AfterCardGeneratedForCombat),
             typeof(CustomRunAfterCardGeneratedPatch), postfix: true);
+        if (triggers.Contains("Loadout2:CardCreated"))
+        {
+            Patch(
+                RequiredMethod(typeof(RunState), nameof(RunState.CreateCard), [typeof(CardModel), typeof(Player)]),
+                typeof(CustomRunCardCreatedPatch),
+                prefix: true,
+                postfix: true,
+                finalizer: true);
+            Patch(
+                RequiredMethod(typeof(CombatState), nameof(CombatState.CreateCard), [typeof(CardModel), typeof(Player)]),
+                typeof(CustomRunCardCreatedPatch),
+                prefix: true,
+                postfix: true,
+                finalizer: true);
+            Patch(
+                RequiredMethod(typeof(CardModel), nameof(CardModel.ToMutable), Type.EmptyTypes),
+                typeof(CustomRunCardToMutableProvenancePatch),
+                postfix: true);
+        }
         PatchTrigger(triggers, "Loadout2:PlayerTakesDamage", typeof(Hook), nameof(Hook.AfterDamageReceived),
             typeof(CustomRunAfterDamageReceivedPatch), postfix: true);
         PatchTrigger(triggers, "Loadout2:PlayerGainsBlock", typeof(Hook), nameof(Hook.AfterBlockGained),
@@ -189,6 +211,36 @@ public static class CustomRunRuntimePatchManager
                     nameof(RelicCmd.Obtain),
                     [typeof(RelicModel), typeof(Player), typeof(int)]),
                 typeof(CustomRunRelicObtainedPatch),
+                postfix: true);
+        }
+        if (triggers.Contains("Loadout2:RelicGenerated"))
+        {
+            Type[] terminalRelicPullParameters = [
+                typeof(Player),
+                typeof(RelicRarity),
+                typeof(Func<RelicModel, bool>)
+            ];
+            Patch(
+                RequiredMethod(typeof(RelicFactory), nameof(RelicFactory.PullNextRelicFromFront), terminalRelicPullParameters),
+                typeof(CustomRunRelicFactoryGeneratedPatch),
+                postfix: true);
+            Patch(
+                RequiredMethod(typeof(RelicFactory), nameof(RelicFactory.PullNextRelicFromBack), terminalRelicPullParameters),
+                typeof(CustomRunRelicFactoryGeneratedPatch),
+                postfix: true);
+            Patch(
+                RequiredMethod(typeof(TreasureRoomRelicSynchronizer), nameof(TreasureRoomRelicSynchronizer.BeginRelicPicking), Type.EmptyTypes),
+                typeof(CustomRunSharedTreasureGeneratedPatch),
+                prefix: true,
+                transpiler: true,
+                finalizer: true);
+            Patch(
+                RequiredMethod(typeof(Hook), nameof(Hook.ShouldGenerateTreasure), [typeof(IRunState), typeof(Player)]),
+                typeof(CustomRunSharedTreasureContributorPatch),
+                postfix: true);
+            Patch(
+                RequiredMethod(typeof(RelicModel), nameof(RelicModel.ToMutable), Type.EmptyTypes),
+                typeof(CustomRunRelicToMutableProvenancePatch),
                 postfix: true);
         }
         if (triggers.Contains("Loadout2:MonsterSpawned"))
@@ -247,11 +299,20 @@ public static class CustomRunRuntimePatchManager
         MethodBase original,
         Type patchType,
         bool prefix = false,
-        bool postfix = false)
+        bool postfix = false,
+        bool transpiler = false,
+        bool finalizer = false)
     {
         HarmonyMethod? prefixMethod = prefix ? GetPatchMethod(patchType, "Prefix") : null;
         HarmonyMethod? postfixMethod = postfix ? GetPatchMethod(patchType, "Postfix") : null;
-        RuntimeHarmony.Patch(original, prefix: prefixMethod, postfix: postfixMethod);
+        HarmonyMethod? transpilerMethod = transpiler ? GetPatchMethod(patchType, "Transpiler") : null;
+        HarmonyMethod? finalizerMethod = finalizer ? GetPatchMethod(patchType, "Finalizer") : null;
+        RuntimeHarmony.Patch(
+            original,
+            prefix: prefixMethod,
+            postfix: postfixMethod,
+            transpiler: transpilerMethod,
+            finalizer: finalizerMethod);
         _hasPatches = true;
     }
 

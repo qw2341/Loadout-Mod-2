@@ -181,7 +181,10 @@ public static class CustomRunRuntimeSnapshotService
             if (!CustomRunSnapshotSerializationService.TryDeserialize(snapshotPayload, out snapshot, out _))
                 return false;
             runtime = envelope.Runtime ?? new CustomRunRuntimeState();
-            return runtime.Revision >= 0 && runtime.RngSequence >= 0 && runtime.EventSequence >= 0;
+            return runtime.Revision >= 0
+                   && runtime.RngSequence >= 0
+                   && runtime.EventSequence >= 0
+                   && runtime.ReplacementSequence >= 0;
         }
         catch
         {

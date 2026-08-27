@@ -14,6 +14,7 @@ using Loadout.Services.CustomRuns.Compilation;
 using Loadout.Services.CustomRuns.Catalog;
 using Loadout.Services.CustomRuns.Models;
 using Loadout.Services.CustomRuns.Persistence;
+using Loadout.Services.CustomRuns.Registry;
 using Loadout.Services.Networking;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
@@ -37,6 +38,8 @@ public static class CustomRunRuleRuntimeService
 
     private static readonly object Gate = new();
     private static readonly AsyncLocal<CustomRunRuntimeEvent?> CurrentEvent = new();
+    private static readonly AsyncLocal<int> GeneratedItemSuppressionDepth = new();
+    private static readonly AsyncLocal<int> ReplacementRngDepth = new();
     private static readonly Dictionary<long, TaskCompletionSource<CustomRunDecisionBatch>> BatchWaiters = [];
     private static readonly Dictionary<long, CustomRunDecisionBatch> PendingBatches = [];
     private static readonly Dictionary<long, ChainState> Chains = [];
@@ -117,6 +120,7 @@ public static class CustomRunRuleRuntimeService
             _netService.UnregisterMessageHandler<CustomRunRuntimeStateMessage>(HandleRuntimeState);
         }
         CustomRunRuntimeChoiceService.Unregister();
+        CustomRunReplacementProvenance.Clear();
         lock (Gate)
         {
             foreach (TaskCompletionSource<CustomRunDecisionBatch> waiter in BatchWaiters.Values)
@@ -162,6 +166,57 @@ public static class CustomRunRuleRuntimeService
             return;
         EnqueueEvent(triggerId, triggeringPlayerId, modelKind, modelId, amount);
     }
+
+    internal static IDisposable SuppressGeneratedItemRules()
+    {
+        GeneratedItemSuppressionDepth.Value++;
+        return new GeneratedItemSuppressionScope();
+    }
+
+    internal static bool TryResolveCreatedCard(
+        CardModel source,
+        Player owner,
+        out CardModel resolved,
+        out bool replaced)
+    {
+        return TryResolveGeneratedModel(
+            "Loadout2:CardCreated",
+            "Loadout2:ReplaceCard",
+            "cardId",
+            SelectionModelKind.Card,
+            source,
+            owner,
+            out resolved,
+            out replaced);
+    }
+
+    internal static bool TryResolveGeneratedRelic(
+        RelicModel source,
+        Player owner,
+        out RelicModel resolved,
+        out bool replaced)
+    {
+        return TryResolveGeneratedModel(
+            "Loadout2:RelicGenerated",
+            "Loadout2:ReplaceRelic",
+            "relicId",
+            SelectionModelKind.Relic,
+            source,
+            owner,
+            out resolved,
+            out replaced);
+    }
+
+    internal static void CaptureGeneratedItem(
+        string triggerId,
+        Player owner,
+        SelectionModelKind kind,
+        AbstractModel finalModel)
+    {
+        Capture(triggerId, owner.NetId, kind, finalModel.Id.ToString());
+    }
+
+    internal static void WarnReplacement(string message) => LogWarning(message);
 
     internal static void CaptureRoomEnteredTrigger(string triggerId, string eventId)
     {
@@ -346,6 +401,8 @@ public static class CustomRunRuleRuntimeService
                 {
                     foreach (CompiledRuleDefinition rule in rules)
                     {
+                        if (IsReplacementRule(rule))
+                            continue;
                         if (!TryBeginRule(runtimeEvent, rule))
                             continue;
                         try
@@ -428,6 +485,7 @@ public static class CustomRunRuleRuntimeService
                     StringComparer.Ordinal),
                 RngSequence = _state.RngSequence,
                 EventSequence = _state.EventSequence,
+                ReplacementSequence = _state.ReplacementSequence,
                 Revision = _state.Revision,
                 SetupApplied = _state.SetupApplied,
                 RunStartEmitted = _state.RunStartEmitted,
@@ -449,8 +507,137 @@ public static class CustomRunRuleRuntimeService
     {
         if (count <= 0)
             return -1;
-        long sequence = _state.RngSequence++;
+        long sequence = ReplacementRngDepth.Value > 0
+            ? _state.ReplacementSequence++
+            : _state.RngSequence++;
         return CustomRunDeterministicRng.NextIndex(Snapshot.RunSeed, sequence, context, count);
+    }
+
+    private static bool TryResolveGeneratedModel<TModel>(
+        string triggerId,
+        string actionId,
+        string parameterKey,
+        SelectionModelKind modelKind,
+        TModel source,
+        Player owner,
+        out TModel resolved,
+        out bool replaced)
+        where TModel : AbstractModel
+    {
+        resolved = source;
+        replaced = false;
+        if (!IsActive
+            || GeneratedItemSuppressionDepth.Value > 0
+            || !RulesByTrigger.TryGetValue(triggerId, out List<CompiledRuleDefinition>? triggerRules))
+        {
+            return false;
+        }
+
+        List<CompiledRuleDefinition> replacementRules = triggerRules
+            .Where(rule => rule.Actions.Count == 1 && rule.Actions[0].TypeId == actionId)
+            .ToList();
+        if (replacementRules.Count == 0)
+            return true;
+
+        lock (Gate)
+        {
+            TModel current = source;
+            string currentId = current.Id.ToString();
+            HashSet<string> visited = new(StringComparer.Ordinal) { currentId };
+            List<string> chain = [currentId];
+            Dictionary<string, int> executionsByRule = new(StringComparer.Ordinal);
+            int redirects = 0;
+
+            while (redirects < MaximumDepth)
+            {
+                bool redirected = false;
+                foreach (CompiledRuleDefinition rule in replacementRules)
+                {
+                    CustomRunRuntimeEvent runtimeEvent = new()
+                    {
+                        SnapshotHash = Snapshot.SnapshotHash,
+                        EnqueuedRevision = _state.Revision,
+                        EventId = _state.ReplacementSequence + 1,
+                        ChainId = _state.ReplacementSequence + 1,
+                        TriggerId = triggerId,
+                        TriggeringPlayerId = owner.NetId,
+                        ModelKind = modelKind,
+                        ModelId = currentId
+                    };
+
+                    try
+                    {
+                        using (BeginReplacementRng())
+                        {
+                            if (!CustomRunRuleEvaluator.EvaluateConditions(rule.Conditions, runtimeEvent, rule.Id))
+                                continue;
+                            int priorExecutions = executionsByRule.GetValueOrDefault(rule.Id);
+                            if (!CustomRunRuleEvaluator.AllowsByLimit(runtimeEvent, rule, priorExecutions))
+                                continue;
+                        }
+
+                        string destinationId = RuleComponentParameterService.GetString(
+                            rule.Actions[0],
+                            parameterKey);
+                        if (!CustomRunCatalogService.TryResolve(modelKind, destinationId, out CustomRunCatalogEntry entry)
+                            || entry.Model is not TModel destination)
+                        {
+                            LogWarning(
+                                $"Replacement rule '{rule.Name}' could not resolve {modelKind} '{destinationId}' while processing {string.Join(" -> ", chain)}.");
+                            continue;
+                        }
+
+                        string nextId = destination.Id.ToString();
+                        if (!visited.Add(nextId))
+                        {
+                            LogWarning(
+                                $"Halted {modelKind} replacement chain before repeated model '{nextId}': {string.Join(" -> ", chain)}.");
+                            resolved = current;
+                            replaced = redirects > 0;
+                            return true;
+                        }
+
+                        CustomRunRuleCounterState counter = GetCounter(rule.Id);
+                        counter.Run++;
+                        counter.Combat++;
+                        counter.Turn++;
+                        executionsByRule[rule.Id] = executionsByRule.GetValueOrDefault(rule.Id) + 1;
+                        current = destination;
+                        currentId = nextId;
+                        chain.Add(nextId);
+                        redirects++;
+                        redirected = true;
+                        break;
+                    }
+                    catch (Exception exception)
+                    {
+                        LogWarning($"Replacement rule '{rule.Name}' failed while processing {modelKind} '{currentId}': {exception}");
+                    }
+                }
+
+                if (!redirected)
+                {
+                    resolved = current;
+                    replaced = redirects > 0;
+                    return true;
+                }
+            }
+
+            LogWarning(
+                $"Halted {modelKind} replacement chain after {MaximumDepth} redirects: {string.Join(" -> ", chain)}.");
+            resolved = current;
+            replaced = true;
+            return true;
+        }
+    }
+
+    private static bool IsReplacementRule(CompiledRuleDefinition rule)
+        => rule.Actions.Any(action => action.TypeId is "Loadout2:ReplaceCard" or "Loadout2:ReplaceRelic");
+
+    private static IDisposable BeginReplacementRng()
+    {
+        ReplacementRngDepth.Value++;
+        return new ReplacementRngScope();
     }
 
     internal static CustomRunRuleCounterState GetCounter(string ruleId)
@@ -974,6 +1161,32 @@ public static class CustomRunRuleRuntimeService
         public int RuleExecutions;
         public bool Halted;
         public Dictionary<string, int> ExecutionsByRule { get; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed class GeneratedItemSuppressionScope : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            GeneratedItemSuppressionDepth.Value = Math.Max(0, GeneratedItemSuppressionDepth.Value - 1);
+        }
+    }
+
+    private sealed class ReplacementRngScope : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            ReplacementRngDepth.Value = Math.Max(0, ReplacementRngDepth.Value - 1);
+        }
     }
 
     private readonly record struct DeferredTriggerCapture(

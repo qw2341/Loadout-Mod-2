@@ -5,6 +5,7 @@ namespace Loadout.Patches.ContentBans;
 using HarmonyLib;
 using Loadout.Services.Compatibility;
 using Loadout.Services.ContentBans;
+using Loadout.Services.CustomRuns.Runtime;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -41,7 +42,7 @@ internal static class ContentBanCardCreationOptionsPatch
     internal static void Postfix(ref IEnumerable<CardModel> __result)
     {
         if (ContentBanService.HasAnyBans(ContentBanKind.Card))
-            __result = __result.Where(card => !ContentBanService.IsBanned(card));
+            __result = __result.Where(card => !ContentBanService.IsBanned(ContentBanTarget.Card(card)));
     }
 }
 
@@ -52,7 +53,7 @@ internal static class ContentBanCombatCardPoolPatch
     internal static void Postfix(ref IEnumerable<CardModel> __result)
     {
         if (ContentBanService.HasAnyBans(ContentBanKind.Card))
-            __result = __result.Where(card => !ContentBanService.IsBanned(card));
+            __result = __result.Where(card => !ContentBanService.IsBanned(ContentBanTarget.Card(card)));
     }
 }
 
@@ -63,7 +64,7 @@ internal static class ContentBanMerchantCardPoolPatch
     internal static void Postfix(ref IEnumerable<CardModel> __result)
     {
         if (ContentBanService.HasAnyBans(ContentBanKind.Card))
-            __result = __result.Where(card => !ContentBanService.IsBanned(card)).ToArray();
+            __result = __result.Where(card => !ContentBanService.IsBanned(ContentBanTarget.Card(card))).ToArray();
     }
 }
 
@@ -74,7 +75,7 @@ internal static class ContentBanDefaultTransformationPoolPatch
     internal static void Postfix(ref IEnumerable<CardModel> __result)
     {
         if (ContentBanService.HasAnyBans(ContentBanKind.Card))
-            __result = __result.Where(card => !ContentBanService.IsBanned(card)).ToArray();
+            __result = __result.Where(card => !ContentBanService.IsBanned(ContentBanTarget.Card(card))).ToArray();
     }
 }
 
@@ -132,7 +133,9 @@ internal static class ContentBanCardTransformationPatch
             return null;
         }
 
-        CardModel[] legal = candidates.Where(card => !ContentBanService.IsBanned(card)).ToArray();
+        CardModel[] legal = candidates
+            .Where(card => !ContentBanService.IsBanned(ContentBanTarget.Card(card)))
+            .ToArray();
         return legal.Length == 0 ? null : new CardTransformation(transformation.Original, legal);
     }
 
@@ -392,7 +395,7 @@ internal static class ContentBanRelicGrabBagFrontPatch
         if (!ContentBanService.HasAnyBans(ContentBanKind.Relic))
             return;
         Func<RelicModel, bool> original = filter;
-        filter = relic => original(relic) && !ContentBanService.IsBanned(relic);
+        filter = relic => original(relic) && !ContentBanService.IsBanned(ContentBanTarget.Relic(relic));
     }
 }
 
@@ -405,7 +408,7 @@ internal static class ContentBanRelicGrabBagBackPatch
         if (!ContentBanService.HasAnyBans(ContentBanKind.Relic))
             return;
         Func<RelicModel, bool> original = filter;
-        filter = relic => original(relic) && !ContentBanService.IsBanned(relic);
+        filter = relic => original(relic) && !ContentBanService.IsBanned(ContentBanTarget.Relic(relic));
     }
 }
 
@@ -423,7 +426,8 @@ internal static class ContentBanRelicAvailabilityPatch
         Dictionary<RelicRarity, List<RelicModel>> deques = (Dictionary<RelicRarity, List<RelicModel>>)DequesField.GetValue(__instance)!;
         List<RelicModel> fallback = (List<RelicModel>)FallbackField.GetValue(__instance)!;
         __result = deques.Values.SelectMany(values => values).Concat(fallback)
-            .Any(relic => relic.IsAllowed(runState) && !ContentBanService.IsBanned(relic));
+            .Any(relic => relic.IsAllowed(runState)
+                          && !ContentBanService.IsBanned(ContentBanTarget.Relic(relic)));
     }
 }
 
@@ -431,9 +435,12 @@ internal static class ContentBanRelicAvailabilityPatch
 internal static class ContentBanRelicObtainPatch
 {
     [HarmonyPrefix]
-    internal static bool Prefix(RelicModel relic, ref Task<RelicModel> __result)
+    internal static bool Prefix(RelicModel relic, Player player, ref Task<RelicModel> __result)
     {
-        if (!ContentBanService.HasAnyBans(ContentBanKind.Relic) || !ContentBanService.IsBanned(relic))
+        if (!ContentBanService.HasAnyBans(ContentBanKind.Relic)
+            || !ContentBanService.IsBanned(ContentBanTarget.Relic(relic)))
+            return true;
+        if (CustomRunReplacementProvenance.TryAuthorizeRelicObtain(relic, player))
             return true;
         __result = Task.FromResult<RelicModel>(null!);
         return false;

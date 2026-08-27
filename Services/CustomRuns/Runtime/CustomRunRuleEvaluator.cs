@@ -723,10 +723,13 @@ internal static class CustomRunRuleEvaluator
     private static async Task AddDeckCardsAsync(Player target, IEnumerable<string> modelIds)
     {
         List<CardModel> cards = [];
-        foreach (string id in modelIds)
+        using (CustomRunRuleRuntimeService.SuppressGeneratedItemRules())
         {
-            if (ResolveModel<CardModel>(SelectionModelKind.Card, id) is { } canonical)
-                cards.Add(target.RunState.CreateCard(canonical, target));
+            foreach (string id in modelIds)
+            {
+                if (ResolveModel<CardModel>(SelectionModelKind.Card, id) is { } canonical)
+                    cards.Add(target.RunState.CreateCard(canonical, target));
+            }
         }
         if (cards.Count == 0)
             return;
@@ -753,12 +756,15 @@ internal static class CustomRunRuleEvaluator
         if (combat is null || amount <= 0)
             return;
         List<CardModel> cards = [];
-        foreach (string id in modelIds)
+        using (CustomRunRuleRuntimeService.SuppressGeneratedItemRules())
         {
-            if (ResolveModel<CardModel>(SelectionModelKind.Card, id) is not { } canonical)
-                continue;
-            for (int i = 0; i < amount; i++)
-                cards.Add(combat.CreateCard(canonical, target));
+            foreach (string id in modelIds)
+            {
+                if (ResolveModel<CardModel>(SelectionModelKind.Card, id) is not { } canonical)
+                    continue;
+                for (int i = 0; i < amount; i++)
+                    cards.Add(combat.CreateCard(canonical, target));
+            }
         }
         if (cards.Count > 0)
             await CardPileCmd.AddGeneratedCardsToCombat(cards, pile, target);
