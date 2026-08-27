@@ -47,6 +47,8 @@ public sealed class BasicBlockKeyword : LoadoutBasicKeywordModel
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         VariableDefinitions;
 
+    public override bool ReportsGainsBlock => true;
+
     public override async Task AfterOnPlay(
         CardModel card,
         PlayerChoiceContext choiceContext,
@@ -74,6 +76,6 @@ internal static class LoadoutBasicKeywordGainsBlockPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref bool __result)
     {
-        __result |= LoadoutKeywords.Has(__instance, LoadoutKeywords.BasicBlock);
+        __result |= LoadoutKeywordRegistry.ReportsGainsBlock(__instance);
     }
 }

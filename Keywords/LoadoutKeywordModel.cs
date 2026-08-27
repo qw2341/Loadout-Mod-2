@@ -30,6 +30,7 @@ public enum LoadoutKeywordEditorSection
 {
     Default,
     Basic,
+    BasicMultiplayer,
     Power,
     Restrictive,
     Fatal,
@@ -120,6 +121,10 @@ public abstract class LoadoutKeywordModel
     public virtual bool HasPlayRestriction => false;
 
     public virtual bool ChangesTargeting => false;
+
+    public virtual bool RequiresAnotherPlayerTarget => false;
+
+    public virtual bool ReportsGainsBlock => false;
 
     public bool IsEnabled(
         CardModel card,

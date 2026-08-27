@@ -38,6 +38,26 @@ public static class LoadoutKeywords
     public const string BasicLoseHealthKey = "BasicLoseHealth";
     public const string BasicEnergyKey = "BasicEnergy";
     public const string BasicStarsKey = "BasicStars";
+    public const string AnotherPlayerBlockKey = "BasicMultiplayerAnotherPlayerBlock";
+    public const string AllPlayersBlockKey = "BasicMultiplayerAllPlayersBlock";
+    public const string AnotherPlayerDrawKey = "BasicMultiplayerAnotherPlayerDraw";
+    public const string AllPlayersDrawKey = "BasicMultiplayerAllPlayersDraw";
+    public const string AnotherPlayerDiscardKey = "BasicMultiplayerAnotherPlayerDiscard";
+    public const string AllPlayersDiscardKey = "BasicMultiplayerAllPlayersDiscard";
+    public const string AnotherPlayerExhaustKey = "BasicMultiplayerAnotherPlayerExhaust";
+    public const string AllPlayersExhaustKey = "BasicMultiplayerAllPlayersExhaust";
+    public const string AnotherPlayerTransformKey = "BasicMultiplayerAnotherPlayerTransform";
+    public const string AllPlayersTransformKey = "BasicMultiplayerAllPlayersTransform";
+    public const string AnotherPlayerHealKey = "BasicMultiplayerAnotherPlayerHeal";
+    public const string AllPlayersHealKey = "BasicMultiplayerAllPlayersHeal";
+    public const string AnotherPlayerGainMaxHpKey = "BasicMultiplayerAnotherPlayerGainMaxHp";
+    public const string AllPlayersGainMaxHpKey = "BasicMultiplayerAllPlayersGainMaxHp";
+    public const string AnotherPlayerLoseHealthKey = "BasicMultiplayerAnotherPlayerLoseHealth";
+    public const string AllPlayersLoseHealthKey = "BasicMultiplayerAllPlayersLoseHealth";
+    public const string AnotherPlayerEnergyKey = "BasicMultiplayerAnotherPlayerEnergy";
+    public const string AllPlayersEnergyKey = "BasicMultiplayerAllPlayersEnergy";
+    public const string AnotherPlayerStarsKey = "BasicMultiplayerAnotherPlayerStars";
+    public const string AllPlayersStarsKey = "BasicMultiplayerAllPlayersStars";
     public const string ApplyPowerKey = "ApplyPower";
     public const string ApplySelfKey = "ApplySelf";
     public const string ApplyToAllEnemiesKey = "ApplyToAllEnemies";
@@ -168,6 +188,66 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_STARS")]
     public static CardKeyword BasicStars;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_BLOCK")]
+    public static CardKeyword AnotherPlayerBlock;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_BLOCK")]
+    public static CardKeyword AllPlayersBlock;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_DRAW")]
+    public static CardKeyword AnotherPlayerDraw;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_DRAW")]
+    public static CardKeyword AllPlayersDraw;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_DISCARD")]
+    public static CardKeyword AnotherPlayerDiscard;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_DISCARD")]
+    public static CardKeyword AllPlayersDiscard;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_EXHAUST")]
+    public static CardKeyword AnotherPlayerExhaust;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_EXHAUST")]
+    public static CardKeyword AllPlayersExhaust;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_TRANSFORM")]
+    public static CardKeyword AnotherPlayerTransform;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_TRANSFORM")]
+    public static CardKeyword AllPlayersTransform;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_HEAL")]
+    public static CardKeyword AnotherPlayerHeal;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_HEAL")]
+    public static CardKeyword AllPlayersHeal;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_GAIN_MAX_HP")]
+    public static CardKeyword AnotherPlayerGainMaxHp;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_GAIN_MAX_HP")]
+    public static CardKeyword AllPlayersGainMaxHp;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_LOSE_HEALTH")]
+    public static CardKeyword AnotherPlayerLoseHealth;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_LOSE_HEALTH")]
+    public static CardKeyword AllPlayersLoseHealth;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_ENERGY")]
+    public static CardKeyword AnotherPlayerEnergy;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_ENERGY")]
+    public static CardKeyword AllPlayersEnergy;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_STARS")]
+    public static CardKeyword AnotherPlayerStars;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_STARS")]
+    public static CardKeyword AllPlayersStars;
 
     [CustomEnum("APPLY_POWER")]
     public static CardKeyword ApplyPower;

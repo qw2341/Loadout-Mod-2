@@ -25,7 +25,8 @@ internal static class LoadoutBasicKeywordTargetTypePatch
 
         if (LoadoutPowerKeywordState.HasEffectiveEntries(
                 __instance,
-                LoadoutKeywords.ApplyToAnotherPlayerKey))
+                LoadoutKeywords.ApplyToAnotherPlayerKey)
+            || LoadoutKeywordRegistry.RequiresAnotherPlayerTarget(__instance))
         {
             __result = TargetType.AnyAlly;
             return;

@@ -51,6 +51,26 @@ public static class LoadoutKeywordRegistry
         BasicLoseHealthKeyword.Instance,
         BasicEnergyKeyword.Instance,
         BasicStarsKeyword.Instance,
+        AnotherPlayerBlockKeyword.Instance,
+        AllPlayersBlockKeyword.Instance,
+        AnotherPlayerDrawKeyword.Instance,
+        AllPlayersDrawKeyword.Instance,
+        AnotherPlayerDiscardKeyword.Instance,
+        AllPlayersDiscardKeyword.Instance,
+        AnotherPlayerExhaustKeyword.Instance,
+        AllPlayersExhaustKeyword.Instance,
+        AnotherPlayerTransformKeyword.Instance,
+        AllPlayersTransformKeyword.Instance,
+        AnotherPlayerHealKeyword.Instance,
+        AllPlayersHealKeyword.Instance,
+        AnotherPlayerGainMaxHpKeyword.Instance,
+        AllPlayersGainMaxHpKeyword.Instance,
+        AnotherPlayerLoseHealthKeyword.Instance,
+        AllPlayersLoseHealthKeyword.Instance,
+        AnotherPlayerEnergyKeyword.Instance,
+        AllPlayersEnergyKeyword.Instance,
+        AnotherPlayerStarsKeyword.Instance,
+        AllPlayersStarsKeyword.Instance,
         ApplyPowerKeyword.Instance,
         ApplySelfKeyword.Instance,
         ApplyToAllEnemiesKeyword.Instance,
@@ -162,6 +182,18 @@ public static class LoadoutKeywordRegistry
             .Where(model => model.ChangesTargeting)
             .ToArray();
 
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        AnotherPlayerTargetModels =
+        Models
+            .Where(model => model.RequiresAnotherPlayerTarget)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        BlockGainModels =
+        Models
+            .Where(model => model.ReportsGainsBlock)
+            .ToArray();
+
     [ThreadStatic]
     private static Stack<CardModel>? _baseDescriptionContext;
 
@@ -228,6 +260,28 @@ public static class LoadoutKeywordRegistry
     public static bool ChangesTargeting(CardModel card)
     {
         foreach (LoadoutKeywordModel model in TargetChangingModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool RequiresAnotherPlayerTarget(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in AnotherPlayerTargetModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool ReportsGainsBlock(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in BlockGainModels)
         {
             if (model.IsEnabled(card))
                 return true;
