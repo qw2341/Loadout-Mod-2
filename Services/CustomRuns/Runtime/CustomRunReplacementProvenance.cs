@@ -3,20 +3,15 @@
 namespace Loadout.Services.CustomRuns.Runtime;
 
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 
 internal static class CustomRunReplacementProvenance
 {
-    private const int MaximumPendingRelics = 256;
-    private static readonly object Gate = new();
     private static readonly AsyncLocal<CardReplacementScope?> CurrentCardReplacement = new();
     private static readonly ConditionalWeakTable<CardModel, ForcedMarker> ForcedCards = new();
     private static readonly ConditionalWeakTable<RelicModel, ForcedMarker> ForcedRelics = new();
-    private static readonly List<PendingRelicReplacement> PendingRelics = [];
 
     internal static IDisposable BeginCardReplacement(CardModel destination)
     {
@@ -37,68 +32,46 @@ internal static class CustomRunReplacementProvenance
 
     internal static bool IsForced(CardModel card)
     {
+        if (!CustomRunRuleRuntimeService.CardReplacementEnabled)
+            return false;
         if (ForcedCards.TryGetValue(card, out _))
             return true;
         CardReplacementScope? scope = CurrentCardReplacement.Value;
         return scope is not null && ReferenceEquals(scope.Destination, card.CanonicalInstance);
     }
 
-    internal static void RecordRelicReplacement(RelicModel destination, ulong ownerId, bool sharedTreasure)
+    internal static RelicModel CreateRelicOccurrence(RelicModel destination)
     {
-        lock (Gate)
-        {
-            PendingRelics.Add(new PendingRelicReplacement(destination.CanonicalInstance, ownerId, sharedTreasure));
-            if (PendingRelics.Count > MaximumPendingRelics)
-                PendingRelics.RemoveRange(0, PendingRelics.Count - MaximumPendingRelics);
-        }
+        RelicModel occurrence = destination.CanonicalInstance.ToMutable();
+        Mark(ForcedRelics, occurrence);
+        return occurrence;
     }
 
-    internal static void TransferRelicToMutable(RelicModel canonical, RelicModel mutable)
+    internal static bool TryReuseRelicOccurrence(RelicModel relic, out RelicModel occurrence)
     {
-        lock (Gate)
+        if (CustomRunRuleRuntimeService.RelicReplacementEnabled
+            && ForcedRelics.TryGetValue(relic, out _))
         {
-            int index = PendingRelics.FindIndex(candidate =>
-                ReferenceEquals(candidate.Destination, canonical.CanonicalInstance));
-            if (index < 0)
-                return;
-            PendingRelics.RemoveAt(index);
-            Mark(ForcedRelics, mutable);
+            occurrence = relic;
+            return true;
         }
+        occurrence = null!;
+        return false;
     }
 
-    internal static bool TryAuthorizeRelicObtain(RelicModel relic, Player player)
+    internal static bool TryConsumeRelicAuthorization(RelicModel relic)
     {
-        if (ForcedRelics.TryGetValue(relic, out _))
-            return true;
-        lock (Gate)
-        {
-            int index = PendingRelics.FindIndex(candidate =>
-                ReferenceEquals(candidate.Destination, relic.CanonicalInstance)
-                && (candidate.SharedTreasure || candidate.OwnerId == player.NetId));
-            if (index < 0)
-                return false;
-            PendingRelics.RemoveAt(index);
-            Mark(ForcedRelics, relic);
-            return true;
-        }
+        if (!CustomRunRuleRuntimeService.RelicReplacementEnabled
+            || !ForcedRelics.TryGetValue(relic, out _))
+            return false;
+        ForcedRelics.Remove(relic);
+        return true;
     }
 
     internal static bool IsForced(RelicModel relic)
     {
-        if (ForcedRelics.TryGetValue(relic, out _))
-            return true;
-        lock (Gate)
-        {
-            return PendingRelics.Exists(candidate =>
-                candidate.SharedTreasure
-                && ReferenceEquals(candidate.Destination, relic.CanonicalInstance));
-        }
-    }
-
-    internal static void ClearSharedRelics()
-    {
-        lock (Gate)
-            PendingRelics.RemoveAll(candidate => candidate.SharedTreasure);
+        return CustomRunRuleRuntimeService.RelicReplacementEnabled
+               && ForcedRelics.TryGetValue(relic, out _);
     }
 
     internal static void Clear()
@@ -106,8 +79,6 @@ internal static class CustomRunReplacementProvenance
         CurrentCardReplacement.Value = null;
         ForcedCards.Clear();
         ForcedRelics.Clear();
-        lock (Gate)
-            PendingRelics.Clear();
     }
 
     private static void Mark<T>(ConditionalWeakTable<T, ForcedMarker> table, T model)
@@ -137,9 +108,4 @@ internal static class CustomRunReplacementProvenance
     {
         internal static ForcedMarker Instance { get; } = new();
     }
-
-    private readonly record struct PendingRelicReplacement(
-        RelicModel Destination,
-        ulong OwnerId,
-        bool SharedTreasure);
 }

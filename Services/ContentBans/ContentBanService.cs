@@ -138,9 +138,13 @@ internal static class ContentBanService
 
     internal static bool IsBanned(ContentBanTarget target) => GetScope(target) != ContentBanScope.None;
     internal static bool IsBanned(CardModel card)
-        => !CustomRunReplacementProvenance.IsForced(card) && IsBanned(ContentBanTarget.Card(card));
+        => IsBanned(ContentBanTarget.Card(card))
+           && (!CustomRunRuleRuntimeService.CardReplacementEnabled
+               || !CustomRunReplacementProvenance.IsForced(card));
     internal static bool IsBanned(RelicModel relic)
-        => !CustomRunReplacementProvenance.IsForced(relic) && IsBanned(ContentBanTarget.Relic(relic));
+        => IsBanned(ContentBanTarget.Relic(relic))
+           && (!CustomRunRuleRuntimeService.RelicReplacementEnabled
+               || !CustomRunReplacementProvenance.IsForced(relic));
     internal static bool IsBanned(PotionModel potion) => IsBanned(ContentBanTarget.Potion(potion));
 
     internal static bool HasAnyBans(ContentBanKind kind)

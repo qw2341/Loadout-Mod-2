@@ -121,6 +121,14 @@ public static class CustomRunRuntimePatchManager
     private static void InstallRulePatches(ResolvedCustomRunSnapshot snapshot)
     {
         IReadOnlySet<string> triggers = CustomRunRulePlan.GetTriggerIds(snapshot.Rules);
+        bool replacesCards = snapshot.Rules.Any(rule =>
+            rule.Trigger.TypeId == "Loadout2:CardCreated"
+            && rule.Actions.Count == 1
+            && rule.Actions[0].TypeId == "Loadout2:ReplaceCard");
+        bool replacesRelics = snapshot.Rules.Any(rule =>
+            rule.Trigger.TypeId == "Loadout2:RelicGenerated"
+            && rule.Actions.Count == 1
+            && rule.Actions[0].TypeId == "Loadout2:ReplaceRelic");
         PatchTrigger(triggers, "Loadout2:RunEnd", typeof(RunManager), nameof(RunManager.OnEnded),
             typeof(CustomRunRuleRuntimeRunEndPatch), prefix: true);
         PatchTrigger(triggers, "Loadout2:CardPlayed", typeof(Hook), nameof(Hook.AfterCardPlayed),
@@ -183,10 +191,13 @@ public static class CustomRunRuntimePatchManager
                 prefix: true,
                 postfix: true,
                 finalizer: true);
-            Patch(
-                RequiredMethod(typeof(CardModel), nameof(CardModel.ToMutable), Type.EmptyTypes),
-                typeof(CustomRunCardToMutableProvenancePatch),
-                postfix: true);
+            if (replacesCards)
+            {
+                Patch(
+                    RequiredMethod(typeof(CardModel), nameof(CardModel.ToMutable), Type.EmptyTypes),
+                    typeof(CustomRunCardToMutableProvenancePatch),
+                    postfix: true);
+            }
         }
         PatchTrigger(triggers, "Loadout2:PlayerTakesDamage", typeof(Hook), nameof(Hook.AfterDamageReceived),
             typeof(CustomRunAfterDamageReceivedPatch), postfix: true);
@@ -238,10 +249,13 @@ public static class CustomRunRuntimePatchManager
                 RequiredMethod(typeof(Hook), nameof(Hook.ShouldGenerateTreasure), [typeof(IRunState), typeof(Player)]),
                 typeof(CustomRunSharedTreasureContributorPatch),
                 postfix: true);
-            Patch(
-                RequiredMethod(typeof(RelicModel), nameof(RelicModel.ToMutable), Type.EmptyTypes),
-                typeof(CustomRunRelicToMutableProvenancePatch),
-                postfix: true);
+            if (replacesRelics)
+            {
+                Patch(
+                    RequiredMethod(typeof(RelicModel), nameof(RelicModel.ToMutable), Type.EmptyTypes),
+                    typeof(CustomRunRelicToMutableProvenancePatch),
+                    prefix: true);
+            }
         }
         if (triggers.Contains("Loadout2:MonsterSpawned"))
         {

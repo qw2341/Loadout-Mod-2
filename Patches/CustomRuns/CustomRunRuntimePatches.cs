@@ -234,22 +234,25 @@ public static class CustomRunRelicFactoryGeneratedPatch
             return;
         }
 
-        __result = resolved;
-        if (replaced)
-            CustomRunReplacementProvenance.RecordRelicReplacement(resolved, __0.NetId, sharedTreasure: false);
+        __result = replaced
+            ? CustomRunReplacementProvenance.CreateRelicOccurrence(resolved)
+            : resolved;
         CustomRunRuleRuntimeService.CaptureGeneratedItem(
             "Loadout2:RelicGenerated",
             __0,
             SelectionModelKind.Relic,
-            resolved);
+            __result);
     }
 }
 
 public static class CustomRunRelicToMutableProvenancePatch
 {
-    public static void Postfix(RelicModel __instance, RelicModel __result)
+    public static bool Prefix(RelicModel __instance, ref RelicModel __result)
     {
-        CustomRunReplacementProvenance.TransferRelicToMutable(__instance, __result);
+        if (!CustomRunReplacementProvenance.TryReuseRelicOccurrence(__instance, out RelicModel occurrence))
+            return true;
+        __result = occurrence;
+        return false;
     }
 }
 
@@ -311,14 +314,15 @@ public static class CustomRunSharedTreasureGeneratedPatch
             return;
         }
 
-        relics.Add(resolved);
-        if (replaced)
-            CustomRunReplacementProvenance.RecordRelicReplacement(resolved, contributor.NetId, sharedTreasure: true);
+        RelicModel occurrence = replaced
+            ? CustomRunReplacementProvenance.CreateRelicOccurrence(resolved)
+            : resolved;
+        relics.Add(occurrence);
         CustomRunRuleRuntimeService.CaptureGeneratedItem(
             "Loadout2:RelicGenerated",
             contributor,
             SelectionModelKind.Relic,
-            resolved);
+            occurrence);
     }
 
     public static Exception? Finalizer(Exception? __exception, bool __state)
@@ -346,7 +350,6 @@ internal static class CustomRunSharedTreasureGenerationContext
 
     internal static void Begin()
     {
-        CustomRunReplacementProvenance.ClearSharedRelics();
         Contributors.Value = new Queue<Player>();
     }
 

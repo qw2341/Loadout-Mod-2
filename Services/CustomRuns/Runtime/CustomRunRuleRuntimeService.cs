@@ -4,7 +4,9 @@ namespace Loadout.Services.CustomRuns.Runtime;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,7 +53,11 @@ public static class CustomRunRuleRuntimeService
     private static ResolvedCustomRunSnapshot? _snapshot;
     private static CustomRunVariableStore? _variables;
     private static readonly Dictionary<string, List<CompiledRuleDefinition>> RulesByTrigger = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, List<CompiledRuleDefinition>> ReplacementRulesByTrigger = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> OrdinaryRuleTriggers = new(StringComparer.Ordinal);
     private static readonly SortedDictionary<string, CustomRunRuleCounterState> RuleCounters = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> IncompatibleTypedCardWarnings = new(StringComparer.Ordinal);
+    private static readonly Dictionary<MethodBase, bool> TypedCardCallerCache = new();
     private static CustomRunRuntimeState _state = new();
     private static INetGameService? _netService;
     private static RunLobby? _runLobby;
@@ -61,12 +67,16 @@ public static class CustomRunRuleRuntimeService
     private static bool _combatEndedSubscribed;
     private static bool _turnStartedSubscribed;
     private static bool _turnEndedSubscribed;
+    private static bool _cardReplacementEnabled;
+    private static bool _relicReplacementEnabled;
     private static int _pendingRoomEntryRedirects;
     private static TaskCompletionSource? _roomEntryRedirectsCompleted;
     private static int _activeActions;
     private static AbstractRoom? _lastCompletedRoom;
 
     public static bool IsActive => _initialized && _captureEnabled && IsSupportedSnapshot(_snapshot);
+    internal static bool CardReplacementEnabled => IsActive && _cardReplacementEnabled;
+    internal static bool RelicReplacementEnabled => IsActive && _relicReplacementEnabled;
     internal static bool IsForRun(RunState runState) => _initialized && ReferenceEquals(_runState, runState);
     internal static RunState RunState => _runState ?? throw new InvalidOperationException("Custom Run runtime is not initialized.");
     internal static ResolvedCustomRunSnapshot Snapshot => _snapshot ?? throw new InvalidOperationException("Custom Run runtime has no snapshot.");
@@ -136,7 +146,10 @@ public static class CustomRunRuleRuntimeService
             _pendingRoomEntryRedirects = 0;
             PendingRejoinRecipients.Clear();
             RulesByTrigger.Clear();
+            ReplacementRulesByTrigger.Clear();
+            OrdinaryRuleTriggers.Clear();
             RuleCounters.Clear();
+            IncompatibleTypedCardWarnings.Clear();
             DebugEntries.Clear();
         }
         _runState = null;
@@ -152,6 +165,8 @@ public static class CustomRunRuleRuntimeService
         _combatEndedSubscribed = false;
         _turnStartedSubscribed = false;
         _turnEndedSubscribed = false;
+        _cardReplacementEnabled = false;
+        _relicReplacementEnabled = false;
         _initialized = false;
     }
 
@@ -181,7 +196,6 @@ public static class CustomRunRuleRuntimeService
     {
         return TryResolveGeneratedModel(
             "Loadout2:CardCreated",
-            "Loadout2:ReplaceCard",
             "cardId",
             SelectionModelKind.Card,
             source,
@@ -198,7 +212,6 @@ public static class CustomRunRuleRuntimeService
     {
         return TryResolveGeneratedModel(
             "Loadout2:RelicGenerated",
-            "Loadout2:ReplaceRelic",
             "relicId",
             SelectionModelKind.Relic,
             source,
@@ -213,6 +226,8 @@ public static class CustomRunRuleRuntimeService
         SelectionModelKind kind,
         AbstractModel finalModel)
     {
+        if (!IsActive || !OrdinaryRuleTriggers.Contains(triggerId))
+            return;
         Capture(triggerId, owner.NetId, kind, finalModel.Id.ToString());
     }
 
@@ -515,7 +530,6 @@ public static class CustomRunRuleRuntimeService
 
     private static bool TryResolveGeneratedModel<TModel>(
         string triggerId,
-        string actionId,
         string parameterKey,
         SelectionModelKind modelKind,
         TModel source,
@@ -528,15 +542,12 @@ public static class CustomRunRuleRuntimeService
         replaced = false;
         if (!IsActive
             || GeneratedItemSuppressionDepth.Value > 0
-            || !RulesByTrigger.TryGetValue(triggerId, out List<CompiledRuleDefinition>? triggerRules))
+            || !RulesByTrigger.ContainsKey(triggerId))
         {
             return false;
         }
 
-        List<CompiledRuleDefinition> replacementRules = triggerRules
-            .Where(rule => rule.Actions.Count == 1 && rule.Actions[0].TypeId == actionId)
-            .ToList();
-        if (replacementRules.Count == 0)
+        if (!ReplacementRulesByTrigger.TryGetValue(triggerId, out List<CompiledRuleDefinition>? replacementRules))
             return true;
 
         lock (Gate)
@@ -546,6 +557,7 @@ public static class CustomRunRuleRuntimeService
             HashSet<string> visited = new(StringComparer.Ordinal) { currentId };
             List<string> chain = [currentId];
             Dictionary<string, int> executionsByRule = new(StringComparer.Ordinal);
+            bool? typedCardCreation = null;
             int redirects = 0;
 
             while (redirects < MaximumDepth)
@@ -588,6 +600,20 @@ public static class CustomRunRuleRuntimeService
                         }
 
                         string nextId = destination.Id.ToString();
+                        Type sourceType = source.GetType();
+                        // Native CreateCard<T> callers cannot safely receive a different concrete card type.
+                        if (modelKind == SelectionModelKind.Card
+                            && !sourceType.IsInstanceOfType(destination)
+                            && (typedCardCreation ??= IsTypedCardCreationCall()))
+                        {
+                            string warningKey = $"{rule.Id}\n{currentId}\n{nextId}";
+                            if (IncompatibleTypedCardWarnings.Add(warningKey))
+                            {
+                                LogWarning(
+                                    $"Skipped card replacement '{currentId}' -> '{nextId}' because the native generic card creator requires concrete type '{sourceType.Name}'.");
+                            }
+                            continue;
+                        }
                         if (!visited.Add(nextId))
                         {
                             LogWarning(
@@ -633,6 +659,78 @@ public static class CustomRunRuleRuntimeService
 
     private static bool IsReplacementRule(CompiledRuleDefinition rule)
         => rule.Actions.Any(action => action.TypeId is "Loadout2:ReplaceCard" or "Loadout2:ReplaceRelic");
+
+    private static bool IsTypedCardCreationCall()
+    {
+        StackFrame[]? frames = new StackTrace(false).GetFrames();
+        if (frames is null)
+            return true;
+        foreach (StackFrame frame in frames)
+        {
+            MethodBase? method = frame.GetMethod();
+            if (method is null)
+                continue;
+            if (IsGenericCardCreationMethod(method))
+                return true;
+            if (!TypedCardCallerCache.TryGetValue(method, out bool callsGenericCreation))
+            {
+                callsGenericCreation = CallsGenericCardCreation(method);
+                TypedCardCallerCache[method] = callsGenericCreation;
+            }
+            if (callsGenericCreation)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool CallsGenericCardCreation(MethodBase method)
+    {
+        byte[]? il;
+        try
+        {
+            il = method.GetMethodBody()?.GetILAsByteArray();
+        }
+        catch
+        {
+            return false;
+        }
+        if (il is null)
+            return false;
+        Type[]? typeArguments = method.DeclaringType?.IsGenericType == true
+            ? method.DeclaringType.GetGenericArguments()
+            : null;
+        Type[]? methodArguments = method.IsGenericMethod
+            ? method.GetGenericArguments()
+            : null;
+        for (int index = 0; index <= il.Length - 5; index++)
+        {
+            if (il[index] is not (0x28 or 0x6F))
+                continue;
+            try
+            {
+                int token = BitConverter.ToInt32(il, index + 1);
+                MethodBase? called = method.Module.ResolveMethod(token, typeArguments, methodArguments);
+                if (called is not null && IsGenericCardCreationMethod(called))
+                    return true;
+            }
+            catch
+            {
+            }
+        }
+        return false;
+    }
+
+    private static bool IsGenericCardCreationMethod(MethodBase method)
+    {
+        return method.Name == nameof(RunState.CreateCard)
+               && method.IsGenericMethod
+               && method.GetGenericArguments().Length == 1
+               && method.DeclaringType is { } declaringType
+               && (declaringType == typeof(ICardScope)
+                   || declaringType == typeof(ICombatState)
+                   || declaringType == typeof(RunState)
+                   || declaringType == typeof(CombatState));
+    }
 
     private static IDisposable BeginReplacementRng()
     {
@@ -707,7 +805,25 @@ public static class CustomRunRuleRuntimeService
         _state = restored ?? new CustomRunRuntimeState();
         _variables = new CustomRunVariableStore(snapshot, restored);
         foreach ((string triggerId, IReadOnlyList<CompiledRuleDefinition> rules) in CustomRunRulePlan.Build(snapshot.Rules))
-            RulesByTrigger[triggerId] = rules.ToList();
+        {
+            List<CompiledRuleDefinition> triggerRules = rules.ToList();
+            RulesByTrigger[triggerId] = triggerRules;
+            List<CompiledRuleDefinition> replacementRules = [];
+            bool hasOrdinaryRule = false;
+            foreach (CompiledRuleDefinition rule in triggerRules)
+            {
+                if (IsReplacementRule(rule))
+                    replacementRules.Add(rule);
+                else
+                    hasOrdinaryRule = true;
+            }
+            if (replacementRules.Count > 0)
+                ReplacementRulesByTrigger[triggerId] = replacementRules;
+            if (hasOrdinaryRule)
+                OrdinaryRuleTriggers.Add(triggerId);
+        }
+        _cardReplacementEnabled = ReplacementRulesByTrigger.ContainsKey("Loadout2:CardCreated");
+        _relicReplacementEnabled = ReplacementRulesByTrigger.ContainsKey("Loadout2:RelicGenerated");
         foreach (CompiledRuleDefinition rule in snapshot.Rules)
         {
             if (restored?.RuleCounters.TryGetValue(rule.Id, out CustomRunRuleCounterState? counter) == true)

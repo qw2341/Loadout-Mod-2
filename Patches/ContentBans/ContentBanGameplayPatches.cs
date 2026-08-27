@@ -437,10 +437,11 @@ internal static class ContentBanRelicObtainPatch
     [HarmonyPrefix]
     internal static bool Prefix(RelicModel relic, Player player, ref Task<RelicModel> __result)
     {
+        bool forcedReplacement = CustomRunRuleRuntimeService.RelicReplacementEnabled
+                                 && CustomRunReplacementProvenance.TryConsumeRelicAuthorization(relic);
         if (!ContentBanService.HasAnyBans(ContentBanKind.Relic)
-            || !ContentBanService.IsBanned(ContentBanTarget.Relic(relic)))
-            return true;
-        if (CustomRunReplacementProvenance.TryAuthorizeRelicObtain(relic, player))
+            || !ContentBanService.IsBanned(ContentBanTarget.Relic(relic))
+            || forcedReplacement)
             return true;
         __result = Task.FromResult<RelicModel>(null!);
         return false;

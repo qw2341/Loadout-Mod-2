@@ -29,7 +29,7 @@ public static class CustomRunRuntimeSnapshotService
 
     public static void ClearPending()
     {
-        bool shouldDeactivate = _pendingSnapshot is not null && _needsInitialRuntimeApply is null;
+        bool shouldDeactivate = _pendingSnapshot is not null || _needsInitialRuntimeApply is not null;
         _pendingSnapshot = null;
         _needsInitialRuntimeApply = null;
         if (shouldDeactivate)
