@@ -472,22 +472,6 @@ public partial class NCardUpgradeModificationScreen : Control
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
-            AddStepperRow(
-                _leftControls,
-                LocMan.Loc(
-                    model.AmountLabelLocKey,
-                    $"{model.GetTitle()} Amount") + suffix,
-                entries[index].Amount,
-                int.MinValue,
-                int.MaxValue,
-                amount =>
-                {
-                    UpdatePowerKeywordEntry(
-                        capturedIndex,
-                        entry => entry.Amount = amount);
-                    RefreshPreview();
-                });
-
             NLoadoutPowerSelector selector = new();
             selector.Init(entries[index].PowerId);
             selector.SelectRequested += () =>
@@ -509,6 +493,22 @@ public partial class NCardUpgradeModificationScreen : Control
                     model.PowerLabelLocKey,
                     model.GetTitle()) + suffix,
                 selector));
+
+            AddStepperRow(
+                _leftControls,
+                LocMan.Loc(
+                    model.AmountLabelLocKey,
+                    $"{model.GetTitle()} Amount") + suffix,
+                entries[index].Amount,
+                int.MinValue,
+                int.MaxValue,
+                amount =>
+                {
+                    UpdatePowerKeywordEntry(
+                        capturedIndex,
+                        entry => entry.Amount = amount);
+                    RefreshPreview();
+                });
         }
     }
 

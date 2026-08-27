@@ -1096,6 +1096,16 @@ public partial class NCardModificationScreen : Control
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            NLoadoutPowerSelector selector = new();
+            selector.Init(entries[index].PowerId);
+            selector.SelectRequested += () => OpenPowerKeywordPicker(
+                capturedIndex);
+            _variableControls.AddChild(CreateRow(
+                LocMan.Loc(
+                    model.PowerLabelLocKey,
+                    model.GetTitle()) + suffix,
+                selector));
+
             AddStepperRow(
                 _variableControls,
                 LocMan.Loc(
@@ -1108,16 +1118,6 @@ public partial class NCardModificationScreen : Control
                     capturedIndex,
                     entry => entry.Amount = amount,
                     rebuildControls: false));
-
-            NLoadoutPowerSelector selector = new();
-            selector.Init(entries[index].PowerId);
-            selector.SelectRequested += () => OpenPowerKeywordPicker(
-                capturedIndex);
-            _variableControls.AddChild(CreateRow(
-                LocMan.Loc(
-                    model.PowerLabelLocKey,
-                    model.GetTitle()) + suffix,
-                selector));
         }
     }
 
