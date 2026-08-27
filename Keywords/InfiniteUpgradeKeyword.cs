@@ -101,6 +101,24 @@ public readonly record struct InfiniteUpgradeDeserializationState(
     bool? UseInfiniteUpgradeValues,
     bool? UseUpgradedInfiniteUpgradeValues);
 
+public static class InfiniteUpgradeValueScaling
+{
+    public static bool AppliesTo(CardModel card) =>
+        InfiniteUpgradeMaxLevelPatch.ResolveInfiniteUpgradeValues(card)
+        ?? LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
+
+    public static int GetCurrentUpgradeBonus(int currentUpgradeLevel) =>
+        currentUpgradeLevel > 1
+            ? currentUpgradeLevel - 1
+            : 0;
+
+    public static long GetCumulativeUpgradeBonus(int currentUpgradeLevel)
+    {
+        long level = Math.Max(0L, currentUpgradeLevel);
+        return level * (level - 1L) / 2L;
+    }
+}
+
 public readonly struct InfiniteUpgradeContextState
 {
     public InfiniteUpgradeContextState(CardModel? activeCard, bool isApplyingNativeUpgrade)
@@ -125,8 +143,7 @@ public static class InfiniteUpgradeContextPatch
     public static void Prefix(CardModel __instance, out InfiniteUpgradeContextState __state)
     {
         __state = new InfiniteUpgradeContextState(ActiveCard, IsApplyingNativeUpgrade);
-        bool useInfiniteUpgradeValues = InfiniteUpgradeMaxLevelPatch.ResolveInfiniteUpgradeValues(__instance)
-                                        ?? LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade);
+        bool useInfiniteUpgradeValues = InfiniteUpgradeValueScaling.AppliesTo(__instance);
         ActiveCard = useInfiniteUpgradeValues
             ? __instance
             : null;
@@ -176,7 +193,8 @@ public static class InfiniteUpgradeDynamicValuePatch
 
         // UpgradeInternal increments CurrentUpgradeLevel before OnUpgrade.
         // +1: native amount; +2: native + 1; +3: native + 2; etc.
-        int extraValue = card.CurrentUpgradeLevel - 1;
+        int extraValue = InfiniteUpgradeValueScaling.GetCurrentUpgradeBonus(
+            card.CurrentUpgradeLevel);
         if (extraValue > 0)
             addend += extraValue;
     }

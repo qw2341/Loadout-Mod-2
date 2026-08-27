@@ -251,12 +251,14 @@ public static class LoadoutPowerKeywordState
             out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
             out IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
             out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries);
+        bool useInfiniteUpgradeValues = InfiniteUpgradeValueScaling.AppliesTo(card);
 
         foreach (LoadoutPowerKeywordEntry entry in GetEffectiveEntries(
                      baseEntries,
                      entryUpgrades,
                      addedEntries,
-                     card.CurrentUpgradeLevel))
+                     card.CurrentUpgradeLevel,
+                     useInfiniteUpgradeValues))
         {
             if (MatchesKeyword(entry, keywordKey))
                 yield return entry;
@@ -269,11 +271,27 @@ public static class LoadoutPowerKeywordState
         IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries,
         int upgradeLevel)
     {
+        return GetEffectiveEntries(
+            baseEntries,
+            entryUpgrades,
+            addedEntries,
+            upgradeLevel,
+            useInfiniteUpgradeValues: false);
+    }
+
+    public static IEnumerable<LoadoutPowerKeywordEntry> GetEffectiveEntries(
+        IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+        IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
+        IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries,
+        int upgradeLevel,
+        bool useInfiniteUpgradeValues)
+    {
         foreach (EffectivePowerKeywordEntry effective in GetEffectiveEntryStates(
                      baseEntries,
                      entryUpgrades,
                      addedEntries,
-                     upgradeLevel))
+                     upgradeLevel,
+                     useInfiniteUpgradeValues))
         {
             yield return effective.Entry;
         }
@@ -283,9 +301,13 @@ public static class LoadoutPowerKeywordState
         IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
         IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
         IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries,
-        int upgradeLevel)
+        int upgradeLevel,
+        bool useInfiniteUpgradeValues)
     {
         int level = Math.Max(0, upgradeLevel);
+        long cumulativeUpgradeBonus = useInfiniteUpgradeValues
+            ? InfiniteUpgradeValueScaling.GetCumulativeUpgradeBonus(level)
+            : 0L;
         Dictionary<EntryIdentity, LoadoutPowerKeywordEntryUpgrade>? upgradesByIdentity =
             level > 0 && entryUpgrades is not null
                 ? entryUpgrades
@@ -312,8 +334,11 @@ public static class LoadoutPowerKeywordState
                         identity,
                         out LoadoutPowerKeywordEntryUpgrade? upgrade) == true)
                 {
-                    effective.Amount = SaturatingAmount(
-                        (long)baseEntry.Amount + (long)upgrade.AmountDelta * level);
+                    long effectiveAmount = (long)baseEntry.Amount
+                                           + (long)upgrade.AmountDelta * level;
+                    if (upgrade.AmountDelta != 0)
+                        effectiveAmount += cumulativeUpgradeBonus;
+                    effective.Amount = SaturatingAmount(effectiveAmount);
                     amountWasUpgraded = upgrade.AmountDelta != 0;
                     if (!string.IsNullOrWhiteSpace(upgrade.ReplacementPowerId))
                         effective.PowerId = upgrade.ReplacementPowerId;
@@ -331,7 +356,8 @@ public static class LoadoutPowerKeywordState
         foreach (LoadoutPowerKeywordEntry addedEntry in addedEntries)
         {
             LoadoutPowerKeywordEntry effective = addedEntry.Clone();
-            effective.Amount = SaturatingAmount((long)addedEntry.Amount * level);
+            effective.Amount = SaturatingAmount(
+                (long)addedEntry.Amount * level + cumulativeUpgradeBonus);
             yield return new EffectivePowerKeywordEntry(
                 effective,
                 AmountWasUpgraded: true);
@@ -428,6 +454,7 @@ public static class LoadoutPowerKeywordState
             out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
             out IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
             out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries);
+        bool useInfiniteUpgradeValues = InfiniteUpgradeValueScaling.AppliesTo(card);
         bool highlightUpgradeAmounts = card.UpgradePreviewType.IsPreview();
         string separator = LocMan.Loc(
             "CARD_MOD_POWER_KEYWORD_SEPARATOR",
@@ -438,7 +465,8 @@ public static class LoadoutPowerKeywordState
                     baseEntries,
                     entryUpgrades,
                     addedEntries,
-                    card.CurrentUpgradeLevel)
+                    card.CurrentUpgradeLevel,
+                    useInfiniteUpgradeValues)
                 .Where(effective => MatchesKeyword(effective.Entry, keywordKey))
                 .Select(effective =>
                 {
