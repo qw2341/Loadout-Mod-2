@@ -2329,6 +2329,8 @@ public static class CardModificationRuntime
             CopyEnchantments(source, destination);
         if (previous.Affliction is not null || next.Affliction is not null)
             CopyAffliction(source, destination);
+
+        LoadoutKeywordRegistry.SynchronizeOriginalModelHookSuppression(destination);
     }
 
     private static void CopyEnchantments(CardModel source, CardModel destination)
@@ -2636,6 +2638,8 @@ public static class CardModificationRuntime
             else if (!enabled && present)
                 card.RemoveKeyword(keyword);
         }
+
+        LoadoutKeywordRegistry.SynchronizeOriginalModelHookSuppression(card);
     }
 
     private static void ApplyEnchantmentSpecs(

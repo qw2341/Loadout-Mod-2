@@ -131,6 +131,12 @@ public static class LoadoutKeywordRegistry
             .ToArray();
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
+        OriginalModelHookSuppressorModels =
+        Models
+            .Where(model => model.SuppressesOriginalModelHooks)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
         UnblockedDamageModels =
         Models
             .Where(model => model.HasUnblockedDamageEffect)
@@ -283,6 +289,26 @@ public static class LoadoutKeywordRegistry
         }
 
         return false;
+    }
+
+    public static bool SuppressesOriginalModelHooks(CardModel card)
+    {
+        return BlankSlateModelHookState.IsSuppressed(card);
+    }
+
+    public static void SynchronizeOriginalModelHookSuppression(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in
+                 OriginalModelHookSuppressorModels)
+        {
+            if (model.IsEnabled(card))
+            {
+                BlankSlateModelHookState.Set(card, suppresses: true);
+                return;
+            }
+        }
+
+        BlankSlateModelHookState.Set(card, suppresses: false);
     }
 
     public static void PushBaseDescriptionContext(CardModel card)

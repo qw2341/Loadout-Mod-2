@@ -43,6 +43,8 @@ internal static class LoadoutKeywordRuntimePatches
         "Loadout.Keyword.TurnEndInHand";
     private const string PlayRestrictionHarmonyId =
         "Loadout.Keyword.PlayRestriction";
+    private const string BlankSlateHooksHarmonyId =
+        "Loadout.Keyword.BlankSlateHooks";
 
     private static readonly Harmony InfiniteHarmony = new(InfiniteHarmonyId);
     private static readonly Harmony XCostHarmony = new(XCostHarmonyId);
@@ -56,6 +58,8 @@ internal static class LoadoutKeywordRuntimePatches
         new(TurnEndInHandHarmonyId);
     private static readonly Harmony PlayRestrictionHarmony =
         new(PlayRestrictionHarmonyId);
+    private static readonly Harmony BlankSlateHooksHarmony =
+        new(BlankSlateHooksHarmonyId);
 
     public static bool InfiniteUpgradeEnabled { get; private set; }
     public static bool XCostEnabled { get; private set; }
@@ -69,6 +73,7 @@ internal static class LoadoutKeywordRuntimePatches
     private static bool PostOnPlayEnabled { get; set; }
     private static bool TurnEndInHandEnabled { get; set; }
     private static bool PlayRestrictionEnabled { get; set; }
+    private static bool BlankSlateHooksEnabled { get; set; }
     private static bool RunKeywordPatchesPrepared { get; set; }
 
     public static void EnableFromDelta(CardModificationDelta delta)
@@ -107,6 +112,8 @@ internal static class LoadoutKeywordRuntimePatches
             SetTurnEndInHandEnabled(true);
         if (state.PlayRestriction)
             SetPlayRestrictionEnabled(true);
+        if (state.BlankSlateHooks)
+            SetBlankSlateHooksEnabled(true);
     }
 
     public static void EnableFromOverrides(IReadOnlyDictionary<string, bool> overrides)
@@ -203,6 +210,7 @@ internal static class LoadoutKeywordRuntimePatches
             required.DescriptionKeywordOnPlay);
         SetTurnEndInHandEnabled(required.TurnEndInHand);
         SetPlayRestrictionEnabled(required.PlayRestriction);
+        SetBlankSlateHooksEnabled(required.BlankSlateHooks);
     }
 
     public static void ResetRunPatches()
@@ -218,6 +226,7 @@ internal static class LoadoutKeywordRuntimePatches
         SetDescriptionKeywordOnPlayEnabled(false);
         SetTurnEndInHandEnabled(false);
         SetPlayRestrictionEnabled(false);
+        SetBlankSlateHooksEnabled(false);
     }
 
     private static KeywordFeatureState GetRequiredFeatures()
@@ -309,6 +318,7 @@ internal static class LoadoutKeywordRuntimePatches
                 model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
             state.PlayRestriction |= RequiresCardLogicPatch(model);
+            state.BlankSlateHooks |= model.SuppressesOriginalModelHooks;
         }
     }
 
@@ -316,6 +326,7 @@ internal static class LoadoutKeywordRuntimePatches
     {
         foreach (CardModel card in cards)
         {
+            LoadoutKeywordRegistry.SynchronizeOriginalModelHookSuppression(card);
             state.InfiniteUpgrade |= LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
             state.XCost |= LoadoutKeywords.Has(card, LoadoutKeywords.XCost);
             state.Sticky |= LoadoutKeywords.Has(card, LoadoutKeywords.Sticky);
@@ -332,6 +343,7 @@ internal static class LoadoutKeywordRuntimePatches
                     model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
                 state.TurnEndInHand |= model.HasTurnEndInHandEffect;
                 state.PlayRestriction |= RequiresCardLogicPatch(model);
+                state.BlankSlateHooks |= model.SuppressesOriginalModelHooks;
             }
             if (state.All)
                 return;
@@ -352,6 +364,7 @@ internal static class LoadoutKeywordRuntimePatches
                 model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
             state.PlayRestriction |= RequiresCardLogicPatch(model);
+            state.BlankSlateHooks |= model.SuppressesOriginalModelHooks;
         }
     }
 
@@ -362,6 +375,7 @@ internal static class LoadoutKeywordRuntimePatches
         bool anyOnPlayEnabled = false;
         bool anyTurnEndInHandEnabled = false;
         bool anyPlayRestrictionEnabled = false;
+        bool anyBlankSlateHooksEnabled = false;
         foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.DescriptionOnly)
         {
             if (!IsEnabled(overrides, model.StorageKey))
@@ -372,6 +386,7 @@ internal static class LoadoutKeywordRuntimePatches
                 model.HasOnPlayEffect || model.SuppressesOriginalOnPlay;
             anyTurnEndInHandEnabled |= model.HasTurnEndInHandEffect;
             anyPlayRestrictionEnabled |= RequiresCardLogicPatch(model);
+            anyBlankSlateHooksEnabled |= model.SuppressesOriginalModelHooks;
         }
 
         if (anyEnabled)
@@ -382,6 +397,8 @@ internal static class LoadoutKeywordRuntimePatches
             SetTurnEndInHandEnabled(true);
         if (anyPlayRestrictionEnabled)
             SetPlayRestrictionEnabled(true);
+        if (anyBlankSlateHooksEnabled)
+            SetBlankSlateHooksEnabled(true);
     }
 
     private static bool IsEnabled(CardModificationDelta delta, string key) =>
@@ -748,6 +765,55 @@ internal static class LoadoutKeywordRuntimePatches
         }, () => PlayRestrictionEnabled = true);
     }
 
+    private static void SetBlankSlateHooksEnabled(bool enabled)
+    {
+        if (enabled == BlankSlateHooksEnabled)
+            return;
+
+        if (!enabled)
+        {
+            BlankSlateHooksHarmony.UnpatchAll(BlankSlateHooksHarmonyId);
+            BlankSlateModelHookPatch.ClearPrefixes();
+            BlankSlateModelHookState.Reset();
+            BlankSlateHooksEnabled = false;
+            return;
+        }
+
+        TryEnable(BlankSlateHooksHarmony, BlankSlateHooksHarmonyId, () =>
+        {
+            BlankSlateHooksHarmony.Patch(
+                AccessTools.Method(
+                    typeof(AbstractModel),
+                    nameof(AbstractModel.MutableClone))
+                ?? throw new MissingMethodException(
+                    typeof(AbstractModel).FullName,
+                    nameof(AbstractModel.MutableClone)),
+                postfix: new HarmonyMethod(
+                    typeof(BlankSlateModelHookState),
+                    nameof(BlankSlateModelHookState.MutableClonePostfix)));
+
+            BlankSlateModelHookPatch.ClearPrefixes();
+            MethodBase[] targets = BlankSlateModelHookPatch
+                .TargetMethods()
+                .ToArray();
+            if (targets.Length == 0)
+            {
+                throw new MissingMethodException(
+                    typeof(AbstractModel).FullName,
+                    "concrete card hook overrides");
+            }
+
+            HarmonyMethod prefixFactory = new(
+                typeof(BlankSlateModelHookPatch),
+                nameof(BlankSlateModelHookPatch.PrefixFactory))
+            {
+                priority = Priority.Last
+            };
+            foreach (MethodBase target in targets)
+                BlankSlateHooksHarmony.Patch(target, prefix: prefixFactory);
+        }, () => BlankSlateHooksEnabled = true);
+    }
+
     private static void RefreshPostOnPlayPatch()
     {
         bool enabled =
@@ -832,6 +898,7 @@ internal static class LoadoutKeywordRuntimePatches
         public bool DescriptionKeywordOnPlay;
         public bool TurnEndInHand;
         public bool PlayRestriction;
+        public bool BlankSlateHooks;
         public readonly bool All =>
             InfiniteUpgrade
             && XCost
@@ -842,6 +909,7 @@ internal static class LoadoutKeywordRuntimePatches
             && DescriptionKeywords
             && DescriptionKeywordOnPlay
             && TurnEndInHand
-            && PlayRestriction;
+            && PlayRestriction
+            && BlankSlateHooks;
     }
 }

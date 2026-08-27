@@ -168,7 +168,9 @@ internal static class RestrictiveEnthralledShouldPlayPatch
             return;
         }
 
-        bool nativeRestrictor = restrictor is Enthralled;
+        bool nativeRestrictor = restrictor is Enthralled
+                                && !LoadoutKeywordRegistry
+                                    .SuppressesOriginalModelHooks(restrictor);
         bool loadoutRestrictor = LoadoutKeywords.Has(
             restrictor,
             LoadoutKeywords.Enthralled);

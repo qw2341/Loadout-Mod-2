@@ -109,6 +109,8 @@ public abstract class LoadoutKeywordModel
 
     public virtual bool SuppressesOriginalShouldGlowGold => false;
 
+    public virtual bool SuppressesOriginalModelHooks => false;
+
     public virtual bool HasUnblockedDamageEffect => false;
 
     public virtual bool HasFatalEffect => false;
