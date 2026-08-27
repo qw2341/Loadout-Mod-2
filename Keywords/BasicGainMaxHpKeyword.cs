@@ -52,8 +52,8 @@ public sealed class BasicGainMaxHpKeyword : LoadoutBasicKeywordModel
         object? capturedState)
     {
         decimal amount = Math.Max(0m, GetAmount(card, AmountVar).BaseValue);
-        return amount <= 0m
-            ? CreatureCmd.LoseMaxHp(choiceContext,card.Owner.Creature, amount,true)
+        return amount < 0m
+            ? CreatureCmd.LoseMaxHp(choiceContext,card.Owner.Creature, -amount,true)
             : CreatureCmd.GainMaxHp(card.Owner.Creature, amount);
     }
 }

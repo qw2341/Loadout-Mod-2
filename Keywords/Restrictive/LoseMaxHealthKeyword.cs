@@ -54,8 +54,8 @@ public sealed class LoseMaxHealthKeyword : LoadoutRestrictiveKeywordModel
         object? capturedState)
     {
         decimal amount = GetAmount(card, AmountVar).BaseValue;
-        if (amount <= 0m)
-            await CreatureCmd.GainMaxHp(card.Owner.Creature, amount);
+        if (amount < 0m)
+            await CreatureCmd.GainMaxHp(card.Owner.Creature, -amount);
         else
             await CreatureCmd.LoseMaxHp(
                 choiceContext,
