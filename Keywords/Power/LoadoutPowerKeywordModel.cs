@@ -4,6 +4,7 @@ namespace Loadout.Keywords;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Godot;
@@ -20,6 +21,7 @@ using MegaCrit.Sts2.Core.Commands;
 using System.Threading.Tasks;
 using BaseLib.Cards.Variables;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
+using MegaCrit.Sts2.Core.TextEffects;
 
 public enum LoadoutPowerKeywordTargetMode
 {
@@ -267,6 +269,22 @@ public static class LoadoutPowerKeywordState
         IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries,
         int upgradeLevel)
     {
+        foreach (EffectivePowerKeywordEntry effective in GetEffectiveEntryStates(
+                     baseEntries,
+                     entryUpgrades,
+                     addedEntries,
+                     upgradeLevel))
+        {
+            yield return effective.Entry;
+        }
+    }
+
+    private static IEnumerable<EffectivePowerKeywordEntry> GetEffectiveEntryStates(
+        IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+        IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
+        IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries,
+        int upgradeLevel)
+    {
         int level = Math.Max(0, upgradeLevel);
         Dictionary<EntryIdentity, LoadoutPowerKeywordEntryUpgrade>? upgradesByIdentity =
             level > 0 && entryUpgrades is not null
@@ -283,6 +301,7 @@ public static class LoadoutPowerKeywordState
             foreach (LoadoutPowerKeywordEntry baseEntry in baseEntries)
             {
                 LoadoutPowerKeywordEntry effective = baseEntry.Clone();
+                bool amountWasUpgraded = false;
                 int occurrence = GetAndIncrementOccurrence(occurrences, baseEntry);
                 EntryIdentity identity = new(
                     baseEntry.KeywordKey,
@@ -295,11 +314,14 @@ public static class LoadoutPowerKeywordState
                 {
                     effective.Amount = SaturatingAmount(
                         (long)baseEntry.Amount + (long)upgrade.AmountDelta * level);
+                    amountWasUpgraded = upgrade.AmountDelta != 0;
                     if (!string.IsNullOrWhiteSpace(upgrade.ReplacementPowerId))
                         effective.PowerId = upgrade.ReplacementPowerId;
                 }
 
-                yield return effective;
+                yield return new EffectivePowerKeywordEntry(
+                    effective,
+                    amountWasUpgraded);
             }
         }
 
@@ -310,7 +332,9 @@ public static class LoadoutPowerKeywordState
         {
             LoadoutPowerKeywordEntry effective = addedEntry.Clone();
             effective.Amount = SaturatingAmount((long)addedEntry.Amount * level);
-            yield return effective;
+            yield return new EffectivePowerKeywordEntry(
+                effective,
+                AmountWasUpgraded: true);
         }
     }
 
@@ -399,28 +423,44 @@ public static class LoadoutPowerKeywordState
 
     public static string FormatEntries(CardModel card, string keywordKey)
     {
+        ResolveLists(
+            card,
+            out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+            out IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
+            out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries);
+        bool highlightUpgradeAmounts = card.UpgradePreviewType.IsPreview();
         string separator = LocMan.Loc(
             "CARD_MOD_POWER_KEYWORD_SEPARATOR",
             ", ");
         return string.Join(
             separator,
-            GetEffectiveEntries(card, keywordKey).Select(entry =>
-            {
-                bool resolved = TryResolvePower(entry.PowerId, out PowerModel power);
-                string title = resolved
-                    ? CommonHelpers.FormatPowerTitle(power)
-                    : GetPowerIdFallback(entry.PowerId);
-                title = $"[gold]{title}[/gold]";
-                bool usesPointClassifier = resolved
-                    && power is StrengthPower or DexterityPower or FocusPower;
-                return LocMan.Loc(
-                    usesPointClassifier
-                        ? "CARD_MOD_POWER_KEYWORD_ENTRY_POINT"
-                        : "CARD_MOD_POWER_KEYWORD_ENTRY",
-                    "{0} {1}",
-                    entry.Amount,
-                    title);
-            }));
+            GetEffectiveEntryStates(
+                    baseEntries,
+                    entryUpgrades,
+                    addedEntries,
+                    card.CurrentUpgradeLevel)
+                .Where(effective => MatchesKeyword(effective.Entry, keywordKey))
+                .Select(effective =>
+                {
+                    LoadoutPowerKeywordEntry entry = effective.Entry;
+                    bool resolved = TryResolvePower(entry.PowerId, out PowerModel power);
+                    string title = resolved
+                        ? CommonHelpers.FormatPowerTitle(power)
+                        : GetPowerIdFallback(entry.PowerId);
+                    title = $"[gold]{title}[/gold]";
+                    string amount = entry.Amount.ToString(CultureInfo.InvariantCulture);
+                    if (highlightUpgradeAmounts && effective.AmountWasUpgraded)
+                        amount = StsTextUtilities.HighlightChangeText(amount, 1);
+                    bool usesPointClassifier = resolved
+                        && power is StrengthPower or DexterityPower or FocusPower;
+                    return LocMan.Loc(
+                        usesPointClassifier
+                            ? "CARD_MOD_POWER_KEYWORD_ENTRY_POINT"
+                            : "CARD_MOD_POWER_KEYWORD_ENTRY",
+                        "{0} {1}",
+                        amount,
+                        title);
+                }));
     }
 
     public static void WarnUnknownPower(string powerId)
@@ -519,6 +559,10 @@ public static class LoadoutPowerKeywordState
             StringComparer.OrdinalIgnoreCase.GetHashCode(OriginalPowerId),
             OccurrenceIndex);
     }
+
+    private readonly record struct EffectivePowerKeywordEntry(
+        LoadoutPowerKeywordEntry Entry,
+        bool AmountWasUpgraded);
 
     private sealed class KeywordPowerIdentityComparer
         : IEqualityComparer<(string KeywordKey, string PowerId)>
