@@ -25,6 +25,8 @@ public static partial class TildeKey
     private const string GodmodeToggleName = "TildeKeyGodmodeToggle";
     private const string GoToAnyRoomToggleName = "TildeKeyGoToAnyRoomToggle";
     private const string InfiniteEnergyToggleName = "TildeKeyInfiniteEnergyToggle";
+    private const string EveryCardFreeToggleName = "TildeKeyEveryCardFreeToggle";
+    private const string AllCardsPlayableToggleName = "TildeKeyAllCardsPlayableToggle";
     private const string DrawTillHandLimitToggleName = "TildeKeyDrawTillHandLimitToggle";
     private const string ScrollRelicCounterToggleName = "TildeKeyScrollRelicCounterToggle";
     private const string KillAllMonstersToggleName = "TildeKeyKillAllMonstersToggle";
@@ -322,6 +324,32 @@ public static partial class TildeKey
 
         UpsertToggle(
             screen,
+            EveryCardFreeToggleName,
+            TildeKeyStateService.EveryCardFreeToggleId,
+            LocMan.Loc("TILDEKEY_EVERY_CARD_FREE", "Every card free to play"),
+            () => TildeKeyStateService.GetToggle(
+                TildeKeyStateService.EveryCardFreeToggleId,
+                GetSelectedTarget()),
+            enabled => LoadoutImmediateMutationService.RequestTildeSetToggle(
+                TildeKeyStateService.EveryCardFreeToggleId,
+                enabled,
+                GetSelectedTarget()));
+
+        UpsertToggle(
+            screen,
+            AllCardsPlayableToggleName,
+            TildeKeyStateService.AllCardsPlayableToggleId,
+            LocMan.Loc("TILDEKEY_ALL_CARDS_PLAYABLE", "All cards playable"),
+            () => TildeKeyStateService.GetToggle(
+                TildeKeyStateService.AllCardsPlayableToggleId,
+                GetSelectedTarget()),
+            enabled => LoadoutImmediateMutationService.RequestTildeSetToggle(
+                TildeKeyStateService.AllCardsPlayableToggleId,
+                enabled,
+                GetSelectedTarget()));
+
+        UpsertToggle(
+            screen,
             DrawTillHandLimitToggleName,
             TildeKeyStateService.DrawTillHandLimitToggleId,
             LocMan.Loc("TILDEKEY_DRAW_TILL_HAND_LIMIT", "Draw Till Hand Limit"),
@@ -387,6 +415,22 @@ public static partial class TildeKey
             LocMan.Loc("TILDEKEY_INFINITE_ENERGY", "Infinite Energy"),
             () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.InfiniteEnergyToggleId),
             enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.InfiniteEnergyToggleId, enabled));
+
+        UpsertToggle(
+            screen,
+            EveryCardFreeToggleName,
+            TildeKeyStateService.EveryCardFreeToggleId,
+            LocMan.Loc("TILDEKEY_EVERY_CARD_FREE", "Every card free to play"),
+            () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.EveryCardFreeToggleId),
+            enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.EveryCardFreeToggleId, enabled));
+
+        UpsertToggle(
+            screen,
+            AllCardsPlayableToggleName,
+            TildeKeyStateService.AllCardsPlayableToggleId,
+            LocMan.Loc("TILDEKEY_ALL_CARDS_PLAYABLE", "All cards playable"),
+            () => RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.AllCardsPlayableToggleId),
+            enabled => RealityManipulatorStartingDefaultsService.SetToggleEnabled(TildeKeyStateService.AllCardsPlayableToggleId, enabled));
 
         UpsertToggle(
             screen,
@@ -456,6 +500,10 @@ public static partial class TildeKey
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.GoToAnyRoomToggleId, GetSelectedTarget()), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{InfiniteEnergyToggleName}")
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.InfiniteEnergyToggleId, GetSelectedTarget()), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{EveryCardFreeToggleName}")
+            ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.EveryCardFreeToggleId, GetSelectedTarget()), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{AllCardsPlayableToggleName}")
+            ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.AllCardsPlayableToggleId, GetSelectedTarget()), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{DrawTillHandLimitToggleName}")
             ?.SetChecked(TildeKeyStateService.GetToggle(TildeKeyStateService.DrawTillHandLimitToggleId, GetSelectedTarget()), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{ScrollRelicCounterToggleName}")
@@ -472,6 +520,10 @@ public static partial class TildeKey
             ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.GoToAnyRoomToggleId), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{InfiniteEnergyToggleName}")
             ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.InfiniteEnergyToggleId), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{EveryCardFreeToggleName}")
+            ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.EveryCardFreeToggleId), emit: false);
+        screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{AllCardsPlayableToggleName}")
+            ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.AllCardsPlayableToggleId), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{DrawTillHandLimitToggleName}")
             ?.SetChecked(RealityManipulatorStartingDefaultsService.IsToggleEnabled(TildeKeyStateService.DrawTillHandLimitToggleId), emit: false);
         screen.GetNodeOrNull<NLoadoutToggle>($"Sidebar/MarginContainer/TopVBox/CustomControls/{ScrollRelicCounterToggleName}")

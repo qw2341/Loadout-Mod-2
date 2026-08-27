@@ -110,12 +110,32 @@ public sealed class LoadoutKillAllMonstersCombatHook : AbstractModel
         => TildeKeyStateService.KillAllMonstersAtCombatStartAsync();
 }
 
+public sealed class LoadoutEveryCardFreeCombatHook : AbstractModel
+{
+    public override bool ShouldReceiveCombatHooks => true;
+
+    public override bool TryModifyEnergyCostInCombatLate(
+        CardModel card,
+        decimal originalCost,
+        out decimal modifiedCost)
+    {
+        modifiedCost = originalCost;
+        if (!TildeKeyStateService.IsEveryCardFree(card))
+            return false;
+
+        modifiedCost = 0m;
+        return true;
+    }
+}
+
 public static class TildeKeyStateService
 {
     public const string TargetKey = "tilde_key";
     public const string GodmodeToggleId = "godmode";
     public const string GoToAnyRoomToggleId = "go_to_any_room";
     public const string InfiniteEnergyToggleId = "infinite_energy";
+    public const string EveryCardFreeToggleId = "every_card_free";
+    public const string AllCardsPlayableToggleId = "all_cards_playable";
     public const string DrawTillHandLimitToggleId = "draw_till_hand_limit";
     public const string ScrollRelicCounterToggleId = "scroll_relic_counter";
     public const string KillAllMonstersToggleId = "kill_all_monsters";
@@ -133,8 +153,11 @@ public static class TildeKeyStateService
     private const int DefaultDamageMultiplier = 100;
     private const string GoldStatId = "gold";
     private const string RelicCounterLockBadgeName = "LoadoutTildeRelicCounterLockBadge";
+    private const byte EveryCardFreeFlag = 1;
+    private const byte AllCardsPlayableFlag = 2;
 
     private static readonly object SyncRoot = new();
+    private static IReadOnlyDictionary<ulong, byte> _cardRuleFlags = new Dictionary<ulong, byte>();
     private static readonly FieldInfo? CurrentHpField = AccessTools.Field(typeof(Creature), "_currentHp");
     private static readonly FieldInfo? MaxHpField = AccessTools.Field(typeof(Creature), "_maxHp");
     private static readonly FieldInfo? BlockField = AccessTools.Field(typeof(Creature), "_block");
@@ -365,6 +388,7 @@ public static class TildeKeyStateService
         }
         _lastMapScreen = null;
         _lastDesiredDebugTravel = false;
+        Volatile.Write(ref _cardRuleFlags, new Dictionary<ulong, byte>());
         TildeKeyDynamicLockPatches.Reset();
         TildeKeyDynamicDrawPatches.Reset();
     }
@@ -532,14 +556,25 @@ public static class TildeKeyStateService
         bool relic = false;
         bool drawPerTurn = false;
         bool drawTillHandLimit = false;
+        Dictionary<ulong, byte> cardRuleFlags = new();
         lock (SyncRoot)
         {
             drawPerTurn = VirtualStats.Values.Any(stats => stats.ContainsKey(DrawPerTurnStatId));
-            foreach (TildeKeyPlayerState state in _run.Players.Values)
+            foreach ((string rawNetId, TildeKeyPlayerState state) in _run.Players)
             {
                 relic |= state.RelicCounterLocks.Count > 0;
                 drawPerTurn |= state.Stats.ContainsKey(DrawPerTurnStatId);
                 drawTillHandLimit |= state.Toggles.TryGetValue(DrawTillHandLimitToggleId, out bool enabled) && enabled;
+                if (ulong.TryParse(rawNetId, out ulong netId))
+                {
+                    byte flags = 0;
+                    if (state.Toggles.TryGetValue(EveryCardFreeToggleId, out bool free) && free)
+                        flags |= EveryCardFreeFlag;
+                    if (state.Toggles.TryGetValue(AllCardsPlayableToggleId, out bool playable) && playable)
+                        flags |= AllCardsPlayableFlag;
+                    if (flags != 0)
+                        cardRuleFlags[netId] = flags;
+                }
                 foreach ((string id, TildeKeySavedStat saved) in state.Stats)
                 {
                     if (!saved.Locked)
@@ -575,6 +610,7 @@ public static class TildeKeyStateService
         }
 
         creature |= CreatureManipulationStateService.HasCreatureLocks;
+        Volatile.Write(ref _cardRuleFlags, cardRuleFlags);
         TildeKeyDynamicLockPatches.Configure(creature, player, combat, extra, relic);
         TildeKeyDynamicDrawPatches.Configure(drawPerTurn, drawTillHandLimit);
     }
@@ -856,6 +892,11 @@ public static class TildeKeyStateService
         }
 
         RefreshDynamicLockPatches();
+        if (string.Equals(payload.ToggleId, EveryCardFreeToggleId, StringComparison.Ordinal)
+            || string.Equals(payload.ToggleId, AllCardsPlayableToggleId, StringComparison.Ordinal))
+        {
+            RefreshLocalHandCards(players);
+        }
         SaveRunState();
         RaiseStateChanged();
     }
@@ -902,11 +943,40 @@ public static class TildeKeyStateService
 
         LoadoutKillAllMonstersCombatHook hook = ModelDb.GetById<LoadoutKillAllMonstersCombatHook>(
             ModelDb.GetId<LoadoutKillAllMonstersCombatHook>());
+        LoadoutEveryCardFreeCombatHook cardCostHook = ModelDb.GetById<LoadoutEveryCardFreeCombatHook>(
+            ModelDb.GetId<LoadoutEveryCardFreeCombatHook>());
 
         ModHelper.SubscribeForCombatStateHooks(
             "Loadout.TildeKey.KillAllMonsters",
-            _ => [hook]);
+            _ => [hook, cardCostHook]);
         _combatHookRegistered = true;
+    }
+
+    internal static bool IsEveryCardFree(CardModel? card)
+        => HasCardRule(card, EveryCardFreeFlag);
+
+    internal static bool AreAllCardsPlayable(CardModel? card)
+        => HasCardRule(card, AllCardsPlayableFlag);
+
+    private static bool HasCardRule(CardModel? card, byte flag)
+    {
+        if (!_registered || card is null || card.IsCanonical)
+            return false;
+
+        Player? owner = card.Owner;
+        return owner is not null
+               && owner.PlayerCombatState is not null
+               && Volatile.Read(ref _cardRuleFlags).TryGetValue(owner.NetId, out byte flags)
+               && (flags & flag) != 0;
+    }
+
+    private static void RefreshLocalHandCards(IReadOnlyList<Player> affectedPlayers)
+    {
+        if (!affectedPlayers.Any(IsLocalPlayer) || NPlayerHand.Instance is not { } hand)
+            return;
+
+        foreach (var holder in hand.ActiveHolders)
+            holder.UpdateCard();
     }
 
     public static bool TryGetPlayerDamageMultiplier(Player player, out int value)
@@ -2733,6 +2803,8 @@ public static class TildeKeyStateService
     {
         return string.Equals(key, GodmodeToggleId, StringComparison.Ordinal)
                || string.Equals(key, InfiniteEnergyToggleId, StringComparison.Ordinal)
+               || string.Equals(key, EveryCardFreeToggleId, StringComparison.Ordinal)
+               || string.Equals(key, AllCardsPlayableToggleId, StringComparison.Ordinal)
                || string.Equals(key, DrawTillHandLimitToggleId, StringComparison.Ordinal)
                || string.Equals(key, ScrollRelicCounterToggleId, StringComparison.Ordinal);
     }

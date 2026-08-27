@@ -364,6 +364,56 @@ public static class TildeKeyInfiniteStarsLossPatch
     }
 }
 
+[HarmonyPatch]
+public static class TildeKeyAllCardsPlayablePatch
+{
+    public static MethodBase TargetMethod()
+        => AccessTools.Method(
+            typeof(CardModel),
+            nameof(CardModel.CanPlay),
+            [typeof(UnplayableReason).MakeByRefType(), typeof(AbstractModel).MakeByRefType()]);
+
+    [HarmonyPrefix]
+    [HarmonyPriority(Priority.First)]
+    public static bool Prefix(
+        CardModel __instance,
+        ref bool __result,
+        out UnplayableReason reason,
+        out AbstractModel? preventer)
+    {
+        reason = UnplayableReason.None;
+        preventer = null;
+        if (!TildeKeyStateService.AreAllCardsPlayable(__instance))
+            return true;
+
+        __result = true;
+        return false;
+    }
+}
+
+[HarmonyPatch(typeof(CardModel), "SpendEnergy")]
+public static class TildeKeyFreeCardEnergySpendPatch
+{
+    [HarmonyPrefix]
+    [HarmonyPriority(Priority.First)]
+    public static bool Prefix(CardModel __instance, int amount, ref Task __result)
+    {
+        if (!TildeKeyStateService.IsEveryCardFree(__instance))
+            return true;
+
+        __result = SpendFreeEnergy(__instance, amount);
+        return false;
+    }
+
+    private static Task SpendFreeEnergy(CardModel card, int capturedXValue)
+    {
+        if (card.EnergyCost.CostsX)
+            card.EnergyCost.CapturedXValue = capturedXValue;
+
+        return Hook.AfterEnergySpent(card.CombatState!, card, 0);
+    }
+}
+
 public static class TildeKeyModifyDamagePatch
 {
     private static readonly System.Threading.AsyncLocal<int> SuppressDepth = new();

@@ -156,6 +156,8 @@ TILDEKEY_STAT_PLAYER_DAMAGE_MULTIPLIER,Player Damage Multiplier(%),玩家伤害�
 TILDEKEY_STAT_ENEMY_DAMAGE_MULTIPLIER,Enemy Damage Multiplier(%),敌人伤害倍数（%）,Multiplicateur de dégâts des ennemis (%),敵ダメージ倍率（%）,적 피해 배율(%),Multiplicador de daño enemigo (%)
 TILDEKEY_STAT_MONSTER_HEALTH_MULTIPLIER,Enemy Health Multiplier(%),敌人生命值倍数（%）,Multiplicateur de santé des monstres (%),モンスターHP倍率（%）,몬스터 체력 배율(%),Multiplicador de salud de los monstruos (%)
 TILDEKEY_INFINITE_ENERGY,Infinite Energy,无限能量,Énergie infinie,無限エナジー,무한 에너지,Energía infinita
+TILDEKEY_EVERY_CARD_FREE,All cards free to play,所有牌免费打出,Toutes les cartes sont gratuites à jouer,すべてのカードを無料でプレイ,모든 카드 무료 사용,Todas las cartas se juegan gratis
+TILDEKEY_ALL_CARDS_PLAYABLE,All cards ignore play condition,所有牌无视打出条件,Toutes les cartes sont jouables,すべてのカードをプレイ可能,모든 카드 사용 가능,Todas las cartas se pueden jugar
 TILDEKEY_DRAW_TILL_HAND_LIMIT,Draw Till Hand Limit,抽牌至手牌上限,Piocher jusqu'à la limite de main,手札上限まで引く,손패 한도까지 드로우,Robar hasta el límite de mano
 TILDEKEY_SCROLL_RELIC_COUNTER,Scroll Edit Relic Counter,滚轮编辑遗物计数,Modifier le compteur de relique avec la molette,スクロールでレリックカウンターを編集,스크롤로 유물 카운터 편집,Editar contador de reliquia con la rueda
 TILDEKEY_KILL_ALL_MONSTERS,Kill all monsters,杀死所有怪物,Tuer tous les monstres,すべてのモンスターを倒す,모든 몬스터 처치,Matar a todos los monstruos
