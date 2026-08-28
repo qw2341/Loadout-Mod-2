@@ -35,6 +35,7 @@ public static class CardModificationNetProtocol
 
     private static readonly HashSet<StartRunLobby> RegisteredLobbies = [];
     private static readonly Dictionary<StartRunLobby, Delegate> LobbyConnectedHandlers = new();
+    private static readonly HashSet<LoadRunLobby> RegisteredLoadLobbies = [];
     private static readonly HashSet<INetGameService> RegisteredMessageServices = [];
     private static readonly object OperationSequenceGate = new();
     private static readonly SortedDictionary<int, LoadoutCardModificationOperationPayload> PendingOperationApplies = new();
@@ -60,9 +61,12 @@ public static class CardModificationNetProtocol
     {
         foreach (StartRunLobby lobby in new List<StartRunLobby>(RegisteredLobbies))
             UnregisterLobby(lobby, clearClientOverlay: false);
+        foreach (LoadRunLobby lobby in new List<LoadRunLobby>(RegisteredLoadLobbies))
+            UnregisterLoadLobby(lobby, clearClientOverlay: false);
 
         RegisteredLobbies.Clear();
         LobbyConnectedHandlers.Clear();
+        RegisteredLoadLobbies.Clear();
         UnregisterRunNetService(clearClientOverlay: true);
         foreach (INetGameService netService in RegisteredMessageServices.ToList())
             UnregisterMessageHandlers(netService);
@@ -100,6 +104,32 @@ public static class CardModificationNetProtocol
 
         if (LobbyConnectedHandlers.Remove(lobby, out Delegate? connected))
             Sts2Compatibility.UnsubscribeStartRunLobbyPlayerConnected(lobby, connected);
+
+        if (clearClientOverlay && !ReferenceEquals(_runNetService, lobby.NetService))
+            UnregisterMessageHandlers(lobby.NetService);
+
+        if (clearClientOverlay && lobby.NetService.Type == NetGameType.Client)
+        {
+            PermanentCardModificationStore.ClearHostOverlay();
+            ClearPendingHostPermanentSnapshot();
+        }
+    }
+
+    public static void RegisterLoadLobby(LoadRunLobby? lobby)
+    {
+        if (!_registered || lobby is null || !RegisteredLoadLobbies.Add(lobby))
+            return;
+
+        RegisterMessageHandlers(lobby.NetService);
+        if (lobby.NetService.Type == NetGameType.Client)
+            // Request only after this client can receive the reliable response.
+            lobby.NetService.SendMessage(default(LoadoutCardModificationPermanentSnapshotRequestMessage));
+    }
+
+    public static void UnregisterLoadLobby(LoadRunLobby? lobby, bool clearClientOverlay = false)
+    {
+        if (lobby is null || !RegisteredLoadLobbies.Remove(lobby))
+            return;
 
         if (clearClientOverlay && !ReferenceEquals(_runNetService, lobby.NetService))
             UnregisterMessageHandlers(lobby.NetService);
@@ -755,6 +785,7 @@ public static class CardModificationNetProtocol
             return;
 
         netService.RegisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
+        netService.RegisterMessageHandler<LoadoutCardModificationPermanentSnapshotRequestMessage>(HandlePermanentSnapshotRequest);
         netService.RegisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
         netService.RegisterMessageHandler<LoadoutCardModificationFullSyncMessage>(HandleFullSync);
     }
@@ -765,6 +796,7 @@ public static class CardModificationNetProtocol
             return;
 
         netService.UnregisterMessageHandler<LoadoutCardModificationPermanentSyncMessage>(HandlePermanentSync);
+        netService.UnregisterMessageHandler<LoadoutCardModificationPermanentSnapshotRequestMessage>(HandlePermanentSnapshotRequest);
         netService.UnregisterMessageHandler<LoadoutCardModificationTemporarySyncMessage>(HandleTemporarySync);
         netService.UnregisterMessageHandler<LoadoutCardModificationFullSyncMessage>(HandleFullSync);
     }
@@ -902,6 +934,21 @@ public static class CardModificationNetProtocol
             playerId);
     }
 
+    private static void HandlePermanentSnapshotRequest(
+        LoadoutCardModificationPermanentSnapshotRequestMessage _,
+        ulong senderId)
+    {
+        LoadRunLobby? lobby = RegisteredLoadLobbies.FirstOrDefault(candidate =>
+            candidate.NetService.Type == NetGameType.Host
+            && Sts2Compatibility.EnumerateLoadRunLobbyPlayerIds(candidate).Contains(senderId));
+        if (lobby is null)
+            return;
+
+        lobby.NetService.SendMessage(
+            CreatePermanentSnapshotMessage(PermanentCardModificationStore.ExportEffectiveSnapshotJson()),
+            senderId);
+    }
+
     private static void HandlePermanentSync(LoadoutCardModificationPermanentSyncMessage message, ulong senderId)
     {
         if (IsHostSession() || !IsExpectedHostSender(senderId))
@@ -984,13 +1031,8 @@ public static class CardModificationNetProtocol
         Dictionary<ModelId, CardModificationSpec> previousPermanent = CaptureCurrentPermanentSpecs();
         IReadOnlyList<ModelId> changedPermanent =
             PermanentCardModificationStore.ApplyHostSnapshot(snapshot.PermanentJson);
-        // The lobby snapshot can install this same overlay before live cards exist.
-        // Rebuild every active host definition once when the run snapshot arrives.
-        HashSet<ModelId> permanentIdsToRebuild = new(changedPermanent);
-        permanentIdsToRebuild.UnionWith(
-            PermanentCardModificationStore.GetEffectiveDeltasSnapshot().Keys);
         CardModificationRuntime.RetrofitChangedPermanentCards(
-            permanentIdsToRebuild.ToList(),
+            changedPermanent,
             previousPermanent);
         CardModificationRuntime.ReconcileAuthoritativeDeckDeltas(temporaryDeltas);
     }
@@ -1027,6 +1069,12 @@ public static class CardModificationNetProtocol
                 return true;
         }
 
+        foreach (LoadRunLobby lobby in RegisteredLoadLobbies)
+        {
+            if (lobby.NetService.Type == NetGameType.Host)
+                return true;
+        }
+
         try
         {
             return RunManager.Instance.NetService.Type == NetGameType.Host;
@@ -1042,7 +1090,8 @@ public static class CardModificationNetProtocol
         return LoadoutNetworkBroadcast.IsExpectedHostSender(
             senderId,
             _runNetService,
-            RegisteredLobbies.Select(lobby => lobby.NetService));
+            RegisteredLobbies.Select(lobby => lobby.NetService)
+                .Concat(RegisteredLoadLobbies.Select(lobby => lobby.NetService)));
     }
 
     public static IReadOnlyList<ModelId> ApplyPendingHostPermanentSnapshot(CardModificationPermanentImportMode mode)
@@ -1202,6 +1251,22 @@ public struct LoadoutCardModificationPermanentSyncMessage : INetMessage, IPacket
     {
         payload = reader.ReadString();
         operationSequence = reader.ReadInt();
+    }
+}
+
+public struct LoadoutCardModificationPermanentSnapshotRequestMessage : INetMessage, IPacketSerializable
+{
+    public bool ShouldBroadcast => false;
+    public NetTransferMode Mode => NetTransferMode.Reliable;
+    public LogLevel LogLevel => LogLevel.VeryDebug;
+    public bool ShouldBuffer => true;
+
+    public readonly void Serialize(PacketWriter writer)
+    {
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
     }
 }
 

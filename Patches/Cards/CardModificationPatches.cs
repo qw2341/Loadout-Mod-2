@@ -648,6 +648,31 @@ public static class StartRunLobbyCardModificationCleanUpPatch
     }
 }
 
+[HarmonyPatch(typeof(LoadRunLobby))]
+public static class LoadRunLobbyCardModificationConstructorPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        return AccessTools.GetDeclaredConstructors(typeof(LoadRunLobby));
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(LoadRunLobby __instance)
+    {
+        CardModificationNetProtocol.RegisterLoadLobby(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(LoadRunLobby), nameof(LoadRunLobby.CleanUp))]
+public static class LoadRunLobbyCardModificationCleanUpPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(LoadRunLobby __instance, bool disconnectSession)
+    {
+        CardModificationNetProtocol.UnregisterLoadLobby(__instance, disconnectSession);
+    }
+}
+
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
 public static class RunManagerLaunchCardModificationPatch
 {
