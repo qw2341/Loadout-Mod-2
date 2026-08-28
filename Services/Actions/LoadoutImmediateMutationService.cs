@@ -1843,8 +1843,21 @@ public static class LoadoutImmediateMutationService
         if (TryGetOwnedCard(payload, requester) is not { } item)
             return;
 
-        if (UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount)))
+        if (!UpgradeCardWithCommand(item.Model, Math.Max(1, payload.Amount)))
+            return;
+
+        if (item.CardPileType is null or PileType.Deck)
+        {
+            LoadoutRunContentChangeService.QueueCardUpdated(
+                item,
+                CardModificationRuntime.GetVisualRefreshKind(
+                    new CardModificationSpec(),
+                    CardModificationRuntime.GetEffectiveSpec(item.Model)));
+        }
+        else
+        {
             CardModificationRuntime.NotifyCombatCardUpdated(item);
+        }
     }
 
     private static void ApplyDowngradeCard(LoadoutImmediateMutationPayload payload, Player requester)

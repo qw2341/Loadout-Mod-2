@@ -232,6 +232,17 @@ public static class LoadoutRunContentChangeService
             [new LoadoutChangedCard(item.OwnerNetId, item.Index, item.Model.Id, refreshKind)]);
     }
 
+    public static void QueueCardUpdated(
+        LoadoutOwnedItem<CardModel> item,
+        LoadoutCardVisualRefreshKind refreshKind = LoadoutCardVisualRefreshKind.Lightweight)
+    {
+        Queue(
+            LoadoutRunContentKind.Cards,
+            [item.OwnerNetId],
+            LoadoutRunContentChangeMode.Update,
+            [new LoadoutChangedCard(item.OwnerNetId, item.Index, item.Model.Id, refreshKind)]);
+    }
+
     public static void NotifyRelicUpdated(LoadoutOwnedItem<RelicModel> item)
     {
         Notify(
