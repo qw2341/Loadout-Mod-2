@@ -22,7 +22,9 @@ internal static class OneRelicFactoryPatch
 {
     internal static void Postfix(Player __0, ref RelicModel __result)
     {
-        if (__result is null || !OneRelicModeService.TryGetSelectedRelic(__0, out RelicModel selected))
+        if (__result is null
+            || !OneRelicModeService.ShouldReplaceFactoryPull(__0)
+            || !OneRelicModeService.TryGetSelectedRelic(__0, out RelicModel selected))
             return;
         if (RelicReplacementProvenance.IsForced(RelicReplacementSource.OneRelic, __result)
             && __result.CanonicalInstance.Id == selected.Id)
@@ -88,6 +90,30 @@ internal static class OneRelicAncientInitialOptionsPatch
         ref IReadOnlyList<EventOption> __result)
     {
         __result = OneRelicLiveOfferService.ReconcileAncientInitial(__instance, __result);
+    }
+}
+
+internal static class OneRelicNestedRewardCommandPatch
+{
+    internal static void Prefix(Player player, List<Reward> rewards)
+    {
+        OneRelicModeService.MarkNestedRelicRewards(player, rewards);
+    }
+}
+
+internal static class OneRelicNestedRewardSelectionPatch
+{
+    internal static void Prefix(RelicReward __instance, out IDisposable? __state)
+    {
+        __state = OneRelicLiveOfferService.BeginNestedGrantSelection(__instance);
+    }
+
+    internal static void Postfix(IDisposable? __state) => __state?.Dispose();
+
+    internal static Exception? Finalizer(Exception? __exception, IDisposable? __state)
+    {
+        __state?.Dispose();
+        return __exception;
     }
 }
 

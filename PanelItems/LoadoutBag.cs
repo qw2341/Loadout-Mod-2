@@ -265,7 +265,8 @@ public class LoadoutBag
 			LoadoutTargetSelection target = LoadoutTargetService.GetSelected(
 				LastActionService.LoadoutBagKey,
 				LoadoutTargetMode.AllPlayersAndPlayers);
-			if (target.Scope != LoadoutTargetScope.AllPlayers
+			if (selectionChange.SelectedRelicId is not null
+				&& target.Scope != LoadoutTargetScope.AllPlayers
 				&& (target.Scope != LoadoutTargetScope.Player
 					|| target.PlayerNetId != selectionChange.PlayerNetId))
 			{

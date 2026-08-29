@@ -31,6 +31,7 @@ internal static class OneRelicLiveOfferService
     private static readonly FieldInfo EventOptionDescriptionField = AccessTools.Field(typeof(EventOption), "<Description>k__BackingField");
     private static readonly FieldInfo EventOptionHistoryNameField = AccessTools.Field(typeof(EventOption), "<HistoryName>k__BackingField");
     private static ConditionalWeakTable<RelicReward, Baseline> _rewardBaselines = new();
+    private static ConditionalWeakTable<RelicReward, NestedGrantMarker> _nestedGrantRewards = new();
     private static ConditionalWeakTable<MerchantRelicEntry, Baseline> _merchantBaselines = new();
     private static ConditionalWeakTable<EventOption, AncientOptionBaseline> _ancientOptionBaselines = new();
 
@@ -65,6 +66,12 @@ internal static class OneRelicLiveOfferService
             if (current is null)
                 continue;
 
+            if (_nestedGrantRewards.TryGetValue(reward, out _))
+            {
+                RestoreNestedGrantReward(reward, current);
+                continue;
+            }
+
             if (OneRelicModeService.TryGetSelectedRelic(set.Player, out RelicModel selected))
             {
                 Baseline baseline = GetOrCaptureBaseline(_rewardBaselines, reward, current);
@@ -97,8 +104,46 @@ internal static class OneRelicLiveOfferService
     internal static void Reset()
     {
         _rewardBaselines = new ConditionalWeakTable<RelicReward, Baseline>();
+        _nestedGrantRewards = new ConditionalWeakTable<RelicReward, NestedGrantMarker>();
         _merchantBaselines = new ConditionalWeakTable<MerchantRelicEntry, Baseline>();
         _ancientOptionBaselines = new ConditionalWeakTable<EventOption, AncientOptionBaseline>();
+    }
+
+    internal static void ExcludeNestedGrant(RewardsSet set)
+    {
+        ExcludeNestedGrants(set.Rewards);
+    }
+
+    internal static void ExcludeNestedGrants(IEnumerable<Reward> rewards)
+    {
+        foreach (RelicReward reward in rewards.OfType<RelicReward>())
+        {
+            if (!_nestedGrantRewards.TryGetValue(reward, out _))
+                _nestedGrantRewards.Add(reward, new NestedGrantMarker());
+        }
+    }
+
+    internal static IDisposable? BeginNestedGrantSelection(RelicReward reward)
+    {
+        return _nestedGrantRewards.TryGetValue(reward, out _)
+            ? OneRelicModeService.BeginExactRelicGrant()
+            : null;
+    }
+
+    private static void RestoreNestedGrantReward(RelicReward reward, RelicModel current)
+    {
+        if (!RelicReplacementProvenance.TryGetOriginal(
+                RelicReplacementSource.OneRelic,
+                current,
+                out RelicModel original))
+        {
+            return;
+        }
+
+        RelicRewardField.SetValue(reward, original);
+        if (PredeterminedRelicRewardField.GetValue(reward) is not null)
+            PredeterminedRelicRewardField.SetValue(reward, original);
+        ContentBanLiveOfferService.RefreshTrackedReward(reward);
     }
 
     private static void ReconcileMerchant()
@@ -265,6 +310,10 @@ internal static class OneRelicLiveOfferService
     }
 
     private sealed record Baseline(RelicModel Relic);
+
+    private sealed class NestedGrantMarker
+    {
+    }
 
     private sealed record AncientOptionBaseline(
         RelicModel Relic,

@@ -3,6 +3,7 @@
 namespace Loadout.Patches.OneRelic;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -12,6 +13,7 @@ using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Rewards;
 
 internal static class OneRelicRuntimePatchManager
 {
@@ -63,6 +65,22 @@ internal static class OneRelicRuntimePatchManager
                 ancientInitialOptions,
                 postfix: ancientPostfix);
 
+            PatchNestedRewardCommand(nameof(RewardsCmd.OfferCustom));
+            PatchNestedRewardCommand(nameof(RewardsCmd.GenerateCustom));
+            MethodInfo nestedRewardSelection = AccessTools.Method(typeof(RelicReward), "OnSelect")
+                ?? throw new MissingMethodException(typeof(RelicReward).FullName, "OnSelect");
+            RuntimeHarmony.Patch(
+                nestedRewardSelection,
+                prefix: PatchMethod(
+                    typeof(OneRelicNestedRewardSelectionPatch),
+                    nameof(OneRelicNestedRewardSelectionPatch.Prefix),
+                    Priority.First),
+                postfix: PatchMethod(
+                    typeof(OneRelicNestedRewardSelectionPatch),
+                    nameof(OneRelicNestedRewardSelectionPatch.Postfix)),
+                finalizer: PatchMethod(
+                    typeof(OneRelicNestedRewardSelectionPatch),
+                    nameof(OneRelicNestedRewardSelectionPatch.Finalizer)));
             PatchTypedObtainMethods();
             _active = true;
         }
@@ -102,6 +120,21 @@ internal static class OneRelicRuntimePatchManager
             MethodInfo prefix = prefixDefinition.MakeGenericMethod(relicType);
             RuntimeHarmony.Patch(original, prefix: new HarmonyMethod(prefix) { priority = Priority.First });
         }
+    }
+
+    private static void PatchNestedRewardCommand(string methodName)
+    {
+        MethodInfo method = AccessTools.Method(
+            typeof(RewardsCmd),
+            methodName,
+            [typeof(Player), typeof(List<Reward>)])
+            ?? throw new MissingMethodException(typeof(RewardsCmd).FullName, methodName);
+        RuntimeHarmony.Patch(
+            method,
+            prefix: PatchMethod(
+                typeof(OneRelicNestedRewardCommandPatch),
+                nameof(OneRelicNestedRewardCommandPatch.Prefix),
+                Priority.First));
     }
 
     private static HarmonyMethod PatchMethod(Type type, string name, int priority = Priority.Normal)

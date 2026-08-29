@@ -27,6 +27,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
+using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 
 public static class OneRelicModeService
@@ -233,12 +234,19 @@ public static class OneRelicModeService
     {
         chainScope = null;
         if (!IsActive
-            || ExactGrantDepth.Value > 0
-            || IsInsideOneRelicObtainChain(player)
-            || !TryGetSelectedRelic(player, out RelicModel selected))
+            || IsInsideOneRelicObtainChain(player))
         {
             return false;
         }
+
+        if (ExactGrantDepth.Value > 0)
+        {
+            chainScope = BeginObtainChain(player);
+            return false;
+        }
+
+        if (!TryGetSelectedRelic(player, out RelicModel selected))
+            return false;
 
         if (!RelicReplacementProvenance.IsForced(RelicReplacementSource.OneRelic, relic)
             || relic.CanonicalInstance.Id != selected.Id)
@@ -254,6 +262,12 @@ public static class OneRelicModeService
     }
 
     internal static bool ShouldReplaceTypedObtain(Player player)
+        => IsActive
+           && ExactGrantDepth.Value == 0
+           && !IsInsideOneRelicObtainChain(player)
+           && TryGetSelectedRelic(player, out _);
+
+    internal static bool ShouldReplaceFactoryPull(Player player)
         => IsActive
            && ExactGrantDepth.Value == 0
            && !IsInsideOneRelicObtainChain(player)
@@ -278,8 +292,20 @@ public static class OneRelicModeService
 
     internal static void OnRewardsSetTracked(MegaCrit.Sts2.Core.Rewards.RewardsSet set)
     {
-        if (IsActive)
-            OneRelicLiveOfferService.ReconcileRewardsSet(set);
+        if (!IsActive)
+            return;
+        if (IsInsideOneRelicObtainChain(set.Player))
+        {
+            OneRelicLiveOfferService.ExcludeNestedGrant(set);
+            return;
+        }
+        OneRelicLiveOfferService.ReconcileRewardsSet(set);
+    }
+
+    internal static void MarkNestedRelicRewards(Player player, IEnumerable<Reward> rewards)
+    {
+        if (IsInsideOneRelicObtainChain(player))
+            OneRelicLiveOfferService.ExcludeNestedGrants(rewards);
     }
 
     private static bool IsInsideOneRelicObtainChain(Player player)
@@ -629,7 +655,7 @@ public static class OneRelicModeService
     {
         foreach (ulong playerNetId in previousSelections.Keys.Union(SelectedRelics.Keys))
         {
-            ModelId? previousRelicId = previousSelections.TryGetValue(playerNetId, out ModelId previous)
+            ModelId? previousRelicId = previousSelections.TryGetValue(playerNetId, out ModelId? previous)
                 ? previous
                 : null;
             ModelId? selectedRelicId = SelectedRelics.TryGetValue(playerNetId, out RelicModel? selected)
