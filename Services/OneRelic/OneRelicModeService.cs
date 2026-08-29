@@ -48,6 +48,7 @@ public static class OneRelicModeService
     private static string? _pendingHostSnapshotJson;
 
     public static event Action? Changed;
+    public static event Action<OneRelicSelectionChanged>? SelectionChanged;
 
     public static bool IsActive => SelectedRelics.Count > 0;
 
@@ -78,12 +79,20 @@ public static class OneRelicModeService
             SelectedRelics.TryGetValue(player.NetId, out RelicModel? current)
             && current.Id == canonical.Id);
         bool changed = false;
+        List<OneRelicSelectionChanged> selectionChanges = [];
         foreach (Player player in targets)
         {
             string playerKey = player.NetId.ToString();
             if (clear)
             {
-                changed |= SelectedRelics.Remove(player.NetId);
+                if (SelectedRelics.Remove(player.NetId, out RelicModel? previous))
+                {
+                    selectionChanges.Add(new OneRelicSelectionChanged(
+                        player.NetId,
+                        previous.Id,
+                        null));
+                    changed = true;
+                }
                 changed |= _state.Players.Remove(playerKey);
                 continue;
             }
@@ -94,8 +103,13 @@ public static class OneRelicModeService
                 continue;
             }
 
+            ModelId? previousRelicId = current?.Id;
             SelectedRelics[player.NetId] = canonical;
             _state.Players[playerKey] = canonical.Id.ToString();
+            selectionChanges.Add(new OneRelicSelectionChanged(
+                player.NetId,
+                previousRelicId,
+                canonical.Id));
             changed = true;
         }
 
@@ -103,6 +117,8 @@ public static class OneRelicModeService
             return;
 
         ApplyStateChange(save: true);
+        foreach (OneRelicSelectionChanged selectionChange in selectionChanges)
+            SelectionChanged?.Invoke(selectionChange);
     }
 
     public static bool TryGetSelectedRelic(Player player, out RelicModel relic)
@@ -164,6 +180,8 @@ public static class OneRelicModeService
         {
             INetGameService netService = RunManager.Instance.NetService;
             ClearRuntimeState(preservePendingHostSnapshot: netService.Type == NetGameType.Client);
+            if (netService.Type is NetGameType.Host or NetGameType.Singleplayer or NetGameType.Replay)
+                LoadRunState();
             RegisterRunNetService(netService);
             BindRunLobby(RunManager.Instance.RunLobby);
         }
@@ -183,8 +201,8 @@ public static class OneRelicModeService
 
             if (netService.Type is NetGameType.Host or NetGameType.Singleplayer or NetGameType.Replay)
             {
-                LoadRunState();
                 ApplyStateChange(save: false);
+                NotifyCurrentSelectionsApplied();
             }
             else if (netService.Type == NetGameType.Client)
             {
@@ -541,10 +559,14 @@ public static class OneRelicModeService
 
     private static void ApplyHostSnapshot(OneRelicRunSaveData incoming)
     {
+        Dictionary<ulong, ModelId> previousSelections = SelectedRelics.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.Id);
         _state = incoming;
         _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
         RebuildSelectedRelics();
         ApplyStateChange(save: false);
+        NotifySelectionChanges(previousSelections, includeCurrentSelections: true);
     }
 
     private static long? GetExpectedRunStartTime()
@@ -574,6 +596,9 @@ public static class OneRelicModeService
 
     private static void ClearRuntimeState(bool preservePendingHostSnapshot)
     {
+        Dictionary<ulong, ModelId> previousSelections = SelectedRelics.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.Id);
         _state = new OneRelicRunSaveData();
         SelectedRelics.Clear();
         ExactGrantDepth.Value = 0;
@@ -584,6 +609,40 @@ public static class OneRelicModeService
         if (!preservePendingHostSnapshot)
             _pendingHostSnapshotJson = null;
         Changed?.Invoke();
+        NotifySelectionChanges(previousSelections, includeCurrentSelections: false);
+    }
+
+    private static void NotifyCurrentSelectionsApplied()
+    {
+        foreach ((ulong playerNetId, RelicModel relic) in SelectedRelics)
+        {
+            SelectionChanged?.Invoke(new OneRelicSelectionChanged(
+                playerNetId,
+                null,
+                relic.Id));
+        }
+    }
+
+    private static void NotifySelectionChanges(
+        IReadOnlyDictionary<ulong, ModelId> previousSelections,
+        bool includeCurrentSelections)
+    {
+        foreach (ulong playerNetId in previousSelections.Keys.Union(SelectedRelics.Keys))
+        {
+            ModelId? previousRelicId = previousSelections.TryGetValue(playerNetId, out ModelId previous)
+                ? previous
+                : null;
+            ModelId? selectedRelicId = SelectedRelics.TryGetValue(playerNetId, out RelicModel? selected)
+                ? selected.Id
+                : null;
+            if (!includeCurrentSelections && Equals(previousRelicId, selectedRelicId))
+                continue;
+
+            SelectionChanged?.Invoke(new OneRelicSelectionChanged(
+                playerNetId,
+                previousRelicId,
+                selectedRelicId));
+        }
     }
 
     private sealed class ExactGrantScope : IDisposable
@@ -627,6 +686,11 @@ public static class OneRelicModeService
         }
     }
 }
+
+public readonly record struct OneRelicSelectionChanged(
+    ulong PlayerNetId,
+    ModelId? PreviousRelicId,
+    ModelId? SelectedRelicId);
 
 public struct OneRelicSnapshotMessage : INetMessage, IPacketSerializable
 {

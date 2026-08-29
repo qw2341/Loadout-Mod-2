@@ -99,9 +99,9 @@ public class LoadoutBag
 		UpdateOneRelicPanelOutline(loadoutBagItem);
 		if (LoadoutBagRelicScreen is { } screen)
 		{
-			OneRelicModeService.Changed += () =>
+			OneRelicModeService.SelectionChanged += selectionChange =>
 			{
-				RefreshOneRelicVisibleItems(screen);
+				RefreshChangedOneRelicView(screen, selectionChange);
 				UpdateOneRelicPanelOutline(loadoutBagItem);
 			};
 			long observedRevision = RelicModificationStateService.PermanentDisplayRevision;
@@ -252,6 +252,35 @@ public class LoadoutBag
 		    });
 	    }).CallDeferred();
     }
+
+	private static void RefreshChangedOneRelicView(
+		NGenericSelectScreen screen,
+		OneRelicSelectionChanged selectionChange)
+	{
+		Callable.From(() =>
+		{
+			if (!GodotObject.IsInstanceValid(screen))
+				return;
+
+			LoadoutTargetSelection target = LoadoutTargetService.GetSelected(
+				LastActionService.LoadoutBagKey,
+				LoadoutTargetMode.AllPlayersAndPlayers);
+			if (target.Scope != LoadoutTargetScope.AllPlayers
+				&& (target.Scope != LoadoutTargetScope.Player
+					|| target.PlayerNetId != selectionChange.PlayerNetId))
+			{
+				return;
+			}
+
+			if (selectionChange.PreviousRelicId is { } previousRelicId)
+				screen.RefreshItemView(previousRelicId.ToString());
+			if (selectionChange.SelectedRelicId is { } selectedRelicId
+				&& selectedRelicId != selectionChange.PreviousRelicId)
+			{
+				screen.RefreshItemView(selectedRelicId.ToString());
+			}
+		}).CallDeferred();
+	}
 
 	private static void UpdateOneRelicPanelOutline(NLoadoutPanelItem loadoutBagItem)
 	{
