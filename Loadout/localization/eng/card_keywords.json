@@ -245,5 +245,11 @@
   "LOADOUT-APPLY_TO_ALL_PLAYERS.cardText": "Apply {LoadoutApplyToAllPlayersList} to ALL players.",
   "LOADOUT-APPLY_TO_ANOTHER_PLAYER.title": "Apply to Another Player",
   "LOADOUT-APPLY_TO_ANOTHER_PLAYER.description": "Apply the configured powers to another player.",
-  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "Apply {LoadoutApplyToAnotherPlayerList} to another player."
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "Apply {LoadoutApplyToAnotherPlayerList} to another player.",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.title": "Gain Power Permanently",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.description": "Permanently change your Power Giver amounts when played.",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.cardText": "{LoadoutGainPowerPermanentlyList}",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.title": "Gain Power Permanently on Fatal",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "Permanently change your Power Giver amounts when [gold]Fatal[/gold].",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}"
 }

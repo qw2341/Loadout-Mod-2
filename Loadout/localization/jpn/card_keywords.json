@@ -245,5 +245,11 @@
   "LOADOUT-APPLY_TO_ALL_PLAYERS.cardText": "すべてのプレイヤーに{LoadoutApplyToAllPlayersList}を付与する。",
   "LOADOUT-APPLY_TO_ANOTHER_PLAYER.title": "他のプレイヤーに付与",
   "LOADOUT-APPLY_TO_ANOTHER_PLAYER.description": "他のプレイヤーに設定済みのパワーを付与する。",
-  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "他のプレイヤーに{LoadoutApplyToAnotherPlayerList}を付与する。"
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "他のプレイヤーに{LoadoutApplyToAnotherPlayerList}を付与する。",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.title": "パワーを永久に得る",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.description": "プレイ時、自分のパワー付与器の値を永久に変更する。",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.cardText": "{LoadoutGainPowerPermanentlyList}",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.title": "Fatal時にパワーを永久に得る",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "[gold]Fatal[/gold]時、自分のパワー付与器の値を永久に変更する。",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}"
 }

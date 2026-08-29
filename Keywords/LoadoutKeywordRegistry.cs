@@ -76,6 +76,8 @@ public static class LoadoutKeywordRegistry
         ApplyToAllEnemiesKeyword.Instance,
         ApplyToAllPlayersKeyword.Instance,
         ApplyToAnotherPlayerKeyword.Instance,
+        GainPowerPermanentlyKeyword.Instance,
+        GainPowerPermanentlyOnFatalKeyword.Instance,
         DiscardHandKeyword.Instance,
         NoDrawKeyword.Instance,
         InHandLoseHealthKeyword.Instance,

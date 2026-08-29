@@ -63,6 +63,10 @@ public static class LoadoutKeywords
     public const string ApplyToAllEnemiesKey = "ApplyToAllEnemies";
     public const string ApplyToAllPlayersKey = "ApplyToAllPlayers";
     public const string ApplyToAnotherPlayerKey = "ApplyToAnotherPlayer";
+    public const string GainPowerPermanentlyKey =
+        "GainPowerPermanently";
+    public const string GainPowerPermanentlyOnFatalKey =
+        "GainPowerPermanentlyOnFatal";
     public const string DiscardHandKey = "RestrictiveDiscardHand";
     public const string NoDrawKey = "RestrictiveNoDraw";
     public const string InHandLoseHealthKey =
@@ -263,6 +267,12 @@ public static class LoadoutKeywords
 
     [CustomEnum("APPLY_TO_ANOTHER_PLAYER")]
     public static CardKeyword ApplyToAnotherPlayer;
+
+    [CustomEnum("GAIN_POWER_PERMANENTLY")]
+    public static CardKeyword GainPowerPermanently;
+
+    [CustomEnum("GAIN_POWER_PERMANENTLY_ON_FATAL")]
+    public static CardKeyword GainPowerPermanentlyOnFatal;
 
     [CustomEnum("RESTRICTIVE_DISCARD_HAND")]
     public static CardKeyword DiscardHand;

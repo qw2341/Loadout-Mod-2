@@ -245,5 +245,11 @@
   "LOADOUT-APPLY_TO_ALL_PLAYERS.cardText": "给予所有玩家{LoadoutApplyToAllPlayersList}。",
   "LOADOUT-APPLY_TO_ANOTHER_PLAYER.title": "给予另一名玩家",
   "LOADOUT-APPLY_TO_ANOTHER_PLAYER.description": "给予另一名玩家已配置的能力。",
-  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "给予另一名玩家{LoadoutApplyToAnotherPlayerList}。"
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "给予另一名玩家{LoadoutApplyToAnotherPlayerList}。",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.title": "永久能力",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.description": "打出时永久改变自身的能力给予器数值。",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.cardText": "{LoadoutGainPowerPermanentlyList}",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.title": "斩杀永久能力",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "[gold]斩杀[/gold]时永久改变自身的能力给予器数值。",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}"
 }

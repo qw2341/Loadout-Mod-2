@@ -245,5 +245,11 @@
   "LOADOUT-APPLY_TO_ALL_PLAYERS.cardText": "Aplica {LoadoutApplyToAllPlayersList} a TODOS los jugadores.",
   "LOADOUT-APPLY_TO_ANOTHER_PLAYER.title": "Aplicar a otro jugador",
   "LOADOUT-APPLY_TO_ANOTHER_PLAYER.description": "Aplica los poderes configurados a otro jugador.",
-  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "Aplica {LoadoutApplyToAnotherPlayerList} a otro jugador."
+  "LOADOUT-APPLY_TO_ANOTHER_PLAYER.cardText": "Aplica {LoadoutApplyToAnotherPlayerList} a otro jugador.",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.title": "Obtener poder permanentemente",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.description": "Cambia permanentemente tus cantidades del Otorgador de poderes al jugarse.",
+  "LOADOUT-GAIN_POWER_PERMANENTLY.cardText": "{LoadoutGainPowerPermanentlyList}",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.title": "Obtener poder permanentemente con Fatal",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "Cambia permanentemente tus cantidades del Otorgador de poderes si es [gold]Fatal[/gold].",
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}"
 }

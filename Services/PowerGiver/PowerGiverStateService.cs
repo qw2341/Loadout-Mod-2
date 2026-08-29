@@ -13,6 +13,7 @@ using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
@@ -122,15 +123,64 @@ public static class PowerGiverStateService
 
         EnsureLoaded();
         bool adjusted;
+        int appliedDelta;
         lock (SyncRoot)
         {
-            adjusted = AdjustCounterLocked(powerId, delta, target);
+            adjusted = AdjustCounterLocked(
+                powerId,
+                delta,
+                target,
+                out appliedDelta);
         }
 
         if (adjusted)
-            TaskHelper.RunSafely(ApplyCurrentCombatDeltaAsync(powerId, delta, target, actionPlayer));
+        {
+            TaskHelper.RunSafely(
+                ApplyCurrentCombatDeltaAsync(
+                    powerId,
+                    appliedDelta,
+                    target,
+                    actionPlayer));
+        }
 
         return adjusted;
+    }
+
+    public static async Task<bool> AdjustCounterFromCardAsync(
+        string powerId,
+        int delta,
+        CardModel source,
+        PlayerChoiceContext choiceContext)
+    {
+        if (string.IsNullOrWhiteSpace(powerId) || delta == 0)
+            return false;
+
+        Player owner = source.Owner;
+        LoadoutTargetSelection target =
+            LoadoutTargetSelection.ForPlayer(owner.NetId);
+        EnsureLoaded();
+        bool adjusted;
+        int appliedDelta;
+        lock (SyncRoot)
+        {
+            adjusted = AdjustCounterLocked(
+                powerId,
+                delta,
+                target,
+                out appliedDelta);
+        }
+
+        if (!adjusted)
+            return false;
+
+        await ApplyCurrentCombatDeltaAsync(
+            powerId,
+            appliedDelta,
+            target,
+            owner,
+            choiceContext,
+            source);
+        return true;
     }
 
     public static bool IsFavorite(string powerId)
@@ -177,13 +227,28 @@ public static class PowerGiverStateService
         }
     }
 
-    private static bool AdjustCounterLocked(string powerId, int delta, LoadoutTargetSelection target)
+    private static bool AdjustCounterLocked(
+        string powerId,
+        int delta,
+        LoadoutTargetSelection target,
+        out int appliedDelta)
     {
+        appliedDelta = 0;
         Dictionary<string, int>? counters = GetCounters(target, createPlayerBucket: true);
         if (counters is null)
             return false;
 
-        int next = counters.GetValueOrDefault(powerId, 0) + delta;
+        int current = counters.GetValueOrDefault(powerId, 0);
+        long requested = (long)current + delta;
+        int next = requested > int.MaxValue
+            ? int.MaxValue
+            : requested < int.MinValue
+                ? int.MinValue
+                : (int)requested;
+        appliedDelta = (int)((long)next - current);
+        if (appliedDelta == 0)
+            return false;
+
         if (next == 0)
             counters.Remove(powerId);
         else
@@ -425,7 +490,9 @@ public static class PowerGiverStateService
         string powerId,
         int amount,
         LoadoutTargetSelection target,
-        Player actionPlayer)
+        Player actionPlayer,
+        PlayerChoiceContext? choiceContext = null,
+        CardModel? source = null)
     {
         if (amount == 0 || !CombatManager.Instance.IsInProgress)
             return;
@@ -447,10 +514,22 @@ public static class PowerGiverStateService
 
         Creature? applier = combatState.GetPlayer(actionPlayer.NetId)?.Creature
                             ?? combatState.Players.FirstOrDefault()?.Creature;
-        await ApplyPowerToTargets(powerId, amount, targets, applier);
+        await ApplyPowerToTargets(
+            powerId,
+            amount,
+            targets,
+            applier,
+            choiceContext,
+            source);
     }
 
-    private static async Task ApplyPowerToTargets(string powerId, int amount, IEnumerable<Creature> targets, Creature? applier)
+    private static async Task ApplyPowerToTargets(
+        string powerId,
+        int amount,
+        IEnumerable<Creature> targets,
+        Creature? applier,
+        PlayerChoiceContext? choiceContext = null,
+        CardModel? source = null)
     {
         if (amount == 0)
             return;
@@ -466,7 +545,13 @@ public static class PowerGiverStateService
         {
             try
             {
-                await PowerCmd.Apply(new ThrowingPlayerChoiceContext(), power.ToMutable(), target, amount, applier, null);
+                await PowerCmd.Apply(
+                    choiceContext ?? new ThrowingPlayerChoiceContext(),
+                    power.ToMutable(),
+                    target,
+                    amount,
+                    applier,
+                    source);
             }
             catch (Exception exception)
             {

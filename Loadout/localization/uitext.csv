@@ -820,3 +820,13 @@ DYNAMIC_VAR_LOADOUT_APPLY_SELF_LIST,Configured Self Powers,已配置自身能力
 DYNAMIC_VAR_LOADOUT_APPLY_TO_ALL_ENEMIES_LIST,Configured Enemy Powers,已配置敌人能力,Pouvoirs ennemis configurés,設定済みの敵用パワー,설정된 적 능력,Poderes enemigos configurados
 DYNAMIC_VAR_LOADOUT_APPLY_TO_ALL_PLAYERS_LIST,Configured Player Powers,已配置玩家能力,Pouvoirs de joueurs configurés,設定済みのプレイヤー用パワー,설정된 플레이어 능력,Poderes de jugadores configurados
 DYNAMIC_VAR_LOADOUT_APPLY_TO_ANOTHER_PLAYER_LIST,Configured Other Player Powers,已配置其他玩家能力,Pouvoirs configurés pour un autre joueur,設定済みの他プレイヤー用パワー,설정된 다른 플레이어 능력,Poderes configurados para otro jugador
+CARD_MOD_POWER_KEYWORD_PERMANENT_GAIN,Gain {0} permanently.,永久获得{0}。,Gagnez {0} définitivement.,{0}を永久に得る。,{0}을 영구적으로 얻습니다.,Obtén {0} de forma permanente.
+CARD_MOD_POWER_KEYWORD_PERMANENT_LOSE,Lose {0} permanently.,永久失去{0}。,Perdez {0} définitivement.,{0}を永久に失う。,{0}을 영구적으로 잃습니다.,Pierde {0} de forma permanente.
+CARD_MOD_POWER_KEYWORD_FATAL_PERMANENT_GAIN,"If [gold]Fatal[/gold], gain {0} permanently.",[gold]斩杀[/gold]时，永久获得{0}。,"En cas de [gold]Fatal[/gold], gagnez {0} définitivement.",[gold]Fatal[/gold]時、{0}を永久に得る。,[gold]Fatal[/gold] 시 {0}을 영구적으로 얻습니다.,"Si es [gold]Fatal[/gold], obtén {0} de forma permanente."
+CARD_MOD_POWER_KEYWORD_FATAL_PERMANENT_LOSE,"If [gold]Fatal[/gold], lose {0} permanently.",[gold]斩杀[/gold]时，永久失去{0}。,"En cas de [gold]Fatal[/gold], perdez {0} définitivement.",[gold]Fatal[/gold]時、{0}を永久に失う。,[gold]Fatal[/gold] 시 {0}을 영구적으로 잃습니다.,"Si es [gold]Fatal[/gold], pierde {0} de forma permanente."
+CARD_MOD_GAIN_POWER_PERMANENTLY_AMOUNT,Permanent Power Amount,永久能力数值,Quantité permanente du pouvoir,永久パワー量,영구 능력 수치,Cantidad permanente de poder
+CARD_MOD_GAIN_POWER_PERMANENTLY_POWER,Gain Power Permanently,永久获得能力,Gagner un pouvoir définitivement,パワーを永久に得る,능력 영구 획득,Obtener poder permanentemente
+CARD_MOD_GAIN_POWER_PERMANENTLY_ON_FATAL_AMOUNT,Fatal Permanent Power Amount,斩杀永久能力数值,Quantité permanente du pouvoir avec Fatal,Fatal時の永久パワー量,Fatal 영구 능력 수치,Cantidad permanente de poder con Fatal
+CARD_MOD_GAIN_POWER_PERMANENTLY_ON_FATAL_POWER,Gain Power Permanently on Fatal,斩杀时永久获得能力,Gagner un pouvoir définitivement avec Fatal,Fatal時にパワーを永久に得る,Fatal 시 능력 영구 획득,Obtener poder permanentemente con Fatal
+DYNAMIC_VAR_LOADOUT_GAIN_POWER_PERMANENTLY_LIST,Permanent Power Giver Changes,永久能力给予器变化,Modifications permanentes du Donneur de pouvoirs,パワー付与器の永久変更,능력 부여기 영구 변경,Cambios permanentes del Otorgador de poderes
+DYNAMIC_VAR_LOADOUT_GAIN_POWER_PERMANENTLY_ON_FATAL_LIST,Fatal Permanent Power Giver Changes,斩杀时永久能力给予器变化,Modifications permanentes du Donneur de pouvoirs avec Fatal,Fatal時のパワー付与器の永久変更,Fatal 시 능력 부여기 영구 변경,Cambios permanentes del Otorgador de poderes con Fatal

@@ -11,6 +11,7 @@ using Godot;
 using Loadout.PanelItems;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.CardModification;
+using Loadout.Services.PowerGiver;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -30,6 +31,13 @@ public enum LoadoutPowerKeywordTargetMode
     AllEnemies,
     AllPlayers,
     AnotherPlayer
+}
+
+public enum LoadoutPowerKeywordDescriptionStyle
+{
+    EntryList,
+    PermanentGainLose,
+    FatalPermanentGainLose
 }
 
 public abstract class LoadoutPowerKeywordModel : LoadoutKeywordModel
@@ -61,7 +69,9 @@ public abstract class LoadoutPowerKeywordModel : LoadoutKeywordModel
         CreateDisplayVariables(
             string displayVarName,
             string labelLocKey,
-            string storageKey) =>
+            string storageKey,
+            LoadoutPowerKeywordDescriptionStyle descriptionStyle =
+                LoadoutPowerKeywordDescriptionStyle.EntryList) =>
         [
             new(
                 displayVarName,
@@ -73,9 +83,46 @@ public abstract class LoadoutPowerKeywordModel : LoadoutKeywordModel
                     name,
                     card => LoadoutPowerKeywordState.FormatEntries(
                         card,
-                        storageKey)),
+                        storageKey,
+                        descriptionStyle)),
                 EditorVisible: false)
         ];
+
+    protected static async Task ApplyPermanentlyToPowerGiver(
+        CardModel card,
+        PlayerChoiceContext choiceContext,
+        string keywordKey,
+        int repetitionCount)
+    {
+        if (repetitionCount <= 0)
+            return;
+
+        foreach (LoadoutPowerKeywordEntry entry in
+                 LoadoutPowerKeywordState.GetEffectiveEntries(
+                     card,
+                     keywordKey))
+        {
+            if (!LoadoutPowerKeywordState.TryResolvePower(
+                    entry.PowerId,
+                    out PowerModel canonical))
+            {
+                LoadoutPowerKeywordState.WarnUnknownPower(entry.PowerId);
+                continue;
+            }
+
+            int amount = LoadoutPowerKeywordState.SaturatingMultiply(
+                entry.Amount,
+                repetitionCount);
+            if (amount == 0)
+                continue;
+
+            await PowerGiverStateService.AdjustCounterFromCardAsync(
+                canonical.Id.ToString(),
+                amount,
+                card,
+                choiceContext);
+        }
+    }
 
     public override async Task AfterOnPlay(
         CardModel card,
@@ -447,7 +494,11 @@ public static class LoadoutPowerKeywordState
         return strength?.Id.ToString() ?? "Strength";
     }
 
-    public static string FormatEntries(CardModel card, string keywordKey)
+    public static string FormatEntries(
+        CardModel card,
+        string keywordKey,
+        LoadoutPowerKeywordDescriptionStyle descriptionStyle =
+            LoadoutPowerKeywordDescriptionStyle.EntryList)
     {
         ResolveLists(
             card,
@@ -456,39 +507,111 @@ public static class LoadoutPowerKeywordState
             out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries);
         bool useInfiniteUpgradeValues = InfiniteUpgradeValueScaling.AppliesTo(card);
         bool highlightUpgradeAmounts = card.UpgradePreviewType.IsPreview();
-        string separator = LocMan.Loc(
-            "CARD_MOD_POWER_KEYWORD_SEPARATOR",
-            ", ");
-        return string.Join(
-            separator,
+        List<EffectivePowerKeywordEntry> entries =
             GetEffectiveEntryStates(
                     baseEntries,
                     entryUpgrades,
                     addedEntries,
                     card.CurrentUpgradeLevel,
                     useInfiniteUpgradeValues)
-                .Where(effective => MatchesKeyword(effective.Entry, keywordKey))
-                .Select(effective =>
-                {
-                    LoadoutPowerKeywordEntry entry = effective.Entry;
-                    bool resolved = TryResolvePower(entry.PowerId, out PowerModel power);
-                    string title = resolved
-                        ? CommonHelpers.FormatPowerTitle(power)
-                        : GetPowerIdFallback(entry.PowerId);
-                    title = $"[gold]{title}[/gold]";
-                    string amount = entry.Amount.ToString(CultureInfo.InvariantCulture);
-                    if (highlightUpgradeAmounts && effective.AmountWasUpgraded)
-                        amount = StsTextUtilities.HighlightChangeText(amount, 1);
-                    bool usesPointClassifier = resolved
-                        && power is StrengthPower or DexterityPower or FocusPower;
-                    return LocMan.Loc(
-                        usesPointClassifier
-                            ? "CARD_MOD_POWER_KEYWORD_ENTRY_POINT"
-                            : "CARD_MOD_POWER_KEYWORD_ENTRY",
-                        "{0} {1}",
-                        amount,
-                        title);
-                }));
+                .Where(effective => MatchesKeyword(
+                    effective.Entry,
+                    keywordKey))
+                .ToList();
+        if (descriptionStyle == LoadoutPowerKeywordDescriptionStyle.EntryList)
+        {
+            return JoinFormattedEntries(
+                entries,
+                highlightUpgradeAmounts,
+                useAbsoluteAmounts: false);
+        }
+
+        string gains = JoinFormattedEntries(
+            entries.Where(entry => entry.Entry.Amount > 0),
+            highlightUpgradeAmounts,
+            useAbsoluteAmounts: true);
+        string losses = JoinFormattedEntries(
+            entries.Where(entry => entry.Entry.Amount < 0),
+            highlightUpgradeAmounts,
+            useAbsoluteAmounts: true);
+        List<string> sentences = [];
+        bool fatal = descriptionStyle ==
+                     LoadoutPowerKeywordDescriptionStyle.FatalPermanentGainLose;
+        if (!string.IsNullOrWhiteSpace(gains))
+        {
+            sentences.Add(LocMan.Loc(
+                fatal
+                    ? "CARD_MOD_POWER_KEYWORD_FATAL_PERMANENT_GAIN"
+                    : "CARD_MOD_POWER_KEYWORD_PERMANENT_GAIN",
+                fatal
+                    ? "If [gold]Fatal[/gold], gain {0} permanently."
+                    : "Gain {0} permanently.",
+                gains));
+        }
+
+        if (!string.IsNullOrWhiteSpace(losses))
+        {
+            sentences.Add(LocMan.Loc(
+                fatal
+                    ? "CARD_MOD_POWER_KEYWORD_FATAL_PERMANENT_LOSE"
+                    : "CARD_MOD_POWER_KEYWORD_PERMANENT_LOSE",
+                fatal
+                    ? "If [gold]Fatal[/gold], lose {0} permanently."
+                    : "Lose {0} permanently.",
+                losses));
+        }
+
+        return string.Join(' ', sentences);
+    }
+
+    private static string JoinFormattedEntries(
+        IEnumerable<EffectivePowerKeywordEntry> entries,
+        bool highlightUpgradeAmounts,
+        bool useAbsoluteAmounts)
+    {
+        string separator = LocMan.Loc(
+            "CARD_MOD_POWER_KEYWORD_SEPARATOR",
+            ", ");
+        return string.Join(
+            separator,
+            entries.Select(effective => FormatEntry(
+                effective,
+                highlightUpgradeAmounts,
+                useAbsoluteAmounts)));
+    }
+
+    private static string FormatEntry(
+        EffectivePowerKeywordEntry effective,
+        bool highlightUpgradeAmounts,
+        bool useAbsoluteAmounts)
+    {
+        LoadoutPowerKeywordEntry entry = effective.Entry;
+        bool resolved = TryResolvePower(entry.PowerId, out PowerModel power);
+        string title = resolved
+            ? CommonHelpers.FormatPowerTitle(power)
+            : GetPowerIdFallback(entry.PowerId);
+        title = $"[gold]{title}[/gold]";
+        long displayAmount = useAbsoluteAmounts
+            ? Math.Abs((long)entry.Amount)
+            : entry.Amount;
+        string amount = displayAmount.ToString(CultureInfo.InvariantCulture);
+        if (highlightUpgradeAmounts && effective.AmountWasUpgraded)
+            amount = StsTextUtilities.HighlightChangeText(amount, 1);
+        bool usesPointClassifier = resolved
+            && power is StrengthPower or DexterityPower or FocusPower;
+        return LocMan.Loc(
+            usesPointClassifier
+                ? "CARD_MOD_POWER_KEYWORD_ENTRY_POINT"
+                : "CARD_MOD_POWER_KEYWORD_ENTRY",
+            "{0} {1}",
+            amount,
+            title);
+    }
+
+    public static int SaturatingMultiply(int amount, int multiplier)
+    {
+        long product = (long)amount * multiplier;
+        return SaturatingAmount(product);
     }
 
     public static void WarnUnknownPower(string powerId)
