@@ -401,10 +401,10 @@ internal static class CustomRunRuleEvaluator
         foreach (Player target in targets)
         {
             int current = statId == TildeKeyStateService.PlayerDamageMultiplierStatId
-                && TildeKeyStateService.TryGetPlayerDamageMultiplier(target, out int playerValue)
+                && TildeKeyStateService.TryGetBasePlayerDamageMultiplier(target, out int playerValue)
                     ? playerValue
                     : statId == TildeKeyStateService.EnemyDamageMultiplierStatId
-                      && TildeKeyStateService.TryGetEnemyDamageMultiplier(target, out int enemyValue)
+                      && TildeKeyStateService.TryGetBaseEnemyDamageMultiplier(target, out int enemyValue)
                         ? enemyValue
                         : 100;
             values[target.NetId] = ToTruncatedInt(

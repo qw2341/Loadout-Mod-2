@@ -68,6 +68,18 @@ public static class LoadoutKeywords
     public const string AnotherPlayerStarsKey = "BasicMultiplayerAnotherPlayerStars";
     public const string AllOtherPlayersStarsKey = "BasicMultiplayerAllOtherPlayersStars";
     public const string AllPlayersStarsKey = "BasicMultiplayerAllPlayersStars";
+    public const string IncreaseDamageDealtThisTurnKey =
+        "BasicMultiplierIncreaseDamageDealtThisTurn";
+    public const string IncreaseDamageDealtThisCombatKey =
+        "BasicMultiplierIncreaseDamageDealtThisCombat";
+    public const string IncreaseDamageDealtPermanentlyKey =
+        "BasicMultiplierIncreaseDamageDealtPermanently";
+    public const string IncreaseMonsterDamageThisTurnKey =
+        "BasicMultiplierIncreaseMonsterDamageThisTurn";
+    public const string IncreaseMonsterDamageThisCombatKey =
+        "BasicMultiplierIncreaseMonsterDamageThisCombat";
+    public const string IncreaseMonsterDamagePermanentlyKey =
+        "BasicMultiplierIncreaseMonsterDamagePermanently";
     public const string ApplyPowerKey = "ApplyPower";
     public const string ApplySelfKey = "ApplySelf";
     public const string ApplyToAllEnemiesKey = "ApplyToAllEnemies";
@@ -298,6 +310,24 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_STARS")]
     public static CardKeyword AllPlayersStars;
+
+    [CustomEnum("BASIC_MULTIPLIER_INCREASE_DAMAGE_DEALT_THIS_TURN")]
+    public static CardKeyword IncreaseDamageDealtThisTurn;
+
+    [CustomEnum("BASIC_MULTIPLIER_INCREASE_DAMAGE_DEALT_THIS_COMBAT")]
+    public static CardKeyword IncreaseDamageDealtThisCombat;
+
+    [CustomEnum("BASIC_MULTIPLIER_INCREASE_DAMAGE_DEALT_PERMANENTLY")]
+    public static CardKeyword IncreaseDamageDealtPermanently;
+
+    [CustomEnum("BASIC_MULTIPLIER_INCREASE_MONSTER_DAMAGE_THIS_TURN")]
+    public static CardKeyword IncreaseMonsterDamageThisTurn;
+
+    [CustomEnum("BASIC_MULTIPLIER_INCREASE_MONSTER_DAMAGE_THIS_COMBAT")]
+    public static CardKeyword IncreaseMonsterDamageThisCombat;
+
+    [CustomEnum("BASIC_MULTIPLIER_INCREASE_MONSTER_DAMAGE_PERMANENTLY")]
+    public static CardKeyword IncreaseMonsterDamagePermanently;
 
     [CustomEnum("APPLY_POWER")]
     public static CardKeyword ApplyPower;

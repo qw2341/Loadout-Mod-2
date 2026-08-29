@@ -31,6 +31,7 @@ public enum LoadoutKeywordEditorSection
     Default,
     Basic,
     BasicMultiplayer,
+    BasicMultipliers,
     Power,
     Restrictive,
     Fatal,

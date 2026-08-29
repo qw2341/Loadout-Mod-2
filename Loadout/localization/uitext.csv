@@ -223,6 +223,8 @@ DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしき�
 DYNAMIC_VAR_LOADOUT_ALT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
 CARD_MOD_LOADOUT_BASIC_KEYWORDS,Loadout Basic Keywords,Loadout 基础关键词,Mots-clés de base Loadout,Loadout基本キーワード,Loadout 기본 키워드,Palabras clave básicas de Loadout
 CARD_MOD_LOADOUT_BASIC_MULTIPLAYER_KEYWORDS,Loadout Basic Multiplayer Keywords,Loadout 基础多人关键词,Mots-clés multijoueur de base Loadout,Loadout基本マルチプレイヤーキーワード,Loadout 기본 멀티플레이어 키워드,Palabras clave multijugador básicas de Loadout
+CARD_MOD_LOADOUT_BASIC_MULTIPLIERS,Loadout Basic Multipliers,Loadout 基础倍率,Multiplicateurs de base Loadout,Loadout基本倍率,Loadout 기본 배율,Multiplicadores básicos de Loadout
+DYNAMIC_VAR_LOADOUT_BASIC_MULTIPLIER_PERCENTAGE,Multiplier Increase (%),倍率增加（%）,Augmentation du multiplicateur (%),倍率増加（%）,배율 증가 (%),Aumento del multiplicador (%)
 CARD_MOD_LOADOUT_RESTRICTIVE_KEYWORDS,Loadout Restrictive Keywords,Loadout 限制关键词,Mots-clés restrictifs Loadout,Loadout制限キーワード,Loadout 제한 키워드,Palabras clave restrictivas de Loadout
 CARD_MOD_LOADOUT_FATAL_KEYWORDS,Loadout Fatal Keywords,Loadout 斩杀关键词,Mots-clés Fatal Loadout,Loadoutフェイタルキーワード,Loadout 치명 키워드,Palabras clave Fatales de Loadout
 CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS,Loadout Improvement Keywords,Loadout 强化关键词,Mots-clés d’amélioration Loadout,Loadout強化キーワード,Loadout 강화 키워드,Palabras clave de mejora de Loadout

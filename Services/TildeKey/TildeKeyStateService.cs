@@ -48,6 +48,7 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Saves;
 
 public sealed class TildeKeyMutationPayload
@@ -87,6 +88,13 @@ public sealed class TildeKeyStatDefinition
 
     internal Func<Player, int?> GetValue { get; }
     internal Action<Player, int> SetValue { get; }
+}
+
+public enum TildeKeyDamageMultiplierDuration
+{
+    Turn,
+    Combat,
+    Permanent
 }
 
 /// <summary>
@@ -222,6 +230,10 @@ public static class TildeKeyStateService
 
     private static RunSaveData _run = new();
     private static readonly Dictionary<string, Dictionary<string, int>> VirtualStats = new(StringComparer.Ordinal);
+    private static readonly Dictionary<(ulong NetId, string StatId), int>
+        TurnDamageMultiplierDeltas = [];
+    private static readonly Dictionary<(ulong NetId, string StatId), int>
+        CombatDamageMultiplierDeltas = [];
     private static RunState? _pendingStartingDefaultsRun;
     private static bool _registered;
     private static bool _combatHookRegistered;
@@ -275,6 +287,8 @@ public static class TildeKeyStateService
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp += OnCombatSetUp;
         CombatManager.Instance.TurnStarted += OnTurnStarted;
+        CombatManager.Instance.TurnEnded += OnTurnEnded;
+        CombatManager.Instance.CombatEnded += OnCombatEnded;
         EnsureLoaded();
         RefreshDynamicLockPatches();
     }
@@ -288,6 +302,9 @@ public static class TildeKeyStateService
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
         CombatManager.Instance.CombatSetUp -= OnCombatSetUp;
         CombatManager.Instance.TurnStarted -= OnTurnStarted;
+        CombatManager.Instance.TurnEnded -= OnTurnEnded;
+        CombatManager.Instance.CombatEnded -= OnCombatEnded;
+        ClearTimedDamageMultiplierDeltas(turn: true, combat: true);
         TildeKeyDynamicLockPatches.Reset();
         TildeKeyDynamicDrawPatches.Reset();
         _registered = false;
@@ -385,6 +402,8 @@ public static class TildeKeyStateService
             _run = new RunSaveData();
             _pendingStartingDefaultsRun = null;
             VirtualStats.Clear();
+            TurnDamageMultiplierDeltas.Clear();
+            CombatDamageMultiplierDeltas.Clear();
         }
         _lastMapScreen = null;
         _lastDesiredDebugTravel = false;
@@ -642,6 +661,13 @@ public static class TildeKeyStateService
     {
         Player? player = ResolveTargetPlayers(target).FirstOrDefault();
         if (player is not null
+            && IsDamageMultiplierStat(definition.Id)
+            && definition.GetValue(player) is { } effectiveMultiplier)
+        {
+            return effectiveMultiplier;
+        }
+
+        if (player is not null
             && TryGetSavedStat(player.NetId, definition.Id, out TildeKeySavedStat? lockedSaved)
             && lockedSaved is { Locked: true })
         {
@@ -763,6 +789,45 @@ public static class TildeKeyStateService
             statId,
             players.DistinctBy(player => player.NetId).ToDictionary(player => player.NetId, _ => value),
             players);
+    }
+
+    public static void AdjustDamageMultiplier(
+        Player player,
+        string statId,
+        int percentagePoints,
+        TildeKeyDamageMultiplierDuration duration)
+    {
+        if (percentagePoints == 0 || !IsDamageMultiplierStat(statId))
+            return;
+
+        EnsureLoaded();
+        if (duration == TildeKeyDamageMultiplierDuration.Permanent)
+        {
+            int current = GetBaseDamageMultiplier(player.NetId, statId);
+            ApplyCustomRunDamageMultiplier(
+                statId,
+                unchecked(current + percentagePoints),
+                [player]);
+            return;
+        }
+
+        Dictionary<(ulong NetId, string StatId), int> deltas =
+            duration == TildeKeyDamageMultiplierDuration.Turn
+                ? TurnDamageMultiplierDeltas
+                : CombatDamageMultiplierDeltas;
+        lock (SyncRoot)
+        {
+            (ulong NetId, string StatId) key = (player.NetId, statId);
+            deltas.TryGetValue(key, out int current);
+            int updated = unchecked(current + percentagePoints);
+            if (updated == 0)
+                deltas.Remove(key);
+            else
+                deltas[key] = updated;
+        }
+
+        RefreshCombatPreviewsForStatChange(statId, [player]);
+        RaiseStateChanged();
     }
 
     public static void ApplyCustomRunDamageMultipliers(
@@ -981,12 +1046,38 @@ public static class TildeKeyStateService
 
     public static bool TryGetPlayerDamageMultiplier(Player player, out int value)
     {
-        return TryGetVirtualStatOverride(player.NetId, PlayerDamageMultiplierStatId, out value);
+        return TryGetEffectiveDamageMultiplier(
+            player.NetId,
+            PlayerDamageMultiplierStatId,
+            out value);
     }
 
     public static bool TryGetEnemyDamageMultiplier(Player player, out int value)
     {
-        return TryGetVirtualStatOverride(player.NetId, EnemyDamageMultiplierStatId, out value);
+        return TryGetEffectiveDamageMultiplier(
+            player.NetId,
+            EnemyDamageMultiplierStatId,
+            out value);
+    }
+
+    public static bool TryGetBasePlayerDamageMultiplier(
+        Player player,
+        out int value)
+    {
+        return TryGetVirtualStatOverride(
+            player.NetId,
+            PlayerDamageMultiplierStatId,
+            out value);
+    }
+
+    public static bool TryGetBaseEnemyDamageMultiplier(
+        Player player,
+        out int value)
+    {
+        return TryGetVirtualStatOverride(
+            player.NetId,
+            EnemyDamageMultiplierStatId,
+            out value);
     }
 
     public static int GetMonsterHealthMultiplier()
@@ -1634,7 +1725,45 @@ public static class TildeKeyStateService
 
     private static int? GetVirtualStatValue(Player player, string statId, int defaultValue)
     {
+        if (IsDamageMultiplierStat(statId)
+            && TryGetEffectiveDamageMultiplier(player.NetId, statId, out int effective))
+        {
+            return effective;
+        }
+
         return TryGetVirtualStatOverride(player.NetId, statId, out int value) ? value : defaultValue;
+    }
+
+    private static bool TryGetEffectiveDamageMultiplier(
+        ulong netId,
+        string statId,
+        out int value)
+    {
+        bool hasBase = TryGetVirtualStatOverride(netId, statId, out int baseValue);
+        if (!hasBase)
+            baseValue = DefaultDamageMultiplier;
+
+        int turnDelta;
+        int combatDelta;
+        lock (SyncRoot)
+        {
+            TurnDamageMultiplierDeltas.TryGetValue(
+                (netId, statId),
+                out turnDelta);
+            CombatDamageMultiplierDeltas.TryGetValue(
+                (netId, statId),
+                out combatDelta);
+        }
+
+        value = unchecked(baseValue + turnDelta + combatDelta);
+        return hasBase || turnDelta != 0 || combatDelta != 0;
+    }
+
+    private static int GetBaseDamageMultiplier(ulong netId, string statId)
+    {
+        return TryGetVirtualStatOverride(netId, statId, out int value)
+            ? value
+            : DefaultDamageMultiplier;
     }
 
     private static int GetGlobalStatValue(string statId, int defaultValue)
@@ -2364,6 +2493,18 @@ public static class TildeKeyStateService
                || string.Equals(statId, EnemyDamageMultiplierStatId, StringComparison.Ordinal);
     }
 
+    private static bool IsDamageMultiplierStat(string statId)
+    {
+        return string.Equals(
+                   statId,
+                   PlayerDamageMultiplierStatId,
+                   StringComparison.Ordinal)
+               || string.Equals(
+                   statId,
+                   EnemyDamageMultiplierStatId,
+                   StringComparison.Ordinal);
+    }
+
     public static bool IsGlobalStatId(string statId)
     {
         return string.Equals(statId, MonsterHealthMultiplierStatId, StringComparison.Ordinal);
@@ -2473,6 +2614,8 @@ public static class TildeKeyStateService
         lock (SyncRoot)
         {
             VirtualStats.Clear();
+            TurnDamageMultiplierDeltas.Clear();
+            CombatDamageMultiplierDeltas.Clear();
         }
 
         ReloadRun();
@@ -2491,6 +2634,8 @@ public static class TildeKeyStateService
             _loadedRunStartTime = null;
             _run = new RunSaveData();
             VirtualStats.Clear();
+            TurnDamageMultiplierDeltas.Clear();
+            CombatDamageMultiplierDeltas.Clear();
         }
 
         EnsureLoaded();
@@ -2502,6 +2647,8 @@ public static class TildeKeyStateService
     {
         if (combatState is null)
             return;
+
+        ClearTimedDamageMultiplierDeltas(turn: true, combat: true);
 
         ApplySavedGodmodeToPlayers(combatState.Players);
         ApplyLockedStatsForCurrentRun();
@@ -2522,6 +2669,94 @@ public static class TildeKeyStateService
         {
             if (player.PlayerCombatState is not null) ReassertCombatLocks(player.PlayerCombatState);
             RequestDrawTillHandLimitForLocalPlayer(player);
+        }
+    }
+
+    private static void OnTurnEnded(CombatState combatState)
+    {
+        if (combatState?.CurrentSide != CombatSide.Player)
+            return;
+
+        (bool playerDamage, bool enemyDamage) =
+            ClearTimedDamageMultiplierDeltas(turn: true, combat: false);
+        RefreshTimedDamageMultiplierPreviews(
+            combatState.Players.ToList(),
+            playerDamage,
+            enemyDamage);
+    }
+
+    private static void OnCombatEnded(CombatRoom _)
+    {
+        (bool playerDamage, bool enemyDamage) =
+            ClearTimedDamageMultiplierDeltas(turn: true, combat: true);
+        IReadOnlyList<Player> players =
+            GetCurrentRunStateOrNull()?.Players.ToList() ?? [];
+        RefreshTimedDamageMultiplierPreviews(
+            players,
+            playerDamage,
+            enemyDamage);
+    }
+
+    private static (bool PlayerDamage, bool EnemyDamage)
+        ClearTimedDamageMultiplierDeltas(bool turn, bool combat)
+    {
+        bool playerDamage = false;
+        bool enemyDamage = false;
+        lock (SyncRoot)
+        {
+            if (turn)
+            {
+                playerDamage |= TurnDamageMultiplierDeltas.Keys.Any(key =>
+                    string.Equals(
+                        key.StatId,
+                        PlayerDamageMultiplierStatId,
+                        StringComparison.Ordinal));
+                enemyDamage |= TurnDamageMultiplierDeltas.Keys.Any(key =>
+                    string.Equals(
+                        key.StatId,
+                        EnemyDamageMultiplierStatId,
+                        StringComparison.Ordinal));
+                TurnDamageMultiplierDeltas.Clear();
+            }
+
+            if (combat)
+            {
+                playerDamage |= CombatDamageMultiplierDeltas.Keys.Any(key =>
+                    string.Equals(
+                        key.StatId,
+                        PlayerDamageMultiplierStatId,
+                        StringComparison.Ordinal));
+                enemyDamage |= CombatDamageMultiplierDeltas.Keys.Any(key =>
+                    string.Equals(
+                        key.StatId,
+                        EnemyDamageMultiplierStatId,
+                        StringComparison.Ordinal));
+                CombatDamageMultiplierDeltas.Clear();
+            }
+        }
+
+        if (playerDamage || enemyDamage)
+            RaiseStateChanged();
+        return (playerDamage, enemyDamage);
+    }
+
+    private static void RefreshTimedDamageMultiplierPreviews(
+        IReadOnlyList<Player> players,
+        bool playerDamage,
+        bool enemyDamage)
+    {
+        if (playerDamage)
+        {
+            RefreshCombatPreviewsForStatChange(
+                PlayerDamageMultiplierStatId,
+                players);
+        }
+
+        if (enemyDamage)
+        {
+            RefreshCombatPreviewsForStatChange(
+                EnemyDamageMultiplierStatId,
+                players);
         }
     }
 

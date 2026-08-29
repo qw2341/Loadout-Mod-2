@@ -313,6 +313,12 @@ public partial class NCardKeywordEditor : VBoxContainer
         AddLoadoutSection(
             blocks,
             catalog,
+            LoadoutKeywordEditorSection.BasicMultipliers,
+            "CARD_MOD_LOADOUT_BASIC_MULTIPLIERS",
+            "Loadout Basic Multipliers");
+        AddLoadoutSection(
+            blocks,
+            catalog,
             LoadoutKeywordEditorSection.Power,
             "CARD_MOD_LOADOUT_POWER_KEYWORDS",
             "Loadout Power Keywords");
@@ -372,6 +378,12 @@ public partial class NCardKeywordEditor : VBoxContainer
             LoadoutKeywordEditorSection.BasicMultiplayer,
             "CARD_MOD_LOADOUT_BASIC_MULTIPLAYER_KEYWORDS",
             "Loadout Basic Multiplayer Keywords");
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.BasicMultipliers,
+            "CARD_MOD_LOADOUT_BASIC_MULTIPLIERS",
+            "Loadout Basic Multipliers");
         AddLoadoutSection(
             blocks,
             entries,
