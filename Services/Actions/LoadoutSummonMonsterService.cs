@@ -278,7 +278,7 @@ public static class LoadoutSummonMonsterService
         }
     }
 
-    private static IReadOnlyList<NCreature> GetCurrentEnemyNodes()
+    internal static IReadOnlyList<NCreature> GetCurrentEnemyNodes()
     {
         try
         {
@@ -292,7 +292,7 @@ public static class LoadoutSummonMonsterService
         }
     }
 
-    private static void PositionUnslottedSummonedMonster(Creature creature, IReadOnlyList<NCreature> existingEnemyNodes)
+    public static void PositionUnslottedSummonedMonster(Creature creature, IReadOnlyList<NCreature> existingEnemyNodes)
     {
         NCreature? node = NCombatRoom.Instance?.GetCreatureNode(creature);
         if (node is null)
