@@ -13,9 +13,12 @@ public partial class NOneRelicSelectionVisual : Node
     public const string NodeName = "OneRelicSelectionVisual";
     public const string RareGlowScenePath = "res://scenes/vfx/relic_rare_glow_vfx.tscn";
 
-    private ReferenceRect? _outline;
+    private NRelic? _relicView;
     private GpuParticles2D? _glow;
+    private Color _baseOutlineColor = Colors.White;
+    private bool _hasBaseOutlineColor;
     private float _phase;
+    private bool _selected;
 
     public static void Apply(Control view, bool selected, bool dimmed)
     {
@@ -23,14 +26,17 @@ public partial class NOneRelicSelectionVisual : Node
         selfModulate.A = dimmed ? 0.9f : 1f;
         view.SelfModulate = selfModulate;
 
+        if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelic relicView))
+            return;
+
         NOneRelicSelectionVisual? visual = view.GetNodeOrNull<NOneRelicSelectionVisual>(NodeName);
         if (visual is null && selected)
         {
             visual = new NOneRelicSelectionVisual { Name = NodeName };
             view.AddChild(visual);
-            visual.Initialize(view);
+            visual.Initialize(relicView);
         }
-        visual?.SetSelected(selected);
+        visual?.ApplySelection(selected);
     }
 
     public override void _Process(double delta)
@@ -39,27 +45,22 @@ public partial class NOneRelicSelectionVisual : Node
             _phase + (float)delta * NLoadoutPanelButton.RainbowSpeed * Mathf.Tau,
             Mathf.Tau);
         Color color = NLoadoutPanelButton.GetSineRainbowColor(_phase);
-        if (_outline is not null && IsInstanceValid(_outline))
-            _outline.BorderColor = color;
+        if (TryGetOutline(out TextureRect outline))
+            outline.SelfModulate = color;
         if (_glow is not null && IsInstanceValid(_glow))
             _glow.Modulate = color;
     }
 
-    private void Initialize(Control view)
+    private void Initialize(NRelic relicView)
     {
-        _outline = new ReferenceRect
-        {
-            Name = "OneRelicRainbowOutline",
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            BorderWidth = 7f,
-            EditorOnly = false,
-            ZIndex = 60
-        };
-        view.AddChild(_outline);
-        _outline.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-
-        if (!CommonHelpers.TryFindDescendantOrSelf(view, out NRelic relicView))
-            return;
+        _relicView = relicView;
+        if (TryGetOutline(out TextureRect outline))
+            CaptureBaseOutline(outline);
+        else
+            relicView.Connect(
+                Node.SignalName.Ready,
+                Callable.From(OnRelicReady),
+                (uint)GodotObject.ConnectFlags.OneShot);
 
         try
         {
@@ -77,17 +78,66 @@ public partial class NOneRelicSelectionVisual : Node
         }
     }
 
-    private void SetSelected(bool selected)
+    private void OnRelicReady()
     {
-        if (_outline is not null && IsInstanceValid(_outline))
-            _outline.Visible = selected;
-        if (_glow is not null && IsInstanceValid(_glow))
-        {
-            _glow.Visible = selected;
-            _glow.Emitting = selected;
-            if (selected)
-                _glow.Restart();
-        }
+        if (!TryGetOutline(out TextureRect outline))
+            return;
+
+        CaptureBaseOutline(outline);
+        outline.SelfModulate = _selected
+            ? NLoadoutPanelButton.GetSineRainbowColor(_phase)
+            : _baseOutlineColor;
+        ApplyGlow(_selected, restart: _selected);
+    }
+
+    private void ApplySelection(bool selected)
+    {
+        if (!_selected && TryGetOutline(out TextureRect outline))
+            CaptureBaseOutline(outline);
+
+        _selected = selected;
+        Color rainbow = NLoadoutPanelButton.GetSineRainbowColor(_phase);
+        if (TryGetOutline(out outline))
+            outline.SelfModulate = selected
+                ? rainbow
+                : _baseOutlineColor;
+        ApplyGlow(selected, restart: selected);
         SetProcess(selected);
+    }
+
+    private void ApplyGlow(bool visible, bool restart)
+    {
+        if (_glow is null || !IsInstanceValid(_glow))
+            return;
+
+        _glow.Visible = visible;
+        _glow.Emitting = visible;
+        if (!visible)
+            return;
+
+        _glow.Modulate = NLoadoutPanelButton.GetSineRainbowColor(_phase);
+        if (restart)
+            _glow.Restart();
+    }
+
+    private bool TryGetOutline(out TextureRect outline)
+    {
+        outline = null!;
+        if (_relicView is null
+            || !IsInstanceValid(_relicView)
+            || !_relicView.IsNodeReady())
+            return false;
+
+        outline = _relicView.Outline;
+        return outline is not null;
+    }
+
+    private void CaptureBaseOutline(TextureRect outline)
+    {
+        if (_hasBaseOutlineColor)
+            return;
+
+        _baseOutlineColor = outline.SelfModulate;
+        _hasBaseOutlineColor = true;
     }
 }

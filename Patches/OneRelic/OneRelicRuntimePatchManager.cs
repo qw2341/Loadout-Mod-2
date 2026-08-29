@@ -9,6 +9,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Models;
 
@@ -48,6 +49,19 @@ internal static class OneRelicRuntimePatchManager
             RuntimeHarmony.Patch(
                 toMutable,
                 prefix: PatchMethod(typeof(OneRelicToMutablePatch), nameof(OneRelicToMutablePatch.Prefix), Priority.First));
+
+            MethodInfo ancientInitialOptions = AccessTools.Method(
+                typeof(AncientEventModel),
+                "GenerateInitialOptionsWrapper")
+                ?? throw new MissingMethodException(typeof(AncientEventModel).FullName, "GenerateInitialOptionsWrapper");
+            HarmonyMethod ancientPostfix = PatchMethod(
+                typeof(OneRelicAncientInitialOptionsPatch),
+                nameof(OneRelicAncientInitialOptionsPatch.Postfix),
+                Priority.Last);
+            ancientPostfix.after = ["Loadout"];
+            RuntimeHarmony.Patch(
+                ancientInitialOptions,
+                postfix: ancientPostfix);
 
             PatchTypedObtainMethods();
             _active = true;

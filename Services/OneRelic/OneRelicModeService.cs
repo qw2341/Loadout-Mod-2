@@ -31,6 +31,7 @@ using MegaCrit.Sts2.Core.Runs;
 
 public static class OneRelicModeService
 {
+    private const int MaxSnapshotLength = 256 * 1024;
     private const int CurrentSchemaVersion = 1;
     private const string RunDirectory = "loadout/services/one_relic";
     private const string RunFilePrefix = "one_relic_run";
@@ -39,9 +40,12 @@ public static class OneRelicModeService
     private static readonly AsyncLocal<ObtainChain?> CurrentObtainChain = new();
     private static OneRelicRunSaveData _state = new();
     private static readonly Dictionary<ulong, RelicModel> SelectedRelics = new();
+    private static readonly HashSet<LoadRunLobby> RegisteredLoadLobbies = [];
+    private static readonly HashSet<INetGameService> RegisteredMessageServices = [];
     private static INetGameService? _runNetService;
     private static RunLobby? _runLobby;
     private static Delegate? _playerRejoinedHandler;
+    private static string? _pendingHostSnapshotJson;
 
     public static event Action? Changed;
 
@@ -122,12 +126,45 @@ public static class OneRelicModeService
         return new ExactGrantScope();
     }
 
+    public static void RegisterLoadLobby(LoadRunLobby? lobby)
+    {
+        if (lobby is null || !RegisteredLoadLobbies.Add(lobby))
+            return;
+
+        RegisterMessageHandlers(lobby.NetService);
+        if (lobby.NetService.Type == NetGameType.Host)
+        {
+            LoadRunState(
+                lobby.Run.StartTime,
+                lobby.Run.Players.Select(player => player.NetId).ToHashSet());
+        }
+        else if (lobby.NetService.Type == NetGameType.Client)
+        {
+            lobby.NetService.SendMessage(default(OneRelicSnapshotRequestMessage));
+        }
+    }
+
+    public static void UnregisterLoadLobby(LoadRunLobby? lobby, bool clearState)
+    {
+        if (lobby is null || !RegisteredLoadLobbies.Remove(lobby))
+            return;
+
+        if (clearState && !ReferenceEquals(_runNetService, lobby.NetService))
+            UnregisterMessageHandlers(lobby.NetService);
+        if (clearState)
+        {
+            _pendingHostSnapshotJson = null;
+            ClearRuntimeState(preservePendingHostSnapshot: false);
+        }
+    }
+
     public static void PrepareRunLaunch()
     {
-        ClearRuntimeState();
         try
         {
-            RegisterRunNetService(RunManager.Instance.NetService);
+            INetGameService netService = RunManager.Instance.NetService;
+            ClearRuntimeState(preservePendingHostSnapshot: netService.Type == NetGameType.Client);
+            RegisterRunNetService(netService);
             BindRunLobby(RunManager.Instance.RunLobby);
         }
         catch (Exception exception)
@@ -149,6 +186,11 @@ public static class OneRelicModeService
                 LoadRunState();
                 ApplyStateChange(save: false);
             }
+            else if (netService.Type == NetGameType.Client)
+            {
+                if (!ApplyPendingHostSnapshot())
+                    netService.SendMessage(default(OneRelicSnapshotRequestMessage));
+            }
 
             if (netService.Type == NetGameType.Host)
                 BroadcastSnapshot();
@@ -163,7 +205,7 @@ public static class OneRelicModeService
     {
         UnbindRunLobby();
         UnregisterRunNetService();
-        ClearRuntimeState();
+        ClearRuntimeState(preservePendingHostSnapshot: false);
     }
 
     internal static bool TryPrepareObtain(
@@ -252,24 +294,33 @@ public static class OneRelicModeService
     private static void LoadRunState()
     {
         long? runStartTime = SaveUtility.GetCurrentRunStartTime();
-        _state = new OneRelicRunSaveData();
-        SelectedRelics.Clear();
         if (!runStartTime.HasValue)
+        {
+            _state = new OneRelicRunSaveData();
+            SelectedRelics.Clear();
             return;
+        }
 
-        string path = SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, runStartTime.Value);
-        _state = SaveUtility.LoadProfileJson(path, new OneRelicRunSaveData()).Value;
-        _state.SchemaVersion = CurrentSchemaVersion;
-        _state.RunStartTime = runStartTime.Value;
-        _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
-        RebuildSelectedRelics();
+        RunState? runState = TryGetRunState();
+        LoadRunState(
+            runStartTime.Value,
+            runState?.Players.Select(player => player.NetId).ToHashSet());
     }
 
-    private static void RebuildSelectedRelics()
+    private static void LoadRunState(long runStartTime, IReadOnlySet<ulong>? validPlayers)
+    {
+        string path = SaveUtility.GetRunSidecarPath(RunDirectory, RunFilePrefix, runStartTime);
+        _state = SaveUtility.LoadProfileJson(path, new OneRelicRunSaveData()).Value;
+        _state.SchemaVersion = CurrentSchemaVersion;
+        _state.RunStartTime = runStartTime;
+        _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
+        RebuildSelectedRelics(validPlayers);
+    }
+
+    private static void RebuildSelectedRelics(IReadOnlySet<ulong>? validPlayers = null)
     {
         SelectedRelics.Clear();
-        RunState? runState = TryGetRunState();
-        HashSet<ulong>? validPlayers = runState?.Players.Select(player => player.NetId).ToHashSet();
+        validPlayers ??= TryGetRunState()?.Players.Select(player => player.NetId).ToHashSet();
         foreach (string playerKey in _state.Players.Keys.ToList())
         {
             if (!ulong.TryParse(playerKey, out ulong playerNetId)
@@ -329,15 +380,31 @@ public static class OneRelicModeService
             return;
         UnregisterRunNetService();
         _runNetService = netService;
-        _runNetService.RegisterMessageHandler<OneRelicSnapshotMessage>(HandleSnapshot);
+        RegisterMessageHandlers(netService);
     }
 
     private static void UnregisterRunNetService()
     {
         if (_runNetService is null)
             return;
-        _runNetService.UnregisterMessageHandler<OneRelicSnapshotMessage>(HandleSnapshot);
+        UnregisterMessageHandlers(_runNetService);
         _runNetService = null;
+    }
+
+    private static void RegisterMessageHandlers(INetGameService netService)
+    {
+        if (!RegisteredMessageServices.Add(netService))
+            return;
+        netService.RegisterMessageHandler<OneRelicSnapshotMessage>(HandleSnapshot);
+        netService.RegisterMessageHandler<OneRelicSnapshotRequestMessage>(HandleSnapshotRequest);
+    }
+
+    private static void UnregisterMessageHandlers(INetGameService netService)
+    {
+        if (!RegisteredMessageServices.Remove(netService))
+            return;
+        netService.UnregisterMessageHandler<OneRelicSnapshotMessage>(HandleSnapshot);
+        netService.UnregisterMessageHandler<OneRelicSnapshotRequestMessage>(HandleSnapshotRequest);
     }
 
     private static void BindRunLobby(RunLobby? runLobby)
@@ -380,32 +447,66 @@ public static class OneRelicModeService
     {
         if (_runNetService?.Type != NetGameType.Host)
             return;
-        _runNetService.SendMessage(new OneRelicSnapshotMessage
+        SendSnapshot(_runNetService, recipient);
+    }
+
+    private static void SendSnapshot(INetGameService netService, ulong recipient)
+    {
+        if (netService.Type != NetGameType.Host || recipient == netService.NetId)
+            return;
+        netService.SendMessage(new OneRelicSnapshotMessage
         {
             snapshotJson = JsonSerializer.Serialize(_state)
         }, recipient);
     }
 
+    private static void HandleSnapshotRequest(OneRelicSnapshotRequestMessage _, ulong senderId)
+    {
+        LoadRunLobby? loadLobby = RegisteredLoadLobbies.FirstOrDefault(candidate =>
+            candidate.NetService.Type == NetGameType.Host
+            && Sts2Compatibility.EnumerateLoadRunLobbyPlayerIds(candidate).Contains(senderId));
+        if (loadLobby is not null)
+        {
+            SendSnapshot(loadLobby.NetService, senderId);
+            return;
+        }
+
+        if (_runNetService?.Type != NetGameType.Host || !IsCurrentRunPlayer(senderId))
+            return;
+        SendSnapshot(_runNetService, senderId);
+    }
+
     private static void HandleSnapshot(OneRelicSnapshotMessage message, ulong senderId)
     {
-        if (_runNetService?.Type != NetGameType.Client
-            || !LoadoutNetworkBroadcast.IsExpectedHostSender(senderId, _runNetService))
+        if (!LoadoutNetworkBroadcast.IsExpectedHostSender(
+                senderId,
+                _runNetService,
+                RegisteredLoadLobbies.Select(lobby => lobby.NetService)))
         {
             return;
         }
 
         try
         {
+            if (string.IsNullOrWhiteSpace(message.snapshotJson)
+                || message.snapshotJson.Length > MaxSnapshotLength)
+            {
+                return;
+            }
             OneRelicRunSaveData? incoming = JsonSerializer.Deserialize<OneRelicRunSaveData>(message.snapshotJson);
             if (incoming is null)
                 return;
-            long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+            long? runStartTime = GetExpectedRunStartTime();
             if (runStartTime.HasValue && incoming.RunStartTime != 0 && incoming.RunStartTime != runStartTime.Value)
                 return;
-            _state = incoming;
-            _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
-            RebuildSelectedRelics();
-            ApplyStateChange(save: false);
+
+            if (!RunManager.Instance.IsInProgress)
+            {
+                _pendingHostSnapshotJson = message.snapshotJson;
+                return;
+            }
+
+            ApplyHostSnapshot(incoming);
         }
         catch (Exception exception)
         {
@@ -413,7 +514,65 @@ public static class OneRelicModeService
         }
     }
 
-    private static void ClearRuntimeState()
+    private static bool ApplyPendingHostSnapshot()
+    {
+        string? pending = _pendingHostSnapshotJson;
+        _pendingHostSnapshotJson = null;
+        if (string.IsNullOrWhiteSpace(pending))
+            return false;
+
+        try
+        {
+            OneRelicRunSaveData? incoming = JsonSerializer.Deserialize<OneRelicRunSaveData>(pending);
+            if (incoming is null)
+                return false;
+            long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+            if (runStartTime.HasValue && incoming.RunStartTime != 0 && incoming.RunStartTime != runStartTime.Value)
+                return false;
+            ApplyHostSnapshot(incoming);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"OneRelic: failed to apply pending host snapshot. {exception.Message}");
+            return false;
+        }
+    }
+
+    private static void ApplyHostSnapshot(OneRelicRunSaveData incoming)
+    {
+        _state = incoming;
+        _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
+        RebuildSelectedRelics();
+        ApplyStateChange(save: false);
+    }
+
+    private static long? GetExpectedRunStartTime()
+    {
+        long? current = SaveUtility.GetCurrentRunStartTime();
+        if (current.HasValue)
+            return current;
+        return RegisteredLoadLobbies
+            .FirstOrDefault(lobby => lobby.NetService.Type == NetGameType.Client)
+            ?.Run.StartTime;
+    }
+
+    private static bool IsCurrentRunPlayer(ulong playerId)
+    {
+        try
+        {
+            RunState? runState = RunManager.Instance.IsInProgress
+                ? RunManager.Instance.DebugOnlyGetState()
+                : null;
+            return runState?.Players.Any(player => player.NetId == playerId) == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void ClearRuntimeState(bool preservePendingHostSnapshot)
     {
         _state = new OneRelicRunSaveData();
         SelectedRelics.Clear();
@@ -422,6 +581,8 @@ public static class OneRelicModeService
         RelicReplacementProvenance.Clear(RelicReplacementSource.OneRelic);
         OneRelicLiveOfferService.Reset();
         OneRelicRuntimePatchManager.Reconcile(active: false);
+        if (!preservePendingHostSnapshot)
+            _pendingHostSnapshotJson = null;
         Changed?.Invoke();
     }
 
@@ -473,8 +634,24 @@ public struct OneRelicSnapshotMessage : INetMessage, IPacketSerializable
     public bool ShouldBroadcast => false;
     public NetTransferMode Mode => NetTransferMode.Reliable;
     public LogLevel LogLevel => LogLevel.VeryDebug;
-    public bool ShouldBuffer => false;
+    public bool ShouldBuffer => true;
 
     public void Serialize(PacketWriter writer) => writer.WriteString(snapshotJson ?? string.Empty);
     public void Deserialize(PacketReader reader) => snapshotJson = reader.ReadString();
+}
+
+public struct OneRelicSnapshotRequestMessage : INetMessage, IPacketSerializable
+{
+    public bool ShouldBroadcast => false;
+    public NetTransferMode Mode => NetTransferMode.Reliable;
+    public LogLevel LogLevel => LogLevel.VeryDebug;
+    public bool ShouldBuffer => true;
+
+    public readonly void Serialize(PacketWriter writer)
+    {
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+    }
 }

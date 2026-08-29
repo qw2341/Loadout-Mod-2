@@ -52,6 +52,8 @@ public partial class NLoadoutPanelItem : TextureButton
 	private TextureRect _outline;
 	private ShaderMaterial _outlineMaterial;
 	private float _glowPulseTime;
+	private float _rainbowOutlinePhase;
+	private bool _rainbowOutlineActive;
 	private NGenericSelectScreen _boundScreen;
 	private NGenericSelectScreen _alternateBoundScreen;
 	private Action<NGenericSelectScreen> _beforeOpen;
@@ -116,7 +118,7 @@ public partial class NLoadoutPanelItem : TextureButton
 		if (UseGlobalAnimation)
 			LoadoutPanelItemAnimationManager.AnimationChanged += OnAnimationChanged;
 
-		SetProcess(false);
+		UpdateAnimationProcessing();
 	}
 
 	public override void _ExitTree()
@@ -141,8 +143,14 @@ public partial class NLoadoutPanelItem : TextureButton
 	{
 		base._Notification(what);
 
-		if (what != NotificationVisibilityChanged || IsVisibleInTree())
+		if (what != NotificationVisibilityChanged)
 			return;
+		if (IsVisibleInTree())
+		{
+			if (_visualsReady)
+				UpdateAnimationProcessing();
+			return;
+		}
 
 		if (!_visualsReady)
 		{
@@ -169,6 +177,12 @@ public partial class NLoadoutPanelItem : TextureButton
 		bool pulseActive = IsGlowPulseActive();
 		if (pulseActive)
 			_glowPulseTime += (float)delta;
+		if (_rainbowOutlineActive)
+		{
+			_rainbowOutlinePhase = Mathf.PosMod(
+				_rainbowOutlinePhase + (float)delta * NLoadoutPanelButton.RainbowSpeed * Mathf.Tau,
+				Mathf.Tau);
+		}
 
 		float target = _isHovered ? 1f : 0f;
 		_hoverProgress = LoadoutPanelItemAnimationManager.StepProgress(
@@ -182,7 +196,7 @@ public partial class NLoadoutPanelItem : TextureButton
 
 		ApplyAnimationVisuals();
 
-		if (_hoverProgress == target && !pulseActive)
+		if (_hoverProgress == target && !pulseActive && !_rainbowOutlineActive)
 			SetProcess(false);
 	}
 
@@ -351,6 +365,14 @@ public partial class NLoadoutPanelItem : TextureButton
 
 		_outline.Visible = true;
 
+		if (_rainbowOutlineActive)
+		{
+			_outlineMaterial?.SetShaderParameter(
+				"outline_color",
+				NLoadoutPanelButton.GetSineRainbowColor(_rainbowOutlinePhase));
+			return;
+		}
+
 		float pulse = _animationProfile.GlowPulseSpeed <= 0f
 			? 1f
 			: (Mathf.Sin(_glowPulseTime * _animationProfile.GlowPulseSpeed) + 1f) * 0.5f;
@@ -374,7 +396,25 @@ public partial class NLoadoutPanelItem : TextureButton
 	private void UpdateAnimationProcessing()
 	{
 		bool transitioning = Mathf.Abs(_hoverProgress - (_isHovered ? 1f : 0f)) > AnimationProgressEpsilon;
-		SetProcess(IsVisibleInTree() && (transitioning || IsGlowPulseActive()));
+		SetProcess(IsVisibleInTree() && (transitioning || IsGlowPulseActive() || _rainbowOutlineActive));
+	}
+
+	public bool RainbowOutlineActive
+	{
+		get => _rainbowOutlineActive;
+		set
+		{
+			if (_rainbowOutlineActive == value)
+				return;
+			_rainbowOutlineActive = value;
+			if (value)
+				_rainbowOutlinePhase = 0f;
+			if (_visualsReady)
+			{
+				ApplyAnimationVisuals();
+				UpdateAnimationProcessing();
+			}
+		}
 	}
 
 	private void OnMouseEntered()

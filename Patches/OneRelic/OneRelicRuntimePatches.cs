@@ -3,14 +3,18 @@
 namespace Loadout.Patches.OneRelic;
 
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
 using Loadout.Services.OneRelic;
 using Loadout.Services.RelicReplacement;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -75,6 +79,35 @@ internal static class OneRelicTypedObtainPatch
         __result = OneRelicModeService.ObtainTypedReplacementAsync<T>(player);
         return false;
     }
+}
+
+internal static class OneRelicAncientInitialOptionsPatch
+{
+    internal static void Postfix(
+        AncientEventModel __instance,
+        ref IReadOnlyList<EventOption> __result)
+    {
+        __result = OneRelicLiveOfferService.ReconcileAncientInitial(__instance, __result);
+    }
+}
+
+[HarmonyPatch(typeof(LoadRunLobby))]
+internal static class OneRelicLoadRunLobbyConstructorPatch
+{
+    internal static IEnumerable<MethodBase> TargetMethods()
+        => AccessTools.GetDeclaredConstructors(typeof(LoadRunLobby));
+
+    [HarmonyPostfix]
+    internal static void Postfix(LoadRunLobby __instance)
+        => OneRelicModeService.RegisterLoadLobby(__instance);
+}
+
+[HarmonyPatch(typeof(LoadRunLobby), nameof(LoadRunLobby.CleanUp))]
+internal static class OneRelicLoadRunLobbyCleanupPatch
+{
+    [HarmonyPrefix]
+    internal static void Prefix(LoadRunLobby __instance, bool disconnectSession)
+        => OneRelicModeService.UnregisterLoadLobby(__instance, disconnectSession);
 }
 
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]

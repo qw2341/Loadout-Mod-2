@@ -90,15 +90,20 @@ public class LoadoutBag
 			},
 			"LoadoutBag.png",
 			LocMan.Loc("LOADOUTBAG_TITLE", "Loadout Bag"),
-			LocMan.Loc("LOADOUTBAG_DESC", "Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action. Alt + right-click sets this as the selected target's One Relic; repeat to clear."),
+			LocMan.Loc("LOADOUTBAG_DESC", "Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action. Alt + right-click a relic activates the \"One Relic\" mode. Press B to perma ban the hovered relic. Press N to ban the relic for this run only."),
 			HandleAddRelicActivatedAsync,
 			LastActionService.LoadoutBagKey,
 			ReplayLoadoutBagLastActionAsync,
 			selectScreenScenePath: CommonHelpers.RelicSelectScreenScenePath);
 		LoadoutBagRelicScreen = loadoutBagItem.BoundScreen;
+		UpdateOneRelicPanelOutline(loadoutBagItem);
 		if (LoadoutBagRelicScreen is { } screen)
 		{
-			OneRelicModeService.Changed += () => RefreshOneRelicVisibleItems(screen);
+			OneRelicModeService.Changed += () =>
+			{
+				RefreshOneRelicVisibleItems(screen);
+				UpdateOneRelicPanelOutline(loadoutBagItem);
+			};
 			long observedRevision = RelicModificationStateService.PermanentDisplayRevision;
 
 			void RefreshPermanentRelic(ModelId relicId)
@@ -230,7 +235,7 @@ public class LoadoutBag
 	    return holder;
     }
 
-    private static void RefreshOneRelicVisibleItems(NGenericSelectScreen screen)
+	private static void RefreshOneRelicVisibleItems(NGenericSelectScreen screen)
     {
 	    Callable.From(() =>
 	    {
@@ -240,10 +245,25 @@ public class LoadoutBag
 		    screen.ForEachVisibleItemView((item, view) =>
 		    {
 			    if (item.UntypedModel is RelicModel relic)
+			    {
+				    RefreshRelicGridItem(view, relic);
 				    UpdateOneRelicVisual(view, relic, selectedIds);
+			    }
 		    });
 	    }).CallDeferred();
     }
+
+	private static void UpdateOneRelicPanelOutline(NLoadoutPanelItem loadoutBagItem)
+	{
+		Callable.From(() =>
+		{
+			if (!GodotObject.IsInstanceValid(loadoutBagItem))
+				return;
+			MegaCrit.Sts2.Core.Entities.Players.Player localPlayer = CommonHelpers.GetLocalRunPlayer();
+			loadoutBagItem.RainbowOutlineActive = localPlayer is not null
+				&& OneRelicModeService.TryGetSelectedRelic(localPlayer, out _);
+		}).CallDeferred();
+	}
 
     private static void UpdateOneRelicVisual(Control view, RelicModel relic)
     {

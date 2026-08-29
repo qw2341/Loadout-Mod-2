@@ -3,6 +3,7 @@
 namespace Loadout.Services.OneRelic;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -11,6 +12,9 @@ using Loadout.Services.ContentBans;
 using Loadout.Services.RelicReplacement;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Events;
+using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
@@ -21,14 +25,36 @@ internal static class OneRelicLiveOfferService
     private static readonly FieldInfo RelicRewardField = AccessTools.Field(typeof(RelicReward), "_relic");
     private static readonly FieldInfo PredeterminedRelicRewardField = AccessTools.Field(typeof(RelicReward), "_predeterminedRelic");
     private static readonly FieldInfo MerchantRelicModelField = AccessTools.Field(typeof(MerchantRelicEntry), "<Model>k__BackingField");
+    private static readonly FieldInfo AncientGeneratedOptionsField = AccessTools.Field(typeof(AncientEventModel), "_generatedOptions");
+    private static readonly MethodInfo SetEventStateMethod = AccessTools.Method(typeof(EventModel), "SetEventState");
+    private static readonly FieldInfo EventOptionTitleField = AccessTools.Field(typeof(EventOption), "<Title>k__BackingField");
+    private static readonly FieldInfo EventOptionDescriptionField = AccessTools.Field(typeof(EventOption), "<Description>k__BackingField");
+    private static readonly FieldInfo EventOptionHistoryNameField = AccessTools.Field(typeof(EventOption), "<HistoryName>k__BackingField");
     private static ConditionalWeakTable<RelicReward, Baseline> _rewardBaselines = new();
     private static ConditionalWeakTable<MerchantRelicEntry, Baseline> _merchantBaselines = new();
+    private static ConditionalWeakTable<EventOption, AncientOptionBaseline> _ancientOptionBaselines = new();
 
     internal static void ReconcileCurrentOffers()
     {
         foreach (RewardsSet set in ContentBanLiveOfferService.GetTrackedRewardSets())
             ReconcileRewardsSet(set);
         ReconcileMerchant();
+        ReconcileAncients();
+    }
+
+    internal static IReadOnlyList<EventOption> ReconcileAncientInitial(
+        AncientEventModel ancient,
+        IReadOnlyList<EventOption> options)
+    {
+        if (ancient.Owner is null
+            || !OneRelicModeService.TryGetSelectedRelic(ancient.Owner, out RelicModel selected))
+        {
+            return options;
+        }
+
+        foreach (EventOption option in options)
+            ApplyAncientOption(ancient, option, selected);
+        return options;
     }
 
     internal static void ReconcileRewardsSet(RewardsSet set)
@@ -72,6 +98,7 @@ internal static class OneRelicLiveOfferService
     {
         _rewardBaselines = new ConditionalWeakTable<RelicReward, Baseline>();
         _merchantBaselines = new ConditionalWeakTable<MerchantRelicEntry, Baseline>();
+        _ancientOptionBaselines = new ConditionalWeakTable<EventOption, AncientOptionBaseline>();
     }
 
     private static void ReconcileMerchant()
@@ -123,6 +150,97 @@ internal static class OneRelicLiveOfferService
         }
     }
 
+    private static void ReconcileAncients()
+    {
+        RunState? runState;
+        try
+        {
+            runState = RunManager.Instance.IsInProgress ? RunManager.Instance.DebugOnlyGetState() : null;
+        }
+        catch
+        {
+            return;
+        }
+
+        if (runState?.CurrentRoom is not EventRoom)
+            return;
+
+        foreach (EventModel eventModel in RunManager.Instance.EventSynchronizer.Events)
+        {
+            if (eventModel is not AncientEventModel ancient || ancient.Owner is null)
+                continue;
+            if (AncientGeneratedOptionsField.GetValue(ancient) is not List<EventOption> generated
+                || generated.Any(option => option.WasChosen)
+                || !generated.SequenceEqual(ancient.CurrentOptions))
+            {
+                continue;
+            }
+
+            bool hasSelection = OneRelicModeService.TryGetSelectedRelic(ancient.Owner, out RelicModel selected);
+            bool changed = false;
+            foreach (EventOption option in generated)
+            {
+                if (!_ancientOptionBaselines.TryGetValue(option, out AncientOptionBaseline? baseline))
+                {
+                    if (!hasSelection || option.Relic is null)
+                        continue;
+                    baseline = CaptureAncientBaseline(option);
+                    _ancientOptionBaselines.Add(option, baseline);
+                }
+
+                if (hasSelection)
+                    ApplyAncientOption(ancient, option, selected);
+                else
+                    RestoreAncientOption(option, baseline);
+                changed = true;
+            }
+
+            if (changed)
+                SetEventStateMethod.Invoke(ancient, [ancient.Description, generated]);
+        }
+    }
+
+    private static void ApplyAncientOption(AncientEventModel ancient, EventOption option, RelicModel selected)
+    {
+        if (option.Relic is null)
+            return;
+
+        if (!_ancientOptionBaselines.TryGetValue(option, out AncientOptionBaseline? baseline))
+        {
+            baseline = CaptureAncientBaseline(option);
+            _ancientOptionBaselines.Add(option, baseline);
+        }
+
+        RelicModel occurrence = RelicReplacementProvenance.CreateOccurrence(
+            RelicReplacementSource.OneRelic,
+            selected,
+            baseline.Relic);
+        occurrence.Owner = ancient.Owner!;
+        option.WithRelic(occurrence);
+        EventOptionTitleField.SetValue(option, occurrence.Title);
+        EventOptionDescriptionField.SetValue(option, occurrence.DynamicEventDescription);
+        EventOptionHistoryNameField.SetValue(option, occurrence.Title);
+        option.HoverTips = occurrence.HoverTipsExcludingRelic;
+    }
+
+    private static AncientOptionBaseline CaptureAncientBaseline(EventOption option)
+        => new(
+            option.Relic!,
+            option.Title,
+            option.Description,
+            option.HistoryName,
+            option.HoverTips);
+
+    private static void RestoreAncientOption(EventOption option, AncientOptionBaseline baseline)
+    {
+        option.WithRelic(baseline.Relic);
+        EventOptionTitleField.SetValue(option, baseline.Title);
+        EventOptionDescriptionField.SetValue(option, baseline.Description);
+        EventOptionHistoryNameField.SetValue(option, baseline.HistoryName);
+        option.HoverTips = baseline.HoverTips;
+        _ancientOptionBaselines.Remove(option);
+    }
+
     private static Baseline GetOrCaptureBaseline<TKey>(
         ConditionalWeakTable<TKey, Baseline> table,
         TKey key,
@@ -147,4 +265,11 @@ internal static class OneRelicLiveOfferService
     }
 
     private sealed record Baseline(RelicModel Relic);
+
+    private sealed record AncientOptionBaseline(
+        RelicModel Relic,
+        LocString Title,
+        LocString Description,
+        LocString HistoryName,
+        IEnumerable<IHoverTip> HoverTips);
 }

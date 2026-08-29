@@ -4,6 +4,7 @@ namespace Loadout.Services.ContentBans;
 
 using Godot;
 using HarmonyLib;
+using Loadout.Services.RelicReplacement;
 using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Merchant;
@@ -495,7 +496,9 @@ internal static class ContentBanLiveOfferService
             for (int index = generated.Count - 1; index >= 0; index--)
             {
                 RelicModel? relic = generated[index].Relic;
-                if (relic is null || !Matches(target, relic.Id))
+                if (relic is null
+                    || RelicReplacementProvenance.IsForced(RelicReplacementSource.OneRelic, relic)
+                    || !Matches(target, relic.Id))
                     continue;
                 EventOption? replacement = FindAncientReplacement(ancient, index, generated);
                 string replacementId = replacement?.Relic?.Id.ToString() ?? string.Empty;
