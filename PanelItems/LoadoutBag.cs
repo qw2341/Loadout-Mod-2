@@ -7,6 +7,7 @@ using Loadout.Services.Actions;
 using Loadout.Services.Compatibility;
 using Loadout.Services.ContentBans;
 using Loadout.Services.LastActions;
+using Loadout.Services.OneRelic;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Targets;
 using Loadout.UI;
@@ -35,15 +36,20 @@ public class LoadoutBag
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription.GetFormattedText()}",
 				GetBanTarget = relic => ContentBanTarget.Relic(relic),
-				CapturePreloadResourcePaths = relic => [relic.IconPath],
+				CapturePreloadResourcePaths = relic => [relic.IconPath, NOneRelicSelectionVisual.RareGlowScenePath],
 				CreateView = (relic, state) => CreateRelicGridItem(relic, state),
-				ViewReady = (relic, view) => RefreshRelicGridItem(view, relic),
+				ViewReady = (relic, view) =>
+				{
+					RefreshRelicGridItem(view, relic);
+					UpdateOneRelicVisual(view, relic);
+				},
 				UpdateView = (relic, view, state) =>
 				{
 					RefreshRelicGridItem(view, relic);
 					UpdateRelicSelectionOutline(view, state);
+					UpdateOneRelicVisual(view, relic);
 				},
-				BindActivationWithCleanup = (_, view, activate) => BindRelicActivationWithCleanup(view, activate)
+				BindActivationWithCleanup = (relic, view, activate) => BindLoadoutBagRelicActivationWithCleanup(relic, view, activate)
 			}, builder =>
 			{
 				builder.Options(new SelectScreenOptions { SelectionMode = SelectSelectionMode.None });
@@ -79,11 +85,12 @@ public class LoadoutBag
 					screen,
 					LoadoutBagTargetDropdownName,
 					LastActionService.LoadoutBagKey,
-					LoadoutTargetMode.AllPlayersAndPlayers);
+					LoadoutTargetMode.AllPlayersAndPlayers,
+					onChanged: () => RefreshOneRelicVisibleItems(screen));
 			},
 			"LoadoutBag.png",
 			LocMan.Loc("LOADOUTBAG_TITLE", "Loadout Bag"),
-			LocMan.Loc("LOADOUTBAG_DESC", "Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action."),
+			LocMan.Loc("LOADOUTBAG_DESC", "Right-click this relic to obtain any relic you want. Ctrl x5, Shift x10. Ctrl + right click to repeat the last action. Alt + right-click sets this as the selected target's One Relic; repeat to clear."),
 			HandleAddRelicActivatedAsync,
 			LastActionService.LoadoutBagKey,
 			ReplayLoadoutBagLastActionAsync,
@@ -91,6 +98,7 @@ public class LoadoutBag
 		LoadoutBagRelicScreen = loadoutBagItem.BoundScreen;
 		if (LoadoutBagRelicScreen is { } screen)
 		{
+			OneRelicModeService.Changed += () => RefreshOneRelicVisibleItems(screen);
 			long observedRevision = RelicModificationStateService.PermanentDisplayRevision;
 
 			void RefreshPermanentRelic(ModelId relicId)
@@ -218,7 +226,45 @@ public class LoadoutBag
 	    holder.MouseFilter = Control.MouseFilterEnum.Pass;
 	    holder.CustomMinimumSize = new Vector2(68f, 68f);
 	    UpdateRelicSelectionOutline(holder, state);
+	    UpdateOneRelicVisual(holder, model);
 	    return holder;
+    }
+
+    private static void RefreshOneRelicVisibleItems(NGenericSelectScreen screen)
+    {
+	    Callable.From(() =>
+	    {
+		    if (!GodotObject.IsInstanceValid(screen) || !screen.IsScreenActive)
+			    return;
+		    IReadOnlySet<ModelId> selectedIds = GetOneRelicSelectionIds();
+		    screen.ForEachVisibleItemView((item, view) =>
+		    {
+			    if (item.UntypedModel is RelicModel relic)
+				    UpdateOneRelicVisual(view, relic, selectedIds);
+		    });
+	    }).CallDeferred();
+    }
+
+    private static void UpdateOneRelicVisual(Control view, RelicModel relic)
+    {
+	    UpdateOneRelicVisual(view, relic, GetOneRelicSelectionIds());
+    }
+
+    private static IReadOnlySet<ModelId> GetOneRelicSelectionIds()
+    {
+	    LoadoutTargetSelection target = LoadoutTargetService.GetSelected(
+		    LastActionService.LoadoutBagKey,
+		    LoadoutTargetMode.AllPlayersAndPlayers);
+	    return OneRelicModeService.GetSelectedRelicIds(target);
+    }
+
+    private static void UpdateOneRelicVisual(
+	    Control view,
+	    RelicModel relic,
+	    IReadOnlySet<ModelId> selectedIds)
+    {
+	    bool selected = selectedIds.Contains(relic.Id);
+	    NOneRelicSelectionVisual.Apply(view, selected, dimmed: selectedIds.Count > 0 && !selected);
     }
 
     public static void UpdateRelicSelectionOutline(Control view, SelectItemState state)
@@ -703,6 +749,45 @@ public class LoadoutBag
 	    }
 
 	    return CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate);
+    }
+
+    private static Action BindLoadoutBagRelicActivationWithCleanup(
+	    RelicModel relic,
+	    Control view,
+	    Action activate)
+    {
+	    Action unbindActivation = BindRelicActivationWithCleanup(view, activate);
+	    if (!CommonHelpers.TryFindDescendantOrSelf(view, out NClickableControl clickable))
+		    return unbindActivation;
+
+	    Callable alternateRelease = Callable.From<InputEvent>(inputEvent =>
+	    {
+		    if (inputEvent is not InputEventMouseButton
+		        {
+			        ButtonIndex: MouseButton.Right,
+			        Pressed: false
+		        } mouseButton
+		        || !mouseButton.AltPressed && !Input.IsKeyPressed(Key.Alt))
+		    {
+			    return;
+		    }
+
+		    LoadoutTargetSelection target = LoadoutTargetService.GetSelected(
+			    LastActionService.LoadoutBagKey,
+			    LoadoutTargetMode.AllPlayersAndPlayers);
+		    OneRelicModeService.RequestToggle(relic.Id, target);
+		    view.AcceptEvent();
+	    });
+	    clickable.Connect(NClickableControl.SignalName.MouseReleased, alternateRelease);
+	    return () =>
+	    {
+		    unbindActivation();
+		    if (GodotObject.IsInstanceValid(clickable)
+		        && clickable.IsConnected(NClickableControl.SignalName.MouseReleased, alternateRelease))
+		    {
+			    clickable.Disconnect(NClickableControl.SignalName.MouseReleased, alternateRelease);
+		    }
+	    };
     }
 
     private static void AddRelicPoolFilters(SelectScreenBuilder<RelicModel> builder)

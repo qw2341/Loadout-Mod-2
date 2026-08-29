@@ -14,6 +14,7 @@ using Loadout.Services.Actions;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.RelicModification;
+using Loadout.Services.OneRelic;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
@@ -314,7 +315,8 @@ public static class LoadoutApplyService
                     if (entry.ModificationState is not null && !entry.ModificationState.IsEmpty)
                         RelicModificationStateService.ApplyLoadoutTemporaryState(relic, entry.ModificationState);
 
-                    await RelicCmd.Obtain(relic, targetPlayer);
+                    using (OneRelicModeService.BeginExactRelicGrant())
+                        await RelicCmd.Obtain(relic, targetPlayer);
                     changed = true;
                 }
                 catch (Exception exception)

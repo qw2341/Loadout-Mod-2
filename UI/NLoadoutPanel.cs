@@ -53,6 +53,7 @@ using Loadout.Services.CardModification;
 using Loadout.Services.Compatibility;
 using Loadout.Services.LastActions;
 using Loadout.Services.Loadouts;
+using Loadout.Services.OneRelic;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.Targets;
 using Loadout.UI.Managers;
@@ -663,7 +664,8 @@ public partial class NLoadoutPanel : Panel
 		{
 			try
 			{
-				await RelicCmd.Obtain(canonicalRelic.ToMutable(), localPlayer);
+				using (OneRelicModeService.BeginExactRelicGrant())
+					await RelicCmd.Obtain(canonicalRelic.ToMutable(), localPlayer);
 				obtained++;
 			}
 			catch (Exception exception)

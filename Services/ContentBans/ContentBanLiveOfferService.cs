@@ -97,6 +97,18 @@ internal static class ContentBanLiveOfferService
     internal static void TrackRewardButton(Reward reward, NRewardButton button)
         => RewardButtons[reward] = new WeakReference<NRewardButton>(button);
 
+    internal static IReadOnlyList<RewardsSet> GetTrackedRewardSets()
+    {
+        Prune();
+        return RewardSets
+            .Select(reference => reference.TryGetTarget(out RewardsSet? set) ? set : null)
+            .OfType<RewardsSet>()
+            .Where(set => !IsCompleted(set))
+            .ToList();
+    }
+
+    internal static void RefreshTrackedReward(Reward reward) => RefreshRewardButton(reward);
+
     internal static IReadOnlyList<ContentBanOfferReconciliation> ReconcileTrackedRewardsSet(RewardsSet set)
     {
         if (IsCompleted(set))
@@ -115,6 +127,25 @@ internal static class ContentBanLiveOfferService
             if (reference.TryGetTarget(out RewardsSet? set) && !IsCompleted(set))
                 ReconcileBannedRewards(set, reconciliations);
         }
+        return reconciliations;
+    }
+
+    internal static IReadOnlyList<ContentBanOfferReconciliation> ReconcileCurrentBannedRelicOffers()
+    {
+        List<ContentBanOfferReconciliation> reconciliations = ReconcileTrackedRewards().ToList();
+        if (!TryGetCurrentRun(out RunState? runState) || runState!.CurrentRoom is not MerchantRoom room)
+            return reconciliations;
+
+        ContentBanTarget[] bannedRelics = room.Inventories
+            .SelectMany(inventory => inventory.RelicEntries)
+            .Select(entry => entry.Model)
+            .OfType<RelicModel>()
+            .Where(ContentBanService.IsBanned)
+            .Select(ContentBanTarget.Relic)
+            .Distinct()
+            .ToArray();
+        foreach (ContentBanTarget target in bannedRelics)
+            ReconcileMerchant(target, reconciliations);
         return reconciliations;
     }
 

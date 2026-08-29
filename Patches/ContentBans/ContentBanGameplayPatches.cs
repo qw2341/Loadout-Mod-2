@@ -6,6 +6,7 @@ using HarmonyLib;
 using Loadout.Services.Compatibility;
 using Loadout.Services.ContentBans;
 using Loadout.Services.CustomRuns.Runtime;
+using Loadout.Services.RelicReplacement;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -437,8 +438,7 @@ internal static class ContentBanRelicObtainPatch
     [HarmonyPrefix]
     internal static bool Prefix(RelicModel relic, Player player, ref Task<RelicModel> __result)
     {
-        bool forcedReplacement = CustomRunRuleRuntimeService.RelicReplacementEnabled
-                                 && CustomRunReplacementProvenance.TryConsumeRelicAuthorization(relic);
+        bool forcedReplacement = RelicReplacementProvenance.TryConsumeAuthorization(relic);
         if (!ContentBanService.HasAnyBans(ContentBanKind.Relic)
             || !ContentBanService.IsBanned(ContentBanTarget.Relic(relic))
             || forcedReplacement)

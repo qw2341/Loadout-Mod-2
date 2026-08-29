@@ -19,6 +19,7 @@ using Loadout.Services.Compatibility;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Morphing;
 using Loadout.Services.Networking;
+using Loadout.Services.OneRelic;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.RelicModification;
 using Loadout.Services.Saving;
@@ -80,7 +81,8 @@ public enum LoadoutImmediateMutationKind
     RelicModification,
     AddOwnedRelicCopies,
     TildeRelicCounterSet,
-    DowngradeCard
+    DowngradeCard,
+    ToggleOneRelic
 }
 
 public static class LoadoutImmediateMutationService
@@ -1483,6 +1485,9 @@ public static class LoadoutImmediateMutationService
             case LoadoutImmediateMutationKind.AddOwnedRelicCopies:
                 await ApplyAddOwnedRelicCopiesAsync(payload, requester);
                 break;
+            case LoadoutImmediateMutationKind.ToggleOneRelic:
+                OneRelicModeService.ApplySynchronizedToggle(payload.ModelId, payload.Target);
+                break;
         }
     }
 
@@ -1747,7 +1752,9 @@ public static class LoadoutImmediateMutationService
                 try
                 {
                     RelicModel relic = canonicalRelic.ToMutable();
-                    Task<RelicModel> obtainTask = RelicCmd.Obtain(relic, targetPlayer);
+                    Task<RelicModel> obtainTask;
+                    using (OneRelicModeService.BeginExactRelicGrant())
+                        obtainTask = RelicCmd.Obtain(relic, targetPlayer);
                     NLoadoutPanelRoot.Instance?.TryPreviewRelicObtained(relic);
                     obtainedAny = true;
 
@@ -2163,7 +2170,9 @@ public static class LoadoutImmediateMutationService
             try
             {
                 RelicModel clone = (RelicModel)item.Model.ClonePreservingMutability();
-                Task<RelicModel> obtainTask = RelicCmd.Obtain(clone, item.Owner);
+                Task<RelicModel> obtainTask;
+                using (OneRelicModeService.BeginExactRelicGrant())
+                    obtainTask = RelicCmd.Obtain(clone, item.Owner);
                 NLoadoutPanelRoot.Instance?.TryPreviewRelicObtained(clone);
                 obtainedAny = true;
                 if (!obtainTask.IsCompleted) _ = TaskHelper.RunSafely(obtainTask);
@@ -2422,7 +2431,8 @@ public static class LoadoutImmediateMutationService
             or LoadoutImmediateMutationKind.RemoveAllCards
             or LoadoutImmediateMutationKind.RemoveAllRelics
             or LoadoutImmediateMutationKind.RelicModification
-            or LoadoutImmediateMutationKind.AddOwnedRelicCopies;
+            or LoadoutImmediateMutationKind.AddOwnedRelicCopies
+            or LoadoutImmediateMutationKind.ToggleOneRelic;
     }
 
     private sealed class RemoveAllCardsScope : IDisposable

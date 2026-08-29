@@ -1,0 +1,150 @@
+#nullable enable
+
+namespace Loadout.Services.OneRelic;
+
+using System;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using HarmonyLib;
+using Loadout.Services.ContentBans;
+using Loadout.Services.RelicReplacement;
+using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Rewards;
+using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Runs;
+
+internal static class OneRelicLiveOfferService
+{
+    private static readonly FieldInfo RelicRewardField = AccessTools.Field(typeof(RelicReward), "_relic");
+    private static readonly FieldInfo PredeterminedRelicRewardField = AccessTools.Field(typeof(RelicReward), "_predeterminedRelic");
+    private static readonly FieldInfo MerchantRelicModelField = AccessTools.Field(typeof(MerchantRelicEntry), "<Model>k__BackingField");
+    private static ConditionalWeakTable<RelicReward, Baseline> _rewardBaselines = new();
+    private static ConditionalWeakTable<MerchantRelicEntry, Baseline> _merchantBaselines = new();
+
+    internal static void ReconcileCurrentOffers()
+    {
+        foreach (RewardsSet set in ContentBanLiveOfferService.GetTrackedRewardSets())
+            ReconcileRewardsSet(set);
+        ReconcileMerchant();
+    }
+
+    internal static void ReconcileRewardsSet(RewardsSet set)
+    {
+        foreach (RelicReward reward in set.Rewards.OfType<RelicReward>().Where(reward => !reward.SuccessfullySelected))
+        {
+            RelicModel? current = reward.Relic;
+            if (current is null)
+                continue;
+
+            if (OneRelicModeService.TryGetSelectedRelic(set.Player, out RelicModel selected))
+            {
+                Baseline baseline = GetOrCaptureBaseline(_rewardBaselines, reward, current);
+                if (current.CanonicalInstance.Id == selected.Id
+                    && RelicReplacementProvenance.IsForced(RelicReplacementSource.OneRelic, current))
+                {
+                    continue;
+                }
+
+                RelicModel replacement = RelicReplacementProvenance.CreateOccurrence(
+                    RelicReplacementSource.OneRelic,
+                    selected,
+                    baseline.Relic);
+                RelicRewardField.SetValue(reward, replacement);
+                if (PredeterminedRelicRewardField.GetValue(reward) is not null)
+                    PredeterminedRelicRewardField.SetValue(reward, replacement);
+                ContentBanLiveOfferService.RefreshTrackedReward(reward);
+            }
+            else if (_rewardBaselines.TryGetValue(reward, out Baseline? baseline))
+            {
+                RelicRewardField.SetValue(reward, baseline.Relic);
+                if (PredeterminedRelicRewardField.GetValue(reward) is not null)
+                    PredeterminedRelicRewardField.SetValue(reward, baseline.Relic);
+                _rewardBaselines.Remove(reward);
+                ContentBanLiveOfferService.RefreshTrackedReward(reward);
+            }
+        }
+    }
+
+    internal static void Reset()
+    {
+        _rewardBaselines = new ConditionalWeakTable<RelicReward, Baseline>();
+        _merchantBaselines = new ConditionalWeakTable<MerchantRelicEntry, Baseline>();
+    }
+
+    private static void ReconcileMerchant()
+    {
+        RunState? runState;
+        try
+        {
+            runState = RunManager.Instance.IsInProgress ? RunManager.Instance.DebugOnlyGetState() : null;
+        }
+        catch
+        {
+            return;
+        }
+
+        if (runState?.CurrentRoom is not MerchantRoom room)
+            return;
+
+        foreach (MerchantInventory inventory in room.Inventories)
+        {
+            foreach (MerchantRelicEntry entry in inventory.RelicEntries)
+            {
+                RelicModel? current = entry.Model;
+                if (current is null)
+                    continue;
+
+                if (OneRelicModeService.TryGetSelectedRelic(inventory.Player, out RelicModel selected))
+                {
+                    Baseline baseline = GetOrCaptureBaseline(_merchantBaselines, entry, current);
+                    if (current.CanonicalInstance.Id == selected.Id
+                        && RelicReplacementProvenance.IsForced(RelicReplacementSource.OneRelic, current))
+                    {
+                        continue;
+                    }
+
+                    MerchantRelicModelField.SetValue(entry,
+                        RelicReplacementProvenance.CreateOccurrence(
+                            RelicReplacementSource.OneRelic,
+                            selected,
+                            baseline.Relic));
+                    entry.OnMerchantInventoryUpdated();
+                }
+                else if (_merchantBaselines.TryGetValue(entry, out Baseline? baseline))
+                {
+                    MerchantRelicModelField.SetValue(entry, baseline.Relic);
+                    _merchantBaselines.Remove(entry);
+                    entry.OnMerchantInventoryUpdated();
+                }
+            }
+        }
+    }
+
+    private static Baseline GetOrCaptureBaseline<TKey>(
+        ConditionalWeakTable<TKey, Baseline> table,
+        TKey key,
+        RelicModel current)
+        where TKey : class
+    {
+        bool hasProvenanceBaseline = RelicReplacementProvenance.TryGetOriginal(
+            RelicReplacementSource.OneRelic,
+            current,
+            out RelicModel original);
+        if (table.TryGetValue(key, out Baseline? existing))
+        {
+            if (!hasProvenanceBaseline || ReferenceEquals(existing.Relic, original))
+                return existing;
+            table.Remove(key);
+        }
+
+        RelicModel baselineRelic = hasProvenanceBaseline ? original : current;
+        Baseline baseline = new(baselineRelic);
+        table.Add(key, baseline);
+        return baseline;
+    }
+
+    private sealed record Baseline(RelicModel Relic);
+}

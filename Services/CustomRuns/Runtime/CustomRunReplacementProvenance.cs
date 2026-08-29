@@ -5,13 +5,13 @@ namespace Loadout.Services.CustomRuns.Runtime;
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Loadout.Services.RelicReplacement;
 using MegaCrit.Sts2.Core.Models;
 
 internal static class CustomRunReplacementProvenance
 {
     private static readonly AsyncLocal<CardReplacementScope?> CurrentCardReplacement = new();
     private static readonly ConditionalWeakTable<CardModel, ForcedMarker> ForcedCards = new();
-    private static readonly ConditionalWeakTable<RelicModel, ForcedMarker> ForcedRelics = new();
 
     internal static IDisposable BeginCardReplacement(CardModel destination)
     {
@@ -42,17 +42,19 @@ internal static class CustomRunReplacementProvenance
 
     internal static RelicModel CreateRelicOccurrence(RelicModel destination)
     {
-        RelicModel occurrence = destination.CanonicalInstance.ToMutable();
-        Mark(ForcedRelics, occurrence);
-        return occurrence;
+        return RelicReplacementProvenance.CreateOccurrence(
+            RelicReplacementSource.CustomRun,
+            destination);
     }
 
     internal static bool TryReuseRelicOccurrence(RelicModel relic, out RelicModel occurrence)
     {
         if (CustomRunRuleRuntimeService.RelicReplacementEnabled
-            && ForcedRelics.TryGetValue(relic, out _))
+            && RelicReplacementProvenance.TryReuseOccurrence(
+                RelicReplacementSource.CustomRun,
+                relic,
+                out occurrence))
         {
-            occurrence = relic;
             return true;
         }
         occurrence = null!;
@@ -61,24 +63,23 @@ internal static class CustomRunReplacementProvenance
 
     internal static bool TryConsumeRelicAuthorization(RelicModel relic)
     {
-        if (!CustomRunRuleRuntimeService.RelicReplacementEnabled
-            || !ForcedRelics.TryGetValue(relic, out _))
-            return false;
-        ForcedRelics.Remove(relic);
-        return true;
+        return CustomRunRuleRuntimeService.RelicReplacementEnabled
+               && RelicReplacementProvenance.TryConsumeAuthorization(relic);
     }
 
     internal static bool IsForced(RelicModel relic)
     {
         return CustomRunRuleRuntimeService.RelicReplacementEnabled
-               && ForcedRelics.TryGetValue(relic, out _);
+               && RelicReplacementProvenance.IsForced(
+                   RelicReplacementSource.CustomRun,
+                   relic);
     }
 
     internal static void Clear()
     {
         CurrentCardReplacement.Value = null;
         ForcedCards.Clear();
-        ForcedRelics.Clear();
+        RelicReplacementProvenance.Clear(RelicReplacementSource.CustomRun);
     }
 
     private static void Mark<T>(ConditionalWeakTable<T, ForcedMarker> table, T model)

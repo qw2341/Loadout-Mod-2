@@ -6,6 +6,7 @@ using BaseLib.Abstracts;
 using Godot;
 using Loadout.Services.Compatibility;
 using Loadout.Services.CustomRuns.Runtime;
+using Loadout.Services.RelicReplacement;
 using Loadout.Services.Networking;
 using Loadout.Services.Saving;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -143,8 +144,7 @@ internal static class ContentBanService
                || !CustomRunReplacementProvenance.IsForced(card));
     internal static bool IsBanned(RelicModel relic)
         => IsBanned(ContentBanTarget.Relic(relic))
-           && (!CustomRunRuleRuntimeService.RelicReplacementEnabled
-               || !CustomRunReplacementProvenance.IsForced(relic));
+           && !RelicReplacementProvenance.IsForced(relic);
     internal static bool IsBanned(PotionModel potion) => IsBanned(ContentBanTarget.Potion(potion));
 
     internal static bool HasAnyBans(ContentBanKind kind)
@@ -294,6 +294,18 @@ internal static class ContentBanService
 
         IReadOnlyList<ContentBanOfferReconciliation> reconciliations =
             ContentBanLiveOfferService.ReconcileTrackedRewardsSet(set);
+        if (reconciliations.Count == 0)
+            return;
+        RecordOfferReconciliations(reconciliations);
+        BroadcastSnapshot();
+    }
+
+    internal static void ReconcileRelicOffersAfterExternalChange()
+    {
+        if (!HasAnyBans(ContentBanKind.Relic) || IsGuest())
+            return;
+        IReadOnlyList<ContentBanOfferReconciliation> reconciliations =
+            ContentBanLiveOfferService.ReconcileCurrentBannedRelicOffers();
         if (reconciliations.Count == 0)
             return;
         RecordOfferReconciliations(reconciliations);
