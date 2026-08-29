@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Commands.Builders;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
@@ -37,7 +38,8 @@ internal static class FatalKeywordAttackPatch
     private sealed record FatalAttackState(
         CardModel Source,
         PlayerChoiceContext ChoiceContext,
-        HashSet<Creature> EligibleTargets);
+        HashSet<Creature> EligibleTargets,
+        IReadOnlyDictionary<Creature, FatalTargetSnapshot>? TargetSnapshots);
 
     [HarmonyPrefix]
     private static void Prefix(
@@ -56,12 +58,19 @@ internal static class FatalKeywordAttackPatch
 
         IReadOnlyList<Creature> possibleTargets = GetPossibleTargets(__instance);
         HashSet<Creature>? eligibleTargets = null;
+        Dictionary<Creature, FatalTargetSnapshot>? targetSnapshots = null;
+        bool captureTargetSnapshots =
+            LoadoutKeywordRegistry.RequiresFatalTargetSnapshots(source);
         foreach (Creature target in possibleTargets)
         {
             if (!IsFatalEligible(target))
                 continue;
 
             (eligibleTargets ??= []).Add(target);
+            if (captureTargetSnapshots)
+            {
+                (targetSnapshots ??= [])[target] = CaptureTarget(target);
+            }
         }
 
         if (eligibleTargets is not null)
@@ -69,8 +78,26 @@ internal static class FatalKeywordAttackPatch
             __state = new FatalAttackState(
                 source,
                 choiceContext,
-                eligibleTargets);
+                eligibleTargets,
+                targetSnapshots);
         }
+    }
+
+    private static FatalTargetSnapshot CaptureTarget(Creature target)
+    {
+        List<FatalPowerSnapshot> powers = [];
+        foreach (PowerModel power in target.Powers)
+        {
+            PowerType type = power.TypeForCurrentAmount;
+            if (type is not (PowerType.Buff or PowerType.Debuff))
+                continue;
+
+            powers.Add(new FatalPowerSnapshot(
+                (PowerModel)power.ClonePreservingMutability(),
+                type));
+        }
+
+        return new FatalTargetSnapshot(target.MaxHp, powers);
     }
 
     private static bool IsFatalEligible(Creature target)
@@ -102,6 +129,7 @@ internal static class FatalKeywordAttackPatch
     {
         AttackCommand command = await original;
         int fatalCount = 0;
+        List<FatalTargetSnapshot>? fatalTargets = null;
         foreach (List<DamageResult> hitResults in command.Results)
         {
             foreach (DamageResult result in hitResults)
@@ -110,6 +138,12 @@ internal static class FatalKeywordAttackPatch
                     && state.EligibleTargets.Contains(result.Receiver))
                 {
                     fatalCount++;
+                    if (state.TargetSnapshots?.TryGetValue(
+                            result.Receiver,
+                            out FatalTargetSnapshot? snapshot) == true)
+                    {
+                        (fatalTargets ??= []).Add(snapshot);
+                    }
                 }
             }
         }
@@ -117,7 +151,9 @@ internal static class FatalKeywordAttackPatch
         await LoadoutKeywordRegistry.ApplyFatalEffects(
             state.Source,
             state.ChoiceContext,
-            fatalCount);
+            new FatalKeywordContext(
+                fatalCount,
+                fatalTargets ?? []));
         return command;
     }
 }

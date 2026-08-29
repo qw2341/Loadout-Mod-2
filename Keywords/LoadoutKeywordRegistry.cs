@@ -98,6 +98,11 @@ public static class LoadoutKeywordRegistry
         SunderKeyword.Instance,
         AlchemyKeyword.Instance,
         VintageKeyword.Instance,
+        MaxHpStealKeyword.Instance,
+        BuffStealKeyword.Instance,
+        PermanentBuffStealKeyword.Instance,
+        EffectStealKeyword.Instance,
+        PermanentEffectStealKeyword.Instance,
         DamageOnPlayKeyword.Instance,
         DoubleDamageOnPlayKeyword.Instance,
         AllDamageOnPlayKeyword.Instance,
@@ -170,6 +175,12 @@ public static class LoadoutKeywordRegistry
         FatalModels =
         Models
             .Where(model => model.HasFatalEffect)
+            .ToArray();
+
+    private static readonly IReadOnlyList<LoadoutKeywordModel>
+        FatalTargetSnapshotModels =
+        FatalModels
+            .Where(model => model.RequiresFatalTargetSnapshots)
             .ToArray();
 
     private static readonly IReadOnlyList<LoadoutKeywordModel>
@@ -303,6 +314,17 @@ public static class LoadoutKeywordRegistry
         return false;
     }
 
+    public static bool RequiresFatalTargetSnapshots(CardModel card)
+    {
+        foreach (LoadoutKeywordModel model in FatalTargetSnapshotModels)
+        {
+            if (model.IsEnabled(card))
+                return true;
+        }
+
+        return false;
+    }
+
     public static bool HasTurnEndInHandEffect(CardModel card)
     {
         foreach (LoadoutKeywordModel model in TurnEndInHandModels)
@@ -408,15 +430,20 @@ public static class LoadoutKeywordRegistry
     public static async Task ApplyFatalEffects(
         CardModel card,
         PlayerChoiceContext choiceContext,
-        int fatalCount)
+        FatalKeywordContext fatalContext)
     {
-        if (fatalCount <= 0)
+        if (fatalContext.FatalCount <= 0)
             return;
 
         foreach (LoadoutKeywordModel model in FatalModels)
         {
             if (model.IsEnabled(card))
-                await model.AfterFatal(card, choiceContext, fatalCount);
+            {
+                await model.AfterFatalTargets(
+                    card,
+                    choiceContext,
+                    fatalContext);
+            }
         }
     }
 

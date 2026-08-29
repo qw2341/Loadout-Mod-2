@@ -88,6 +88,12 @@ public static class LoadoutKeywords
     public const string SunderKey = "FatalSunder";
     public const string AlchemyKey = "FatalAlchemy";
     public const string VintageKey = "FatalVintage";
+    public const string MaxHpStealKey = "FatalMaxHpSteal";
+    public const string BuffStealKey = "FatalBuffSteal";
+    public const string PermanentBuffStealKey = "FatalPermanentBuffSteal";
+    public const string EffectStealKey = "FatalEffectSteal";
+    public const string PermanentEffectStealKey =
+        "FatalPermanentEffectSteal";
     public const string DamageOnPlayKey = "ImprovementDamageOnPlay";
     public const string DoubleDamageOnPlayKey =
         "ImprovementDoubleDamageOnPlay";
@@ -372,6 +378,21 @@ public static class LoadoutKeywords
 
     [CustomEnum("FATAL_VINTAGE")]
     public static CardKeyword Vintage;
+
+    [CustomEnum("FATAL_MAX_HP_STEAL")]
+    public static CardKeyword MaxHpSteal;
+
+    [CustomEnum("FATAL_BUFF_STEAL")]
+    public static CardKeyword BuffSteal;
+
+    [CustomEnum("FATAL_PERMANENT_BUFF_STEAL")]
+    public static CardKeyword PermanentBuffSteal;
+
+    [CustomEnum("FATAL_EFFECT_STEAL")]
+    public static CardKeyword EffectSteal;
+
+    [CustomEnum("FATAL_PERMANENT_EFFECT_STEAL")]
+    public static CardKeyword PermanentEffectSteal;
 
     public static IEnumerable<CardKeyword> All =>
         LoadoutKeywordRegistry.All.Select(model => model.Keyword);

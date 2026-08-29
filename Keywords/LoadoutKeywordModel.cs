@@ -116,6 +116,8 @@ public abstract class LoadoutKeywordModel
 
     public virtual bool HasFatalEffect => false;
 
+    public virtual bool RequiresFatalTargetSnapshots => false;
+
     public virtual bool HasTurnEndInHandEffect => false;
 
     public virtual bool HasPlayRestriction => false;
@@ -192,6 +194,14 @@ public abstract class LoadoutKeywordModel
         int fatalCount)
     {
         return Task.CompletedTask;
+    }
+
+    public virtual Task AfterFatalTargets(
+        CardModel card,
+        PlayerChoiceContext choiceContext,
+        FatalKeywordContext fatalContext)
+    {
+        return AfterFatal(card, choiceContext, fatalContext.FatalCount);
     }
 
     public virtual Task AfterTurnEndInHand(

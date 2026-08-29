@@ -3,9 +3,23 @@
 namespace Loadout.Keywords;
 
 using System;
+using System.Collections.Generic;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
+
+public sealed record FatalPowerSnapshot(
+    PowerModel Power,
+    PowerType Type);
+
+public sealed record FatalTargetSnapshot(
+    int MaxHp,
+    IReadOnlyList<FatalPowerSnapshot> Powers);
+
+public sealed record FatalKeywordContext(
+    int FatalCount,
+    IReadOnlyList<FatalTargetSnapshot> Targets);
 
 public abstract class LoadoutFatalKeywordModel : LoadoutKeywordModel
 {
