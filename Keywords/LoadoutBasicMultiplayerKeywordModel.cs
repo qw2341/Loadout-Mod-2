@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.ValueProps;
 public enum LoadoutBasicMultiplayerTargetMode
 {
     AnotherPlayer,
+    AllOtherPlayers,
     AllPlayers
 }
 
@@ -119,7 +120,12 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
         }
 
         return source.CombatState?.GetTeammatesOf(source)
-                   .Where(target => target.IsAlive && target.IsPlayer)
+                   .Where(target =>
+                       target.IsAlive
+                       && target.IsPlayer
+                       && (TargetMode
+                               != LoadoutBasicMultiplayerTargetMode.AllOtherPlayers
+                           || !ReferenceEquals(target, source)))
                    .ToArray()
                ?? [];
     }
