@@ -221,6 +221,8 @@ DYNAMIC_VAR_CARDS,Cards,卡牌,Cartes,カード,카드,Cartas
 DYNAMIC_VAR_LOADOUT_LESSON_LEARNED_CARDS,Cards to Upgrade,升级牌数,Cartes de Leçon apprise,カード枚数,얻은 교훈 카드 수,Cartas de Lección aprendida
 DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
 DYNAMIC_VAR_LOADOUT_ALT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
+DYNAMIC_VAR_LOADOUT_GATLING_CHANCE_PERCENTAGE,Trigger Chance (%),触发概率（%）,Chance (%),発動率（%）,개틀링 발동 확률 (%),Probabilidad (%)
+DYNAMIC_VAR_LOADOUT_GATLING_ADDITIONAL_PLAYS,Additional Plays,额外打出次数,Lectures supplémentaires,追加プレイ回数,추가 사용 횟수,Repeticiones adicionales
 CARD_MOD_LOADOUT_BASIC_KEYWORDS,Loadout Basic Keywords,Loadout 基础关键词,Mots-clés de base Loadout,Loadout基本キーワード,Loadout 기본 키워드,Palabras clave básicas de Loadout
 CARD_MOD_LOADOUT_BASIC_MULTIPLAYER_KEYWORDS,Loadout Basic Multiplayer Keywords,Loadout 基础多人关键词,Mots-clés multijoueur de base Loadout,Loadout基本マルチプレイヤーキーワード,Loadout 기본 멀티플레이어 키워드,Palabras clave multijugador básicas de Loadout
 CARD_MOD_LOADOUT_BASIC_MULTIPLIERS,Loadout Basic Multipliers,Loadout 基础倍率,Multiplicateurs de base Loadout,Loadout基本倍率,Loadout 기본 배율,Multiplicadores básicos de Loadout

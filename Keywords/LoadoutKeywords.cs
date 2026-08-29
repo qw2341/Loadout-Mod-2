@@ -24,6 +24,7 @@ public static class LoadoutKeywords
     public const string WallopKey = "Wallop";
     public const string AutoplayKey = "Autoplay";
     public const string ReplayXKey = "ReplayX";
+    public const string GatlingKey = "Gatling";
     public const string BlankSlateKey = "BlankSlate";
     public const string BasicDamageKey = "BasicDamage";
     public const string BasicDamageAoeKey = "BasicDamageAoe";
@@ -179,6 +180,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("REPLAY_X"),KeywordProperties(AutoKeywordPosition.After)]
     public static CardKeyword ReplayX;
+
+    [CustomEnum("GATLING")]
+    public static CardKeyword Gatling;
 
     [CustomEnum("BLANK_SLATE")]
     public static CardKeyword BlankSlate;

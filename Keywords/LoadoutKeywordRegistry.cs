@@ -37,6 +37,7 @@ public static class LoadoutKeywordRegistry
         WallopKeyword.Instance,
         AutoplayKeyword.Instance,
         ReplayXKeyword.Instance,
+        GatlingKeyword.Instance,
         BlankSlateKeyword.Instance,
         BasicDamageKeyword.Instance,
         BasicDamageAoeKeyword.Instance,
