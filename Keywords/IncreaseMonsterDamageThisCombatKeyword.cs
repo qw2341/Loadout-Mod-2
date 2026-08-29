@@ -25,7 +25,7 @@ public sealed class IncreaseMonsterDamageThisCombatKeyword
         LoadoutKeywords.IncreaseMonsterDamageThisCombatKey;
 
     public override string TitleLocKey =>
-        "LOADOUT-BASIC_MULTIPLIER_MONSTER_DAMAGE_THIS_COMBAT.title";
+        "LOADOUT-BASIC_MULTIPLIER_INCREASE_MONSTER_DAMAGE_THIS_COMBAT.title";
 
     public override string? CardTextLocKey =>
         "LOADOUT-BASIC_MULTIPLIER_MONSTER_DAMAGE_THIS_COMBAT.cardText";

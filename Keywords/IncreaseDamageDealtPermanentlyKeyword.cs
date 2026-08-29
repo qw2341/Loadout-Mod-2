@@ -25,7 +25,7 @@ public sealed class IncreaseDamageDealtPermanentlyKeyword
         LoadoutKeywords.IncreaseDamageDealtPermanentlyKey;
 
     public override string TitleLocKey =>
-        "LOADOUT-BASIC_MULTIPLIER_DAMAGE_DEALT_PERMANENTLY.title";
+        "LOADOUT-BASIC_MULTIPLIER_INCREASE_DAMAGE_DEALT_PERMANENTLY.title";
 
     public override string? CardTextLocKey =>
         "LOADOUT-BASIC_MULTIPLIER_DAMAGE_DEALT_PERMANENTLY.cardText";

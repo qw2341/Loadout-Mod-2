@@ -25,7 +25,7 @@ public sealed class IncreaseDamageDealtThisTurnKeyword
         LoadoutKeywords.IncreaseDamageDealtThisTurnKey;
 
     public override string TitleLocKey =>
-        "LOADOUT-BASIC_MULTIPLIER_DAMAGE_DEALT_THIS_TURN.title";
+        "LOADOUT-BASIC_MULTIPLIER_INCREASE_DAMAGE_DEALT_THIS_TURN.title";
 
     public override string? CardTextLocKey =>
         "LOADOUT-BASIC_MULTIPLIER_DAMAGE_DEALT_THIS_TURN.cardText";
