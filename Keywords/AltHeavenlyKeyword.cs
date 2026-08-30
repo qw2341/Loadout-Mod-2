@@ -4,17 +4,15 @@ namespace Loadout.Keywords;
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
-using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Saves;
-using MegaCrit.Sts2.Core.Settings;
 
 public sealed class AltHeavenlyKeyword : LoadoutKeywordModel
 {
     public const string EnergyVar = "LoadoutAltHeavenlyEnergy";
-    public const int FastAnimationMinimumResult = 100;
+    public const int FastAnimationMinimumResult = 10;
+    public const int ExtremelyFastAnimationMinimumResult = 100;
+    public const int InstantAnimationMinimumResult = 1000;
 
     private const int LargestExactFactorialInput = 12;
 
@@ -62,105 +60,5 @@ public sealed class AltHeavenlyKeyword : LoadoutKeywordModel
             result *= factor;
 
         return result;
-    }
-}
-
-internal static class AltHeavenlyAnimationScope
-{
-    internal sealed class Scope(
-        CardModel card,
-        Scope? previous)
-    {
-        public CardModel Card { get; } = card;
-
-        public Scope? Previous { get; } = previous;
-
-        public bool UseInstantMode { get; set; }
-    }
-
-    private static readonly AsyncLocal<Scope?> Current = new();
-
-    public static bool ShouldUseInstantMode
-    {
-        get
-        {
-            for (Scope? scope = Current.Value;
-                 scope is not null;
-                 scope = scope.Previous)
-            {
-                if (scope.UseInstantMode)
-                    return true;
-            }
-
-            return false;
-        }
-    }
-
-    public static Scope? Enter(CardModel card)
-    {
-        if (!card.EnergyCost.CostsX
-            || !LoadoutKeywords.Has(card, LoadoutKeywords.AltHeavenly))
-        {
-            return null;
-        }
-
-        Scope scope = new(card, Current.Value);
-        Current.Value = scope;
-        return scope;
-    }
-
-    public static void MarkFactorialResult(CardModel card, int result)
-    {
-        if (result < AltHeavenlyKeyword.FastAnimationMinimumResult)
-            return;
-
-        for (Scope? scope = Current.Value;
-             scope is not null;
-             scope = scope.Previous)
-        {
-            if (!ReferenceEquals(scope.Card, card))
-                continue;
-
-            scope.UseInstantMode = true;
-            return;
-        }
-    }
-
-    public static void Exit(Scope? scope)
-    {
-        if (scope is not null && ReferenceEquals(Current.Value, scope))
-            Current.Value = scope.Previous;
-    }
-}
-
-[HarmonyPatch(typeof(CardModel), nameof(CardModel.OnPlayWrapper))]
-internal static class AltHeavenlyOnPlayAnimationScopePatch
-{
-    [HarmonyPrefix]
-    private static void Prefix(
-        CardModel __instance,
-        out AltHeavenlyAnimationScope.Scope? __state)
-    {
-        __state = AltHeavenlyAnimationScope.Enter(__instance);
-    }
-
-    [HarmonyFinalizer]
-    private static Exception? Finalizer(
-        Exception? __exception,
-        AltHeavenlyAnimationScope.Scope? __state)
-    {
-        AltHeavenlyAnimationScope.Exit(__state);
-        return __exception;
-    }
-}
-
-[HarmonyPatch(typeof(PrefsSave), nameof(PrefsSave.FastMode), MethodType.Getter)]
-internal static class AltHeavenlyFastModePatch
-{
-    [HarmonyPostfix]
-    private static void Postfix(ref FastModeType __result)
-    {
-        if (AltHeavenlyAnimationScope.ShouldUseInstantMode)
-            __result = FastModeType.Instant;
     }
 }

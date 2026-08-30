@@ -61,7 +61,7 @@ internal static class HeavenlyResolveEnergyXValuePatch
             && __result >= altEnergyVar.IntValue)
         {
             __result = AltHeavenlyKeyword.Factorialize(__result);
-            AltHeavenlyAnimationScope.MarkFactorialResult(
+            CardEffectAnimationScope.MarkAltHeavenlyResult(
                 __instance,
                 __result);
             return;
