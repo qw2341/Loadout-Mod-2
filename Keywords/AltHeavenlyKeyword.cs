@@ -39,6 +39,9 @@ public sealed class AltHeavenlyKeyword : LoadoutKeywordModel
 
     public override string TitleLocKey => "LOADOUT-ALT_HEAVENLY.title";
 
+    public override LoadoutKeywordEditorSection EditorSection =>
+        LoadoutKeywordEditorSection.Joke;
+
     public override LoadoutKeywordPresentation Presentation =>
         LoadoutKeywordPresentation.DescriptionOnly;
 

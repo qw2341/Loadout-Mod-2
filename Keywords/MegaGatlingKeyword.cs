@@ -77,6 +77,9 @@ public sealed class MegaGatlingKeyword : LoadoutKeywordModel
 
     public override string TitleLocKey => "LOADOUT-MEGA_GATLING.title";
 
+    public override LoadoutKeywordEditorSection EditorSection =>
+        LoadoutKeywordEditorSection.Joke;
+
     public override LoadoutKeywordPresentation Presentation =>
         LoadoutKeywordPresentation.DescriptionOnly;
 

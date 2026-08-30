@@ -35,7 +35,8 @@ public enum LoadoutKeywordEditorSection
     Power,
     Restrictive,
     Fatal,
-    Improvement
+    Improvement,
+    Joke
 }
 
 public enum LoadoutKeywordEditorControlKind

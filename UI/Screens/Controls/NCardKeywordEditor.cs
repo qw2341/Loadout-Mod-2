@@ -340,6 +340,12 @@ public partial class NCardKeywordEditor : VBoxContainer
             LoadoutKeywordEditorSection.Improvement,
             "CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS",
             "Loadout Improvement Keywords");
+        AddLoadoutSection(
+            blocks,
+            catalog,
+            LoadoutKeywordEditorSection.Joke,
+            "CARD_MOD_LOADOUT_JOKE_KEYWORDS",
+            "Loadout Joke Keywords");
 
         foreach (IGrouping<string, CatalogEntry> source in GetOrderedSources(catalog)
                      .Where(source => !IsCoreSource(source.Key)))
@@ -408,6 +414,12 @@ public partial class NCardKeywordEditor : VBoxContainer
             LoadoutKeywordEditorSection.Improvement,
             "CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS",
             "Loadout Improvement Keywords");
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.Joke,
+            "CARD_MOD_LOADOUT_JOKE_KEYWORDS",
+            "Loadout Joke Keywords");
 
         return blocks;
     }

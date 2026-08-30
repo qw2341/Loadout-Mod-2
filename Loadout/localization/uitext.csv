@@ -234,6 +234,7 @@ DYNAMIC_VAR_LOADOUT_BASIC_MULTIPLIER_PERCENTAGE,Multiplier Increase (%),倍率�
 CARD_MOD_LOADOUT_RESTRICTIVE_KEYWORDS,Loadout Restrictive Keywords,Loadout 限制关键词,Mots-clés restrictifs Loadout,Loadout制限キーワード,Loadout 제한 키워드,Palabras clave restrictivas de Loadout
 CARD_MOD_LOADOUT_FATAL_KEYWORDS,Loadout Fatal Keywords,Loadout 斩杀关键词,Mots-clés Fatal Loadout,Loadoutフェイタルキーワード,Loadout 치명 키워드,Palabras clave Fatales de Loadout
 CARD_MOD_LOADOUT_IMPROVEMENT_KEYWORDS,Loadout Improvement Keywords,Loadout 强化关键词,Mots-clés d’amélioration Loadout,Loadout強化キーワード,Loadout 강화 키워드,Palabras clave de mejora de Loadout
+CARD_MOD_LOADOUT_JOKE_KEYWORDS,Loadout Joke Keywords,Loadout 玩笑关键词,Mots-clés humoristiques Loadout,Loadoutジョークキーワード,Loadout 농담 키워드,Palabras clave de broma de Loadout
 DYNAMIC_VAR_LOADOUT_FATAL_MAX_HP,Max HP Gain,最大生命值增加,Gain de PV Max,最大HP増加,최대 체력 증가,Aumento de PV máx.
 DYNAMIC_VAR_LOADOUT_FATAL_GOLD,Gold Gain,金币获得,Gain d’or,ゴールド獲得,골드 획득,Oro obtenido
 DYNAMIC_VAR_LOADOUT_FATAL_ENERGY,Energy Gain,能量获得,Gain d’énergie,エナジー獲得,에너지 획득,Energía obtenida
