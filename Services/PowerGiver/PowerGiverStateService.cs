@@ -3,11 +3,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.Serialization;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Godot;
+using HarmonyLib;
+using Loadout.Services.Compatibility;
 using Loadout.Services.Favorites;
+using Loadout.Services.Networking;
 using Loadout.Services.Saving;
 using Loadout.Services.Targets;
 using MegaCrit.Sts2.Core.Combat;
@@ -18,8 +23,13 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.Multiplayer.Serialization;
+using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 
@@ -54,7 +64,11 @@ public static class PowerGiverStateService
 
     private static readonly object SyncRoot = new();
     private static readonly FavoritesUtility Favorites = new(FavoritesPath, [LegacyFavoritesPath]);
+    private static readonly HashSet<LoadRunLobby> RegisteredLoadLobbies = [];
+    private static readonly HashSet<INetGameService> RegisteredMessageServices = [];
     private static PowerGiverRunState _run = new();
+    private static TaskCompletionSource<PowerGiverCounterSnapshot>? _hostSnapshotSource;
+    private static PowerGiverCounterSnapshot? _pendingHostSnapshot;
     private static bool _registered;
     private static bool _combatStartHookRegistered;
     private static bool _runLoaded;
@@ -86,9 +100,53 @@ public static class PowerGiverStateService
         if (!_registered)
             return;
 
+        foreach (INetGameService netService in RegisteredMessageServices.ToList())
+            UnregisterMessageHandlers(netService);
+        RegisteredLoadLobbies.Clear();
+        ResetHostSnapshot();
         RunManager.Instance.RunStarted -= OnRunStarted;
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
         _registered = false;
+    }
+
+    public static void RegisterLoadLobby(LoadRunLobby? lobby)
+    {
+        if (!_registered || lobby is null || !RegisteredLoadLobbies.Add(lobby))
+            return;
+
+        RegisterMessageHandlers(lobby.NetService);
+        if (lobby.NetService.Type == NetGameType.Host)
+        {
+            ReloadRunState(lobby.Run.StartTime);
+            return;
+        }
+        if (lobby.NetService.Type != NetGameType.Client)
+            return;
+
+        ResetHostSnapshot();
+        _hostSnapshotSource = new TaskCompletionSource<PowerGiverCounterSnapshot>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        lobby.NetService.SendMessage(default(PowerGiverSnapshotRequestMessage));
+    }
+
+    public static void UnregisterLoadLobby(LoadRunLobby? lobby, bool clearClientState)
+    {
+        if (lobby is null || !RegisteredLoadLobbies.Remove(lobby))
+            return;
+
+        if (!clearClientState)
+            return;
+
+        UnregisterMessageHandlers(lobby.NetService);
+        ResetHostSnapshot();
+    }
+
+    public static void OnRunCleaningUp()
+    {
+        foreach (INetGameService netService in RegisteredMessageServices.ToList())
+            UnregisterMessageHandlers(netService);
+        RegisteredLoadLobbies.Clear();
+        ResetHostSnapshot();
     }
 
     public static void EnsureLoaded()
@@ -258,10 +316,12 @@ public static class PowerGiverStateService
         return true;
     }
 
-    public static Task ApplyConfiguredStartingPowersAsync()
+    public static async Task ApplyConfiguredStartingPowersAsync()
     {
         if (!_registered || CombatManager.Instance.DebugOnlyGetState() is not { } combatState)
-            return Task.CompletedTask;
+            return;
+
+        await ApplyPendingHostSnapshotAsync();
 
         EnsureLoaded();
 
@@ -277,7 +337,7 @@ public static class PowerGiverStateService
             monsterCounters = new Dictionary<string, int>(_run.MonsterCounters, StringComparer.Ordinal);
         }
 
-        return ApplyConfiguredPowersAsync(
+        await ApplyConfiguredPowersAsync(
             combatState,
             allPlayerCounters,
             playerCountersByNetId,
@@ -298,12 +358,142 @@ public static class PowerGiverStateService
     private static void OnRunStarted(RunState _)
     {
         ReloadRunState();
+        PowerGiverCounterSnapshot? snapshot;
+        lock (SyncRoot)
+            snapshot = _pendingHostSnapshot;
+        if (snapshot is not null)
+            ApplyHostSnapshot(snapshot);
     }
 
     private static void OnProfileIdChanged(int _)
     {
         Favorites.Reset();
+        ResetHostSnapshot();
         ReloadRunState();
+    }
+
+    private static void RegisterMessageHandlers(INetGameService netService)
+    {
+        if (!RegisteredMessageServices.Add(netService))
+            return;
+
+        netService.RegisterMessageHandler<PowerGiverSnapshotRequestMessage>(HandleSnapshotRequest);
+        netService.RegisterMessageHandler<PowerGiverSnapshotMessage>(HandleSnapshot);
+    }
+
+    private static void UnregisterMessageHandlers(INetGameService netService)
+    {
+        if (!RegisteredMessageServices.Remove(netService))
+            return;
+
+        netService.UnregisterMessageHandler<PowerGiverSnapshotRequestMessage>(HandleSnapshotRequest);
+        netService.UnregisterMessageHandler<PowerGiverSnapshotMessage>(HandleSnapshot);
+    }
+
+    private static void HandleSnapshotRequest(PowerGiverSnapshotRequestMessage _, ulong senderId)
+    {
+        LoadRunLobby? lobby = RegisteredLoadLobbies.FirstOrDefault(candidate =>
+            candidate.NetService.Type == NetGameType.Host
+            && Sts2Compatibility.EnumerateLoadRunLobbyPlayerIds(candidate).Contains(senderId));
+        if (lobby is null)
+            return;
+
+        EnsureLoaded();
+        PowerGiverCounterSnapshot snapshot;
+        lock (SyncRoot)
+            snapshot = CreateCounterSnapshotLocked();
+
+        lobby.NetService.SendMessage(new PowerGiverSnapshotMessage
+        {
+            SnapshotJson = JsonSerializer.Serialize(snapshot)
+        }, senderId);
+    }
+
+    private static void HandleSnapshot(PowerGiverSnapshotMessage message, ulong senderId)
+    {
+        INetGameService? netService = RegisteredMessageServices
+            .FirstOrDefault(service => service.Type == NetGameType.Client);
+        if (netService is null
+            || !LoadoutNetworkBroadcast.IsExpectedHostSender(senderId, netService))
+            return;
+
+        PowerGiverCounterSnapshot? snapshot;
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<PowerGiverCounterSnapshot>(message.SnapshotJson);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"PowerGiver: failed to read host snapshot. {exception.Message}");
+            return;
+        }
+
+        if (snapshot is null)
+            return;
+
+        snapshot = NormalizeCounterSnapshot(snapshot);
+        lock (SyncRoot)
+            _pendingHostSnapshot = snapshot;
+        ApplyHostSnapshot(snapshot);
+        _hostSnapshotSource?.TrySetResult(snapshot);
+    }
+
+    private static async Task ApplyPendingHostSnapshotAsync()
+    {
+        TaskCompletionSource<PowerGiverCounterSnapshot>? source = _hostSnapshotSource;
+        if (source is null)
+            return;
+
+        PowerGiverCounterSnapshot snapshot = await source.Task;
+        ApplyHostSnapshot(snapshot);
+        if (ReferenceEquals(source, _hostSnapshotSource))
+            ResetHostSnapshot();
+    }
+
+    private static void ApplyHostSnapshot(PowerGiverCounterSnapshot snapshot)
+    {
+        EnsureLoaded();
+        snapshot = NormalizeCounterSnapshot(snapshot);
+        lock (SyncRoot)
+        {
+            _run.AllPlayerCounters = snapshot.AllPlayerCounters;
+            _run.PlayerCountersByNetId = snapshot.PlayerCountersByNetId;
+            _run.MonsterCounters = snapshot.MonsterCounters;
+        }
+    }
+
+    private static PowerGiverCounterSnapshot CreateCounterSnapshotLocked()
+    {
+        return new PowerGiverCounterSnapshot
+        {
+            AllPlayerCounters = new Dictionary<string, int>(_run.AllPlayerCounters, StringComparer.Ordinal),
+            PlayerCountersByNetId = _run.PlayerCountersByNetId.ToDictionary(
+                pair => pair.Key,
+                pair => new Dictionary<string, int>(pair.Value, StringComparer.Ordinal)),
+            MonsterCounters = new Dictionary<string, int>(_run.MonsterCounters, StringComparer.Ordinal)
+        };
+    }
+
+    private static PowerGiverCounterSnapshot NormalizeCounterSnapshot(PowerGiverCounterSnapshot snapshot)
+    {
+        snapshot.AllPlayerCounters = NormalizeCounters(snapshot.AllPlayerCounters);
+        snapshot.MonsterCounters = NormalizeCounters(snapshot.MonsterCounters);
+        snapshot.PlayerCountersByNetId ??= new Dictionary<ulong, Dictionary<string, int>>();
+        snapshot.PlayerCountersByNetId = snapshot.PlayerCountersByNetId
+            .Select(pair => new KeyValuePair<ulong, Dictionary<string, int>>(
+                pair.Key,
+                NormalizeCounters(pair.Value)))
+            .Where(pair => pair.Value.Count > 0)
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+        return snapshot;
+    }
+
+    private static void ResetHostSnapshot()
+    {
+        _hostSnapshotSource?.TrySetCanceled();
+        _hostSnapshotSource = null;
+        lock (SyncRoot)
+            _pendingHostSnapshot = null;
     }
 
     private static void ReloadRunState()
@@ -315,6 +505,12 @@ public static class PowerGiverStateService
         }
 
         ReloadRunStateIfNeeded();
+    }
+
+    private static void ReloadRunState(long runStartTime)
+    {
+        lock (SyncRoot)
+            LoadRunStateLocked(runStartTime);
     }
 
     private static void ReloadRunStateIfNeeded()
@@ -333,17 +529,24 @@ public static class PowerGiverStateService
                 return;
             }
 
-            string primaryPath = GetRunPath(RunDirectory, currentRunStartTime.Value);
-            string legacyPath = GetRunPath(LegacyRunDirectory, currentRunStartTime.Value);
-            SaveUtility.LoadResult<PowerGiverRunState> loaded = SaveUtility.LoadProfileJson(
-                primaryPath,
-                new PowerGiverRunState { RunStartTime = currentRunStartTime.Value },
-                [legacyPath]);
-
-            _run = NormalizeRunState(loaded.Value, currentRunStartTime.Value);
-            if (loaded.Loaded && (!loaded.LoadedFrom(primaryPath) || loaded.Value.SchemaVersion != CurrentSchemaVersion))
-                SaveRunState();
+            LoadRunStateLocked(currentRunStartTime.Value);
         }
+    }
+
+    private static void LoadRunStateLocked(long runStartTime)
+    {
+        _runLoaded = true;
+        _loadedRunStartTime = runStartTime;
+        string primaryPath = GetRunPath(RunDirectory, runStartTime);
+        string legacyPath = GetRunPath(LegacyRunDirectory, runStartTime);
+        SaveUtility.LoadResult<PowerGiverRunState> loaded = SaveUtility.LoadProfileJson(
+            primaryPath,
+            new PowerGiverRunState { RunStartTime = runStartTime },
+            [legacyPath]);
+
+        _run = NormalizeRunState(loaded.Value, runStartTime);
+        if (loaded.Loaded && (!loaded.LoadedFrom(primaryPath) || loaded.Value.SchemaVersion != CurrentSchemaVersion))
+            SaveRunState();
     }
 
     private static void SaveRunState()
@@ -608,4 +811,79 @@ public static class PowerGiverStateService
             info.AddValue(nameof(MonsterCounters), MonsterCounters);
         }
     }
+}
+
+public sealed class PowerGiverCounterSnapshot
+{
+    [JsonPropertyName("allPlayerCounters")]
+    public Dictionary<string, int> AllPlayerCounters { get; set; } = new(StringComparer.Ordinal);
+
+    [JsonPropertyName("playerCountersByNetId")]
+    public Dictionary<ulong, Dictionary<string, int>> PlayerCountersByNetId { get; set; } = new();
+
+    [JsonPropertyName("monsterCounters")]
+    public Dictionary<string, int> MonsterCounters { get; set; } = new(StringComparer.Ordinal);
+}
+
+public struct PowerGiverSnapshotRequestMessage : INetMessage, IPacketSerializable
+{
+    public bool ShouldBroadcast => false;
+    public NetTransferMode Mode => NetTransferMode.Reliable;
+    public LogLevel LogLevel => LogLevel.VeryDebug;
+    public bool ShouldBuffer => true;
+
+    public readonly void Serialize(PacketWriter writer)
+    {
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+    }
+}
+
+public struct PowerGiverSnapshotMessage : INetMessage, IPacketSerializable
+{
+    public string SnapshotJson;
+
+    public bool ShouldBroadcast => false;
+    public NetTransferMode Mode => NetTransferMode.Reliable;
+    public LogLevel LogLevel => LogLevel.VeryDebug;
+    public bool ShouldBuffer => true;
+
+    public readonly void Serialize(PacketWriter writer)
+    {
+        writer.WriteString(SnapshotJson ?? string.Empty);
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+        SnapshotJson = reader.ReadString();
+    }
+}
+
+[HarmonyPatch(typeof(LoadRunLobby))]
+public static class LoadRunLobbyPowerGiverConstructorPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+        => AccessTools.GetDeclaredConstructors(typeof(LoadRunLobby));
+
+    [HarmonyPostfix]
+    public static void Postfix(LoadRunLobby __instance)
+        => PowerGiverStateService.RegisterLoadLobby(__instance);
+}
+
+[HarmonyPatch(typeof(LoadRunLobby), nameof(LoadRunLobby.CleanUp))]
+public static class LoadRunLobbyPowerGiverCleanUpPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix(LoadRunLobby __instance, bool disconnectSession)
+        => PowerGiverStateService.UnregisterLoadLobby(__instance, disconnectSession);
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.CleanUp))]
+public static class RunManagerPowerGiverCleanUpPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+        => PowerGiverStateService.OnRunCleaningUp();
 }
