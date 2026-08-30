@@ -223,6 +223,10 @@ DYNAMIC_VAR_LOADOUT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしき�
 DYNAMIC_VAR_LOADOUT_ALT_HEAVENLY_ENERGY,X Threshold,X 阈值,Seuil de X,Xのしきい値,X 기준치,Umbral de X
 DYNAMIC_VAR_LOADOUT_GATLING_CHANCE_PERCENTAGE,Trigger Chance (%),触发概率（%）,Chance (%),発動率（%）,개틀링 발동 확률 (%),Probabilidad (%)
 DYNAMIC_VAR_LOADOUT_GATLING_ADDITIONAL_PLAYS,Additional Plays,额外打出次数,Lectures supplémentaires,追加プレイ回数,추가 사용 횟수,Repeticiones adicionales
+DYNAMIC_VAR_LOADOUT_MEGA_GATLING_CHANCE_PERCENTAGE,Starting Trigger Chance (%),初始触发概率（%）,Chance initiale (%),初期発動率（%）,초기 발동 확률 (%),Probabilidad inicial (%)
+DYNAMIC_VAR_LOADOUT_MEGA_GATLING_CHANCE_INCREASE_PERCENTAGE,Chance Increase (%),概率提升（%）,Augmentation de chance (%),発動率増加（%）,확률 증가 (%),Aumento de probabilidad (%)
+DYNAMIC_VAR_LOADOUT_MEGA_GATLING_TRIGGER_CHANCE_CAP_PERCENTAGE,Trigger Chance Cap (%),增加概率上限（%）,Plafond de chance (%),発動率上限（%）,발동 확률 상한 (%),Límite de probabilidad (%)
+DYNAMIC_VAR_LOADOUT_MEGA_GATLING_TOTAL_PLAYS,Total Plays,总打出次数,Lectures totales,合計プレイ回数,총 사용 횟수,Repeticiones totales
 CARD_MOD_LOADOUT_BASIC_KEYWORDS,Loadout Basic Keywords,Loadout 基础关键词,Mots-clés de base Loadout,Loadout基本キーワード,Loadout 기본 키워드,Palabras clave básicas de Loadout
 CARD_MOD_LOADOUT_BASIC_MULTIPLAYER_KEYWORDS,Loadout Basic Multiplayer Keywords,Loadout 基础多人关键词,Mots-clés multijoueur de base Loadout,Loadout基本マルチプレイヤーキーワード,Loadout 기본 멀티플레이어 키워드,Palabras clave multijugador básicas de Loadout
 CARD_MOD_LOADOUT_BASIC_MULTIPLIERS,Loadout Basic Multipliers,Loadout 基础倍率,Multiplicateurs de base Loadout,Loadout基本倍率,Loadout 기본 배율,Multiplicadores básicos de Loadout

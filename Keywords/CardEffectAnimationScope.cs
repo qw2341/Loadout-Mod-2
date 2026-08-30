@@ -63,6 +63,7 @@ internal static class CardEffectAnimationScope
                                    LoadoutKeywords.AltHeavenly);
         if (!hasAltHeavenly
             && !LoadoutKeywords.Has(card, LoadoutKeywords.Gatling)
+            && !LoadoutKeywords.Has(card, LoadoutKeywords.MegaGatling)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.ReplayX))
         {
             return null;
@@ -115,6 +116,18 @@ internal static class CardEffectAnimationScope
             ReplayXKeyword.FastAnimationAdditionalPlayThreshold,
             ReplayXKeyword.ExtremelyFastAnimationAdditionalPlayThreshold,
             ReplayXKeyword.InstantAnimationAdditionalPlayThreshold);
+    }
+
+    public static void MarkMegaGatlingReplay(
+        CardModel card,
+        int additionalPlayCount)
+    {
+        MarkRepeatedCardPlays(
+            card,
+            additionalPlayCount,
+            GatlingKeyword.FastAnimationAdditionalPlayThreshold,
+            GatlingKeyword.ExtremelyFastAnimationAdditionalPlayThreshold,
+            GatlingKeyword.InstantAnimationAdditionalPlayThreshold);
     }
 
     private static void MarkRepeatedCardPlays(

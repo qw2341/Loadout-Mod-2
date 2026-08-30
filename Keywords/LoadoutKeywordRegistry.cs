@@ -38,6 +38,7 @@ public static class LoadoutKeywordRegistry
         AutoplayKeyword.Instance,
         ReplayXKeyword.Instance,
         GatlingKeyword.Instance,
+        MegaGatlingKeyword.Instance,
         BlankSlateKeyword.Instance,
         BasicDamageKeyword.Instance,
         BasicDamageAoeKeyword.Instance,
