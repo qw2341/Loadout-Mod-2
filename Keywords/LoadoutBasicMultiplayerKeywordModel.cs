@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.ValueProps;
@@ -34,7 +35,8 @@ public enum LoadoutBasicMultiplayerEffect
     GainMaxHp,
     LoseHealth,
     Energy,
-    Stars
+    Stars,
+    Forge
 }
 
 public abstract class LoadoutBasicMultiplayerKeywordModel
@@ -60,6 +62,12 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
 
     public override bool ReportsGainsBlock =>
         Effect == LoadoutBasicMultiplayerEffect.Block;
+
+    public override IEnumerable<IHoverTip> GetAdditionalCardHoverTips(
+        CardModel card) =>
+        Effect == LoadoutBasicMultiplayerEffect.Forge
+            ? HoverTipFactory.FromForge()
+            : [];
 
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         _dynamicVars ??=
@@ -101,6 +109,8 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
                 new EnergyVar(name, decimal.ToInt32(value)),
             LoadoutBasicMultiplayerEffect.Stars =>
                 new StarsVar(name, decimal.ToInt32(value)),
+            LoadoutBasicMultiplayerEffect.Forge =>
+                new ForgeVar(name, decimal.ToInt32(value)),
             _ => new DynamicVar(name, value)
         };
     }
@@ -137,8 +147,10 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
         Creature target)
     {
         DynamicVar amountVar = GetAmount(sourceCard, AmountVarName);
-        decimal amount = Math.Max(0m, amountVar.BaseValue);
-        if (amount <= 0m)
+        decimal amount = Effect == LoadoutBasicMultiplayerEffect.Forge
+            ? amountVar.BaseValue
+            : Math.Max(0m, amountVar.BaseValue);
+        if (Effect != LoadoutBasicMultiplayerEffect.Forge && amount <= 0m)
             return;
 
         Player? targetPlayer = target.Player;
@@ -182,6 +194,9 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
                 break;
             case LoadoutBasicMultiplayerEffect.Stars:
                 await PlayerCmd.GainStars(amount, targetPlayer);
+                break;
+            case LoadoutBasicMultiplayerEffect.Forge:
+                await ForgeCmd.Forge(amountVar.BaseValue, targetPlayer, sourceCard);
                 break;
         }
     }

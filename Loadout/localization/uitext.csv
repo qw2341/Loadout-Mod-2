@@ -269,6 +269,7 @@ DYNAMIC_VAR_LOADOUT_BASIC_MAX_HP_GAIN,Max HP to Gain,获得最大生命,PV Max �
 DYNAMIC_VAR_LOADOUT_BASIC_HP_LOSS,HP to Lose,失去生命,PV à perdre,失うHP,잃을 체력,PV a perder
 DYNAMIC_VAR_LOADOUT_BASIC_ENERGY,Energy to Gain,获得能量,Énergie à gagner,得るエナジー,얻을 에너지,Energía a obtener
 DYNAMIC_VAR_LOADOUT_BASIC_STARS,Stars to Gain,获得辉星,Étoiles à gagner,得る星,얻을 별,Estrellas a obtener
+DYNAMIC_VAR_LOADOUT_BASIC_FORGE,Forge Amount,铸造量,Valeur de Forge,鍛造値,단조 수치,Cantidad de Forja
 DYNAMIC_VAR_LOADOUT_RESTRICTIVE_HP_LOSS,HP to Lose,失去生命,PV à perdre,失うHP,잃을 체력,PV a perder
 DYNAMIC_VAR_LOADOUT_RESTRICTIVE_DAMAGE,Damage to Take,受到伤害,Dégâts à subir,受けるダメージ,받을 피해,Daño a recibir
 DYNAMIC_VAR_LOADOUT_RESTRICTIVE_GOLD,Gold to Lose,失去金币,Or à perdre,失うゴールド,잃을 골드,Oro a perder

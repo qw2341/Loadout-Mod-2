@@ -41,6 +41,7 @@ public static class LoadoutKeywords
     public const string BasicLoseHealthKey = "BasicLoseHealth";
     public const string BasicEnergyKey = "BasicEnergy";
     public const string BasicStarsKey = "BasicStars";
+    public const string BasicForgeKey = "BasicForge";
     public const string AnotherPlayerBlockKey = "BasicMultiplayerAnotherPlayerBlock";
     public const string AllOtherPlayersBlockKey = "BasicMultiplayerAllOtherPlayersBlock";
     public const string AllPlayersBlockKey = "BasicMultiplayerAllPlayersBlock";
@@ -71,6 +72,9 @@ public static class LoadoutKeywords
     public const string AnotherPlayerStarsKey = "BasicMultiplayerAnotherPlayerStars";
     public const string AllOtherPlayersStarsKey = "BasicMultiplayerAllOtherPlayersStars";
     public const string AllPlayersStarsKey = "BasicMultiplayerAllPlayersStars";
+    public const string AnotherPlayerForgeKey = "BasicMultiplayerAnotherPlayerForge";
+    public const string AllOtherPlayersForgeKey = "BasicMultiplayerAllOtherPlayersForge";
+    public const string AllPlayersForgeKey = "BasicMultiplayerAllPlayersForge";
     public const string IncreaseDamageDealtThisTurnKey =
         "BasicMultiplierIncreaseDamageDealtThisTurn";
     public const string IncreaseDamageDealtThisCombatKey =
@@ -233,6 +237,9 @@ public static class LoadoutKeywords
     [CustomEnum("BASIC_STARS")]
     public static CardKeyword BasicStars;
 
+    [CustomEnum("BASIC_FORGE")]
+    public static CardKeyword BasicForge;
+
     [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_BLOCK")]
     public static CardKeyword AnotherPlayerBlock;
 
@@ -322,6 +329,15 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_STARS")]
     public static CardKeyword AllPlayersStars;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ANOTHER_PLAYER_FORGE")]
+    public static CardKeyword AnotherPlayerForge;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_OTHER_PLAYERS_FORGE")]
+    public static CardKeyword AllOtherPlayersForge;
+
+    [CustomEnum("BASIC_MULTIPLAYER_ALL_PLAYERS_FORGE")]
+    public static CardKeyword AllPlayersForge;
 
     [CustomEnum("BASIC_MULTIPLIER_INCREASE_DAMAGE_DEALT_THIS_TURN")]
     public static CardKeyword IncreaseDamageDealtThisTurn;

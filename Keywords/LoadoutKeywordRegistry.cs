@@ -54,6 +54,7 @@ public static class LoadoutKeywordRegistry
         BasicLoseHealthKeyword.Instance,
         BasicEnergyKeyword.Instance,
         BasicStarsKeyword.Instance,
+        BasicForgeKeyword.Instance,
         AnotherPlayerBlockKeyword.Instance,
         AllOtherPlayersBlockKeyword.Instance,
         AllPlayersBlockKeyword.Instance,
@@ -84,6 +85,9 @@ public static class LoadoutKeywordRegistry
         AnotherPlayerStarsKeyword.Instance,
         AllOtherPlayersStarsKeyword.Instance,
         AllPlayersStarsKeyword.Instance,
+        AnotherPlayerForgeKeyword.Instance,
+        AllOtherPlayersForgeKeyword.Instance,
+        AllPlayersForgeKeyword.Instance,
         IncreaseDamageDealtThisTurnKeyword.Instance,
         IncreaseDamageDealtThisCombatKeyword.Instance,
         IncreaseDamageDealtPermanentlyKeyword.Instance,
@@ -559,21 +563,38 @@ public static class LoadoutKeywordRegistry
         IEnumerable<IHoverTip> hoverTips)
     {
         HashSet<string>? excludedIds = null;
+        List<IHoverTip>? additionalHoverTips = null;
         foreach (LoadoutKeywordModel model in DescriptionModels)
         {
-            if (model.ShowKeywordHoverTip || !model.IsEnabled(card))
-            {
+            if (!model.IsEnabled(card))
                 continue;
+
+            if (!model.ShowKeywordHoverTip)
+            {
+                excludedIds ??= [];
+                excludedIds.Add(HoverTipFactory.FromKeyword(model.Keyword).Id);
             }
 
-            excludedIds ??= [];
-            excludedIds.Add(HoverTipFactory.FromKeyword(model.Keyword).Id);
+            foreach (IHoverTip tip in model.GetAdditionalCardHoverTips(card))
+                (additionalHoverTips ??= []).Add(tip);
         }
 
         List<IHoverTip> result = (excludedIds is null
             ? hoverTips
             : hoverTips.Where(tip => !excludedIds.Contains(tip.Id)))
             .ToList();
+
+        if (additionalHoverTips is not null)
+        {
+            HashSet<string> addedHoverTipIds = result
+                .Select(tip => tip.Id)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (IHoverTip tip in additionalHoverTips)
+            {
+                if (addedHoverTipIds.Add(tip.Id))
+                    result.Add(tip);
+            }
+        }
 
         HashSet<string> addedPowerIds = new(StringComparer.Ordinal);
         foreach (LoadoutPowerKeywordModel model in

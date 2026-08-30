@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
@@ -129,6 +130,9 @@ public abstract class LoadoutKeywordModel
     public virtual bool RequiresAnotherPlayerTarget => false;
 
     public virtual bool ReportsGainsBlock => false;
+
+    public virtual IEnumerable<IHoverTip> GetAdditionalCardHoverTips(
+        CardModel card) => [];
 
     public bool IsEnabled(
         CardModel card,
