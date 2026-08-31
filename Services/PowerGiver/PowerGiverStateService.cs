@@ -46,7 +46,7 @@ public sealed class PowerGiverCombatStartHook : AbstractModel
     public override bool ShouldReceiveCombatHooks => true;
 
     public override Task BeforeCombatStart()
-        => PowerGiverStateService.ApplyConfiguredStartingPowersAsync();
+        => PowerGiverStateService.AwaitCombatStartApplicationAsync();
 }
 
 public static class PowerGiverStateService
@@ -67,8 +67,13 @@ public static class PowerGiverStateService
     private static readonly HashSet<LoadRunLobby> RegisteredLoadLobbies = [];
     private static readonly HashSet<INetGameService> RegisteredMessageServices = [];
     private static PowerGiverRunState _run = new();
-    private static TaskCompletionSource<PowerGiverCounterSnapshot>? _hostSnapshotSource;
+    private static INetGameService? _runNetService;
+    private static RunLobby? _runLobby;
+    private static Delegate? _playerRejoinedHandler;
     private static PowerGiverCounterSnapshot? _pendingHostSnapshot;
+    private static TaskCompletionSource<PowerGiverCounterSnapshot>? _combatStartSnapshotSource;
+    private static PowerGiverCounterSnapshot? _pendingCombatStartSnapshot;
+    private static Task? _combatStartTask;
     private static bool _registered;
     private static bool _combatStartHookRegistered;
     private static bool _runLoaded;
@@ -91,6 +96,7 @@ public static class PowerGiverStateService
         _registered = true;
         RunManager.Instance.RunStarted += OnRunStarted;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
+        CombatManager.Instance.CombatSetUp += OnCombatSetUp;
         RegisterCombatStartHook();
         EnsureLoaded();
     }
@@ -103,9 +109,13 @@ public static class PowerGiverStateService
         foreach (INetGameService netService in RegisteredMessageServices.ToList())
             UnregisterMessageHandlers(netService);
         RegisteredLoadLobbies.Clear();
+        UnbindRunLobby();
+        _runNetService = null;
         ResetHostSnapshot();
+        ResetCombatStart();
         RunManager.Instance.RunStarted -= OnRunStarted;
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
+        CombatManager.Instance.CombatSetUp -= OnCombatSetUp;
         _registered = false;
     }
 
@@ -124,8 +134,6 @@ public static class PowerGiverStateService
             return;
 
         ResetHostSnapshot();
-        _hostSnapshotSource = new TaskCompletionSource<PowerGiverCounterSnapshot>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
         lobby.NetService.SendMessage(default(PowerGiverSnapshotRequestMessage));
     }
 
@@ -141,12 +149,42 @@ public static class PowerGiverStateService
         ResetHostSnapshot();
     }
 
+    public static void PrepareRunLaunch()
+    {
+        INetGameService netService = RunManager.Instance.NetService;
+        RegisterRunNetService(netService);
+        BindRunLobby(RunManager.Instance.RunLobby);
+
+    }
+
+    public static void OnRunLaunched()
+    {
+        INetGameService netService = RunManager.Instance.NetService;
+        RegisterRunNetService(netService);
+        BindRunLobby(RunManager.Instance.RunLobby);
+
+        if (netService.Type == NetGameType.Host)
+        {
+            BroadcastSnapshot();
+            return;
+        }
+
+        bool hasPendingHostSnapshot;
+        lock (SyncRoot)
+            hasPendingHostSnapshot = _pendingHostSnapshot is not null;
+        if (netService.Type == NetGameType.Client && !hasPendingHostSnapshot)
+            netService.SendMessage(default(PowerGiverSnapshotRequestMessage));
+    }
+
     public static void OnRunCleaningUp()
     {
+        UnbindRunLobby();
         foreach (INetGameService netService in RegisteredMessageServices.ToList())
             UnregisterMessageHandlers(netService);
         RegisteredLoadLobbies.Clear();
+        _runNetService = null;
         ResetHostSnapshot();
+        ResetCombatStart();
     }
 
     public static void EnsureLoaded()
@@ -316,32 +354,76 @@ public static class PowerGiverStateService
         return true;
     }
 
-    public static async Task ApplyConfiguredStartingPowersAsync()
+    public static async Task AwaitCombatStartApplicationAsync()
     {
-        if (!_registered || CombatManager.Instance.DebugOnlyGetState() is not { } combatState)
+        Task? task = _combatStartTask;
+        if (task is not null)
+            await task;
+
+        if (ReferenceEquals(task, _combatStartTask))
+            ResetCombatStart();
+    }
+
+    private static void OnCombatSetUp(CombatState combatState)
+    {
+        if (!_registered)
             return;
 
-        await ApplyPendingHostSnapshotAsync();
-
-        EnsureLoaded();
-
-        IReadOnlyDictionary<string, int> allPlayerCounters;
-        IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> playerCountersByNetId;
-        IReadOnlyDictionary<string, int> monsterCounters;
-        lock (SyncRoot)
+        INetGameService netService = RunManager.Instance.NetService;
+        if (netService.Type == NetGameType.Client)
         {
-            allPlayerCounters = new Dictionary<string, int>(_run.AllPlayerCounters, StringComparer.Ordinal);
-            playerCountersByNetId = _run.PlayerCountersByNetId.ToDictionary(
-                pair => pair.Key,
-                pair => (IReadOnlyDictionary<string, int>)new Dictionary<string, int>(pair.Value, StringComparer.Ordinal));
-            monsterCounters = new Dictionary<string, int>(_run.MonsterCounters, StringComparer.Ordinal);
+            TaskCompletionSource<PowerGiverCounterSnapshot> source;
+            PowerGiverCounterSnapshot? pendingSnapshot;
+            lock (SyncRoot)
+            {
+                _combatStartSnapshotSource?.TrySetCanceled();
+                source = new TaskCompletionSource<PowerGiverCounterSnapshot>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                _combatStartSnapshotSource = source;
+                pendingSnapshot = _pendingCombatStartSnapshot;
+                _pendingCombatStartSnapshot = null;
+            }
+
+            if (pendingSnapshot is not null)
+                source.TrySetResult(pendingSnapshot);
+            _combatStartTask = ApplyCombatStartSnapshotAsync(source.Task, combatState);
+            return;
         }
 
+        EnsureLoaded();
+        PowerGiverCounterSnapshot snapshot;
+        lock (SyncRoot)
+            snapshot = CreateCounterSnapshotLocked();
+
+        ResetCombatStart();
+        if (netService.Type == NetGameType.Host)
+        {
+            PowerGiverCombatStartMessage message = new()
+            {
+                SnapshotJson = JsonSerializer.Serialize(snapshot)
+            };
+            LoadoutNetworkBroadcast.SendToRunClients(
+                netService,
+                recipient => netService.SendMessage(message, recipient),
+                "Power Giver combat start");
+        }
+
+        _combatStartTask = ApplyCombatStartSnapshotAsync(
+            Task.FromResult(snapshot),
+            combatState);
+    }
+
+    private static async Task ApplyCombatStartSnapshotAsync(
+        Task<PowerGiverCounterSnapshot> snapshotTask,
+        CombatState combatState)
+    {
+        PowerGiverCounterSnapshot snapshot = NormalizeCounterSnapshot(await snapshotTask);
+        ApplyHostSnapshot(snapshot);
         await ApplyConfiguredPowersAsync(
             combatState,
-            allPlayerCounters,
-            playerCountersByNetId,
-            monsterCounters);
+            snapshot.AllPlayerCounters,
+            snapshot.PlayerCountersByNetId,
+            snapshot.MonsterCounters);
     }
 
     private static void RegisterCombatStartHook()
@@ -357,12 +439,17 @@ public static class PowerGiverStateService
 
     private static void OnRunStarted(RunState _)
     {
+        if (_runNetService?.Type == NetGameType.Client)
+        {
+            PowerGiverCounterSnapshot? hostSnapshot;
+            lock (SyncRoot)
+                hostSnapshot = _pendingHostSnapshot;
+            if (hostSnapshot is not null)
+                ApplyHostSnapshot(hostSnapshot);
+            return;
+        }
+
         ReloadRunState();
-        PowerGiverCounterSnapshot? snapshot;
-        lock (SyncRoot)
-            snapshot = _pendingHostSnapshot;
-        if (snapshot is not null)
-            ApplyHostSnapshot(snapshot);
     }
 
     private static void OnProfileIdChanged(int _)
@@ -379,6 +466,91 @@ public static class PowerGiverStateService
 
         netService.RegisterMessageHandler<PowerGiverSnapshotRequestMessage>(HandleSnapshotRequest);
         netService.RegisterMessageHandler<PowerGiverSnapshotMessage>(HandleSnapshot);
+        netService.RegisterMessageHandler<PowerGiverCombatStartMessage>(HandleCombatStartSnapshot);
+    }
+
+    private static void RegisterRunNetService(INetGameService netService)
+    {
+        if (ReferenceEquals(_runNetService, netService))
+            return;
+
+        if (_runNetService is not null)
+            UnregisterMessageHandlers(_runNetService);
+        _runNetService = netService;
+        RegisterMessageHandlers(netService);
+    }
+
+    private static void BindRunLobby(RunLobby? runLobby)
+    {
+        if (ReferenceEquals(_runLobby, runLobby))
+            return;
+
+        UnbindRunLobby();
+        _runLobby = runLobby;
+        if (_runLobby is not null)
+        {
+            _playerRejoinedHandler = Sts2Compatibility.SubscribeRunLobbyPlayerRejoined(
+                _runLobby,
+                OnPlayerRejoined);
+        }
+    }
+
+    private static void UnbindRunLobby()
+    {
+        if (_runLobby is null)
+            return;
+
+        if (_playerRejoinedHandler is not null)
+        {
+            Sts2Compatibility.UnsubscribeRunLobbyPlayerRejoined(
+                _runLobby,
+                _playerRejoinedHandler);
+        }
+
+        _playerRejoinedHandler = null;
+        _runLobby = null;
+    }
+
+    private static void OnPlayerRejoined(ulong playerId)
+    {
+        if (_runNetService?.Type == NetGameType.Host && playerId != _runNetService.NetId)
+            SendSnapshot(_runNetService, playerId);
+    }
+
+    private static void BroadcastSnapshot()
+    {
+        if (_runNetService?.Type != NetGameType.Host)
+            return;
+
+        EnsureLoaded();
+        PowerGiverCounterSnapshot snapshot;
+        lock (SyncRoot)
+            snapshot = CreateCounterSnapshotLocked();
+        PowerGiverSnapshotMessage message = new()
+        {
+            SnapshotJson = JsonSerializer.Serialize(snapshot)
+        };
+
+        LoadoutNetworkBroadcast.SendToRunClients(
+            _runNetService,
+            recipient => _runNetService.SendMessage(message, recipient),
+            "Power Giver snapshot");
+    }
+
+    private static void SendSnapshot(INetGameService netService, ulong recipient)
+    {
+        if (netService.Type != NetGameType.Host || recipient == netService.NetId)
+            return;
+
+        EnsureLoaded();
+        PowerGiverCounterSnapshot snapshot;
+        lock (SyncRoot)
+            snapshot = CreateCounterSnapshotLocked();
+
+        netService.SendMessage(new PowerGiverSnapshotMessage
+        {
+            SnapshotJson = JsonSerializer.Serialize(snapshot)
+        }, recipient);
     }
 
     private static void UnregisterMessageHandlers(INetGameService netService)
@@ -388,6 +560,7 @@ public static class PowerGiverStateService
 
         netService.UnregisterMessageHandler<PowerGiverSnapshotRequestMessage>(HandleSnapshotRequest);
         netService.UnregisterMessageHandler<PowerGiverSnapshotMessage>(HandleSnapshot);
+        netService.UnregisterMessageHandler<PowerGiverCombatStartMessage>(HandleCombatStartSnapshot);
     }
 
     private static void HandleSnapshotRequest(PowerGiverSnapshotRequestMessage _, ulong senderId)
@@ -395,26 +568,23 @@ public static class PowerGiverStateService
         LoadRunLobby? lobby = RegisteredLoadLobbies.FirstOrDefault(candidate =>
             candidate.NetService.Type == NetGameType.Host
             && Sts2Compatibility.EnumerateLoadRunLobbyPlayerIds(candidate).Contains(senderId));
-        if (lobby is null)
-            return;
-
-        EnsureLoaded();
-        PowerGiverCounterSnapshot snapshot;
-        lock (SyncRoot)
-            snapshot = CreateCounterSnapshotLocked();
-
-        lobby.NetService.SendMessage(new PowerGiverSnapshotMessage
+        if (lobby is not null)
         {
-            SnapshotJson = JsonSerializer.Serialize(snapshot)
-        }, senderId);
+            SendSnapshot(lobby.NetService, senderId);
+            return;
+        }
+
+        if (_runNetService?.Type != NetGameType.Host || !IsCurrentRunPlayer(senderId))
+            return;
+        SendSnapshot(_runNetService, senderId);
     }
 
     private static void HandleSnapshot(PowerGiverSnapshotMessage message, ulong senderId)
     {
-        INetGameService? netService = RegisteredMessageServices
-            .FirstOrDefault(service => service.Type == NetGameType.Client);
-        if (netService is null
-            || !LoadoutNetworkBroadcast.IsExpectedHostSender(senderId, netService))
+        if (!LoadoutNetworkBroadcast.IsExpectedHostSender(
+                senderId,
+                _runNetService,
+                RegisteredLoadLobbies.Select(lobby => lobby.NetService)))
             return;
 
         PowerGiverCounterSnapshot? snapshot;
@@ -435,19 +605,57 @@ public static class PowerGiverStateService
         lock (SyncRoot)
             _pendingHostSnapshot = snapshot;
         ApplyHostSnapshot(snapshot);
-        _hostSnapshotSource?.TrySetResult(snapshot);
     }
 
-    private static async Task ApplyPendingHostSnapshotAsync()
+    private static void HandleCombatStartSnapshot(PowerGiverCombatStartMessage message, ulong senderId)
     {
-        TaskCompletionSource<PowerGiverCounterSnapshot>? source = _hostSnapshotSource;
-        if (source is null)
+        if (!LoadoutNetworkBroadcast.IsExpectedHostSender(
+                senderId,
+                _runNetService,
+                RegisteredLoadLobbies.Select(lobby => lobby.NetService)))
+        {
+            return;
+        }
+
+        PowerGiverCounterSnapshot? snapshot;
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<PowerGiverCounterSnapshot>(message.SnapshotJson);
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"PowerGiver: failed to read combat-start snapshot. {exception.Message}");
+            return;
+        }
+
+        if (snapshot is null)
             return;
 
-        PowerGiverCounterSnapshot snapshot = await source.Task;
-        ApplyHostSnapshot(snapshot);
-        if (ReferenceEquals(source, _hostSnapshotSource))
-            ResetHostSnapshot();
+        snapshot = NormalizeCounterSnapshot(snapshot);
+        TaskCompletionSource<PowerGiverCounterSnapshot>? source;
+        lock (SyncRoot)
+        {
+            source = _combatStartSnapshotSource;
+            if (source is null)
+                _pendingCombatStartSnapshot = snapshot;
+        }
+
+        source?.TrySetResult(snapshot);
+    }
+
+    private static bool IsCurrentRunPlayer(ulong playerId)
+    {
+        try
+        {
+            RunState? runState = RunManager.Instance.IsInProgress
+                ? RunManager.Instance.DebugOnlyGetState()
+                : null;
+            return runState?.Players.Any(player => player.NetId == playerId) == true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void ApplyHostSnapshot(PowerGiverCounterSnapshot snapshot)
@@ -490,10 +698,22 @@ public static class PowerGiverStateService
 
     private static void ResetHostSnapshot()
     {
-        _hostSnapshotSource?.TrySetCanceled();
-        _hostSnapshotSource = null;
         lock (SyncRoot)
             _pendingHostSnapshot = null;
+    }
+
+    private static void ResetCombatStart()
+    {
+        TaskCompletionSource<PowerGiverCounterSnapshot>? source;
+        lock (SyncRoot)
+        {
+            source = _combatStartSnapshotSource;
+            _combatStartSnapshotSource = null;
+            _pendingCombatStartSnapshot = null;
+            _combatStartTask = null;
+        }
+
+        source?.TrySetCanceled();
     }
 
     private static void ReloadRunState()
@@ -665,13 +885,13 @@ public static class PowerGiverStateService
     private static async Task ApplyConfiguredPowersAsync(
         CombatState combatState,
         IReadOnlyDictionary<string, int> allPlayerCounters,
-        IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> playerCountersByNetId,
+        IReadOnlyDictionary<ulong, Dictionary<string, int>> playerCountersByNetId,
         IReadOnlyDictionary<string, int> monsterCounters)
     {
         foreach (Player player in combatState.Players.OrderBy(player => player.NetId))
         {
             Dictionary<string, int> mergedCounters = new(allPlayerCounters, StringComparer.Ordinal);
-            if (playerCountersByNetId.TryGetValue(player.NetId, out IReadOnlyDictionary<string, int>? playerCounters))
+            if (playerCountersByNetId.TryGetValue(player.NetId, out Dictionary<string, int>? playerCounters))
             {
                 foreach ((string powerId, int amount) in playerCounters)
                     mergedCounters[powerId] = mergedCounters.GetValueOrDefault(powerId, 0) + amount;
@@ -861,6 +1081,26 @@ public struct PowerGiverSnapshotMessage : INetMessage, IPacketSerializable
     }
 }
 
+public struct PowerGiverCombatStartMessage : INetMessage, IPacketSerializable
+{
+    public string SnapshotJson;
+
+    public bool ShouldBroadcast => false;
+    public NetTransferMode Mode => NetTransferMode.Reliable;
+    public LogLevel LogLevel => LogLevel.Debug;
+    public bool ShouldBuffer => false;
+
+    public readonly void Serialize(PacketWriter writer)
+    {
+        writer.WriteString(SnapshotJson ?? string.Empty);
+    }
+
+    public void Deserialize(PacketReader reader)
+    {
+        SnapshotJson = reader.ReadString();
+    }
+}
+
 [HarmonyPatch(typeof(LoadRunLobby))]
 public static class LoadRunLobbyPowerGiverConstructorPatch
 {
@@ -878,6 +1118,18 @@ public static class LoadRunLobbyPowerGiverCleanUpPatch
     [HarmonyPrefix]
     public static void Prefix(LoadRunLobby __instance, bool disconnectSession)
         => PowerGiverStateService.UnregisterLoadLobby(__instance, disconnectSession);
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]
+public static class RunManagerPowerGiverLaunchPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+        => PowerGiverStateService.PrepareRunLaunch();
+
+    [HarmonyPostfix]
+    public static void Postfix()
+        => PowerGiverStateService.OnRunLaunched();
 }
 
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.CleanUp))]
