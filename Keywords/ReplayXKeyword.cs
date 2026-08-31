@@ -11,8 +11,8 @@ using MegaCrit.Sts2.Core.Models;
 public sealed class ReplayXKeyword : LoadoutKeywordModel
 {
     public const int FastAnimationAdditionalPlayThreshold = 10;
-    public const int ExtremelyFastAnimationAdditionalPlayThreshold = 25;
-    public const int InstantAnimationAdditionalPlayThreshold = 100;
+    public const int ExtremelyFastAnimationAdditionalPlayThreshold = 50;
+    public const int InstantAnimationAdditionalPlayThreshold = 1000;
 
     public static ReplayXKeyword Instance { get; } = new();
 
