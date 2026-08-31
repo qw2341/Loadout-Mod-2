@@ -4263,7 +4263,7 @@ public partial class NGenericSelectScreen : Control
         if (!TryGetItemForView(view, out IGenericSelectItem item))
             return;
 
-        if (item is IContentBanSelectItem { BanTarget: { } target } banItem
+        if (item is IContentBanSelectItem { BanTarget: { } target, AllowBannedActivation: false } banItem
             && ContentBanService.IsBanned(target))
         {
             ContentBanVisuals.Wiggle(banItem.BanVisualView ?? view);
@@ -5674,11 +5674,13 @@ public sealed class SelectItemAdapter<TModel>
     public Func<TModel, Control, Action, Action?>? BindActivationWithCleanup { get; init; }
     public Func<TModel, Control, Action, bool>? BindActivation { get; init; }
     internal Func<TModel, ContentBanTarget?>? GetBanTarget { get; init; }
+    internal bool AllowBannedActivation { get; init; }
 }
 
 internal interface IContentBanSelectItem
 {
     ContentBanTarget? BanTarget { get; }
+    bool AllowBannedActivation { get; }
     Control? BanVisualView { get; }
     void RefreshBanVisual();
 }
@@ -5732,6 +5734,7 @@ public sealed class GenericSelectItem<TModel> : IGenericSelectItem, ISelectItemR
     public int OriginalIndex { get; }
     public Control? View { get; private set; }
     ContentBanTarget? IContentBanSelectItem.BanTarget => _adapter.GetBanTarget?.Invoke(Model);
+    bool IContentBanSelectItem.AllowBannedActivation => _adapter.AllowBannedActivation;
     Control? IContentBanSelectItem.BanVisualView => _banVisualView;
     private Control? _banVisualView;
     public bool HasPreloadResources => _adapter.PreloadResources is not null;

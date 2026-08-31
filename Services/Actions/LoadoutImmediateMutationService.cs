@@ -19,6 +19,7 @@ using Loadout.Services.Compatibility;
 using Loadout.Services.Loadouts;
 using Loadout.Services.Morphing;
 using Loadout.Services.Networking;
+using Loadout.Services.OneEvent;
 using Loadout.Services.OneRelic;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.RelicModification;
@@ -82,7 +83,8 @@ public enum LoadoutImmediateMutationKind
     AddOwnedRelicCopies,
     TildeRelicCounterSet,
     DowngradeCard,
-    ToggleOneRelic
+    ToggleOneRelic,
+    CycleOneEvent
 }
 
 public static class LoadoutImmediateMutationService
@@ -1488,6 +1490,9 @@ public static class LoadoutImmediateMutationService
             case LoadoutImmediateMutationKind.ToggleOneRelic:
                 OneRelicModeService.ApplySynchronizedToggle(payload.ModelId, payload.Target);
                 break;
+            case LoadoutImmediateMutationKind.CycleOneEvent:
+                OneEventModeService.ApplySynchronizedCycle(payload.ModelId);
+                break;
         }
     }
 
@@ -2356,6 +2361,9 @@ public static class LoadoutImmediateMutationService
         Player localPlayer,
         LoadoutImmediateMutationKind kind)
     {
+        if (kind == LoadoutImmediateMutationKind.CycleOneEvent)
+            return new LoadoutTargetSelection(LoadoutTargetScope.AllPlayers);
+
         try
         {
             return RunManager.Instance.NetService.Type == NetGameType.Client
@@ -2371,6 +2379,9 @@ public static class LoadoutImmediateMutationService
 
     private static LoadoutImmediateMutationPayload HardenClientPayload(LoadoutImmediateMutationPayload payload, ulong hostNetId)
     {
+        if (payload.Kind == LoadoutImmediateMutationKind.CycleOneEvent)
+            payload.Target = new LoadoutTargetSelection(LoadoutTargetScope.AllPlayers);
+
         if ((payload.Kind is LoadoutImmediateMutationKind.TildeStatSet or LoadoutImmediateMutationKind.TildeStatLock)
             && TildeKeyStateService.IsGlobalStatId(GetTildeStatId(payload.TildePayloadJson)))
         {
@@ -2432,7 +2443,8 @@ public static class LoadoutImmediateMutationService
             or LoadoutImmediateMutationKind.RemoveAllRelics
             or LoadoutImmediateMutationKind.RelicModification
             or LoadoutImmediateMutationKind.AddOwnedRelicCopies
-            or LoadoutImmediateMutationKind.ToggleOneRelic;
+            or LoadoutImmediateMutationKind.ToggleOneRelic
+            or LoadoutImmediateMutationKind.CycleOneEvent;
     }
 
     private sealed class RemoveAllCardsScope : IDisposable

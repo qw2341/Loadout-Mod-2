@@ -35,7 +35,7 @@ internal static class ContentBanVisuals
         overlay.Texture = target.Kind == ContentBanKind.Card
             ? _cardSlashTexture ??= GD.Load<Texture2D>(CardSlashPath)
             : _nativeSlashTexture ??= GD.Load<Texture2D>(NativeSlashPath);
-        overlay.StretchMode = target.Kind == ContentBanKind.Card
+        overlay.StretchMode = target.Kind is ContentBanKind.Card or ContentBanKind.Event
             ? TextureRect.StretchModeEnum.KeepAspectCentered
             : TextureRect.StretchModeEnum.Scale;
         overlay.Material = scope == ContentBanScope.Run ? GetRunMaterial() : null;

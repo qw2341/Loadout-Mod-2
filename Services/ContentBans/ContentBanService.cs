@@ -31,7 +31,8 @@ internal enum ContentBanKind : byte
 {
     Card,
     Relic,
-    Potion
+    Potion,
+    Event
 }
 
 internal enum ContentBanScope : byte
@@ -46,6 +47,7 @@ internal readonly record struct ContentBanTarget(ContentBanKind Kind, string Id)
     public static ContentBanTarget Card(CardModel card) => new(ContentBanKind.Card, card.CanonicalInstance.Id.ToString());
     public static ContentBanTarget Relic(RelicModel relic) => new(ContentBanKind.Relic, relic.CanonicalInstance.Id.ToString());
     public static ContentBanTarget Potion(PotionModel potion) => new(ContentBanKind.Potion, potion.CanonicalInstance.Id.ToString());
+    public static ContentBanTarget Event(EventModel eventModel) => new(ContentBanKind.Event, eventModel.CanonicalInstance.Id.ToString());
 
     public bool IsValid => !string.IsNullOrWhiteSpace(Id);
 }
@@ -146,6 +148,7 @@ internal static class ContentBanService
         => IsBanned(ContentBanTarget.Relic(relic))
            && !RelicReplacementProvenance.IsForced(relic);
     internal static bool IsBanned(PotionModel potion) => IsBanned(ContentBanTarget.Potion(potion));
+    internal static bool IsBanned(EventModel eventModel) => IsBanned(ContentBanTarget.Event(eventModel));
 
     internal static bool HasAnyBans(ContentBanKind kind)
     {
@@ -280,6 +283,7 @@ internal static class ContentBanService
             state.Cards.ExceptWith(_profile.Cards);
             state.Relics.ExceptWith(_profile.Relics);
             state.Potions.ExceptWith(_profile.Potions);
+            state.Events.ExceptWith(_profile.Events);
             _lastOfferReconciliations = [];
             RecomputeEffectiveKindMaskLocked();
         }
@@ -511,14 +515,16 @@ internal static class ContentBanService
     {
         ContentBanKind.Card => save.Cards,
         ContentBanKind.Relic => save.Relics,
-        _ => save.Potions
+        ContentBanKind.Potion => save.Potions,
+        _ => save.Events
     };
 
     private static HashSet<string> GetSet(RunBanState state, ContentBanKind kind) => kind switch
     {
         ContentBanKind.Card => state.Cards,
         ContentBanKind.Relic => state.Relics,
-        _ => state.Potions
+        ContentBanKind.Potion => state.Potions,
+        _ => state.Events
     };
 
     private static HashSet<string> GetSet(NetworkBanSnapshot state, ContentBanKind kind, ContentBanScope scope)
@@ -528,9 +534,11 @@ internal static class ContentBanService
             (ContentBanKind.Card, ContentBanScope.Permanent) => state.PermanentCards,
             (ContentBanKind.Relic, ContentBanScope.Permanent) => state.PermanentRelics,
             (ContentBanKind.Potion, ContentBanScope.Permanent) => state.PermanentPotions,
+            (ContentBanKind.Event, ContentBanScope.Permanent) => state.PermanentEvents,
             (ContentBanKind.Card, _) => state.RunCards,
             (ContentBanKind.Relic, _) => state.RunRelics,
-            _ => state.RunPotions
+            (ContentBanKind.Potion, _) => state.RunPotions,
+            _ => state.RunEvents
         };
     }
 
@@ -556,6 +564,7 @@ internal static class ContentBanService
         save.Cards = NormalizeSet(save.Cards);
         save.Relics = NormalizeSet(save.Relics);
         save.Potions = NormalizeSet(save.Potions);
+        save.Events = NormalizeSet(save.Events);
         return save;
     }
 
@@ -565,6 +574,7 @@ internal static class ContentBanService
         save.Cards = NormalizeSet(save.Cards);
         save.Relics = NormalizeSet(save.Relics);
         save.Potions = NormalizeSet(save.Potions);
+        save.Events = NormalizeSet(save.Events);
         return save;
     }
 
@@ -583,6 +593,8 @@ internal static class ContentBanService
             yield return new ContentBanTarget(ContentBanKind.Relic, id);
         foreach (string id in save.Potions)
             yield return new ContentBanTarget(ContentBanKind.Potion, id);
+        foreach (string id in save.Events)
+            yield return new ContentBanTarget(ContentBanKind.Event, id);
     }
 
     private static NetworkBanSnapshot CreateSnapshot()
@@ -595,7 +607,8 @@ internal static class ContentBanService
                 Revision = _revision,
                 PermanentCards = [.. _profile.Cards],
                 PermanentRelics = [.. _profile.Relics],
-                PermanentPotions = [.. _profile.Potions]
+                PermanentPotions = [.. _profile.Potions],
+                PermanentEvents = [.. _profile.Events]
             };
             if (TryGetCurrentRunState(out RunState? runState))
             {
@@ -603,6 +616,7 @@ internal static class ContentBanService
                 snapshot.RunCards = [.. current.Cards.Except(snapshot.PermanentCards)];
                 snapshot.RunRelics = [.. current.Relics.Except(snapshot.PermanentRelics)];
                 snapshot.RunPotions = [.. current.Potions.Except(snapshot.PermanentPotions)];
+                snapshot.RunEvents = [.. current.Events.Except(snapshot.PermanentEvents)];
             }
             snapshot.Offers = _lastOfferReconciliations.ToList();
             return snapshot;
@@ -786,12 +800,15 @@ internal static class ContentBanService
         snapshot.PermanentCards = NormalizeSet(snapshot.PermanentCards);
         snapshot.PermanentRelics = NormalizeSet(snapshot.PermanentRelics);
         snapshot.PermanentPotions = NormalizeSet(snapshot.PermanentPotions);
+        snapshot.PermanentEvents = NormalizeSet(snapshot.PermanentEvents);
         snapshot.RunCards = NormalizeSet(snapshot.RunCards);
         snapshot.RunRelics = NormalizeSet(snapshot.RunRelics);
         snapshot.RunPotions = NormalizeSet(snapshot.RunPotions);
+        snapshot.RunEvents = NormalizeSet(snapshot.RunEvents);
         snapshot.RunCards.ExceptWith(snapshot.PermanentCards);
         snapshot.RunRelics.ExceptWith(snapshot.PermanentRelics);
         snapshot.RunPotions.ExceptWith(snapshot.PermanentPotions);
+        snapshot.RunEvents.ExceptWith(snapshot.PermanentEvents);
         snapshot.Offers ??= [];
         return snapshot;
     }
@@ -808,6 +825,8 @@ internal static class ContentBanService
         public HashSet<string> Relics { get; set; } = new(StringComparer.Ordinal);
         [JsonPropertyName("potions")]
         public HashSet<string> Potions { get; set; } = new(StringComparer.Ordinal);
+        [JsonPropertyName("events")]
+        public HashSet<string> Events { get; set; } = new(StringComparer.Ordinal);
 
         public readonly void GetObjectData(SerializationInfo info, StreamingContext context)
         {
@@ -815,6 +834,7 @@ internal static class ContentBanService
             info.AddValue(nameof(Cards), Cards);
             info.AddValue(nameof(Relics), Relics);
             info.AddValue(nameof(Potions), Potions);
+            info.AddValue(nameof(Events), Events);
         }
     }
 
@@ -828,6 +848,8 @@ internal static class ContentBanService
         public HashSet<string> Relics { get; set; } = new(StringComparer.Ordinal);
         [JsonPropertyName("potions")]
         public HashSet<string> Potions { get; set; } = new(StringComparer.Ordinal);
+        [JsonPropertyName("events")]
+        public HashSet<string> Events { get; set; } = new(StringComparer.Ordinal);
     }
 
     private sealed class RunBanState
@@ -835,18 +857,20 @@ internal static class ContentBanService
         internal HashSet<string> Cards { get; } = new(StringComparer.Ordinal);
         internal HashSet<string> Relics { get; } = new(StringComparer.Ordinal);
         internal HashSet<string> Potions { get; } = new(StringComparer.Ordinal);
+        internal HashSet<string> Events { get; } = new(StringComparer.Ordinal);
 
         internal void Load(RunBanSaveData save)
         {
-            Cards.Clear(); Relics.Clear(); Potions.Clear();
-            Cards.UnionWith(save.Cards); Relics.UnionWith(save.Relics); Potions.UnionWith(save.Potions);
+            Cards.Clear(); Relics.Clear(); Potions.Clear(); Events.Clear();
+            Cards.UnionWith(save.Cards); Relics.UnionWith(save.Relics); Potions.UnionWith(save.Potions); Events.UnionWith(save.Events);
         }
 
         internal RunBanSaveData ToSaveData() => new()
         {
             Cards = [.. Cards],
             Relics = [.. Relics],
-            Potions = [.. Potions]
+            Potions = [.. Potions],
+            Events = [.. Events]
         };
     }
 
@@ -860,12 +884,16 @@ internal static class ContentBanService
         public HashSet<string> PermanentRelics { get; set; } = new(StringComparer.Ordinal);
         [JsonPropertyName("permanentPotions")]
         public HashSet<string> PermanentPotions { get; set; } = new(StringComparer.Ordinal);
+        [JsonPropertyName("permanentEvents")]
+        public HashSet<string> PermanentEvents { get; set; } = new(StringComparer.Ordinal);
         [JsonPropertyName("runCards")]
         public HashSet<string> RunCards { get; set; } = new(StringComparer.Ordinal);
         [JsonPropertyName("runRelics")]
         public HashSet<string> RunRelics { get; set; } = new(StringComparer.Ordinal);
         [JsonPropertyName("runPotions")]
         public HashSet<string> RunPotions { get; set; } = new(StringComparer.Ordinal);
+        [JsonPropertyName("runEvents")]
+        public HashSet<string> RunEvents { get; set; } = new(StringComparer.Ordinal);
         [JsonPropertyName("offers")]
         public List<ContentBanOfferReconciliation> Offers { get; set; } = [];
     }

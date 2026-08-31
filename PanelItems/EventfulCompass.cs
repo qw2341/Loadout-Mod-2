@@ -5,7 +5,9 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
 using Loadout.Services.Actions;
+using Loadout.Services.ContentBans;
 using Loadout.Services.LastActions;
+using Loadout.Services.OneEvent;
 using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
@@ -37,15 +39,21 @@ public class EventfulCompass
 		    .ToList();
 	    EventCatalogData catalog = BuildEventCatalogData(allEvents);
 
-        CommonHelpers.CreateAndAddLoadoutItem(
+        NLoadoutPanelItem compassItem = CommonHelpers.CreateAndAddLoadoutItem(
 			allEvents,
 			new SelectItemAdapter<EventModel>
 			{
 				GetId = eventModel => eventModel.Id.ToString(),
 				GetName = FormatEventTitle,
 				GetSearchText = eventModel => BuildEventSearchText(eventModel, catalog),
-				CapturePreloadResourcePaths = GetEventTilePreloadResourcePaths,
-				CreateView = (eventModel, _) => CreateEventGridItem(eventModel)
+				GetBanTarget = eventModel => ContentBanTarget.Event(eventModel),
+				AllowBannedActivation = true,
+				CapturePreloadResourcePaths = eventModel =>
+					[.. GetEventTilePreloadResourcePaths(eventModel), NOneEventSelectionVisual.RareGlowScenePath],
+				CreateView = (eventModel, _) => CreateEventGridItem(eventModel),
+				ViewReady = (eventModel, view) => UpdateOneEventVisual(view, eventModel),
+				UpdateView = (eventModel, view, _) => UpdateOneEventVisual(view, eventModel),
+				BindActivationWithCleanup = BindEventActivationWithCleanup
 			}, builder =>
 			{
 				EventGroupPresentation grouping = BuildEventGroupPresentation(catalog);
@@ -90,11 +98,18 @@ public class EventfulCompass
 			}, UpsertRoomJumpControls,
 			"EventfulCompass.png",
 			LocMan.Loc("EVENTFULCOMPASS_TITLE", "Eventful Compass"),
-			LocMan.Loc("EVENTFULCOMPASS_DESC", "Right-click this relic to select the event you want. Ctrl + right click to repeat the last action."),
+			LocMan.Loc("EVENTFULCOMPASS_DESC", "Right-click this relic to select the event you want. Alt + right-click an event cycles One Event mode through Normal, All, and Off. Press B to permanently ban the hovered event. Press N to ban it for this run only. Ctrl + right click repeats the last action."),
 			HandleEnterEventActivatedAsync,
 			LastActionService.EventfulCompassKey,
 			ReplayEventfulCompassLastActionAsync,
 			selectScreenScenePath: CommonHelpers.EventSelectScreenScenePath);
+
+		UpdateOneEventPanelOutline(compassItem);
+		OneEventModeService.SelectionChanged += change =>
+		{
+			RefreshChangedOneEventViews(compassItem.BoundScreen, change);
+			UpdateOneEventPanelOutline(compassItem);
+		};
     }
 
     private static readonly Vector2 EventTileSize = new(264f, 144f);
@@ -604,6 +619,77 @@ public class EventfulCompass
     private const string OtherRootGroupKey = "event:other";
     private const string OtherEventsGroupKey = "event:other:events";
     private const string OtherAncientsGroupKey = "event:other:ancients";
+
+    private static Action BindEventActivationWithCleanup(
+        EventModel eventModel,
+        Control view,
+        Action activate)
+    {
+        void OnPressed() => activate();
+        void OnGuiInput(InputEvent inputEvent)
+        {
+            if (inputEvent is not InputEventMouseButton
+                {
+                    ButtonIndex: MouseButton.Right,
+                    Pressed: false
+                } mouseButton
+                || !mouseButton.AltPressed && !Input.IsKeyPressed(Key.Alt))
+            {
+                return;
+            }
+
+            OneEventModeService.RequestCycle(eventModel.Id);
+            view.AcceptEvent();
+        }
+
+        Action fallbackCleanup = null;
+        if (view is Button button)
+            button.Pressed += OnPressed;
+        else
+            fallbackCleanup = CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate);
+        view.GuiInput += OnGuiInput;
+
+        return () =>
+        {
+            if (!GodotObject.IsInstanceValid(view))
+                return;
+            if (view is Button currentButton)
+                currentButton.Pressed -= OnPressed;
+            fallbackCleanup?.Invoke();
+            view.GuiInput -= OnGuiInput;
+        };
+    }
+
+    private static void RefreshChangedOneEventViews(
+        NGenericSelectScreen screen,
+        OneEventSelectionChanged change)
+    {
+        Callable.From(() =>
+        {
+            if (screen is null || !GodotObject.IsInstanceValid(screen))
+                return;
+            if (change.PreviousEventId is { } previousId)
+                screen.RefreshItemView(previousId.ToString());
+            if (change.SelectedEventId is { } selectedId && selectedId != change.PreviousEventId)
+                screen.RefreshItemView(selectedId.ToString());
+        }).CallDeferred();
+    }
+
+    private static void UpdateOneEventPanelOutline(NLoadoutPanelItem compassItem)
+    {
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(compassItem))
+                compassItem.RainbowOutlineActive = OneEventModeService.IsActive;
+        }).CallDeferred();
+    }
+
+    private static void UpdateOneEventVisual(Control view, EventModel eventModel)
+    {
+        ModelId selectedId = OneEventModeService.SelectedEventId;
+        bool selected = selectedId == eventModel.Id;
+        NOneEventSelectionVisual.Apply(view, selected, dimmed: selectedId is not null && !selected);
+    }
 
     private static Control CreateEventGridItem(EventModel model)
     {
