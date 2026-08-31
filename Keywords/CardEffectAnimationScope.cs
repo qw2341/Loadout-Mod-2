@@ -57,11 +57,7 @@ internal static class CardEffectAnimationScope
 
     public static Scope? Enter(CardModel card)
     {
-        bool hasAltHeavenly = card.EnergyCost.CostsX
-                               && LoadoutKeywords.Has(
-                                   card,
-                                   LoadoutKeywords.AltHeavenly);
-        if (!hasAltHeavenly
+        if (!LoadoutKeywords.Has(card, LoadoutKeywords.AltHeavenly)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.Gatling)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.MegaGatling)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.ReplayX))

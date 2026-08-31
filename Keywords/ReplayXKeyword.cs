@@ -2,7 +2,6 @@
 
 namespace Loadout.Keywords;
 
-using System;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -11,8 +10,8 @@ using MegaCrit.Sts2.Core.Models;
 
 public sealed class ReplayXKeyword : LoadoutKeywordModel
 {
-    public const int FastAnimationAdditionalPlayThreshold = 25;
-    public const int ExtremelyFastAnimationAdditionalPlayThreshold = 50;
+    public const int FastAnimationAdditionalPlayThreshold = 10;
+    public const int ExtremelyFastAnimationAdditionalPlayThreshold = 25;
     public const int InstantAnimationAdditionalPlayThreshold = 100;
 
     public static ReplayXKeyword Instance { get; } = new();
@@ -29,17 +28,11 @@ public sealed class ReplayXKeyword : LoadoutKeywordModel
 
     public static int ResolveReplayCount(CardModel card)
     {
-        if (card.EnergyCost.CostsX)
-            return card.ResolveEnergyXValue();
-
         ICombatState? combatState = card.CombatState;
         if (combatState is null)
             return 0;
-
-        return Hook.ModifyXValue(
-                combatState,
-                card,
-                card.Owner.PlayerCombatState?.Energy ?? 0);
+        card.EnergyCost.CapturedXValue = card.Owner.PlayerCombatState?.Energy ?? 0;
+        return card.ResolveEnergyXValue();
     }
 }
 
