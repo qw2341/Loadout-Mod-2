@@ -73,7 +73,7 @@ public sealed class CardAttachmentSpec
             if (spec is null)
                 continue;
             if (spec.Clear)
-                return [];
+                return null;
 
             spec.ModelId = string.IsNullOrWhiteSpace(spec.ModelId)
                 ? null
@@ -83,7 +83,7 @@ public sealed class CardAttachmentSpec
                 result.Add(spec);
         }
 
-        return result;
+        return result.Count == 0 ? null : result;
     }
 }
 

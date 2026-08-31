@@ -301,13 +301,20 @@ public static class CardModelFromSerializableCardModificationPatch
             upgradeState,
             upgradeModificationScope);
 
-        // An owned attachment is reconstructed by the permanent/temporary spec.
-        // Prevent the native saved copy from being stacked underneath it first.
-        if (permanent?.Enchantments is not null
-            || loaded?.Delta?.Enchantments is not null
-            || loaded?.LegacyAbsolute?.Enchantments is not null)
+        IReadOnlyList<CardAttachmentSpec>? effectiveEnchantments =
+            loaded?.Delta?.Enchantments
+            ?? loaded?.LegacyAbsolute?.Enchantments
+            ?? permanent?.Enchantments;
+        CardAttachmentSpec? savedEnchantmentSpec = save.Enchantment?.Id is { } savedEnchantmentId
+            ? effectiveEnchantments?.FirstOrDefault(spec =>
+                string.Equals(spec.ModelId, savedEnchantmentId.ToString(), StringComparison.Ordinal)
+                || string.Equals(spec.ModelId, savedEnchantmentId.Entry, StringComparison.OrdinalIgnoreCase))
+            : null;
+        if (savedEnchantmentSpec is not null && save.Enchantment is not null)
         {
-            save.Enchantment = null;
+            save.Enchantment.Amount -= Math.Max(1, savedEnchantmentSpec.Amount);
+            if (save.Enchantment.Amount <= 0)
+                save.Enchantment = null;
         }
     }
 

@@ -1299,7 +1299,6 @@ public partial class NCardModificationScreen : Control
             CardAttachmentSpec? enchantment = _workingState.Enchantments switch
             {
                 null => null,
-                { Count: 0 } => new CardAttachmentSpec { Clear = true },
                 _ => _workingState.Enchantments[0]
             };
 
@@ -1315,7 +1314,7 @@ public partial class NCardModificationScreen : Control
                     List<CardAttachmentSpec>? value = spec switch
                     {
                         null => null,
-                        { Clear: true } => [],
+                        { Clear: true } => null,
                         _ => [spec.Clone()]
                     };
                     SetEnchantmentDraft(value);
@@ -1586,16 +1585,7 @@ public partial class NCardModificationScreen : Control
     {
         if (_workingState.Enchantments is not null)
             return CardAttachmentSpec.CloneList(_workingState.Enchantments) ?? [];
-        if (_item is null)
-            return [];
-
-        return MultiEnchantmentBridge.GetAll(_item.Model)
-            .Select(enchantment => new CardAttachmentSpec
-            {
-                ModelId = enchantment.Id.ToString(),
-                Amount = Math.Max(1, enchantment.Amount)
-            })
-            .ToList();
+        return [];
     }
 
     private void SetEnchantmentDraft(List<CardAttachmentSpec>? specs)

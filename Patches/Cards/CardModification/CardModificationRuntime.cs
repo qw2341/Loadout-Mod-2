@@ -2399,33 +2399,70 @@ public static class CardModificationRuntime
         }
 
         if (previous.Enchantments is not null || next.Enchantments is not null)
-            CopyEnchantments(source, destination);
+            CopyEnchantments(destination, previous.Enchantments, next.Enchantments);
         if (previous.Affliction is not null || next.Affliction is not null)
             CopyAffliction(source, destination);
 
         LoadoutKeywordRegistry.SynchronizeOriginalModelHookSuppression(destination);
     }
 
-    private static void CopyEnchantments(CardModel source, CardModel destination)
+    private static void CopyEnchantments(
+        CardModel destination,
+        IReadOnlyList<CardAttachmentSpec>? previous,
+        IReadOnlyList<CardAttachmentSpec>? next)
     {
         if (!MultiEnchantmentBridge.Available)
         {
-            if (destination.Enchantment is not null)
-                CardCmd.ClearEnchantment(destination);
-            if (source.Enchantment is not null
-                && TryResolveModel(source.Enchantment.Id.ToString(), ModelDb.DebugEnchantments, out EnchantmentModel? canonical))
+            if (destination.Enchantment is { } existing)
             {
-                ForceApplyEnchantment(destination, canonical!, Math.Max(1, source.Enchantment.Amount));
+                CardAttachmentSpec? oldSpec = previous?.FirstOrDefault(spec =>
+                    spec.ModelId is not null && MatchesModelId(existing, spec.ModelId));
+                CardAttachmentSpec? newSpec = next?.FirstOrDefault(spec =>
+                    spec.ModelId is not null && MatchesModelId(existing, spec.ModelId));
+                int oldAmount = Math.Max(0, oldSpec?.Amount ?? 0);
+                int newAmount = Math.Max(0, newSpec?.Amount ?? 0);
+                if (oldAmount != newAmount)
+                {
+                    int residualAmount = Math.Max(0, existing.Amount - oldAmount + newAmount);
+                    EnchantmentModel? canonical = TryResolveModel(
+                        existing.Id.ToString(),
+                        ModelDb.DebugEnchantments,
+                        out EnchantmentModel? resolved)
+                            ? resolved
+                            : null;
+                    CardCmd.ClearEnchantment(destination);
+                    if (residualAmount > 0 && canonical is not null)
+                        ForceApplyEnchantment(destination, canonical, residualAmount);
+                }
             }
+            ApplyEnchantmentSpecs(destination, next);
             return;
         }
 
-        IReadOnlyList<EnchantmentModel> desired = MultiEnchantmentBridge.GetAll(source);
-        ReconcileEnchantments(
-            destination,
-            desired,
-            enchantment => MultiEnchantmentBridge.Copy(destination, enchantment),
-            stackAmountIncreases: false);
+        foreach (EnchantmentModel existing in MultiEnchantmentBridge.GetAll(destination).ToList())
+        {
+            CardAttachmentSpec? oldSpec = previous?.FirstOrDefault(spec =>
+                spec.ModelId is not null && MatchesModelId(existing, spec.ModelId));
+            if (oldSpec is null)
+                continue;
+
+            CardAttachmentSpec? newSpec = next?.FirstOrDefault(spec =>
+                spec.ModelId is not null && MatchesModelId(existing, spec.ModelId));
+            int oldAmount = Math.Max(1, oldSpec.Amount);
+            int newAmount = Math.Max(0, newSpec?.Amount ?? 0);
+            if (oldAmount == newAmount)
+                continue;
+
+            int residualAmount = Math.Max(0, existing.Amount - oldAmount + newAmount);
+            if (!MultiEnchantmentBridge.Remove(destination, existing) || residualAmount == 0)
+                continue;
+
+            EnchantmentModel residual = CloneEnchantmentForApplication(existing);
+            residual.Amount = residualAmount;
+            MultiEnchantmentBridge.Add(destination, residual, residualAmount);
+        }
+
+        ApplyEnchantmentSpecs(destination, next);
     }
 
     private static void CopyAffliction(CardModel source, CardModel destination)
@@ -2719,24 +2756,26 @@ public static class CardModificationRuntime
         CardModel card,
         IReadOnlyList<CardAttachmentSpec>? specs)
     {
-        if (specs is null)
+        if (specs is not { Count: > 0 })
             return;
 
         if (!MultiEnchantmentBridge.Available)
         {
             CardAttachmentSpec? spec = specs.FirstOrDefault();
             if (spec is null)
-            {
-                if (card.Enchantment is not null)
-                    CardCmd.ClearEnchantment(card);
                 return;
-            }
 
             if (!TryResolveModel(spec.ModelId, ModelDb.DebugEnchantments, out EnchantmentModel? canonical))
                 return;
-            if (card.Enchantment is not null)
-                CardCmd.ClearEnchantment(card);
-            ForceApplyEnchantment(card, canonical!, Math.Max(1, spec.Amount));
+            if (card.Enchantment is null)
+            {
+                ForceApplyEnchantment(card, canonical!, Math.Max(1, spec.Amount));
+            }
+            else if (MatchesModelId(card.Enchantment, canonical!.Id.ToString())
+                     && card.Enchantment.Amount < Math.Max(1, spec.Amount))
+            {
+                ForceApplyEnchantment(card, canonical, Math.Max(1, spec.Amount));
+            }
             return;
         }
 
@@ -2766,7 +2805,8 @@ public static class CardModificationRuntime
             card,
             desired,
             enchantment => MultiEnchantmentBridge.Add(card, enchantment, enchantment.Amount),
-            stackAmountIncreases: true);
+            stackAmountIncreases: true,
+            removeUnmatched: false);
     }
 
     private static void ApplyAfflictionSpec(CardModel card, CardAttachmentSpec? spec)
@@ -2800,7 +2840,8 @@ public static class CardModificationRuntime
         CardModel card,
         IReadOnlyList<EnchantmentModel> desired,
         Func<EnchantmentModel, bool> add,
-        bool stackAmountIncreases)
+        bool stackAmountIncreases,
+        bool removeUnmatched = true)
     {
         List<EnchantmentModel> current = MultiEnchantmentBridge.GetAll(card).ToList();
         bool[] matched = new bool[desired.Count];
@@ -2810,7 +2851,8 @@ public static class CardModificationRuntime
             int desiredIndex = FindUnmatchedEnchantment(desired, matched, existing);
             if (desiredIndex < 0)
             {
-                MultiEnchantmentBridge.Remove(card, existing);
+                if (removeUnmatched)
+                    MultiEnchantmentBridge.Remove(card, existing);
                 continue;
             }
 
