@@ -48,8 +48,7 @@ public class EventfulCompass
 				GetSearchText = eventModel => BuildEventSearchText(eventModel, catalog),
 				GetBanTarget = eventModel => ContentBanTarget.Event(eventModel),
 				AllowBannedActivation = true,
-				CapturePreloadResourcePaths = eventModel =>
-					[.. GetEventTilePreloadResourcePaths(eventModel), NOneEventSelectionVisual.RareGlowScenePath],
+				CapturePreloadResourcePaths = GetEventTilePreloadResourcePaths,
 				CreateView = (eventModel, _) => CreateEventGridItem(eventModel),
 				ViewReady = (eventModel, view) => UpdateOneEventVisual(view, eventModel),
 				UpdateView = (eventModel, view, _) => UpdateOneEventVisual(view, eventModel),
@@ -625,6 +624,9 @@ public class EventfulCompass
         Control view,
         Action activate)
     {
+        if (!CommonHelpers.TryFindDescendantOrSelf(view, out Button button))
+            return CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate) ?? (() => { });
+
         void OnPressed() => activate();
         void OnGuiInput(InputEvent inputEvent)
         {
@@ -639,24 +641,18 @@ public class EventfulCompass
             }
 
             OneEventModeService.RequestCycle(eventModel.Id);
-            view.AcceptEvent();
+            button.AcceptEvent();
         }
 
-        Action fallbackCleanup = null;
-        if (view is Button button)
-            button.Pressed += OnPressed;
-        else
-            fallbackCleanup = CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate);
-        view.GuiInput += OnGuiInput;
+        button.Pressed += OnPressed;
+        button.GuiInput += OnGuiInput;
 
         return () =>
         {
-            if (!GodotObject.IsInstanceValid(view))
+            if (!GodotObject.IsInstanceValid(button))
                 return;
-            if (view is Button currentButton)
-                currentButton.Pressed -= OnPressed;
-            fallbackCleanup?.Invoke();
-            view.GuiInput -= OnGuiInput;
+            button.Pressed -= OnPressed;
+            button.GuiInput -= OnGuiInput;
         };
     }
 
@@ -686,9 +682,14 @@ public class EventfulCompass
 
     private static void UpdateOneEventVisual(Control view, EventModel eventModel)
     {
+        if (!CommonHelpers.TryFindDescendantOrSelf(view, out Button button))
+            return;
+
         ModelId selectedId = OneEventModeService.SelectedEventId;
-        bool selected = selectedId == eventModel.Id;
-        NOneEventSelectionVisual.Apply(view, selected, dimmed: selectedId is not null && !selected);
+        OneEventMode mode = selectedId == eventModel.Id
+            ? OneEventModeService.Mode
+            : OneEventMode.Off;
+        NOneEventSelectionVisual.Apply(button, mode);
     }
 
     private static Control CreateEventGridItem(EventModel model)

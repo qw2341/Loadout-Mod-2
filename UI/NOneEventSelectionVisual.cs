@@ -2,34 +2,37 @@
 
 namespace Loadout.UI;
 
-using System;
 using Godot;
-using MegaCrit.Sts2.Core.Assets;
+using Loadout.Services.OneEvent;
 
 public partial class NOneEventSelectionVisual : Node
 {
     public const string NodeName = "OneEventSelectionVisual";
-    public const string RareGlowScenePath = NOneRelicSelectionVisual.RareGlowScenePath;
     private const string OutlineName = "OneEventRainbowOutline";
+    private const string PaintName = "OneEventRainbowPaint";
+    private const float PaintAlpha = 0.42f;
 
     private ReferenceRect? _outline;
-    private GpuParticles2D? _glow;
+    private ColorRect? _paint;
+    private Control? _title;
+    private Control? _epithet;
+    private Color _titleColor;
+    private Color _epithetColor;
     private float _phase;
+    private OneEventMode _mode;
 
-    public static void Apply(Control view, bool selected, bool dimmed)
+    public static void Apply(Control view, OneEventMode mode)
     {
-        Color selfModulate = Colors.White;
-        selfModulate.A = dimmed ? 0.9f : 1f;
-        view.SelfModulate = selfModulate;
+        view.SelfModulate = Colors.White;
 
         NOneEventSelectionVisual? visual = view.GetNodeOrNull<NOneEventSelectionVisual>(NodeName);
-        if (visual is null && selected)
+        if (visual is null && mode != OneEventMode.Off)
         {
             visual = new NOneEventSelectionVisual { Name = NodeName };
             view.AddChild(visual);
             visual.Initialize(view);
         }
-        visual?.ApplySelection(selected);
+        visual?.ApplyMode(mode);
     }
 
     public override void _Process(double delta)
@@ -40,12 +43,34 @@ public partial class NOneEventSelectionVisual : Node
         Color color = NLoadoutPanelButton.GetSineRainbowColor(_phase);
         if (_outline is not null && IsInstanceValid(_outline))
             _outline.BorderColor = color;
-        if (_glow is not null && IsInstanceValid(_glow))
-            _glow.Modulate = color;
+        if (_mode == OneEventMode.All)
+        {
+            if (_paint is not null && IsInstanceValid(_paint))
+                _paint.Color = new Color(color.R, color.G, color.B, PaintAlpha);
+            ApplyFontColor(color);
+        }
     }
 
     private void Initialize(Control view)
     {
+        _title = view.GetNodeOrNull<Control>("EventTitle");
+        _epithet = view.GetNodeOrNull<Control>("AncientEpithet");
+        if (_title is not null)
+            _titleColor = _title.GetThemeColor("font_color");
+        if (_epithet is not null)
+            _epithetColor = _epithet.GetThemeColor("font_color");
+
+        _paint = new ColorRect
+        {
+            Name = PaintName,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Color = Colors.Transparent
+        };
+        _paint.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        view.AddChild(_paint);
+        if (_title is not null)
+            view.MoveChild(_paint, _title.GetIndex());
+
         _outline = new ReferenceRect
         {
             Name = OutlineName,
@@ -57,37 +82,44 @@ public partial class NOneEventSelectionVisual : Node
         };
         _outline.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         view.AddChild(_outline);
-
-        try
-        {
-            _glow = PreloadManager.Cache.GetScene(RareGlowScenePath)
-                .Instantiate<GpuParticles2D>(PackedScene.GenEditState.Disabled);
-            _glow.Name = "OneEventRainbowGlow";
-            _glow.ShowBehindParent = true;
-            Vector2 bounds = view.Size.X > 0f && view.Size.Y > 0f
-                ? view.Size
-                : view.CustomMinimumSize;
-            _glow.Position = bounds * 0.5f;
-            _glow.Scale = new Vector2(0.65f, 0.42f);
-            view.AddChild(_glow);
-        }
-        catch (Exception exception)
-        {
-            GD.PushWarning($"OneEvent: could not create the native rare treasure glow. {exception.Message}");
-        }
     }
 
-    private void ApplySelection(bool selected)
+    private void ApplyMode(OneEventMode mode)
     {
+        _mode = mode;
         if (_outline is not null && IsInstanceValid(_outline))
-            _outline.Visible = selected;
-        if (_glow is not null && IsInstanceValid(_glow))
+            _outline.Visible = mode != OneEventMode.Off;
+        if (_paint is not null && IsInstanceValid(_paint))
+            _paint.Visible = mode == OneEventMode.All;
+
+        if (mode == OneEventMode.All)
         {
-            _glow.Visible = selected;
-            _glow.Emitting = selected;
-            if (selected)
-                _glow.Restart();
+            Color color = NLoadoutPanelButton.GetSineRainbowColor(_phase);
+            if (_paint is not null && IsInstanceValid(_paint))
+                _paint.Color = new Color(color.R, color.G, color.B, PaintAlpha);
+            ApplyFontColor(color);
         }
-        SetProcess(selected);
+        else
+        {
+            RestoreFontColors();
+        }
+
+        SetProcess(mode != OneEventMode.Off);
+    }
+
+    private void ApplyFontColor(Color color)
+    {
+        if (_title is not null && IsInstanceValid(_title))
+            _title.AddThemeColorOverride("font_color", color);
+        if (_epithet is not null && IsInstanceValid(_epithet))
+            _epithet.AddThemeColorOverride("font_color", color);
+    }
+
+    private void RestoreFontColors()
+    {
+        if (_title is not null && IsInstanceValid(_title))
+            _title.AddThemeColorOverride("font_color", _titleColor);
+        if (_epithet is not null && IsInstanceValid(_epithet))
+            _epithet.AddThemeColorOverride("font_color", _epithetColor);
     }
 }
