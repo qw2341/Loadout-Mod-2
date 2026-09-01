@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.InspectScreens;
 using MegaCrit.Sts2.Core.Nodes.Screens.RelicCollection;
@@ -135,7 +136,14 @@ public static class RelicCollectionHoverTipPermanentDisplayPatch
 public static class RelicObtainModificationPatch
 {
     [HarmonyPrefix]
-    public static void Prefix(RelicModel relic) => RelicModificationStateService.ApplyPermanentToRelic(relic);
+    [HarmonyPriority(Priority.Low)]
+    public static void Prefix(ref RelicModel relic, Player player)
+    {
+        // Darv prepares this before the native obtain path.
+        if (relic is DustyTome { AncientCard: null } dustyTome)
+            dustyTome.SetupForPlayer(player);
+        RelicModificationStateService.ApplyPermanentToRelic(relic);
+    }
 }
 
 [HarmonyPatch(typeof(Player), "PopulateRelics", typeof(IEnumerable<RelicModel>), typeof(bool))]
