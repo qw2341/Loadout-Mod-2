@@ -33,7 +33,7 @@ public enum OneEventMode : byte
 public static class OneEventModeService
 {
     private const int MaxSnapshotLength = 64 * 1024;
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const string RunDirectory = "loadout/services/one_event";
     private const string RunFilePrefix = "one_event_run";
 
@@ -45,6 +45,8 @@ public static class OneEventModeService
     private static RunLobby? _runLobby;
     private static Delegate? _playerRejoinedHandler;
     private static string? _pendingHostSnapshotJson;
+    private static bool _mayResumeSavedEntry;
+    private static bool _awaitingInitialHostSnapshot;
 
     public static event Action? Changed;
     public static event Action<OneEventSelectionChanged>? SelectionChanged;
@@ -146,7 +148,14 @@ public static class OneEventModeService
             INetGameService netService = RunManager.Instance.NetService;
             ClearRuntimeState(preservePendingHostSnapshot: netService.Type == NetGameType.Client);
             if (netService.Type is NetGameType.Host or NetGameType.Singleplayer or NetGameType.Replay)
+            {
                 LoadRunState();
+                _mayResumeSavedEntry = _state.EntrySequence > 0;
+            }
+            else
+            {
+                _awaitingInitialHostSnapshot = true;
+            }
             RegisterRunNetService(netService);
             BindRunLobby(RunManager.Instance.RunLobby);
         }
@@ -165,8 +174,15 @@ public static class OneEventModeService
             BindRunLobby(RunManager.Instance.RunLobby);
             if (netService.Type == NetGameType.Client)
             {
-                if (!ApplyPendingHostSnapshot())
+                if (ApplyPendingHostSnapshot())
+                {
+                    _mayResumeSavedEntry = _state.EntrySequence > 0;
+                    _awaitingInitialHostSnapshot = false;
+                }
+                else
+                {
                     netService.SendMessage(default(OneEventSnapshotRequestMessage));
+                }
             }
             else
             {
@@ -238,10 +254,36 @@ public static class OneEventModeService
 
         selected = eventModel;
         replaceRoom = room.CanonicalEvent.Id != eventModel.Id;
-        _state.EntrySequence++;
-        occurrence = _state.EntrySequence;
+        string entryKey = BuildEntryKey(runState);
+        bool resumeSavedOccurrence = _mayResumeSavedEntry
+                                     && _state.EntrySequence > 0
+                                     && (string.IsNullOrEmpty(_state.LastEntryKey)
+                                         || string.Equals(_state.LastEntryKey, entryKey, StringComparison.Ordinal));
+        _mayResumeSavedEntry = false;
+        if (resumeSavedOccurrence)
+        {
+            _state.LastEntryKey = entryKey;
+            occurrence = _state.EntrySequence;
+        }
+        else
+        {
+            _state.EntrySequence++;
+            _state.LastEntryKey = entryKey;
+            occurrence = _state.EntrySequence;
+        }
         SaveRunStateIfAuthoritative();
         return true;
+    }
+
+    private static string BuildEntryKey(RunState runState)
+    {
+        MapCoord? coord = runState.CurrentMapCoord;
+        int historyCount = runState.CurrentActIndex >= 0
+                           && runState.CurrentActIndex < runState.MapPointHistory.Count
+            ? runState.MapPointHistory[runState.CurrentActIndex].Count
+            : 0;
+        int roomCount = runState.CurrentMapPointHistoryEntry?.Rooms.Count ?? 0;
+        return $"{runState.CurrentActIndex}:{runState.ActFloor}:{coord?.col ?? -1}:{coord?.row ?? -1}:{historyCount}:{roomCount}";
     }
 
     internal static void RecordRoomReplacement(EventModel previous, EventModel selected)
@@ -286,6 +328,8 @@ public static class OneEventModeService
 
     private static void RebuildSelection()
     {
+        _state.EntrySequence = Math.Max(0, _state.EntrySequence);
+        _state.LastEntryKey ??= string.Empty;
         if (_state.Mode is not (OneEventMode.Normal or OneEventMode.All)
             || ResolveCanonicalEvent(_state.EventId) is not { } eventModel)
         {
@@ -463,6 +507,11 @@ public static class OneEventModeService
                 return;
             }
             ApplyHostSnapshot(incoming);
+            if (_awaitingInitialHostSnapshot)
+            {
+                _mayResumeSavedEntry = _state.EntrySequence > 0;
+                _awaitingInitialHostSnapshot = false;
+            }
         }
         catch (Exception exception)
         {
@@ -524,6 +573,8 @@ public static class OneEventModeService
         OneEventMode previousMode = Mode;
         _state = new OneEventRunSaveData();
         _selectedEvent = null;
+        _mayResumeSavedEntry = false;
+        _awaitingInitialHostSnapshot = false;
         if (!preservePendingHostSnapshot)
             _pendingHostSnapshotJson = null;
         Changed?.Invoke();
@@ -544,6 +595,7 @@ public static class OneEventModeService
         public string EventId { get; set; } = string.Empty;
         public OneEventMode Mode { get; set; }
         public long EntrySequence { get; set; }
+        public string LastEntryKey { get; set; } = string.Empty;
 
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
@@ -552,6 +604,7 @@ public static class OneEventModeService
             info.AddValue(nameof(EventId), EventId);
             info.AddValue(nameof(Mode), Mode);
             info.AddValue(nameof(EntrySequence), EntrySequence);
+            info.AddValue(nameof(LastEntryKey), LastEntryKey);
         }
     }
 }
