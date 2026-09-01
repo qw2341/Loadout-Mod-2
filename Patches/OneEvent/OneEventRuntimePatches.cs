@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using HarmonyLib;
 using Loadout.Services.ContentBans;
 using Loadout.Services.Events;
@@ -28,7 +27,8 @@ internal static class OneEventModifyNextEventPatch
     [HarmonyPriority(Priority.Last)]
     internal static void Postfix(IRunState runState, ref EventModel __result)
     {
-        if (OneEventModeService.TryResolveOrdinaryEvent(__result, out EventModel selected))
+        if (OneEventModeService.IsActive
+            && OneEventModeService.TryResolveOrdinaryEvent(__result, out EventModel selected))
         {
             __result = selected;
             return;
@@ -46,7 +46,8 @@ internal static class OneEventPullAncientPatch
     [HarmonyPriority(Priority.Last)]
     internal static void Postfix(ref EventModel __result)
     {
-        if (OneEventModeService.TryResolveAncientEvent(out EventModel selected))
+        if (OneEventModeService.IsActive
+            && OneEventModeService.TryResolveAncientEvent(out EventModel selected))
         {
             __result = selected;
             return;
@@ -109,7 +110,8 @@ internal static class OneEventRoomEntryPatch
     internal static void Prefix(ref AbstractRoom __0, bool __1, out IDisposable? __state)
     {
         __state = null;
-        if (__0 is not EventRoom room
+        if (!OneEventModeService.IsActive
+            || __0 is not EventRoom room
             || !OneEventModeService.TryPrepareRoomEntry(
                 room,
                 __1,
@@ -131,23 +133,8 @@ internal static class OneEventRoomEntryPatch
     }
 
     [HarmonyPostfix]
-    internal static void Postfix(IDisposable? __state, ref Task __result)
-    {
-        if (__state is not null)
-            __result = DisposeAfterAsync(__result, __state);
-    }
-
-    private static async Task DisposeAfterAsync(Task nativeTask, IDisposable scope)
-    {
-        try
-        {
-            await nativeTask;
-        }
-        finally
-        {
-            scope.Dispose();
-        }
-    }
+    // The native async state machine captured the scope; restore the caller context now.
+    internal static void Postfix(IDisposable? __state) => __state?.Dispose();
 }
 
 [HarmonyPatch(typeof(EventRoom), MethodType.Constructor, typeof(SerializableRoom))]
@@ -193,7 +180,8 @@ internal static class OneEventRngPatch
     [HarmonyPriority(Priority.First)]
     internal static void Prefix(EventModel __instance, ref Rng __0)
     {
-        if (EventRngScope.TryCreate(__instance, out Rng mixed))
+        if (OneEventModeService.IsActive
+            && EventRngScope.TryCreate(__instance, out Rng mixed))
             __0 = mixed;
     }
 }
