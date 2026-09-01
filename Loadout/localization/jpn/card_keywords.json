@@ -7,6 +7,8 @@
   "LOADOUT-X_COST.description": "コストX。このカードの効果をX回繰り返す。",
   "LOADOUT-INFINITE_UPGRADE.title": "無限アップグレード",
   "LOADOUT-INFINITE_UPGRADE.description": "何度でもアップグレードできる。",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.title": "!? 無限アップグレード ?!",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.description": "何度でもアップグレードできる。アップグレードされる各数値は、通常の増加量を得る代わりに2倍になる。",
   "LOADOUT-PASSING.title": "パス",
   "LOADOUT-PASSING.description": "プレイ後、このカードをランダムな味方の[gold]山札[/gold]へシャッフルする。",
   "LOADOUT-LIVID.title": "激怒",

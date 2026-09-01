@@ -31,6 +31,7 @@ public static class LoadoutKeywordRegistry
         LividKeyword.Instance,
         XCostKeyword.Instance,
         InfiniteUpgradeKeyword.Instance,
+        JokeInfiniteUpgradeKeyword.Instance,
         HeavenlyKeyword.Instance,
         AltHeavenlyKeyword.Instance,
         LifestealKeyword.Instance,

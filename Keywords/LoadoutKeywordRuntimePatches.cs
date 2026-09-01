@@ -79,7 +79,8 @@ internal static class LoadoutKeywordRuntimePatches
 
     public static void EnableFromDelta(CardModificationDelta delta)
     {
-        if (IsEnabled(delta, LoadoutKeywords.InfiniteUpgradeKey))
+        if (IsEnabled(delta, LoadoutKeywords.InfiniteUpgradeKey)
+            || IsEnabled(delta, LoadoutKeywords.JokeInfiniteUpgradeKey))
             SetInfiniteUpgradeEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.XCostKey))
             SetXCostEnabled(true);
@@ -124,7 +125,8 @@ internal static class LoadoutKeywordRuntimePatches
 
     public static void EnableFromOverrides(IReadOnlyDictionary<string, bool> overrides)
     {
-        if (IsEnabled(overrides, LoadoutKeywords.InfiniteUpgradeKey))
+        if (IsEnabled(overrides, LoadoutKeywords.InfiniteUpgradeKey)
+            || IsEnabled(overrides, LoadoutKeywords.JokeInfiniteUpgradeKey))
             SetInfiniteUpgradeEnabled(true);
         if (IsEnabled(overrides, LoadoutKeywords.XCostKey))
             SetXCostEnabled(true);
@@ -177,6 +179,36 @@ internal static class LoadoutKeywordRuntimePatches
             : null;
     }
 
+    public static bool? GetJokeInfiniteUpgradeOverride(
+        CardModificationSpec? state)
+    {
+        return state?.KeywordOverrides.TryGetValue(
+            LoadoutKeywords.JokeInfiniteUpgradeKey,
+            out bool enabled) == true
+            ? enabled
+            : null;
+    }
+
+    public static bool? GetJokeInfiniteUpgradeOverride(
+        CardModificationDelta? delta)
+    {
+        return delta?.KeywordOverrides.TryGetValue(
+            LoadoutKeywords.JokeInfiniteUpgradeKey,
+            out bool enabled) == true
+            ? enabled
+            : null;
+    }
+
+    public static bool? GetJokeInfiniteUpgradeOverride(
+        CardUpgradeModificationSpec? modification)
+    {
+        return modification?.KeywordOverrides.TryGetValue(
+            LoadoutKeywords.JokeInfiniteUpgradeKey,
+            out bool enabled) == true
+            ? enabled
+            : null;
+    }
+
     public static bool? ResolveEffectiveInfiniteUpgrade(
         CardModificationSpec? permanent,
         CardModificationDelta? temporary,
@@ -185,6 +217,16 @@ internal static class LoadoutKeywordRuntimePatches
         return GetInfiniteUpgradeOverride(temporary)
                ?? GetInfiniteUpgradeOverride(legacyTemporary)
                ?? GetInfiniteUpgradeOverride(permanent);
+    }
+
+    public static bool? ResolveEffectiveJokeInfiniteUpgrade(
+        CardModificationSpec? permanent,
+        CardModificationDelta? temporary,
+        CardModificationSpec? legacyTemporary = null)
+    {
+        return GetJokeInfiniteUpgradeOverride(temporary)
+               ?? GetJokeInfiniteUpgradeOverride(legacyTemporary)
+               ?? GetJokeInfiniteUpgradeOverride(permanent);
     }
 
     public static void EnsureInfiniteUpgradeEnabled()
@@ -272,6 +314,9 @@ internal static class LoadoutKeywordRuntimePatches
     private static void AddDeltaFeatures(CardModificationDelta delta, ref KeywordFeatureState state)
     {
         state.InfiniteUpgrade |= IsEnabled(delta, LoadoutKeywords.InfiniteUpgradeKey);
+        state.InfiniteUpgrade |= IsEnabled(
+            delta,
+            LoadoutKeywords.JokeInfiniteUpgradeKey);
         state.XCost |= IsEnabled(delta, LoadoutKeywords.XCostKey);
         state.Sticky |= IsEnabled(delta, LoadoutKeywords.StickyKey);
         state.Passing |= IsEnabled(delta, LoadoutKeywords.PassingKey);
@@ -281,6 +326,9 @@ internal static class LoadoutKeywordRuntimePatches
         state.InfiniteUpgrade |= IsEnabled(
             delta.UpgradeModification.KeywordOverrides,
             LoadoutKeywords.InfiniteUpgradeKey);
+        state.InfiniteUpgrade |= IsEnabled(
+            delta.UpgradeModification.KeywordOverrides,
+            LoadoutKeywords.JokeInfiniteUpgradeKey);
         state.XCost |= IsEnabled(
             delta.UpgradeModification.KeywordOverrides,
             LoadoutKeywords.XCostKey);
@@ -370,7 +418,11 @@ internal static class LoadoutKeywordRuntimePatches
         foreach (CardModel card in cards)
         {
             LoadoutKeywordRegistry.SynchronizeOriginalModelHookSuppression(card);
-            state.InfiniteUpgrade |= LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
+            state.InfiniteUpgrade |=
+                LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade)
+                || LoadoutKeywords.Has(
+                    card,
+                    LoadoutKeywords.JokeInfiniteUpgrade);
             state.XCost |= LoadoutKeywords.Has(card, LoadoutKeywords.XCost);
             state.Sticky |= LoadoutKeywords.Has(card, LoadoutKeywords.Sticky);
             state.Passing |= LoadoutKeywords.Has(card, LoadoutKeywords.Passing);

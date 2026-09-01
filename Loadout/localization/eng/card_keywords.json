@@ -7,6 +7,8 @@
   "LOADOUT-X_COST.description": "Costs X. This card's effect is repeated X times.",
   "LOADOUT-INFINITE_UPGRADE.title": "Infinite Upgrade",
   "LOADOUT-INFINITE_UPGRADE.description": "Can be upgraded indefinitely.",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.title": "!? Infinite Upgrade ?!",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.description": "Can be upgraded indefinitely. Each value upgraded is doubled instead of receiving its normal increase.",
   "LOADOUT-PASSING.title": "Passing",
   "LOADOUT-PASSING.description": "This card is shuffled into a random ally's [gold]Draw Pile[/gold] after being played.",
   "LOADOUT-LIVID.title": "Livid",

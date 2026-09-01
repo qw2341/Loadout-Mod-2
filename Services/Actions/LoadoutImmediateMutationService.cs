@@ -1892,8 +1892,23 @@ public static class LoadoutImmediateMutationService
         }
         bool? useUpgradedInfiniteUpgradeValues =
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(state.UpgradeModification);
+        bool? useJokeInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.GetJokeInfiniteUpgradeOverride(state);
+        if (!useJokeInfiniteUpgradeValues.HasValue
+            && ResolveCanonicalCard(item.Model.Id) is { } jokeCanonical
+            && LoadoutKeywords.Has(
+                jokeCanonical,
+                LoadoutKeywords.JokeInfiniteUpgrade))
+        {
+            useJokeInfiniteUpgradeValues = true;
+        }
+        bool? useUpgradedJokeInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.GetJokeInfiniteUpgradeOverride(
+                state.UpgradeModification);
         if (useInfiniteUpgradeValues == true
-            || useUpgradedInfiniteUpgradeValues == true)
+            || useUpgradedInfiniteUpgradeValues == true
+            || useJokeInfiniteUpgradeValues == true
+            || useUpgradedJokeInfiniteUpgradeValues == true)
         {
             LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
         }
@@ -1906,6 +1921,8 @@ public static class LoadoutImmediateMutationService
                 state.UpgradeModification,
                 useInfiniteUpgradeValues,
                 useUpgradedInfiniteUpgradeValues,
+                useJokeInfiniteUpgradeValues,
+                useUpgradedJokeInfiniteUpgradeValues,
                 out bool cardChanged);
             changed |= cardChanged;
             if (!completed)
@@ -1926,6 +1943,8 @@ public static class LoadoutImmediateMutationService
         CardUpgradeModificationSpec upgradeModification,
         bool? useInfiniteUpgradeValues,
         bool? useUpgradedInfiniteUpgradeValues,
+        bool? useJokeInfiniteUpgradeValues,
+        bool? useUpgradedJokeInfiniteUpgradeValues,
         out bool changed)
     {
         changed = false;
@@ -1938,7 +1957,9 @@ public static class LoadoutImmediateMutationService
             InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
                 targetUpgradeLevel,
                 useInfiniteUpgradeValues,
-                useUpgradedInfiniteUpgradeValues);
+                useUpgradedInfiniteUpgradeValues,
+                useJokeInfiniteUpgradeValues,
+                useUpgradedJokeInfiniteUpgradeValues);
         IDisposable upgradeModificationScope =
             CardUpgradeModificationRuntimePatches.BeginOverride(
                 upgradeModification);

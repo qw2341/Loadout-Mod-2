@@ -2226,8 +2226,16 @@ public static class CardModificationRuntime
         bool? useUpgradedInfiniteUpgradeValues =
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(
                 upgradeModification);
+        bool useJokeInfiniteUpgradeValues = LoadoutKeywords.Has(
+            baseline,
+            LoadoutKeywords.JokeInfiniteUpgrade);
+        bool? useUpgradedJokeInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.GetJokeInfiniteUpgradeOverride(
+                upgradeModification);
         if (useInfiniteUpgradeValues
-            || useUpgradedInfiniteUpgradeValues == true)
+            || useUpgradedInfiniteUpgradeValues == true
+            || useJokeInfiniteUpgradeValues
+            || useUpgradedJokeInfiniteUpgradeValues == true)
         {
             LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
         }
@@ -2237,7 +2245,9 @@ public static class CardModificationRuntime
             InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
                 count,
                 useInfiniteUpgradeValues,
-                useUpgradedInfiniteUpgradeValues);
+                useUpgradedInfiniteUpgradeValues,
+                useJokeInfiniteUpgradeValues,
+                useUpgradedJokeInfiniteUpgradeValues);
         IDisposable upgradeScope =
             CardUpgradeModificationRuntimePatches.BeginOverride(upgradeModification);
         try

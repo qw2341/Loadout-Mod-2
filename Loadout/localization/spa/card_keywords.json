@@ -7,6 +7,8 @@
   "LOADOUT-X_COST.description": "Cuesta X. El efecto de esta carta se repite X veces.",
   "LOADOUT-INFINITE_UPGRADE.title": "Mejora infinita",
   "LOADOUT-INFINITE_UPGRADE.description": "Puede mejorarse indefinidamente.",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.title": "!? Mejora infinita ?!",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.description": "Puede mejorarse indefinidamente. Cada valor mejorado se duplica en vez de recibir su aumento normal.",
   "LOADOUT-PASSING.title": "Pase",
   "LOADOUT-PASSING.description": "Esta carta se baraja en la [gold]Pila de robo[/gold] de un aliado al azar después de jugarse.",
   "LOADOUT-LIVID.title": "Furiosa",

@@ -274,6 +274,11 @@ public static class CardModelFromSerializableCardModificationPatch
             permanent,
             loaded?.Delta,
             loaded?.LegacyAbsolute);
+        bool? useJokeInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.ResolveEffectiveJokeInfiniteUpgrade(
+                permanent,
+                loaded?.Delta,
+                loaded?.LegacyAbsolute);
         CardUpgradeModificationSpec upgradeModification =
             CardModificationRuntime.ResolveUpgradeModification(
                 permanent,
@@ -282,8 +287,13 @@ public static class CardModelFromSerializableCardModificationPatch
         bool? useUpgradedInfiniteUpgradeValues =
             LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(
                 upgradeModification);
+        bool? useUpgradedJokeInfiniteUpgradeValues =
+            LoadoutKeywordRuntimePatches.GetJokeInfiniteUpgradeOverride(
+                upgradeModification);
         if (useInfiniteUpgradeValues == true
-            || useUpgradedInfiniteUpgradeValues == true)
+            || useUpgradedInfiniteUpgradeValues == true
+            || useJokeInfiniteUpgradeValues == true
+            || useUpgradedJokeInfiniteUpgradeValues == true)
         {
             LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
         }
@@ -292,7 +302,9 @@ public static class CardModelFromSerializableCardModificationPatch
             InfiniteUpgradeMaxLevelPatch.BeginDeserialization(
                 save.CurrentUpgradeLevel,
                 useInfiniteUpgradeValues,
-                useUpgradedInfiniteUpgradeValues);
+                useUpgradedInfiniteUpgradeValues,
+                useJokeInfiniteUpgradeValues,
+                useUpgradedJokeInfiniteUpgradeValues);
         IDisposable upgradeModificationScope =
             CardUpgradeModificationRuntimePatches.BeginOverride(
                 upgradeModification);

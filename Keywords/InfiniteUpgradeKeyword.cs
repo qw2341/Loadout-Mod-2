@@ -37,21 +37,37 @@ public static class InfiniteUpgradeMaxLevelPatch
     [ThreadStatic]
     private static bool? _deserializingUpgradedInfiniteUpgradeValues;
 
+    [ThreadStatic]
+    private static bool? _deserializingJokeInfiniteUpgradeValues;
+
+    [ThreadStatic]
+    private static bool? _deserializingUpgradedJokeInfiniteUpgradeValues;
+
     public static InfiniteUpgradeDeserializationState BeginDeserialization(
         int maxLevel,
         bool? useInfiniteUpgradeValues = null,
-        bool? useUpgradedInfiniteUpgradeValues = null)
+        bool? useUpgradedInfiniteUpgradeValues = null,
+        bool? useJokeInfiniteUpgradeValues = null,
+        bool? useUpgradedJokeInfiniteUpgradeValues = null)
     {
         InfiniteUpgradeDeserializationState previous = new(
             _deserializingMaxLevel,
             _deserializingInfiniteUpgradeValues,
-            _deserializingUpgradedInfiniteUpgradeValues);
+            _deserializingUpgradedInfiniteUpgradeValues,
+            _deserializingJokeInfiniteUpgradeValues,
+            _deserializingUpgradedJokeInfiniteUpgradeValues);
         _deserializingMaxLevel = Math.Max(_deserializingMaxLevel, maxLevel);
         if (useInfiniteUpgradeValues.HasValue)
             _deserializingInfiniteUpgradeValues = useInfiniteUpgradeValues;
         if (useUpgradedInfiniteUpgradeValues.HasValue)
             _deserializingUpgradedInfiniteUpgradeValues =
                 useUpgradedInfiniteUpgradeValues;
+        if (useJokeInfiniteUpgradeValues.HasValue)
+            _deserializingJokeInfiniteUpgradeValues =
+                useJokeInfiniteUpgradeValues;
+        if (useUpgradedJokeInfiniteUpgradeValues.HasValue)
+            _deserializingUpgradedJokeInfiniteUpgradeValues =
+                useUpgradedJokeInfiniteUpgradeValues;
         return previous;
     }
 
@@ -61,15 +77,40 @@ public static class InfiniteUpgradeMaxLevelPatch
         _deserializingInfiniteUpgradeValues = previous.UseInfiniteUpgradeValues;
         _deserializingUpgradedInfiniteUpgradeValues =
             previous.UseUpgradedInfiniteUpgradeValues;
+        _deserializingJokeInfiniteUpgradeValues =
+            previous.UseJokeInfiniteUpgradeValues;
+        _deserializingUpgradedJokeInfiniteUpgradeValues =
+            previous.UseUpgradedJokeInfiniteUpgradeValues;
     }
 
-    public static bool? ResolveInfiniteUpgradeValues(CardModel card)
+    public static InfiniteUpgradeScalingMode ResolveScalingMode(CardModel card)
     {
-        return card.CurrentUpgradeLevel > 0
-               && _deserializingUpgradedInfiniteUpgradeValues.HasValue
-            ? _deserializingUpgradedInfiniteUpgradeValues
-            : _deserializingInfiniteUpgradeValues;
+        bool useJokeInfiniteUpgrade = ResolveKeywordState(
+            card,
+            LoadoutKeywords.JokeInfiniteUpgrade,
+            _deserializingJokeInfiniteUpgradeValues,
+            _deserializingUpgradedJokeInfiniteUpgradeValues);
+        if (useJokeInfiniteUpgrade)
+            return InfiniteUpgradeScalingMode.Double;
+
+        bool useInfiniteUpgrade = ResolveKeywordState(
+            card,
+            LoadoutKeywords.InfiniteUpgrade,
+            _deserializingInfiniteUpgradeValues,
+            _deserializingUpgradedInfiniteUpgradeValues);
+        return useInfiniteUpgrade
+            ? InfiniteUpgradeScalingMode.Incremental
+            : InfiniteUpgradeScalingMode.None;
     }
+
+    private static bool ResolveKeywordState(
+        CardModel card,
+        CardKeyword keyword,
+        bool? baseOverride,
+        bool? upgradedOverride) =>
+        card.CurrentUpgradeLevel > 0 && upgradedOverride.HasValue
+            ? upgradedOverride.Value
+            : baseOverride ?? LoadoutKeywords.Has(card, keyword);
 
     public static IEnumerable<MethodBase> TargetMethods()
     {
@@ -86,7 +127,10 @@ public static class InfiniteUpgradeMaxLevelPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref int __result)
     {
-        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade))
+        if (LoadoutKeywords.Has(__instance, LoadoutKeywords.InfiniteUpgrade)
+            || LoadoutKeywords.Has(
+                __instance,
+                LoadoutKeywords.JokeInfiniteUpgrade))
         {
             __result = int.MaxValue;
             return;
@@ -99,13 +143,24 @@ public static class InfiniteUpgradeMaxLevelPatch
 public readonly record struct InfiniteUpgradeDeserializationState(
     int MaxLevel,
     bool? UseInfiniteUpgradeValues,
-    bool? UseUpgradedInfiniteUpgradeValues);
+    bool? UseUpgradedInfiniteUpgradeValues,
+    bool? UseJokeInfiniteUpgradeValues,
+    bool? UseUpgradedJokeInfiniteUpgradeValues);
+
+public enum InfiniteUpgradeScalingMode
+{
+    None,
+    Incremental,
+    Double
+}
 
 public static class InfiniteUpgradeValueScaling
 {
+    public static InfiniteUpgradeScalingMode Resolve(CardModel card) =>
+        InfiniteUpgradeMaxLevelPatch.ResolveScalingMode(card);
+
     public static bool AppliesTo(CardModel card) =>
-        InfiniteUpgradeMaxLevelPatch.ResolveInfiniteUpgradeValues(card)
-        ?? LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
+        Resolve(card) != InfiniteUpgradeScalingMode.None;
 
     public static int GetCurrentUpgradeBonus(int currentUpgradeLevel) =>
         currentUpgradeLevel > 1
@@ -121,14 +176,19 @@ public static class InfiniteUpgradeValueScaling
 
 public readonly struct InfiniteUpgradeContextState
 {
-    public InfiniteUpgradeContextState(CardModel? activeCard, bool isApplyingNativeUpgrade)
+    public InfiniteUpgradeContextState(
+        CardModel? activeCard,
+        bool isApplyingNativeUpgrade,
+        InfiniteUpgradeScalingMode scalingMode)
     {
         ActiveCard = activeCard;
         IsApplyingNativeUpgrade = isApplyingNativeUpgrade;
+        ScalingMode = scalingMode;
     }
 
     public CardModel? ActiveCard { get; }
     public bool IsApplyingNativeUpgrade { get; }
+    public InfiniteUpgradeScalingMode ScalingMode { get; }
 }
 
 public static class InfiniteUpgradeContextPatch
@@ -139,12 +199,18 @@ public static class InfiniteUpgradeContextPatch
     [ThreadStatic]
     internal static bool IsApplyingNativeUpgrade;
 
+    [ThreadStatic]
+    internal static InfiniteUpgradeScalingMode ScalingMode;
+
     [HarmonyPrefix]
     public static void Prefix(CardModel __instance, out InfiniteUpgradeContextState __state)
     {
-        __state = new InfiniteUpgradeContextState(ActiveCard, IsApplyingNativeUpgrade);
-        bool useInfiniteUpgradeValues = InfiniteUpgradeValueScaling.AppliesTo(__instance);
-        ActiveCard = useInfiniteUpgradeValues
+        __state = new InfiniteUpgradeContextState(
+            ActiveCard,
+            IsApplyingNativeUpgrade,
+            ScalingMode);
+        ScalingMode = InfiniteUpgradeValueScaling.Resolve(__instance);
+        ActiveCard = ScalingMode != InfiniteUpgradeScalingMode.None
             ? __instance
             : null;
         IsApplyingNativeUpgrade = ActiveCard is not null;
@@ -155,6 +221,7 @@ public static class InfiniteUpgradeContextPatch
     {
         ActiveCard = __state.ActiveCard;
         IsApplyingNativeUpgrade = __state.IsApplyingNativeUpgrade;
+        ScalingMode = __state.ScalingMode;
         return __exception;
     }
 }
@@ -191,8 +258,14 @@ public static class InfiniteUpgradeDynamicValuePatch
             return;
         }
 
+        if (InfiniteUpgradeContextPatch.ScalingMode
+            == InfiniteUpgradeScalingMode.Double)
+        {
+            addend = __instance.BaseValue;
+            return;
+        }
+
         // UpgradeInternal increments CurrentUpgradeLevel before OnUpgrade.
-        // +1: native amount; +2: native + 1; +3: native + 2; etc.
         int extraValue = InfiniteUpgradeValueScaling.GetCurrentUpgradeBonus(
             card.CurrentUpgradeLevel);
         if (extraValue > 0)

@@ -210,20 +210,22 @@ public static class LoadoutApplyService
 
             bool? infiniteUpgradeOverride =
                 LoadoutKeywordRuntimePatches.GetInfiniteUpgradeOverride(modificationState);
-            if (infiniteUpgradeOverride.HasValue)
+            bool? jokeInfiniteUpgradeOverride =
+                LoadoutKeywordRuntimePatches.GetJokeInfiniteUpgradeOverride(
+                    modificationState);
+            if (infiniteUpgradeOverride == true
+                || jokeInfiniteUpgradeOverride == true)
             {
-                bool hasInfiniteUpgrade = LoadoutKeywords.Has(card, LoadoutKeywords.InfiniteUpgrade);
-                if (infiniteUpgradeOverride.Value)
-                {
-                    LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
-                    if (!hasInfiniteUpgrade)
-                        card.AddKeyword(LoadoutKeywords.InfiniteUpgrade);
-                }
-                else if (hasInfiniteUpgrade)
-                {
-                    card.RemoveKeyword(LoadoutKeywords.InfiniteUpgrade);
-                }
+                LoadoutKeywordRuntimePatches.EnsureInfiniteUpgradeEnabled();
             }
+            ApplyPreUpgradeKeywordOverride(
+                card,
+                infiniteUpgradeOverride,
+                LoadoutKeywords.InfiniteUpgrade);
+            ApplyPreUpgradeKeywordOverride(
+                card,
+                jokeInfiniteUpgradeOverride,
+                LoadoutKeywords.JokeInfiniteUpgrade);
 
             ApplyLoadoutUpgradeLevelDirect(card, upgradeLevel);
             return card;
@@ -243,6 +245,21 @@ public static class LoadoutApplyService
             card.UpgradeInternal();
             card.FinalizeUpgradeInternal();
         }
+    }
+
+    private static void ApplyPreUpgradeKeywordOverride(
+        CardModel card,
+        bool? enabled,
+        CardKeyword keyword)
+    {
+        if (!enabled.HasValue)
+            return;
+
+        bool present = LoadoutKeywords.Has(card, keyword);
+        if (enabled.Value && !present)
+            card.AddKeyword(keyword);
+        else if (!enabled.Value && present)
+            card.RemoveKeyword(keyword);
     }
 
     private static bool TryGetDeckBackingList(Player targetPlayer, out List<CardModel> deckCards)

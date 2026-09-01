@@ -7,6 +7,8 @@
   "LOADOUT-X_COST.description": "비용이 X입니다. 이 카드의 효과를 X번 반복합니다.",
   "LOADOUT-INFINITE_UPGRADE.title": "무한 강화",
   "LOADOUT-INFINITE_UPGRADE.description": "무한히 강화할 수 있습니다.",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.title": "!? 무한 강화 ?!",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.description": "무한히 강화할 수 있습니다. 강화되는 각 수치는 일반 증가량을 받는 대신 2배가 됩니다.",
   "LOADOUT-PASSING.title": "패스",
   "LOADOUT-PASSING.description": "사용 후 이 카드를 무작위 아군의 [gold]뽑기 더미[/gold]에 섞어 넣습니다.",
   "LOADOUT-LIVID.title": "격노",
