@@ -127,11 +127,12 @@ public partial class NMapEditingToolbar : Control
         Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>>> PathsField =
         AccessTools.FieldRefAccess<NMapScreen,
             Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>>>("_paths");
-    private static readonly AccessTools.FieldRef<NMapScreen, Vector2> TraveledTickScaleField =
-        AccessTools.FieldRefAccess<NMapScreen, Vector2>("_tickTraveledScale");
+    private static readonly AccessTools.FieldRef<NMapScreen, Dictionary<MapCoord, NMapPoint>> PointNodesField =
+        AccessTools.FieldRefAccess<NMapScreen, Dictionary<MapCoord, NMapPoint>>("_mapPointDictionary");
     private static readonly MethodInfo DrawPathsMethod =
         AccessTools.Method(typeof(NMapScreen), "DrawPaths", [typeof(NMapPoint), typeof(MapPoint)])
         ?? throw new MissingMethodException(typeof(NMapScreen).FullName, "DrawPaths");
+    private static readonly Vector2 TraveledTickScale = Vector2.One * 1.2f;
 
     private const string QuillPath = "res://images/packed/map/drawing_quill.png";
     private const string QuillGlowPath = "res://images/packed/map/drawing_quill_glow.png";
@@ -214,6 +215,17 @@ public partial class NMapEditingToolbar : Control
             return;
         }
 
+        if (inputEvent is InputEventMouseButton
+            {
+                ButtonIndex: MouseButton.Right,
+                Pressed: false
+            } rightRelease && _linkSource.HasValue)
+        {
+            FinishConnectionDrag(FindPointAt(rightRelease.GlobalPosition));
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (inputEvent is not InputEventKey { Pressed: true, Echo: false } key)
             return;
 
@@ -249,7 +261,7 @@ public partial class NMapEditingToolbar : Control
                 Pick(point.Point.PointType);
                 break;
             case MouseButton.Right:
-                SelectConnectionEndpoint(point.Point.coord);
+                BeginConnectionDrag(point.Point.coord);
                 break;
             default:
                 return false;
@@ -599,33 +611,39 @@ public partial class NMapEditingToolbar : Control
         SetStatus(LocMan.Loc("MAP_EDITOR_NODE_MOVED", "Moved node."));
     }
 
-    private void SelectConnectionEndpoint(MapCoord coord)
+    private void BeginConnectionDrag(MapCoord coord)
+    {
+        _linkSource = coord;
+        ClearPicker();
+        SetStatus(LocMan.Loc("MAP_EDITOR_LINK_START", "Select the destination node."));
+    }
+
+    private void FinishConnectionDrag(NMapPoint? destinationNode)
     {
         if (!_linkSource.HasValue)
-        {
-            _linkSource = coord;
-            ClearPicker();
-            SetStatus(LocMan.Loc("MAP_EDITOR_LINK_START", "Select the destination node."));
-            return;
-        }
-
-        if (TryGetRunState() is not { } runState)
             return;
 
         MapCoord source = _linkSource.Value;
         _linkSource = null;
+        if (destinationNode is null || TryGetRunState() is not { } runState)
+        {
+            SetStatus(LocMan.Loc("MAP_EDITOR_ACTIVE", "Map editing mode"));
+            return;
+        }
+
+        MapCoord destination = destinationNode.Point.coord;
         SerializableActMap map = SerializableActMap.FromActMap(runState.Map);
         SerializableMapPoint? sourcePoint = FindSavedPoint(map, source);
         if (sourcePoint is null)
             return;
         sourcePoint.ChildCoords ??= [];
-        if (sourcePoint.ChildCoords.Contains(coord))
+        if (sourcePoint.ChildCoords.Contains(destination))
         {
             SetStatus(LocMan.Loc("MAP_EDITOR_LINK_EXISTS", "That connection already exists."));
             return;
         }
 
-        sourcePoint.ChildCoords.Add(coord);
+        sourcePoint.ChildCoords.Add(destination);
         CommitTopology(runState, map);
         SetStatus(LocMan.Loc("MAP_EDITOR_LINK_ADDED", "Added connection."));
     }
@@ -733,7 +751,7 @@ public partial class NMapEditingToolbar : Control
     private (MapCoord Source, MapCoord Destination)? FindClosestConnection(float maxDistance)
     {
         Vector2 mouse = GetViewport().GetMousePosition();
-        Dictionary<MapCoord, NMapPoint> nodes = GetPointNodes().ToDictionary(node => node.Point.coord);
+        Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
         float bestDistance = maxDistance;
         (MapCoord, MapCoord)? best = null;
         foreach (NMapPoint sourceNode in nodes.Values)
@@ -767,7 +785,7 @@ public partial class NMapEditingToolbar : Control
 
     private void ReflowConnectedPaths(MapCoord moved)
     {
-        Dictionary<MapCoord, NMapPoint> nodes = GetPointNodes().ToDictionary(node => node.Point.coord);
+        Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
         foreach (((MapCoord source, MapCoord destination), IReadOnlyList<TextureRect> ticks) in PathsField(_screen))
         {
             if (source != moved && destination != moved)
@@ -778,19 +796,32 @@ public partial class NMapEditingToolbar : Control
                 continue;
             }
 
-            Transform2D inverse = _paths.GetGlobalTransformWithCanvas().AffineInverse();
-            Vector2 start = inverse * sourceNode.GetGlobalRect().GetCenter();
-            Vector2 end = inverse * destinationNode.GetGlobalRect().GetCenter();
+            Vector2 start = GetLineEndpoint(sourceNode);
+            Vector2 end = GetLineEndpoint(destinationNode);
             Vector2 direction = end - start;
             float rotation = direction.Angle() + Mathf.Pi * 0.5f;
+            Vector2 anchorOffset = _screen.Size * 0.5f - new Vector2(20f, 20f);
             for (int index = 0; index < ticks.Count; index++)
             {
                 TextureRect tick = ticks[index];
                 float t = (index + 1f) / (ticks.Count + 1f);
-                tick.Position = start.Lerp(end, t) - tick.Size * 0.5f;
+                tick.Position = start.Lerp(end, t) - anchorOffset;
                 tick.Rotation = rotation;
             }
         }
+    }
+
+    private static Vector2 GetLineEndpoint(NMapPoint point)
+        => point is NNormalMapPoint ? point.Position : point.Position + point.Size * 0.5f;
+
+    private NMapPoint? FindPointAt(Vector2 globalPosition)
+    {
+        foreach (NMapPoint point in PointNodesField(_screen).Values)
+        {
+            if (point.GetGlobalRect().HasPoint(globalPosition))
+                return point;
+        }
+        return null;
     }
 
     private void RebuildAllPaths()
@@ -818,7 +849,7 @@ public partial class NMapEditingToolbar : Control
             foreach (TextureRect tick in ticks)
             {
                 tick.Modulate = runState.Act.MapTraveledColor;
-                tick.Scale = TraveledTickScaleField(_screen);
+                tick.Scale = TraveledTickScale;
             }
         }
     }
