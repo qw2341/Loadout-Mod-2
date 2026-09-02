@@ -152,6 +152,7 @@ public partial class NMapEditingToolbar : Control
     private NMapPoint? _dragNode;
     private Vector2 _dragStartPosition;
     private Vector2 _dragOffset;
+    private MapCoord? _placementChainTail;
     private MapCoord? _linkSource;
     private (MapCoord Source, MapCoord Destination)? _highlightedConnection;
     private readonly Dictionary<TextureRect, Color> _highlightedTickColors = [];
@@ -321,6 +322,7 @@ public partial class NMapEditingToolbar : Control
         RestoreHighlightedTicks();
         _highlightedConnection = null;
         _dragNode = null;
+        _placementChainTail = null;
         if (rebuildPaths)
             ReflowAllPaths();
         UpdateGhostPosition();
@@ -527,6 +529,7 @@ public partial class NMapEditingToolbar : Control
     private void Pick(MapPointType pointType)
     {
         _pickedType = pointType;
+        _placementChainTail = null;
         _linkSource = null;
         _ghost.Texture = LoadPointTexture(pointType);
         _ghost.Visible = _ghost.Texture is not null;
@@ -563,22 +566,36 @@ public partial class NMapEditingToolbar : Control
             PointType = _pickedType.Value,
             CanBeModified = true
         };
+        MapPoint? chainSource = keepArmed && _placementChainTail.HasValue
+            ? runState.Map.GetPoint(_placementChainTail.Value)
+            : null;
         grid[column, row] = point;
+        chainSource?.AddChildPoint(point);
+
+        NNormalMapPoint node = NNormalMapPoint.Create(point, _screen, runState);
+        Vector2 nodePosition = position - node.Size * 0.5f;
         Dictionary<string, MapEditingPosition> positions = CapturePositions(runState);
-        positions[$"p:{column}:{row}"] = MapEditingPosition.FromVector2(position);
+        positions[$"p:{column}:{row}"] = MapEditingPosition.FromVector2(nodePosition);
         SerializableActMap map = SerializableActMap.FromActMap(runState.Map);
         if (MapEditingService.CommitCurrentAct(runState, map, positions, out string error))
         {
-            NNormalMapPoint node = NNormalMapPoint.Create(point, _screen, runState);
-            node.Position = position;
             PointNodesField(_screen).Add(coord, node);
-            _points.AddChildSafely(node);
+            _points.AddChild(node);
+            node.Position = nodePosition;
+            if (chainSource is not null)
+            {
+                CreateConnectionVisual(chainSource, point);
+                RefreshTravelability(node, runState);
+            }
+            _placementChainTail = keepArmed ? coord : null;
             SetStatus(LocMan.Loc("MAP_EDITOR_NODE_PLACED", "Placed {0}.", _pickedType.Value));
             if (!keepArmed)
                 ClearPicker();
         }
         else
         {
+            node.Free();
+            chainSource?.RemoveChildPoint(point);
             grid[column, row] = null;
             SetStatus(error);
         }
@@ -591,7 +608,7 @@ public partial class NMapEditingToolbar : Control
                            && !ReferenceEquals(node.Point, runState.Map.BossMapPoint)
                            && !ReferenceEquals(node.Point, runState.Map.SecondBossMapPoint))
             .GroupBy(node => node.Point.coord.row)
-            .Select(group => (group.Key, group.Average(node => node.Position.Y)))
+            .Select(group => (group.Key, group.Average(node => node.Position.Y + node.Size.Y * 0.5f)))
             .ToList();
         return rows.Count == 0
             ? 0
@@ -1036,6 +1053,7 @@ public partial class NMapEditingToolbar : Control
     private void ClearPicker()
     {
         _pickedType = null;
+        _placementChainTail = null;
         if (_ghost is not null)
             _ghost.Visible = false;
     }
