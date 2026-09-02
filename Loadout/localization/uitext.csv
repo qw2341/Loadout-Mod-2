@@ -841,3 +841,26 @@ CARD_MOD_GAIN_POWER_PERMANENTLY_ON_FATAL_AMOUNT,Fatal Permanent Power Amount,斩
 CARD_MOD_GAIN_POWER_PERMANENTLY_ON_FATAL_POWER,Gain Power Permanently on Fatal,斩杀时永久获得能力,Gagner un pouvoir définitivement avec Fatal,Fatal時にパワーを永久に得る,Fatal 시 능력 영구 획득,Obtener poder permanentemente con Fatal
 DYNAMIC_VAR_LOADOUT_GAIN_POWER_PERMANENTLY_LIST,Permanent Power Giver Changes,永久能力给予器变化,Modifications permanentes du Donneur de pouvoirs,パワー付与器の永久変更,능력 부여기 영구 변경,Cambios permanentes del Otorgador de poderes
 DYNAMIC_VAR_LOADOUT_GAIN_POWER_PERMANENTLY_ON_FATAL_LIST,Fatal Permanent Power Giver Changes,斩杀时永久能力给予器变化,Modifications permanentes du Donneur de pouvoirs avec Fatal,Fatal時のパワー付与器の永久変更,Fatal 시 능력 부여기 영구 변경,Cambios permanentes del Otorgador de poderes con Fatal
+MAP_EDITOR_EDIT_TOOLTIP,Toggle map editing mode.,切换地图编辑模式。,Activer ou désactiver le mode d’édition de carte.,マップ編集モードを切り替えます。,지도 편집 모드를 전환합니다.,Activa o desactiva el modo de edición del mapa.
+MAP_EDITOR_COPY_TOOLTIP,Copy all edited act maps to the clipboard.,将所有已编辑的章节地图复制到剪贴板。,Copier toutes les cartes d’actes modifiées dans le presse-papiers.,編集したすべての幕のマップをクリップボードにコピーします。,편집한 모든 막 지도를 클립보드에 복사합니다.,Copia al portapapeles todos los mapas de actos editados.
+MAP_EDITOR_IMPORT_TOOLTIP,Import current and future act maps from the clipboard.,从剪贴板导入当前及后续章节地图。,Importer depuis le presse-papiers les cartes de l’acte actuel et des actes suivants.,クリップボードから現在および以降の幕のマップを読み込みます。,클립보드에서 현재 및 이후 막 지도를 가져옵니다.,Importa desde el portapapeles los mapas del acto actual y de los siguientes.
+MAP_EDITOR_NOTHING_TO_COPY,No edited maps to copy.,没有可复制的已编辑地图。,Aucune carte modifiée à copier.,コピーできる編集済みマップがありません。,복사할 편집된 지도가 없습니다.,No hay mapas editados que copiar.
+MAP_EDITOR_COPIED,Copied {0} edited act map(s).,已复制 {0} 张已编辑的章节地图。,{0} carte(s) d’acte modifiée(s) copiée(s).,編集済みの幕マップを {0} 件コピーしました。,편집된 막 지도 {0}개를 복사했습니다.,Se copiaron {0} mapa(s) de acto editado(s).
+MAP_EDITOR_COPY_FAILED,Could not copy maps: {0},无法复制地图：{0},Impossible de copier les cartes : {0},マップをコピーできませんでした: {0},지도를 복사할 수 없습니다: {0},No se pudieron copiar los mapas: {0}
+MAP_EDITOR_IMPORT_FIRST_FLOOR,Maps can only be imported before visiting a node in the current act.,只能在当前章节尚未访问节点前导入地图。,Les cartes ne peuvent être importées qu’avant de visiter un nœud de l’acte actuel.,マップは現在の幕でノードを訪れる前にのみ読み込めます。,지도는 현재 막에서 노드를 방문하기 전에만 가져올 수 있습니다.,Los mapas solo se pueden importar antes de visitar un nodo del acto actual.
+MAP_EDITOR_CLIPBOARD_INVALID,Clipboard does not contain a Loadout map archive.,剪贴板中没有 Loadout 地图存档。,Le presse-papiers ne contient pas d’archive de carte Loadout.,クリップボードに Loadout マップアーカイブがありません。,클립보드에 Loadout 지도 아카이브가 없습니다.,El portapapeles no contiene un archivo de mapas de Loadout.
+MAP_EDITOR_IMPORT_INVALID,Could not import maps: {0},无法导入地图：{0},Impossible d’importer les cartes : {0},マップを読み込めませんでした: {0},지도를 가져올 수 없습니다: {0},No se pudieron importar los mapas: {0}
+MAP_EDITOR_IMPORTED,"Imported maps: {0} applied, {1} queued, {2} skipped.","地图导入完成：已应用 {0}，已排队 {1}，已跳过 {2}。","Cartes importées : {0} appliquée(s), {1} en attente, {2} ignorée(s).","マップを読み込みました: 適用 {0}、待機 {1}、スキップ {2}。","지도를 가져왔습니다: 적용 {0}, 대기 {1}, 건너뜀 {2}.","Mapas importados: {0} aplicados, {1} en cola y {2} omitidos."
+MAP_EDITOR_NO_RUN,No active run map.,有効なランのマップがありません。,Aucune carte de partie active.,進行中のランのマップがありません。,활성화된 런 지도가 없습니다.,No hay un mapa de partida activo.
+MAP_EDITOR_ACTIVE,Map editing mode,地图编辑模式,Mode d’édition de carte,マップ編集モード,지도 편집 모드,Modo de edición del mapa
+MAP_EDITOR_PICKED,Picked {0}.,已选取 {0}。,{0} sélectionné.,{0} を選択しました。,{0} 선택됨.,Se seleccionó {0}.
+MAP_EDITOR_ROW_FULL,This logical floor has no free node slots.,此逻辑楼层没有可用的节点位置。,Cet étage logique n’a plus d’emplacement de nœud libre.,この論理フロアに空きノード枠がありません。,이 논리 층에 빈 노드 슬롯이 없습니다.,Este piso lógico no tiene espacios de nodo libres.
+MAP_EDITOR_NODE_PLACED,Placed {0}.,已放置 {0}。,{0} placé.,{0} を配置しました。,{0} 배치됨.,Se colocó {0}.
+MAP_EDITOR_DRAGGING,Dragging node.,正在拖动节点。,Déplacement du nœud.,ノードをドラッグ中。,노드 드래그 중.,Arrastrando nodo.
+MAP_EDITOR_ANCHOR_REQUIRED,Start and boss anchors cannot be deleted.,起点和首领锚点无法删除。,Les ancrages de départ et de boss ne peuvent pas être supprimés.,開始地点とボスのアンカーは削除できません。,시작 및 보스 앵커는 삭제할 수 없습니다.,Los anclajes de inicio y jefe no se pueden eliminar.
+MAP_EDITOR_NODE_MOVED,Moved node.,节点已移动。,Nœud déplacé.,ノードを移動しました。,노드를 이동했습니다.,Nodo movido.
+MAP_EDITOR_LINK_START,Select the destination node.,请选择目标节点。,Sélectionnez le nœud de destination.,接続先のノードを選択してください。,대상 노드를 선택하세요.,Selecciona el nodo de destino.
+MAP_EDITOR_LINK_EXISTS,That connection already exists.,该连接已存在。,Cette connexion existe déjà.,その接続はすでに存在します。,해당 연결은 이미 존재합니다.,Esa conexión ya existe.
+MAP_EDITOR_LINK_ADDED,Added connection.,连接已添加。,Connexion ajoutée.,接続を追加しました。,연결을 추가했습니다.,Conexión añadida.
+MAP_EDITOR_NODE_DELETED,Deleted node.,节点已删除。,Nœud supprimé.,ノードを削除しました。,노드를 삭제했습니다.,Nodo eliminado.
+MAP_EDITOR_LINK_DELETED,Deleted connection.,连接已删除。,Connexion supprimée.,接続を削除しました。,연결을 삭제했습니다.,Conexión eliminada.
