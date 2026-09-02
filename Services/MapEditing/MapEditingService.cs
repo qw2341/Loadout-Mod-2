@@ -134,7 +134,6 @@ public static class MapEditingService
 
     public static bool CommitCurrentAct(
         RunState runState,
-        NMapScreen screen,
         SerializableActMap map,
         IReadOnlyDictionary<string, MapEditingPosition> positions,
         out string error)
@@ -166,7 +165,6 @@ public static class MapEditingService
             error = "map archive exceeds the sharing and network size limit";
             return false;
         }
-        ApplyAct(runState, screen, act);
         BroadcastSnapshot(runState);
         SaveCurrentRun();
         return true;

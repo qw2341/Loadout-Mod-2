@@ -11,6 +11,7 @@ using HarmonyLib;
 using Loadout.Services.MapEditing;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Map;
@@ -129,14 +130,13 @@ public partial class NMapEditingToolbar : Control
             Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>>>("_paths");
     private static readonly AccessTools.FieldRef<NMapScreen, Dictionary<MapCoord, NMapPoint>> PointNodesField =
         AccessTools.FieldRefAccess<NMapScreen, Dictionary<MapCoord, NMapPoint>>("_mapPointDictionary");
-    private static readonly MethodInfo DrawPathsMethod =
-        AccessTools.Method(typeof(NMapScreen), "DrawPaths", [typeof(NMapPoint), typeof(MapPoint)])
-        ?? throw new MissingMethodException(typeof(NMapScreen).FullName, "DrawPaths");
-    private static readonly Vector2 TraveledTickScale = Vector2.One * 1.2f;
-
+    private static readonly MethodInfo GridGetter =
+        AccessTools.PropertyGetter(typeof(ActMap), "Grid")
+        ?? throw new MissingMethodException(typeof(ActMap).FullName, "get_Grid");
     private const string QuillPath = "res://images/packed/map/drawing_quill.png";
     private const string QuillGlowPath = "res://images/packed/map/drawing_quill_glow.png";
     private const string SharePath = "res://images/packed/statistics_screen/share_stats.png";
+    private const string MapDotScenePath = "res://scenes/ui/map_dot.tscn";
 
     private readonly NMapScreen _screen;
     private Control _points = null!;
@@ -147,6 +147,7 @@ public partial class NMapEditingToolbar : Control
     private NMapToolButton _importButton = null!;
     private MegaLabel _status = null!;
     private TextureRect _ghost = null!;
+    private NMapConnectionPreview _connectionPreview = null!;
     private MapPointType? _pickedType;
     private NMapPoint? _dragNode;
     private Vector2 _dragStartPosition;
@@ -171,7 +172,7 @@ public partial class NMapEditingToolbar : Control
         _paths = _screen.GetNode<Control>("TheMap/Paths");
         BuildToolbar();
         _screen.Connect(CanvasItem.SignalName.VisibilityChanged, Callable.From(OnScreenVisibilityChanged));
-        SetProcessInput(true);
+        SetProcessInput(false);
     }
 
     public override void _ExitTree()
@@ -180,6 +181,7 @@ public partial class NMapEditingToolbar : Control
             _screen.Disconnect(CanvasItem.SignalName.VisibilityChanged, Callable.From(OnScreenVisibilityChanged));
         if (IsEditing)
             SetEditing(false);
+        SetProcessInput(false);
         base._ExitTree();
     }
 
@@ -188,9 +190,11 @@ public partial class NMapEditingToolbar : Control
         if (!IsEditing || !_screen.IsVisibleInTree())
             return;
 
-        if (inputEvent is InputEventMouseMotion)
+        if (inputEvent is InputEventMouseMotion motion)
         {
             UpdateGhostPosition();
+            if (_linkSource.HasValue)
+                UpdateConnectionPreview(motion.GlobalPosition);
             if (_dragNode is not null)
             {
                 _dragNode.Position = _points.GetLocalMousePosition() + _dragOffset;
@@ -318,7 +322,7 @@ public partial class NMapEditingToolbar : Control
         _highlightedConnection = null;
         _dragNode = null;
         if (rebuildPaths)
-            RebuildAllPaths();
+            ReflowAllPaths();
         UpdateGhostPosition();
     }
 
@@ -407,6 +411,16 @@ public partial class NMapEditingToolbar : Control
             ZIndex = 100
         };
         AddChild(_ghost);
+
+        _connectionPreview = new NMapConnectionPreview
+        {
+            Name = "ConnectionPreview",
+            MouseFilter = MouseFilterEnum.Ignore,
+            ZIndex = 90,
+            Visible = false
+        };
+        _connectionPreview.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(_connectionPreview);
         _copyButton.Visible = false;
         _importButton.Visible = false;
         _editButton.SetActive(false);
@@ -443,6 +457,7 @@ public partial class NMapEditingToolbar : Control
     private void SetEditing(bool editing)
     {
         IsEditing = editing;
+        SetProcessInput(editing && _screen.IsVisibleInTree());
         CancelTransientAction();
         if (_copyButton is not null)
         {
@@ -464,7 +479,9 @@ public partial class NMapEditingToolbar : Control
 
     private void OnScreenVisibilityChanged()
     {
-        if (!_screen.IsVisibleInTree())
+        bool visible = _screen.IsVisibleInTree();
+        SetProcessInput(IsEditing && visible);
+        if (!visible)
             CancelTransientAction();
     }
 
@@ -522,38 +539,47 @@ public partial class NMapEditingToolbar : Control
         if (!_pickedType.HasValue || TryGetRunState() is not { } runState)
             return;
 
-        Dictionary<string, MapEditingPosition> positions = CapturePositions(runState);
-        MapEditingActArchive current = MapEditingService.CaptureCurrentAct(runState, positions);
         Vector2 position = _points.GetLocalMousePosition();
         int row = FindNearestRow(position.Y, runState);
-        HashSet<int> usedColumns = current.Map.Points
-            .Where(point => point.Coord.row == row)
-            .Select(point => point.Coord.col)
-            .ToHashSet();
-        int column = Enumerable.Range(0, 255).FirstOrDefault(candidate => !usedColumns.Contains(candidate));
-        if (usedColumns.Count >= 255)
+        MapPoint?[,] grid = GetGrid(runState.Map);
+        int column = -1;
+        for (int candidate = 0; candidate < grid.GetLength(0); candidate++)
+        {
+            if (grid[candidate, row] is null)
+            {
+                column = candidate;
+                break;
+            }
+        }
+        if (column < 0)
         {
             SetStatus(LocMan.Loc("MAP_EDITOR_ROW_FULL", "This logical floor has no free node slots."));
             return;
         }
 
         MapCoord coord = new(column, row);
-        current.Map.Points.Add(new SerializableMapPoint
+        MapPoint point = new(column, row)
         {
-            Coord = coord,
             PointType = _pickedType.Value,
             CanBeModified = true
-        });
-        current.Map.GridWidth = Math.Max(current.Map.GridWidth, column + 1);
+        };
+        grid[column, row] = point;
+        Dictionary<string, MapEditingPosition> positions = CapturePositions(runState);
         positions[$"p:{column}:{row}"] = MapEditingPosition.FromVector2(position);
-        if (MapEditingService.CommitCurrentAct(runState, _screen, current.Map, positions, out string error))
+        SerializableActMap map = SerializableActMap.FromActMap(runState.Map);
+        if (MapEditingService.CommitCurrentAct(runState, map, positions, out string error))
         {
+            NNormalMapPoint node = NNormalMapPoint.Create(point, _screen, runState);
+            node.Position = position;
+            PointNodesField(_screen).Add(coord, node);
+            _points.AddChildSafely(node);
             SetStatus(LocMan.Loc("MAP_EDITOR_NODE_PLACED", "Placed {0}.", _pickedType.Value));
             if (!keepArmed)
                 ClearPicker();
         }
         else
         {
+            grid[column, row] = null;
             SetStatus(error);
         }
     }
@@ -607,14 +633,22 @@ public partial class NMapEditingToolbar : Control
             return;
         }
 
-        CommitTopology(runState, SerializableActMap.FromActMap(runState.Map));
-        SetStatus(LocMan.Loc("MAP_EDITOR_NODE_MOVED", "Moved node."));
+        if (CommitTopology(runState))
+        {
+            SetStatus(LocMan.Loc("MAP_EDITOR_NODE_MOVED", "Moved node."));
+        }
+        else
+        {
+            dragged.Position = _dragStartPosition;
+            ReflowConnectedPaths(dragged.Point.coord);
+        }
     }
 
     private void BeginConnectionDrag(MapCoord coord)
     {
         _linkSource = coord;
         ClearPicker();
+        UpdateConnectionPreview(GetViewport().GetMousePosition());
         SetStatus(LocMan.Loc("MAP_EDITOR_LINK_START", "Select the destination node."));
     }
 
@@ -625,26 +659,31 @@ public partial class NMapEditingToolbar : Control
 
         MapCoord source = _linkSource.Value;
         _linkSource = null;
+        _connectionPreview.HideLine();
         if (destinationNode is null || TryGetRunState() is not { } runState)
         {
             SetStatus(LocMan.Loc("MAP_EDITOR_ACTIVE", "Map editing mode"));
             return;
         }
 
-        MapCoord destination = destinationNode.Point.coord;
-        SerializableActMap map = SerializableActMap.FromActMap(runState.Map);
-        SerializableMapPoint? sourcePoint = FindSavedPoint(map, source);
+        MapPoint? sourcePoint = runState.Map.GetPoint(source);
+        MapPoint destinationPoint = destinationNode.Point;
         if (sourcePoint is null)
             return;
-        sourcePoint.ChildCoords ??= [];
-        if (sourcePoint.ChildCoords.Contains(destination))
+        if (sourcePoint.Children.Contains(destinationPoint))
         {
             SetStatus(LocMan.Loc("MAP_EDITOR_LINK_EXISTS", "That connection already exists."));
             return;
         }
 
-        sourcePoint.ChildCoords.Add(destination);
-        CommitTopology(runState, map);
+        sourcePoint.AddChildPoint(destinationPoint);
+        if (!CommitTopology(runState))
+        {
+            sourcePoint.RemoveChildPoint(destinationPoint);
+            return;
+        }
+        CreateConnectionVisual(sourcePoint, destinationPoint);
+        RefreshTravelability(destinationNode, runState);
         SetStatus(LocMan.Loc("MAP_EDITOR_LINK_ADDED", "Added connection."));
     }
 
@@ -676,17 +715,39 @@ public partial class NMapEditingToolbar : Control
         }
 
         MapCoord coord = node.Point.coord;
-        SerializableActMap map = SerializableActMap.FromActMap(runState.Map);
-        map.Points.RemoveAll(point => point.Coord == coord);
-        foreach (SerializableMapPoint point in EnumerateSavedPoints(map))
-            point.ChildCoords?.RemoveAll(child => child == coord);
-        map.StartMapPointCoords?.RemoveAll(value => value == coord);
+        MapPoint point = node.Point;
+        MapPoint[] parents = point.parents.ToArray();
+        MapPoint[] children = point.Children.ToArray();
+        foreach (MapPoint parent in parents)
+            parent.RemoveChildPoint(point);
+        foreach (MapPoint child in children)
+            point.RemoveChildPoint(child);
+        bool wasStartMapPoint = runState.Map.startMapPoints.Remove(point);
+        GetGrid(runState.Map)[coord.col, coord.row] = null;
         Dictionary<string, MapEditingPosition> positions = CapturePositions(runState);
         positions.Remove($"p:{coord.col}:{coord.row}");
-        if (MapEditingService.CommitCurrentAct(runState, _screen, map, positions, out string error))
+        if (MapEditingService.CommitCurrentAct(
+                runState,
+                SerializableActMap.FromActMap(runState.Map),
+                positions,
+                out string error))
+        {
+            RemoveConnectionVisualsFor(coord);
+            PointNodesField(_screen).Remove(coord);
+            node.QueueFree();
             SetStatus(LocMan.Loc("MAP_EDITOR_NODE_DELETED", "Deleted node."));
+        }
         else
+        {
+            GetGrid(runState.Map)[coord.col, coord.row] = point;
+            foreach (MapPoint parent in parents)
+                parent.AddChildPoint(point);
+            foreach (MapPoint child in children)
+                point.AddChildPoint(child);
+            if (wasStartMapPoint)
+                runState.Map.startMapPoints.Add(point);
             SetStatus(error);
+        }
     }
 
     private void DeleteConnection((MapCoord Source, MapCoord Destination) connection)
@@ -694,22 +755,38 @@ public partial class NMapEditingToolbar : Control
         if (TryGetRunState() is not { } runState)
             return;
 
-        SerializableActMap map = SerializableActMap.FromActMap(runState.Map);
-        SerializableMapPoint? source = FindSavedPoint(map, connection.Source);
-        if (source?.ChildCoords?.Remove(connection.Destination) != true)
+        MapPoint? source = runState.Map.GetPoint(connection.Source);
+        MapPoint? destination = runState.Map.GetPoint(connection.Destination);
+        if (source is null || destination is null || !source.Children.Contains(destination))
             return;
 
+        source.RemoveChildPoint(destination);
         _highlightedConnection = null;
         RestoreHighlightedTicks();
-        CommitTopology(runState, map);
+        if (!CommitTopology(runState))
+        {
+            source.AddChildPoint(destination);
+            return;
+        }
+        RemoveConnectionVisual(connection);
+        if (PointNodesField(_screen).TryGetValue(connection.Destination, out NMapPoint? destinationNode))
+            RefreshTravelability(destinationNode, runState);
         SetStatus(LocMan.Loc("MAP_EDITOR_LINK_DELETED", "Deleted connection."));
     }
 
-    private void CommitTopology(RunState runState, SerializableActMap map)
+    private bool CommitTopology(RunState runState)
     {
         Dictionary<string, MapEditingPosition> positions = CapturePositions(runState);
-        if (!MapEditingService.CommitCurrentAct(runState, _screen, map, positions, out string error))
+        if (!MapEditingService.CommitCurrentAct(
+                runState,
+                SerializableActMap.FromActMap(runState.Map),
+                positions,
+                out string error))
+        {
             SetStatus(error);
+            return false;
+        }
+        return true;
     }
 
     private Dictionary<string, MapEditingPosition> CapturePositions(RunState runState)
@@ -724,7 +801,20 @@ public partial class NMapEditingToolbar : Control
     {
         if (_ghost is null || !_ghost.Visible)
             return;
-        _ghost.Position = GetLocalMousePosition() - _ghost.Size * 0.5f;
+        _ghost.GlobalPosition = GetViewport().GetMousePosition() - _ghost.Size * 0.5f;
+    }
+
+    private void UpdateConnectionPreview(Vector2 mouseGlobalPosition)
+    {
+        if (!_linkSource.HasValue
+            || !PointNodesField(_screen).TryGetValue(_linkSource.Value, out NMapPoint? sourceNode))
+        {
+            _connectionPreview.HideLine();
+            return;
+        }
+
+        Color color = TryGetRunState()?.Act.MapUntraveledColor ?? Colors.White;
+        _connectionPreview.ShowLine(sourceNode.GetGlobalRect().GetCenter(), mouseGlobalPosition, color);
     }
 
     private void UpdateHighlightedConnection()
@@ -795,24 +885,126 @@ public partial class NMapEditingToolbar : Control
             {
                 continue;
             }
+            ReflowPath(sourceNode, destinationNode, ticks);
+        }
+    }
 
-            Vector2 start = GetLineEndpoint(sourceNode);
-            Vector2 end = GetLineEndpoint(destinationNode);
-            Vector2 direction = end - start;
-            float rotation = direction.Angle() + Mathf.Pi * 0.5f;
-            Vector2 anchorOffset = _screen.Size * 0.5f - new Vector2(20f, 20f);
-            for (int index = 0; index < ticks.Count; index++)
+    private void ReflowAllPaths()
+    {
+        Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
+        foreach (((MapCoord source, MapCoord destination), IReadOnlyList<TextureRect> ticks) in PathsField(_screen))
+        {
+            if (nodes.TryGetValue(source, out NMapPoint? sourceNode)
+                && nodes.TryGetValue(destination, out NMapPoint? destinationNode))
             {
-                TextureRect tick = ticks[index];
-                float t = (index + 1f) / (ticks.Count + 1f);
-                tick.Position = start.Lerp(end, t) - anchorOffset;
-                tick.Rotation = rotation;
+                ReflowPath(sourceNode, destinationNode, ticks);
             }
         }
     }
 
-    private static Vector2 GetLineEndpoint(NMapPoint point)
-        => point is NNormalMapPoint ? point.Position : point.Position + point.Size * 0.5f;
+    private static void ReflowPath(
+        NMapPoint sourceNode,
+        NMapPoint destinationNode,
+        IReadOnlyList<TextureRect> ticks)
+    {
+        Vector2 start = sourceNode.GetGlobalRect().GetCenter();
+        Vector2 end = destinationNode.GetGlobalRect().GetCenter();
+        Vector2 direction = end - start;
+        float rotation = direction.Angle() + Mathf.Pi * 0.5f;
+        for (int index = 0; index < ticks.Count; index++)
+        {
+            TextureRect tick = ticks[index];
+            float t = (index + 1f) / (ticks.Count + 1f);
+            tick.GlobalPosition = start.Lerp(end, t) - tick.Size * 0.5f;
+            tick.Rotation = rotation;
+        }
+    }
+
+    private void CreateConnectionVisual(MapPoint source, MapPoint destination)
+    {
+        Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
+        if (!nodes.TryGetValue(source.coord, out NMapPoint? sourceNode)
+            || !nodes.TryGetValue(destination.coord, out NMapPoint? destinationNode))
+        {
+            return;
+        }
+
+        Vector2 start = sourceNode.GetGlobalRect().GetCenter();
+        Vector2 end = destinationNode.GetGlobalRect().GetCenter();
+        Vector2 delta = end - start;
+        float length = delta.Length();
+        Vector2 direction = length > 0f ? delta / length : Vector2.Zero;
+        float rotation = direction.Angle() + Mathf.Pi * 0.5f;
+        List<TextureRect> ticks = [];
+        for (float distance = 22f; distance < length; distance += 22f)
+        {
+            TextureRect tick = PreloadManager.Cache.GetScene(MapDotScenePath)
+                .Instantiate<TextureRect>(PackedScene.GenEditState.Disabled);
+            _paths.AddChild(tick);
+            tick.GlobalPosition = start + direction * distance - tick.Size * 0.5f;
+            tick.Rotation = rotation;
+            tick.Modulate = TryGetRunState()?.Act.MapUntraveledColor ?? Colors.White;
+            ticks.Add(tick);
+        }
+        PathsField(_screen).Add((source.coord, destination.coord), ticks);
+    }
+
+    private void RemoveConnectionVisual((MapCoord Source, MapCoord Destination) connection)
+    {
+        Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>> paths = PathsField(_screen);
+        if (!paths.Remove(connection, out IReadOnlyList<TextureRect>? ticks))
+            return;
+        foreach (TextureRect tick in ticks)
+            tick.QueueFree();
+    }
+
+    private void RemoveConnectionVisualsFor(MapCoord coord)
+    {
+        (MapCoord, MapCoord)[] keys = PathsField(_screen).Keys
+            .Where(key => key.Item1 == coord || key.Item2 == coord)
+            .ToArray();
+        foreach ((MapCoord source, MapCoord destination) in keys)
+            RemoveConnectionVisual((source, destination));
+    }
+
+    private static void RefreshTravelability(NMapPoint node, RunState runState)
+    {
+        if (runState.VisitedMapCoords.Contains(node.Point.coord))
+        {
+            node.State = MapPointState.Traveled;
+            return;
+        }
+        if (runState.VisitedMapCoords.Count == 0)
+        {
+            node.State = ReferenceEquals(node.Point, runState.Map.StartingMapPoint)
+                ? MapPointState.Travelable
+                : MapPointState.Untravelable;
+            return;
+        }
+
+        MapCoord currentCoord = runState.VisitedMapCoords[^1];
+        if (ReferenceEquals(node.Point, runState.Map.SecondBossMapPoint)
+            && currentCoord == runState.Map.BossMapPoint.coord)
+        {
+            node.State = MapPointState.Travelable;
+            return;
+        }
+        if (ReferenceEquals(node.Point, runState.Map.BossMapPoint)
+            && currentCoord.row == runState.Map.GetRowCount() - 1)
+        {
+            node.State = MapPointState.Travelable;
+            return;
+        }
+
+        MapPoint? current = runState.Map.GetPoint(currentCoord);
+        node.State = current is not null && MapTravel.GetTravelablePointsFrom(runState, current).Contains(node.Point)
+            ? MapPointState.Travelable
+            : MapPointState.Untravelable;
+    }
+
+    private static MapPoint?[,] GetGrid(ActMap map)
+        => (MapPoint?[,]?)GridGetter.Invoke(map, null)
+           ?? throw new InvalidOperationException("Active map has no editable grid.");
 
     private NMapPoint? FindPointAt(Vector2 globalPosition)
     {
@@ -824,36 +1016,6 @@ public partial class NMapEditingToolbar : Control
         return null;
     }
 
-    private void RebuildAllPaths()
-    {
-        if (_paths is null || !GodotObject.IsInstanceValid(_paths))
-            return;
-
-        foreach (Node child in _paths.GetChildren())
-            child.QueueFree();
-
-        Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>> paths = PathsField(_screen);
-        paths.Clear();
-        foreach (NMapPoint node in GetPointNodes())
-            DrawPathsMethod.Invoke(_screen, [node, node.Point]);
-
-        RunState? runState = TryGetRunState();
-        if (runState is null)
-            return;
-        for (int index = 0; index < runState.VisitedMapCoords.Count - 1; index++)
-        {
-            (MapCoord, MapCoord) key =
-                (runState.VisitedMapCoords[index], runState.VisitedMapCoords[index + 1]);
-            if (!paths.TryGetValue(key, out IReadOnlyList<TextureRect>? ticks))
-                continue;
-            foreach (TextureRect tick in ticks)
-            {
-                tick.Modulate = runState.Act.MapTraveledColor;
-                tick.Scale = TraveledTickScale;
-            }
-        }
-    }
-
     private void CancelTransientAction()
     {
         if (_dragNode is not null)
@@ -863,6 +1025,7 @@ public partial class NMapEditingToolbar : Control
             _dragNode = null;
         }
         _linkSource = null;
+        _connectionPreview?.HideLine();
         ClearPicker();
         RestoreHighlightedTicks();
         _highlightedConnection = null;
@@ -877,20 +1040,7 @@ public partial class NMapEditingToolbar : Control
             _ghost.Visible = false;
     }
 
-    private List<NMapPoint> GetPointNodes() => _points.GetChildren().OfType<NMapPoint>().ToList();
-
-    private static SerializableMapPoint? FindSavedPoint(SerializableActMap map, MapCoord coord)
-        => EnumerateSavedPoints(map).FirstOrDefault(point => point.Coord == coord);
-
-    private static IEnumerable<SerializableMapPoint> EnumerateSavedPoints(SerializableActMap map)
-    {
-        yield return map.StartingPoint;
-        foreach (SerializableMapPoint point in map.Points)
-            yield return point;
-        yield return map.BossPoint;
-        if (map.SecondBossPoint is not null)
-            yield return map.SecondBossPoint;
-    }
+    private List<NMapPoint> GetPointNodes() => PointNodesField(_screen).Values.ToList();
 
     private Texture2D? LoadPointTexture(MapPointType pointType)
     {
@@ -912,7 +1062,7 @@ public partial class NMapEditingToolbar : Control
             MapPointType.RestSite => "map_rest",
             _ => "map_unknown"
         };
-        return LoadTexture($"res://images/packed/atlases/ui_atlas.sprites/map/icons/{name}.tres");
+        return LoadTexture($"res://images/atlases/ui_atlas.sprites/map/icons/{name}.tres");
     }
 
     private void SetStatus(string text)
@@ -948,6 +1098,47 @@ public partial class NMapEditingToolbar : Control
 
     private static Font? LoadFont(string path)
         => ResourceLoader.Exists(path) ? GD.Load<Font>(path) : null;
+}
+
+public partial class NMapConnectionPreview : Control
+{
+    private const string DotPath = "res://images/atlases/compressed.sprites/map/map_dot.tres";
+
+    private readonly Texture2D? _dot = ResourceLoader.Exists(DotPath) ? GD.Load<Texture2D>(DotPath) : null;
+    private Vector2 _start;
+    private Vector2 _end;
+    private Color _color = Colors.White;
+
+    public void ShowLine(Vector2 startGlobal, Vector2 endGlobal, Color color)
+    {
+        Transform2D inverse = GetGlobalTransformWithCanvas().AffineInverse();
+        _start = inverse * startGlobal;
+        _end = inverse * endGlobal;
+        _color = color;
+        Visible = true;
+        QueueRedraw();
+    }
+
+    public void HideLine()
+    {
+        Visible = false;
+    }
+
+    public override void _Draw()
+    {
+        if (_dot is null)
+            return;
+
+        Vector2 delta = _end - _start;
+        float length = delta.Length();
+        if (length < 1f)
+            return;
+
+        Vector2 direction = delta / length;
+        Vector2 halfSize = _dot.GetSize() * 0.5f;
+        for (float distance = 22f; distance < length; distance += 22f)
+            DrawTexture(_dot, _start + direction * distance - halfSize, _color);
+    }
 }
 
 public partial class NMapToolButton : NButton
