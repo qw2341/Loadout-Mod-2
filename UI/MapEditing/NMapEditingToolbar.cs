@@ -133,6 +133,8 @@ public partial class NMapEditingToolbar : Control
     private static readonly MethodInfo GridGetter =
         AccessTools.PropertyGetter(typeof(ActMap), "Grid")
         ?? throw new MissingMethodException(typeof(ActMap).FullName, "get_Grid");
+    private static readonly Dictionary<Type, FieldInfo> GridBackingFields = [];
+    private const int MaxNativeGridWidth = byte.MaxValue;
     private const string QuillPath = "res://images/packed/map/drawing_quill.png";
     private const string QuillGlowPath = "res://images/packed/map/drawing_quill_glow.png";
     private const string SharePath = "res://images/packed/statistics_screen/share_stats.png";
@@ -544,7 +546,8 @@ public partial class NMapEditingToolbar : Control
 
         Vector2 position = _points.GetLocalMousePosition();
         int row = FindNearestRow(position.Y, runState);
-        MapPoint?[,] grid = GetGrid(runState.Map);
+        MapPoint?[,] originalGrid = GetGrid(runState.Map);
+        MapPoint?[,] grid = originalGrid;
         int column = -1;
         for (int candidate = 0; candidate < grid.GetLength(0); candidate++)
         {
@@ -553,6 +556,13 @@ public partial class NMapEditingToolbar : Control
                 column = candidate;
                 break;
             }
+        }
+        bool expandedGrid = false;
+        if (column < 0 && grid.GetLength(0) < MaxNativeGridWidth)
+        {
+            grid = ExpandGrid(runState.Map, grid, MaxNativeGridWidth);
+            column = originalGrid.GetLength(0);
+            expandedGrid = true;
         }
         if (column < 0)
         {
@@ -597,6 +607,8 @@ public partial class NMapEditingToolbar : Control
             node.Free();
             chainSource?.RemoveChildPoint(point);
             grid[column, row] = null;
+            if (expandedGrid)
+                SetGrid(runState.Map, originalGrid);
             SetStatus(error);
         }
     }
@@ -1022,6 +1034,26 @@ public partial class NMapEditingToolbar : Control
     private static MapPoint?[,] GetGrid(ActMap map)
         => (MapPoint?[,]?)GridGetter.Invoke(map, null)
            ?? throw new InvalidOperationException("Active map has no editable grid.");
+
+    private static MapPoint?[,] ExpandGrid(ActMap map, MapPoint?[,] grid, int width)
+    {
+        MapPoint?[,] expanded = new MapPoint?[width, grid.GetLength(1)];
+        Array.Copy(grid, expanded, grid.Length);
+        SetGrid(map, expanded);
+        return expanded;
+    }
+
+    private static void SetGrid(ActMap map, MapPoint?[,] grid)
+    {
+        Type mapType = map.GetType();
+        if (!GridBackingFields.TryGetValue(mapType, out FieldInfo? field))
+        {
+            field = AccessTools.Field(mapType, "<Grid>k__BackingField")
+                    ?? throw new MissingFieldException(mapType.FullName, "<Grid>k__BackingField");
+            GridBackingFields.Add(mapType, field);
+        }
+        field.SetValue(map, grid);
+    }
 
     private NMapPoint? FindPointAt(Vector2 globalPosition)
     {
