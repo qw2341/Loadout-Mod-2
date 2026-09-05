@@ -4,10 +4,12 @@ namespace Loadout.Keywords;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
 using Loadout.Services.Compatibility;
+using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Commands.Builders;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -16,6 +18,7 @@ using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Cards;
 
 [HarmonyPatch(
     typeof(AttackCommand),
@@ -30,16 +33,20 @@ internal static class FatalKeywordAttackPatch
             "GetPossibleTargets()");
 
     private static readonly Func<AttackCommand, IReadOnlyList<Creature>>
-        GetPossibleTargets =
-            AccessTools.MethodDelegate<
-                Func<AttackCommand, IReadOnlyList<Creature>>>(
-                GetPossibleTargetsMethod);
+        GetPossibleTargets = AccessTools.MethodDelegate<
+            Func<AttackCommand, IReadOnlyList<Creature>>>(
+            GetPossibleTargetsMethod);
 
-    private sealed record FatalAttackState(
-        CardModel Source,
-        PlayerChoiceContext ChoiceContext,
+    private static readonly HashSet<Type> CreatureDamageFatalCardTypes =
+        [typeof(EchoingSlash)];
+
+    internal sealed record FatalAttackState(
+        CardModel Source, PlayerChoiceContext ChoiceContext,
         HashSet<Creature> EligibleTargets,
         IReadOnlyDictionary<Creature, FatalTargetSnapshot>? TargetSnapshots);
+
+    internal static bool UsesCreatureDamageFatal(CardModel card) =>
+        CreatureDamageFatalCardTypes.Contains(card.GetType());
 
     [HarmonyPrefix]
     private static void Prefix(
@@ -51,12 +58,22 @@ internal static class FatalKeywordAttackPatch
         if ((!__instance.IsSingleTargeted && !__instance.IsMultiTargeted)
             || __instance.ModelSource is not CardModel source
             || !Sts2Compatibility.MatchesAttackCardPlay(__instance, source)
-            || !LoadoutKeywordRegistry.HasFatalEffect(source))
+            || UsesCreatureDamageFatal(source))
         {
             return;
         }
 
-        IReadOnlyList<Creature> possibleTargets = GetPossibleTargets(__instance);
+        __state = Capture(source, choiceContext, GetPossibleTargets(__instance));
+    }
+
+    internal static FatalAttackState? Capture(
+        CardModel source,
+        PlayerChoiceContext choiceContext,
+        IEnumerable<Creature> possibleTargets)
+    {
+        if (!LoadoutKeywordRegistry.HasFatalEffect(source))
+            return null;
+
         HashSet<Creature>? eligibleTargets = null;
         Dictionary<Creature, FatalTargetSnapshot>? targetSnapshots = null;
         bool captureTargetSnapshots =
@@ -68,19 +85,11 @@ internal static class FatalKeywordAttackPatch
 
             (eligibleTargets ??= []).Add(target);
             if (captureTargetSnapshots)
-            {
                 (targetSnapshots ??= [])[target] = CaptureTarget(target);
-            }
         }
 
-        if (eligibleTargets is not null)
-        {
-            __state = new FatalAttackState(
-                source,
-                choiceContext,
-                eligibleTargets,
-                targetSnapshots);
-        }
+        return eligibleTargets is null ? null : new FatalAttackState(
+            source, choiceContext, eligibleTargets, targetSnapshots);
     }
 
     private static FatalTargetSnapshot CaptureTarget(Creature target)
@@ -124,37 +133,75 @@ internal static class FatalKeywordAttackPatch
     }
 
     private static async Task<AttackCommand> ResolveFatal(
-        Task<AttackCommand> original,
-        FatalAttackState state)
+        Task<AttackCommand> original, FatalAttackState state)
     {
         AttackCommand command = await original;
+        await ApplyFatal(command.Results.SelectMany(results => results), state);
+        return command;
+    }
+
+    internal static async Task<IEnumerable<DamageResult>> ResolveCreatureDamageFatal(
+        Task<IEnumerable<DamageResult>> original, FatalAttackState state)
+    {
+        IEnumerable<DamageResult> results = await original;
+        await ApplyFatal(results, state);
+        return results;
+    }
+
+    private static async Task ApplyFatal(
+        IEnumerable<DamageResult> results, FatalAttackState state)
+    {
         int fatalCount = 0;
         List<FatalTargetSnapshot>? fatalTargets = null;
-        foreach (List<DamageResult> hitResults in command.Results)
+        foreach (DamageResult result in results)
         {
-            foreach (DamageResult result in hitResults)
+            if (!result.WasTargetKilled
+                || !state.EligibleTargets.Contains(result.Receiver))
             {
-                if (result.WasTargetKilled
-                    && state.EligibleTargets.Contains(result.Receiver))
-                {
-                    fatalCount++;
-                    if (state.TargetSnapshots?.TryGetValue(
-                            result.Receiver,
-                            out FatalTargetSnapshot? snapshot) == true)
-                    {
-                        (fatalTargets ??= []).Add(snapshot);
-                    }
-                }
+                continue;
+            }
+
+            fatalCount++;
+            if (state.TargetSnapshots?.TryGetValue(
+                    result.Receiver,
+                    out FatalTargetSnapshot? snapshot) == true)
+            {
+                (fatalTargets ??= []).Add(snapshot);
             }
         }
 
         await LoadoutKeywordRegistry.ApplyFatalEffects(
             state.Source,
             state.ChoiceContext,
-            new FatalKeywordContext(
-                fatalCount,
-                fatalTargets ?? []));
-        return command;
+            new FatalKeywordContext(fatalCount, fatalTargets ?? []));
+    }
+}
+
+[HarmonyPatch]
+internal static class CreatureDamageFatalPatch
+{
+    private static MethodBase TargetMethod() => Sts2Compatibility.MultiTargetDamageMethod;
+
+    [HarmonyPrefix]
+    private static void Prefix(
+        PlayerChoiceContext __0,
+        IEnumerable<Creature> __1,
+        CardModel? __5,
+        out FatalKeywordAttackPatch.FatalAttackState? __state)
+    {
+        __state = __5 is CardModel source &&
+                  FatalKeywordAttackPatch.UsesCreatureDamageFatal(source)
+            ? FatalKeywordAttackPatch.Capture(source, __0, __1)
+            : null;
+    }
+
+    [HarmonyPostfix]
+    private static void Postfix(
+        FatalKeywordAttackPatch.FatalAttackState? __state,
+        ref Task<IEnumerable<DamageResult>> __result)
+    {
+        if (__state is not null)
+            __result = FatalKeywordAttackPatch.ResolveCreatureDamageFatal(__result, __state);
     }
 }
 
