@@ -21,6 +21,7 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Powers;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
@@ -886,9 +887,13 @@ public static class PowerGiverStateService
         {
             try
             {
+                PowerModel mutablePower = power.ToMutable();
+                if (target.IsPlayer && mutablePower.InstanceType == PowerInstanceType.Instanced)
+                    mutablePower.Target = target;
+
                 await PowerCmd.Apply(
                     choiceContext ?? new ThrowingPlayerChoiceContext(),
-                    power.ToMutable(),
+                    mutablePower,
                     target,
                     amount,
                     applier,
