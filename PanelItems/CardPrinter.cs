@@ -438,7 +438,6 @@ public class CardPrinter
 	    holder.MouseFilter = Control.MouseFilterEnum.Pass;
 	    holder.Scale = holder.SmallScale;
 	    holder.CustomMinimumSize = NCard.defaultSize * holder.SmallScale;
-	    holder.ReassignToCard(displayModel, pileType, null, ModelVisibility.Visible);
 	    ApplyCardUpgradePreview(holder, state);
 	    ApplyCardSelectionOutline(holder, state.IsSelected);
 	    return holder;
@@ -916,7 +915,11 @@ public class CardPrinter
 
 	    holder.SetMeta(CardPrinter.PreviewUpgradeMetaKey, shouldPreviewUpgrade);
 
-	    if (holder.CardModel is null || !holder.CardModel.IsUpgradable)
+	    if (holder.CardModel is null
+	        || !holder.CardModel.IsUpgradable
+	        || !holder.IsInsideTree()
+	        || holder.CardNode is null
+	        || !holder.CardNode.IsNodeReady())
 		    return;
 
 	    holder.SetIsPreviewingUpgrade(shouldPreviewUpgrade);
