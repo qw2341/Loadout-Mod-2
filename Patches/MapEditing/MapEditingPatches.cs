@@ -47,6 +47,14 @@ public static class MapEditingExtendedSavePatch
     }
 }
 
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.ToSave))]
+public static class MapEditingNativeMapSavePatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(RunManager __instance, SerializableRun __result)
+        => MapEditingService.WriteMapsToNativeSave(__instance.DebugOnlyGetState()!, __result);
+}
+
 [HarmonyPatch(typeof(NMapScreen), "_Ready")]
 public static class MapEditingMapReadyPatch
 {

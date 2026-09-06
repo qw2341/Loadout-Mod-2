@@ -22,7 +22,6 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
-using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
@@ -38,8 +37,6 @@ public static class MapEditingService
 {
     public const int CurrentSchemaVersion = 2;
     public const string ClipboardPrefix = "STS2_LOADOUT_MAP_V2:";
-    public const int MaxArchiveBytes = 512 * 1024;
-
     private static readonly FieldInfo? RunStateRngField =
         AccessTools.Field(typeof(RunState), "<Rng>k__BackingField");
     private static readonly FieldInfo? RunStateOddsField =
@@ -57,7 +54,6 @@ public static class MapEditingService
     };
 
     private static readonly ConditionalWeakTable<RunState, MapEditingArchive> Archives = new();
-    private static readonly ConditionalWeakTable<RunState, FutureMapBackups> FutureMapBackupsByRun = new();
     private static INetGameService? _runNetService;
     private static RunLobby? _runLobby;
     private static Delegate? _playerRejoinedHandler;
@@ -78,9 +74,7 @@ public static class MapEditingService
 
         try
         {
-            MapEditingArchive? archive = JsonSerializer.Deserialize<MapEditingArchive>(payload, JsonOptions);
-            if (archive is null || !TryValidateArchive(archive, out _))
-                return;
+            MapEditingArchive archive = JsonSerializer.Deserialize<MapEditingArchive>(payload, JsonOptions)!;
 
             Archives.Remove(runState);
             Archives.Add(runState, archive);
@@ -89,6 +83,15 @@ public static class MapEditingService
         {
             GD.PushWarning($"Loadout map editor: could not restore run archive. {exception.Message}");
         }
+    }
+
+    public static void WriteMapsToNativeSave(RunState runState, SerializableRun save)
+    {
+        if (!Archives.TryGetValue(runState, out MapEditingArchive? archive))
+            return;
+
+        foreach ((int actIndex, MapEditingActArchive act) in archive.Acts)
+            save.Acts[actIndex].SavedMap = act.Map;
     }
 
     public static void PrepareRunLaunch()
@@ -109,7 +112,6 @@ public static class MapEditingService
             _pendingSnapshotJson = null;
             ApplySnapshotJson(runState, pending);
         }
-        QueueFutureMaps(runState);
         if (_runNetService?.Type == NetGameType.Host)
             BroadcastSnapshot(runState);
     }
@@ -155,8 +157,7 @@ public static class MapEditingService
             state = new MapEditingHistoryState
             {
                 ArchiveJson = JsonSerializer.Serialize(archive, JsonOptions),
-                PendingMapsJson = JsonSerializer.Serialize(pending, JsonOptions),
-                CurrentActQuests = CaptureQuests(runState.Map)
+                PendingMapsJson = JsonSerializer.Serialize(pending, JsonOptions)
             };
             error = string.Empty;
             return true;
@@ -178,17 +179,10 @@ public static class MapEditingService
         try
         {
             error = string.Empty;
-            MapEditingArchive? archive = JsonSerializer.Deserialize<MapEditingArchive>(state.ArchiveJson, JsonOptions);
-            Dictionary<int, SerializableActMap>? pending =
-                JsonSerializer.Deserialize<Dictionary<int, SerializableActMap>>(state.PendingMapsJson, JsonOptions);
-            if (archive is null || pending is null
-                || !TryValidateArchive(archive, out error)
-                || !archive.Acts.TryGetValue(runState.CurrentActIndex, out MapEditingActArchive? currentAct))
-            {
-                if (string.IsNullOrWhiteSpace(error))
-                    error = "map editor history is incomplete";
-                return false;
-            }
+            MapEditingArchive archive = JsonSerializer.Deserialize<MapEditingArchive>(state.ArchiveJson, JsonOptions)!;
+            Dictionary<int, SerializableActMap> pending =
+                JsonSerializer.Deserialize<Dictionary<int, SerializableActMap>>(state.PendingMapsJson, JsonOptions)!;
+            MapEditingActArchive currentAct = archive.Acts[runState.CurrentActIndex];
 
             long currentRevision = Archives.TryGetValue(runState, out MapEditingArchive? current)
                 ? current.Revision
@@ -197,11 +191,10 @@ public static class MapEditingService
             archive.Revision = Math.Max(currentRevision, archive.Revision) + 1L;
             if (!TryReplaceRunSeed(runState, archive.RunSeed, out error))
                 return false;
-            NMapEditingToolbar.ApplyActIncrementally(runState, screen, currentAct, state.CurrentActQuests);
             Archives.Remove(runState);
             Archives.Add(runState, archive);
-            RunManager.Instance.SavedMapsToLoad = pending;
-            FutureMapBackupsByRun.Remove(runState);
+            ApplyAct(runState, screen, currentAct);
+            RunManager.Instance.SavedMapsToLoad = pending.Count == 0 ? null : pending;
             BroadcastSnapshot(runState);
             SaveCurrentRun();
             error = string.Empty;
@@ -240,26 +233,12 @@ public static class MapEditingService
             Positions = positions.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
         };
 
-        if (!TryValidateAct(act, out error))
-            return false;
-
         MapEditingArchive archive = GetOrCreateArchive(runState);
-        bool hadPrevious = archive.Acts.TryGetValue(runState.CurrentActIndex, out MapEditingActArchive? previous);
-        long previousRevision = archive.Revision;
         archive.SchemaVersion = CurrentSchemaVersion;
         archive.RunSeed = runState.Rng.StringSeed;
         archive.Revision++;
         archive.Acts[runState.CurrentActIndex] = act;
-        if (JsonSerializer.SerializeToUtf8Bytes(archive, JsonOptions).Length > MaxArchiveBytes)
-        {
-            archive.Revision = previousRevision;
-            if (hadPrevious)
-                archive.Acts[runState.CurrentActIndex] = previous!;
-            else
-                archive.Acts.Remove(runState.CurrentActIndex);
-            error = "map archive exceeds the sharing and network size limit";
-            return false;
-        }
+        error = string.Empty;
         BroadcastSnapshot(runState);
         SaveCurrentRun();
         return true;
@@ -313,28 +292,9 @@ public static class MapEditingService
                 "Maps can only be imported while you are still in the first room of the current act."));
         }
 
-        string previousSeed = runState.Rng.StringSeed;
-        ActMap previousMap = runState.Map;
-        MapEditingArchive? previousArchive = Archives.TryGetValue(runState, out MapEditingArchive? currentArchive)
-            ? currentArchive
-            : null;
-        Dictionary<int, SerializableActMap>? previousPending = RunManager.Instance.SavedMapsToLoad is { } pendingMaps
-            ? new Dictionary<int, SerializableActMap>(pendingMaps)
-            : null;
-        Dictionary<int, SerializableActMap?>? previousBackups =
-            FutureMapBackupsByRun.TryGetValue(runState, out FutureMapBackups? backups)
-                ? new Dictionary<int, SerializableActMap?>(backups.Maps)
-                : null;
         try
         {
             string text = DisplayServer.ClipboardGet().Trim();
-            if (text.Length > MaxArchiveBytes * 2)
-            {
-                return (false, LocMan.Loc(
-                    "MAP_EDITOR_IMPORT_INVALID",
-                    "Could not import maps: {0}",
-                    "archive is too large"));
-            }
             if (!text.StartsWith(ClipboardPrefix, StringComparison.Ordinal))
             {
                 return (false, LocMan.Loc(
@@ -346,45 +306,26 @@ public static class MapEditingService
             using MemoryStream input = new(compressed);
             using GZipStream gzip = new(input, CompressionMode.Decompress);
             using MemoryStream output = new();
-            CopyWithLimit(gzip, output, MaxArchiveBytes);
-            MapEditingArchive? imported = JsonSerializer.Deserialize<MapEditingArchive>(
+            gzip.CopyTo(output);
+            MapEditingArchive imported = JsonSerializer.Deserialize<MapEditingArchive>(
                 Encoding.UTF8.GetString(output.ToArray()),
-                JsonOptions);
-            if (imported is null)
-            {
-                return (false, LocMan.Loc(
-                    "MAP_EDITOR_IMPORT_INVALID",
-                    "Could not import maps: {0}",
-                    "empty archive"));
-            }
-            if (!TryValidateArchive(imported, out string error))
-            {
-                return (false, LocMan.Loc("MAP_EDITOR_IMPORT_INVALID", "Could not import maps: {0}", error));
-            }
-            if (!imported.Acts.TryGetValue(runState.CurrentActIndex, out MapEditingActArchive? currentAct))
-            {
-                return (false, LocMan.Loc(
-                    "MAP_EDITOR_IMPORT_INVALID",
-                    "Could not import maps: {0}",
-                    "archive does not contain the current act map"));
-            }
-            if (imported.Acts.Keys.Any(index => index < 0 || index >= runState.Acts.Count))
-            {
-                return (false, LocMan.Loc(
-                    "MAP_EDITOR_IMPORT_INVALID",
-                    "Could not import maps: {0}",
-                    "archive contains an act outside this run"));
-            }
+                JsonOptions)!;
+            MapEditingActArchive currentAct = imported.Acts[runState.CurrentActIndex];
+            SavedActMap replacement = new(currentAct.Map);
 
-            if (!TryReplaceRunSeed(runState, imported.RunSeed, out error))
+            if (!TryReplaceRunSeed(runState, imported.RunSeed, out string error))
                 return (false, LocMan.Loc("MAP_EDITOR_IMPORT_INVALID", "Could not import maps: {0}", error));
 
+            long previousRevision = Archives.TryGetValue(runState, out MapEditingArchive? previousArchive)
+                ? previousArchive.Revision
+                : 0L;
             imported.SchemaVersion = CurrentSchemaVersion;
-            imported.Revision = Math.Max(previousArchive?.Revision ?? 0L, imported.Revision) + 1L;
+            imported.Revision = Math.Max(previousRevision, imported.Revision) + 1L;
             Archives.Remove(runState);
             Archives.Add(runState, imported);
-            ApplyAct(runState, screen, currentAct);
-            QueueFutureMaps(runState);
+            runState.Map = replacement;
+            screen.SetMap(replacement, runState.Rng.Seed, clearDrawings: false);
+            InstallFutureMaps(runState, imported);
             BroadcastSnapshot(runState);
             SaveCurrentRun();
             return (true, LocMan.Loc(
@@ -394,24 +335,6 @@ public static class MapEditingService
         }
         catch (Exception exception)
         {
-            TryReplaceRunSeed(runState, previousSeed, out _);
-            Archives.Remove(runState);
-            if (previousArchive is not null)
-                Archives.Add(runState, previousArchive);
-            RunManager.Instance.SavedMapsToLoad = previousPending;
-            FutureMapBackupsByRun.Remove(runState);
-            if (previousBackups is not null)
-            {
-                FutureMapBackups restoredBackups = new();
-                foreach ((int actIndex, SerializableActMap? map) in previousBackups)
-                    restoredBackups.Maps[actIndex] = map;
-                FutureMapBackupsByRun.Add(runState, restoredBackups);
-            }
-            if (!ReferenceEquals(runState.Map, previousMap))
-            {
-                runState.Map = previousMap;
-                screen.SetMap(previousMap, runState.Rng.Seed, clearDrawings: false);
-            }
             return (false, LocMan.Loc(
                 "MAP_EDITOR_IMPORT_INVALID",
                 "Could not import maps: {0}",
@@ -517,193 +440,22 @@ public static class MapEditingService
 
     private static void ApplyAct(RunState runState, NMapScreen screen, MapEditingActArchive act)
     {
-        ApplyAct(runState, screen, act, CaptureQuests(runState.Map));
-    }
-
-    private static void ApplyAct(
-        RunState runState,
-        NMapScreen screen,
-        MapEditingActArchive act,
-        IReadOnlyDictionary<MapCoord, List<AbstractModel>> quests)
-    {
         SavedActMap rebuilt = new(act.Map);
-        RestoreQuests(rebuilt, quests);
         runState.Map = rebuilt;
         screen.SetMap(rebuilt, runState.Rng.Seed, clearDrawings: false);
     }
 
-    private static Dictionary<MapCoord, List<AbstractModel>> CaptureQuests(ActMap map)
+    private static void InstallFutureMaps(RunState runState, MapEditingArchive archive)
     {
-        Dictionary<MapCoord, List<AbstractModel>> quests = new();
-        foreach (MapPoint point in EnumerateIncludingAnchors(map))
-        {
-            if (point.Quests.Count > 0)
-                quests[point.coord] = point.Quests.ToList();
-        }
-        return quests;
-    }
-
-    private static void RestoreQuests(ActMap map, IReadOnlyDictionary<MapCoord, List<AbstractModel>> quests)
-    {
-        foreach ((MapCoord coord, List<AbstractModel> models) in quests)
-        {
-            MapPoint? point = map.GetPoint(coord);
-            if (point is null)
-                continue;
-            foreach (AbstractModel model in models)
-                point.AddQuest(model);
-        }
-    }
-
-    private static IEnumerable<MapPoint> EnumerateIncludingAnchors(ActMap map)
-    {
-        yield return map.StartingMapPoint;
-        foreach (MapPoint point in map.GetAllMapPoints())
-            yield return point;
-        yield return map.BossMapPoint;
-        if (map.SecondBossMapPoint is not null)
-            yield return map.SecondBossMapPoint;
-    }
-
-    private static void QueueFutureMaps(RunState runState)
-    {
-        if (!Archives.TryGetValue(runState, out MapEditingArchive? archive))
-            return;
-
-        Dictionary<int, SerializableActMap> pending = RunManager.Instance.SavedMapsToLoad ??= [];
-        FutureMapBackups backups = FutureMapBackupsByRun.GetValue(runState, static _ => new FutureMapBackups());
-        foreach (int actIndex in backups.Maps.Keys.ToArray())
-        {
-            bool remainsEdited = archive.Acts.ContainsKey(actIndex)
-                                  && actIndex > runState.CurrentActIndex
-                                  && actIndex < runState.Acts.Count;
-            if (remainsEdited)
-                continue;
-
-            SerializableActMap? original = backups.Maps[actIndex];
-            if (original is null)
-                pending.Remove(actIndex);
-            else
-                pending[actIndex] = original;
-            backups.Maps.Remove(actIndex);
-        }
+        Dictionary<int, SerializableActMap> pending = [];
 
         foreach ((int actIndex, MapEditingActArchive act) in archive.Acts)
         {
-            if (actIndex > runState.CurrentActIndex
-                && actIndex < runState.Acts.Count)
-            {
-                if (!backups.Maps.ContainsKey(actIndex))
-                    backups.Maps[actIndex] = pending.GetValueOrDefault(actIndex);
+            if (actIndex > runState.CurrentActIndex)
                 pending[actIndex] = act.Map;
-            }
-        }
-    }
-
-    private static bool TryValidateArchive(
-        MapEditingArchive archive,
-        out string error)
-    {
-        if (archive.SchemaVersion != CurrentSchemaVersion)
-        {
-            error = $"unsupported schema {archive.SchemaVersion}";
-            return false;
         }
 
-        if (string.IsNullOrWhiteSpace(archive.RunSeed) || archive.RunSeed.Length > 256)
-        {
-            error = "archive run seed is missing or invalid";
-            return false;
-        }
-
-        if (archive.Acts.Count > 16)
-        {
-            error = "too many acts";
-            return false;
-        }
-
-        foreach ((int key, MapEditingActArchive act) in archive.Acts)
-        {
-            if (key != act.ActIndex)
-            {
-                error = $"act key {key} does not match its payload";
-                return false;
-            }
-            if (!TryValidateAct(act, out error))
-                return false;
-
-        }
-
-        error = string.Empty;
-        return true;
-    }
-
-    private static bool TryValidateAct(MapEditingActArchive act, out string error)
-    {
-        SerializableActMap map = act.Map;
-        if (map is null || map.StartingPoint is null || map.BossPoint is null || string.IsNullOrWhiteSpace(act.ActModelId))
-        {
-            error = "required map anchors are missing";
-            return false;
-        }
-
-        if (map.GridWidth is < 1 or > 255 || map.GridHeight is < 1 or > 255 || map.Points.Count > ushort.MaxValue)
-        {
-            error = "map dimensions exceed native limits";
-            return false;
-        }
-
-        List<SerializableMapPoint> all = [map.StartingPoint, .. map.Points, map.BossPoint];
-        if (map.SecondBossPoint is not null)
-            all.Add(map.SecondBossPoint);
-
-        HashSet<MapCoord> coords = [];
-        foreach (SerializableMapPoint point in map.Points)
-        {
-            if (point.Coord.col >= map.GridWidth || point.Coord.row >= map.GridHeight)
-            {
-                error = "an ordinary node is outside the native map grid";
-                return false;
-            }
-        }
-        foreach (SerializableMapPoint point in all)
-        {
-            if (point.Coord.col is < 0 or > 255 || point.Coord.row is < 0 or > 255
-                || !Enum.IsDefined(point.PointType)
-                || point.ChildCoords is { Count: > 255 }
-                || !coords.Add(point.Coord))
-            {
-                error = "map contains an invalid or duplicate node";
-                return false;
-            }
-        }
-
-        if (map.StartMapPointCoords is { Count: > 255 })
-        {
-            error = "map has too many starting nodes";
-            return false;
-        }
-
-        foreach (SerializableMapPoint point in all)
-        {
-            if (point.ChildCoords is not null && point.ChildCoords.Any(child => !coords.Contains(child)))
-            {
-                error = "a connection points to a missing node";
-                return false;
-            }
-        }
-
-        foreach (MapEditingPosition position in act.Positions.Values)
-        {
-            if (!float.IsFinite(position.X) || !float.IsFinite(position.Y))
-            {
-                error = "map contains an invalid visual position";
-                return false;
-            }
-        }
-
-        error = string.Empty;
-        return true;
+        RunManager.Instance.SavedMapsToLoad = pending.Count == 0 ? null : pending;
     }
 
     private static RunState? TryGetRunState()
@@ -812,8 +564,6 @@ public static class MapEditingService
         }
 
         RunState? runState = TryGetRunState();
-        if (message.SnapshotJson.Length > MaxArchiveBytes)
-            return;
         if (runState is null)
         {
             _pendingSnapshotJson = message.SnapshotJson;
@@ -827,17 +577,11 @@ public static class MapEditingService
     {
         try
         {
-            MapEditingArchive? incoming = JsonSerializer.Deserialize<MapEditingArchive>(snapshotJson, JsonOptions);
-            if (incoming is null || !TryValidateArchive(incoming, out _))
-                return;
+            MapEditingArchive incoming = JsonSerializer.Deserialize<MapEditingArchive>(snapshotJson, JsonOptions)!;
 
             if (Archives.TryGetValue(runState, out MapEditingArchive? current) && incoming.Revision <= current.Revision)
                 return;
 
-            bool seedChanged = !string.Equals(
-                runState.Rng.StringSeed,
-                incoming.RunSeed,
-                StringComparison.Ordinal);
             if (!TryReplaceRunSeed(runState, incoming.RunSeed, out string seedError))
             {
                 GD.PushWarning($"Loadout map editor: could not apply imported run seed. {seedError}");
@@ -845,53 +589,19 @@ public static class MapEditingService
             }
             Archives.Remove(runState);
             Archives.Add(runState, incoming);
-            QueueFutureMaps(runState);
+            InstallFutureMaps(runState, incoming);
             if (incoming.Acts.TryGetValue(runState.CurrentActIndex, out MapEditingActArchive? act))
             {
                 NMapScreen? screen = TryGetMapScreen();
                 if (screen is not null)
-                {
-                    if (!seedChanged && NMapEditingToolbar.CanApplyActIncrementally(screen))
-                    {
-                        NMapEditingToolbar.ApplyActIncrementally(
-                            runState,
-                            screen,
-                            act,
-                            CaptureQuests(runState.Map));
-                    }
-                    else
-                    {
-                        ApplyAct(runState, screen, act);
-                    }
-                }
+                    ApplyAct(runState, screen, act);
                 else
-                {
-                    Dictionary<MapCoord, List<AbstractModel>> quests = CaptureQuests(runState.Map);
-                    SavedActMap rebuilt = new(act.Map);
-                    RestoreQuests(rebuilt, quests);
-                    runState.Map = rebuilt;
-                }
+                    runState.Map = new SavedActMap(act.Map);
             }
         }
         catch (Exception exception)
         {
             GD.PushWarning($"Loadout map editor: ignored invalid multiplayer snapshot. {exception.Message}");
-        }
-    }
-
-    private static void CopyWithLimit(Stream input, Stream output, int maxBytes)
-    {
-        byte[] buffer = new byte[8192];
-        int total = 0;
-        while (true)
-        {
-            int read = input.Read(buffer, 0, buffer.Length);
-            if (read == 0)
-                return;
-            total += read;
-            if (total > maxBytes)
-                throw new InvalidDataException("archive is too large");
-            output.Write(buffer, 0, read);
         }
     }
 
@@ -938,12 +648,6 @@ public sealed class MapEditingHistoryState
 {
     public string ArchiveJson { get; set; } = string.Empty;
     public string PendingMapsJson { get; set; } = string.Empty;
-    public Dictionary<MapCoord, List<AbstractModel>> CurrentActQuests { get; set; } = [];
-}
-
-internal sealed class FutureMapBackups
-{
-    public Dictionary<int, SerializableActMap?> Maps { get; } = [];
 }
 
 internal sealed record PlayerSeedState(Player Player, PlayerRngSet Rng, PlayerOddsSet Odds);
