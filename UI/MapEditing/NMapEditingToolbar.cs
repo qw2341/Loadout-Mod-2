@@ -13,8 +13,11 @@ using Loadout.UI.Managers;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -150,13 +153,22 @@ public partial class NMapEditingToolbar : Control
     private const string QuillPath = "res://images/packed/map/drawing_quill.png";
     private const string QuillGlowPath = "res://images/packed/map/drawing_quill_glow.png";
     private const string SharePath = "res://images/packed/statistics_screen/share_stats.png";
+    private const string UndoPath = "res://images/atlases/compressed.sprites/back_button_arrow.tres";
+    private const string ClearPath = "res://images/packed/map/drawing_clear.png";
+    private const string ClearGlowPath = "res://images/packed/map/drawing_clear_glow.png";
+    private const string ToolbarBackgroundPath = "res://images/ui/tiny_nine_patch.png";
+    private const int MaxHistoryEntries = 64;
 
     private readonly NMapScreen _screen;
     private Control _points = null!;
-    private HBoxContainer _buttons = null!;
+    private NinePatchRect _background = null!;
+    private GridContainer _buttons = null!;
     private NMapToolButton _editButton = null!;
     private NMapToolButton _copyButton = null!;
     private NMapToolButton _importButton = null!;
+    private NMapToolButton _undoButton = null!;
+    private NMapToolButton _redoButton = null!;
+    private NMapToolButton _clearButton = null!;
     private MegaLabel _status = null!;
     private TextureRect _ghost = null!;
     private NMapConnectionPreview _connectionPreview = null!;
@@ -168,6 +180,10 @@ public partial class NMapEditingToolbar : Control
     private MapCoord? _linkSource;
     private (MapCoord Source, MapCoord Destination)? _highlightedConnection;
     private readonly Dictionary<TextureRect, Color> _highlightedTickColors = [];
+    private readonly List<MapEditingHistoryState> _undoHistory = [];
+    private readonly List<MapEditingHistoryState> _redoHistory = [];
+    private MapEditingHistoryState? _dragHistoryState;
+    private int _historyActIndex = -1;
 
     public NMapEditingToolbar(NMapScreen screen)
     {
@@ -183,6 +199,7 @@ public partial class NMapEditingToolbar : Control
         MouseFilter = MouseFilterEnum.Ignore;
         _points = _screen.GetNode<Control>("TheMap/Points");
         BuildToolbar();
+        _historyActIndex = TryGetRunState()?.CurrentActIndex ?? -1;
         _screen.Connect(CanvasItem.SignalName.VisibilityChanged, Callable.From(OnScreenVisibilityChanged));
         SetProcessInput(false);
     }
@@ -333,36 +350,51 @@ public partial class NMapEditingToolbar : Control
         RestoreHighlightedTicks();
         _highlightedConnection = null;
         _dragNode = null;
+        _dragHistoryState = null;
         _placementChainTail = null;
         UpdateGhostPosition();
+        if (TryGetRunState() is { } runState && _historyActIndex != runState.CurrentActIndex)
+        {
+            _historyActIndex = runState.CurrentActIndex;
+            _undoHistory.Clear();
+            _redoHistory.Clear();
+            SetHistoryButtonsAvailability();
+        }
     }
 
     private void BuildToolbar()
     {
-        ColorRect background = new()
+        _background = new NinePatchRect
         {
             Name = "Background",
-            Color = new Color(0f, 0f, 0f, 0.75f),
-            MouseFilter = MouseFilterEnum.Ignore
+            Texture = LoadTexture(ToolbarBackgroundPath),
+            SelfModulate = new Color(0f, 0f, 0f, 0.75f),
+            PatchMarginLeft = 12,
+            PatchMarginTop = 12,
+            PatchMarginRight = 12,
+            PatchMarginBottom = 12,
+            MouseFilter = MouseFilterEnum.Stop
         };
-        background.SetAnchorsPreset(LayoutPreset.BottomLeft);
-        background.OffsetLeft = 56f;
-        background.OffsetTop = -184f;
-        background.OffsetRight = 264f;
-        background.OffsetBottom = -116f;
-        AddChild(background);
+        _background.SetAnchorsPreset(LayoutPreset.BottomLeft);
+        _background.OffsetLeft = 56f;
+        _background.OffsetTop = -184f;
+        _background.OffsetRight = 136f;
+        _background.OffsetBottom = -116f;
+        AddChild(_background);
 
-        _buttons = new HBoxContainer
+        _buttons = new GridContainer
         {
             Name = "Buttons",
+            Columns = 3,
             MouseFilter = MouseFilterEnum.Pass
         };
         _buttons.SetAnchorsPreset(LayoutPreset.BottomLeft);
         _buttons.OffsetLeft = 66f;
         _buttons.OffsetTop = -180f;
-        _buttons.OffsetRight = 254f;
+        _buttons.OffsetRight = 126f;
         _buttons.OffsetBottom = -120f;
-        _buttons.AddThemeConstantOverride("separation", 2);
+        _buttons.AddThemeConstantOverride("h_separation", 0);
+        _buttons.AddThemeConstantOverride("v_separation", 0);
         AddChild(_buttons);
 
         _editButton = CreateButton(
@@ -370,6 +402,7 @@ public partial class NMapEditingToolbar : Control
             QuillPath,
             QuillGlowPath,
             ToggleEditing,
+            LocMan.Loc("MAP_EDITOR_EDIT_TITLE", "Map Editor"),
             LocMan.Loc("MAP_EDITOR_EDIT_TOOLTIP", "Map editor controls: Left-drag moves; legend/Middle-click picks; Shift-place chain-links; Right-drag connects; Delete/Backspace removes; Right-click empty space cancels."),
             rainbow: true);
         _copyButton = CreateButton(
@@ -377,17 +410,44 @@ public partial class NMapEditingToolbar : Control
             SharePath,
             SharePath,
             CopyMaps,
+            LocMan.Loc("MAP_EDITOR_COPY_TITLE", "Export Maps"),
             LocMan.Loc("MAP_EDITOR_COPY_TOOLTIP", "Copy all edited act maps to the clipboard."));
         _importButton = CreateButton(
             "Import",
             SharePath,
             SharePath,
             ImportMaps,
+            LocMan.Loc("MAP_EDITOR_IMPORT_TITLE", "Import Maps"),
             LocMan.Loc("MAP_EDITOR_IMPORT_TOOLTIP", "Import current and future act maps from the clipboard."),
             flipVertical: true);
+        _undoButton = CreateButton(
+            "Undo",
+            UndoPath,
+            UndoPath,
+            Undo,
+            LocMan.Loc("MAP_EDITOR_UNDO_TITLE", "Undo"),
+            LocMan.Loc("MAP_EDITOR_UNDO_TOOLTIP", "Undo the last map edit, including an import or Clear All."));
+        _redoButton = CreateButton(
+            "Redo",
+            UndoPath,
+            UndoPath,
+            Redo,
+            LocMan.Loc("MAP_EDITOR_REDO_TITLE", "Redo"),
+            LocMan.Loc("MAP_EDITOR_REDO_TOOLTIP", "Redo the last undone map edit."),
+            flipHorizontal: true);
+        _clearButton = CreateButton(
+            "ClearAll",
+            ClearPath,
+            ClearGlowPath,
+            ClearAll,
+            LocMan.Loc("MAP_EDITOR_CLEAR_TITLE", "Clear All Nodes"),
+            LocMan.Loc("MAP_EDITOR_CLEAR_TOOLTIP", "Remove every node except your current node, the Ancient room, and the boss room."));
         _buttons.AddChild(_editButton);
         _buttons.AddChild(_copyButton);
         _buttons.AddChild(_importButton);
+        _buttons.AddChild(_undoButton);
+        _buttons.AddChild(_redoButton);
+        _buttons.AddChild(_clearButton);
 
         _status = new MegaLabel
         {
@@ -432,10 +492,10 @@ public partial class NMapEditingToolbar : Control
         };
         _connectionPreview.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(_connectionPreview);
-        _copyButton.Visible = false;
-        _importButton.Visible = false;
+        SetToolbarExpanded(false);
         _editButton.SetActive(false);
         _status.SetTextAutoSize(string.Empty);
+        SetHistoryButtonsAvailability();
     }
 
     private NMapToolButton CreateButton(
@@ -443,9 +503,11 @@ public partial class NMapEditingToolbar : Control
         string iconPath,
         string glowPath,
         Action action,
-        string tooltip,
+        string hoverTitle,
+        string hoverDescription,
         bool rainbow = false,
-        bool flipVertical = false)
+        bool flipVertical = false,
+        bool flipHorizontal = false)
     {
         return new NMapToolButton
         {
@@ -458,7 +520,10 @@ public partial class NMapEditingToolbar : Control
             GlowPath = glowPath,
             RainbowOutline = rainbow,
             FlipVertical = flipVertical,
-            TooltipText = tooltip,
+            FlipHorizontal = flipHorizontal,
+            HoverTitle = hoverTitle,
+            HoverDescription = hoverDescription,
+            HoverAnchor = _background,
             Activated = action
         };
     }
@@ -470,10 +535,9 @@ public partial class NMapEditingToolbar : Control
         IsEditing = editing;
         SetProcessInput(editing && _screen.IsVisibleInTree());
         CancelTransientAction();
-        if (_copyButton is not null)
+        if (_editButton is not null)
         {
-            _copyButton.Visible = editing;
-            _importButton.Visible = editing;
+            SetToolbarExpanded(editing);
             _editButton.SetActive(editing);
         }
 
@@ -486,6 +550,19 @@ public partial class NMapEditingToolbar : Control
         SetStatus(editing
             ? LocMan.Loc("MAP_EDITOR_ACTIVE", "Map editing mode")
             : string.Empty);
+    }
+
+    private void SetToolbarExpanded(bool expanded)
+    {
+        _copyButton.Visible = expanded;
+        _importButton.Visible = expanded;
+        _undoButton.Visible = expanded;
+        _redoButton.Visible = expanded;
+        _clearButton.Visible = expanded;
+        _background.OffsetRight = expanded ? 264f : 136f;
+        _background.OffsetBottom = expanded ? -40f : -116f;
+        _buttons.OffsetRight = expanded ? 246f : 126f;
+        _buttons.OffsetBottom = expanded ? -60f : -120f;
     }
 
     private void OnScreenVisibilityChanged()
@@ -534,10 +611,183 @@ public partial class NMapEditingToolbar : Control
         RunState? runState = TryGetRunState();
         string message;
         if (runState is not null)
-            MapEditingService.ImportFromClipboard(runState, _screen, out message);
+        {
+            CancelTransientAction();
+            MapEditingHistoryState? before = CaptureHistoryState(runState);
+            if (before is null)
+                return;
+            if (MapEditingService.ImportFromClipboard(runState, _screen, out message))
+                RecordSuccessfulEdit(before);
+        }
         else
             message = LocMan.Loc("MAP_EDITOR_NO_RUN", "No active run map.");
         SetStatus(message);
+    }
+
+    private void Undo()
+    {
+        if (_undoHistory.Count == 0 || TryGetRunState() is not { } runState)
+        {
+            SetStatus(LocMan.Loc("MAP_EDITOR_NOTHING_TO_UNDO", "Nothing to undo."));
+            return;
+        }
+
+        CancelTransientAction();
+        MapEditingHistoryState? current = CaptureHistoryState(runState);
+        if (current is null)
+            return;
+        MapEditingHistoryState previous = _undoHistory[^1];
+        if (!MapEditingService.TryRestoreHistoryState(runState, _screen, previous, out string error))
+        {
+            SetStatus(error);
+            return;
+        }
+
+        _undoHistory.RemoveAt(_undoHistory.Count - 1);
+        _redoHistory.Add(current);
+        SetHistoryButtonsAvailability();
+        SetStatus(LocMan.Loc("MAP_EDITOR_UNDONE", "Undid map edit."));
+    }
+
+    private void Redo()
+    {
+        if (_redoHistory.Count == 0 || TryGetRunState() is not { } runState)
+        {
+            SetStatus(LocMan.Loc("MAP_EDITOR_NOTHING_TO_REDO", "Nothing to redo."));
+            return;
+        }
+
+        CancelTransientAction();
+        MapEditingHistoryState? current = CaptureHistoryState(runState);
+        if (current is null)
+            return;
+        MapEditingHistoryState next = _redoHistory[^1];
+        if (!MapEditingService.TryRestoreHistoryState(runState, _screen, next, out string error))
+        {
+            SetStatus(error);
+            return;
+        }
+
+        _redoHistory.RemoveAt(_redoHistory.Count - 1);
+        _undoHistory.Add(current);
+        SetHistoryButtonsAvailability();
+        SetStatus(LocMan.Loc("MAP_EDITOR_REDONE", "Redid map edit."));
+    }
+
+    private void ClearAll()
+    {
+        if (TryGetRunState() is not { } runState)
+            return;
+
+        CancelTransientAction();
+        MapCoord? currentCoord = runState.VisitedMapCoords.Count > 0
+            ? runState.VisitedMapCoords[^1]
+            : null;
+        NMapPoint[] nodesToDelete = GetPointNodes()
+            .Where(node => !ReferenceEquals(node.Point, runState.Map.StartingMapPoint)
+                           && !ReferenceEquals(node.Point, runState.Map.BossMapPoint)
+                           && !ReferenceEquals(node.Point, runState.Map.SecondBossMapPoint)
+                           && (!currentCoord.HasValue || node.Point.coord != currentCoord.Value))
+            .ToArray();
+        if (nodesToDelete.Length == 0)
+        {
+            SetStatus(LocMan.Loc("MAP_EDITOR_NOTHING_TO_CLEAR", "No removable nodes remain."));
+            return;
+        }
+
+        MapEditingHistoryState? before = CaptureHistoryState(runState);
+        if (before is null)
+            return;
+
+        HashSet<MapPoint> removed = nodesToDelete.Select(node => node.Point).ToHashSet();
+        MapPoint[] allPoints = GetPointNodes().Select(node => node.Point).ToArray();
+        (MapPoint Source, MapPoint Destination)[] removedConnections = allPoints
+            .SelectMany(source => source.Children
+                .Where(destination => removed.Contains(source) || removed.Contains(destination))
+                .Select(destination => (source, destination)))
+            .ToArray();
+        Dictionary<MapPoint, bool> wasStartingPoint = removed.ToDictionary(
+            point => point,
+            point => runState.Map.startMapPoints.Contains(point));
+
+        foreach ((MapPoint source, MapPoint destination) in removedConnections)
+            source.RemoveChildPoint(destination);
+        MapPoint?[,] grid = GetGrid(runState.Map);
+        foreach (MapPoint point in removed)
+        {
+            runState.Map.startMapPoints.Remove(point);
+            grid[point.coord.col, point.coord.row] = null;
+        }
+
+        Dictionary<string, MapEditingPosition> positions = CapturePositions(runState);
+        foreach (MapPoint point in removed)
+            positions.Remove($"p:{point.coord.col}:{point.coord.row}");
+        if (!MapEditingService.CommitCurrentAct(
+                runState,
+                SerializableActMap.FromActMap(runState.Map),
+                positions,
+                out string error))
+        {
+            foreach (MapPoint point in removed)
+            {
+                grid[point.coord.col, point.coord.row] = point;
+                if (wasStartingPoint[point])
+                    runState.Map.startMapPoints.Add(point);
+            }
+            foreach ((MapPoint source, MapPoint destination) in removedConnections)
+                source.AddChildPoint(destination);
+            SetStatus(error);
+            return;
+        }
+
+        RecordSuccessfulEdit(before);
+        foreach (NMapPoint node in nodesToDelete)
+        {
+            RemoveConnectionVisualsFor(node.Point.coord);
+            PointNodesField(_screen).Remove(node.Point.coord);
+            node.QueueFree();
+        }
+        foreach (NMapPoint node in PointNodesField(_screen).Values)
+            RefreshTravelability(node, runState);
+        SetStatus(LocMan.Loc("MAP_EDITOR_CLEARED", "Cleared removable map nodes."));
+    }
+
+    private MapEditingHistoryState? CaptureHistoryState(RunState runState)
+    {
+        if (MapEditingService.TryCaptureHistoryState(
+                runState,
+                CapturePositions(runState),
+                out MapEditingHistoryState state,
+                out string error))
+        {
+            return state;
+        }
+
+        SetStatus(error);
+        return null;
+    }
+
+    private void RecordSuccessfulEdit(MapEditingHistoryState before)
+    {
+        _undoHistory.Add(before);
+        if (_undoHistory.Count > MaxHistoryEntries)
+            _undoHistory.RemoveAt(0);
+        _redoHistory.Clear();
+        SetHistoryButtonsAvailability();
+    }
+
+    private void SetHistoryButtonsAvailability()
+    {
+        if (_undoButton is null || _redoButton is null)
+            return;
+        if (_undoHistory.Count > 0)
+            _undoButton.Enable();
+        else
+            _undoButton.Disable();
+        if (_redoHistory.Count > 0)
+            _redoButton.Enable();
+        else
+            _redoButton.Disable();
     }
 
     private void Pick(MapPointType pointType)
@@ -558,6 +808,9 @@ public partial class NMapEditingToolbar : Control
 
         Vector2 position = _points.GetLocalMousePosition();
         int row = FindNearestRow(position.Y, runState);
+        MapEditingHistoryState? before = CaptureHistoryState(runState);
+        if (before is null)
+            return;
         MapPoint?[,] originalGrid = GetGrid(runState.Map);
         MapPoint?[,] grid = originalGrid;
         int column = -1;
@@ -601,6 +854,7 @@ public partial class NMapEditingToolbar : Control
         SerializableActMap map = SerializableActMap.FromActMap(runState.Map);
         if (MapEditingService.CommitCurrentAct(runState, map, positions, out string error))
         {
+            RecordSuccessfulEdit(before);
             PointNodesField(_screen).Add(coord, node);
             _points.AddChild(node);
             node.Position = nodePosition;
@@ -641,6 +895,11 @@ public partial class NMapEditingToolbar : Control
 
     private void BeginDrag(NMapPoint point)
     {
+        if (TryGetRunState() is not { } runState)
+            return;
+        _dragHistoryState = CaptureHistoryState(runState);
+        if (_dragHistoryState is null)
+            return;
         _dragNode = point;
         _dragStartPosition = point.Position;
         _dragOffset = point.Position - _points.GetLocalMousePosition();
@@ -656,6 +915,8 @@ public partial class NMapEditingToolbar : Control
 
         NMapPoint dragged = _dragNode;
         _dragNode = null;
+        MapEditingHistoryState? before = _dragHistoryState;
+        _dragHistoryState = null;
         bool requiredAnchor = ReferenceEquals(dragged.Point, runState.Map.StartingMapPoint)
                               || ReferenceEquals(dragged.Point, runState.Map.BossMapPoint)
                               || ReferenceEquals(dragged.Point, runState.Map.SecondBossMapPoint);
@@ -670,12 +931,20 @@ public partial class NMapEditingToolbar : Control
                 return;
             }
 
-            DeleteNode(dragged);
+            DeleteNode(dragged, before);
+            return;
+        }
+
+        if (dragged.Position.DistanceSquaredTo(_dragStartPosition) <= 0.01f)
+        {
+            SetStatus(LocMan.Loc("MAP_EDITOR_ACTIVE", "Map editing mode"));
             return;
         }
 
         if (CommitTopology(runState))
         {
+            if (before is not null)
+                RecordSuccessfulEdit(before);
             SetStatus(LocMan.Loc("MAP_EDITOR_NODE_MOVED", "Moved node."));
         }
         else
@@ -717,12 +986,17 @@ public partial class NMapEditingToolbar : Control
             return;
         }
 
+        MapEditingHistoryState? before = CaptureHistoryState(runState);
+        if (before is null)
+            return;
+
         sourcePoint.AddChildPoint(destinationPoint);
         if (!CommitTopology(runState))
         {
             sourcePoint.RemoveChildPoint(destinationPoint);
             return;
         }
+        RecordSuccessfulEdit(before);
         CreateConnectionVisual(sourcePoint, destinationPoint);
         RefreshTravelability(destinationNode, runState);
         SetStatus(LocMan.Loc("MAP_EDITOR_LINK_ADDED", "Added connection."));
@@ -742,7 +1016,7 @@ public partial class NMapEditingToolbar : Control
             DeleteConnection(_highlightedConnection.Value);
     }
 
-    private void DeleteNode(NMapPoint node)
+    private void DeleteNode(NMapPoint node, MapEditingHistoryState? historyState = null)
     {
         if (TryGetRunState() is not { } runState)
             return;
@@ -754,6 +1028,10 @@ public partial class NMapEditingToolbar : Control
             SetStatus(LocMan.Loc("MAP_EDITOR_ANCHOR_REQUIRED", "Start and boss anchors cannot be deleted."));
             return;
         }
+
+        historyState ??= CaptureHistoryState(runState);
+        if (historyState is null)
+            return;
 
         MapCoord coord = node.Point.coord;
         MapPoint point = node.Point;
@@ -773,6 +1051,7 @@ public partial class NMapEditingToolbar : Control
                 positions,
                 out string error))
         {
+            RecordSuccessfulEdit(historyState);
             RemoveConnectionVisualsFor(coord);
             PointNodesField(_screen).Remove(coord);
             node.QueueFree();
@@ -801,6 +1080,10 @@ public partial class NMapEditingToolbar : Control
         if (source is null || destination is null || !source.Children.Contains(destination))
             return;
 
+        MapEditingHistoryState? before = CaptureHistoryState(runState);
+        if (before is null)
+            return;
+
         source.RemoveChildPoint(destination);
         _highlightedConnection = null;
         RestoreHighlightedTicks();
@@ -809,6 +1092,7 @@ public partial class NMapEditingToolbar : Control
             source.AddChildPoint(destination);
             return;
         }
+        RecordSuccessfulEdit(before);
         RemoveConnectionVisual(connection);
         if (PointNodesField(_screen).TryGetValue(connection.Destination, out NMapPoint? destinationNode))
             RefreshTravelability(destinationNode, runState);
@@ -1120,6 +1404,7 @@ public partial class NMapEditingToolbar : Control
             ReflowConnectedPaths(_dragNode.Point.coord);
             _dragNode = null;
         }
+        _dragHistoryState = null;
         _linkSource = null;
         _connectionPreview?.HideLine();
         ClearPicker();
@@ -1240,6 +1525,9 @@ public partial class NMapConnectionPreview : Control
 
 public partial class NMapToolButton : NButton
 {
+    private static readonly PropertyInfo HoverTipTitleProperty =
+        typeof(HoverTip).GetProperty(nameof(HoverTip.Title), BindingFlags.Instance | BindingFlags.Public)
+        ?? throw new MissingMemberException(typeof(HoverTip).FullName, nameof(HoverTip.Title));
     private TextureRect? _icon;
     private Tween? _tween;
     private bool _active;
@@ -1248,6 +1536,10 @@ public partial class NMapToolButton : NButton
     public string GlowPath { get; set; } = string.Empty;
     public bool RainbowOutline { get; set; }
     public bool FlipVertical { get; set; }
+    public bool FlipHorizontal { get; set; }
+    public string HoverTitle { get; set; } = string.Empty;
+    public string HoverDescription { get; set; } = string.Empty;
+    public Control? HoverAnchor { get; set; }
     public Action? Activated { get; set; }
 
     public override void _Ready()
@@ -1259,6 +1551,7 @@ public partial class NMapToolButton : NButton
     public override void _ExitTree()
     {
         _tween?.Kill();
+        NHoverTipSet.Remove(this);
         base._ExitTree();
     }
 
@@ -1275,12 +1568,18 @@ public partial class NMapToolButton : NButton
     {
         base.OnFocus();
         Animate(Vector2.One * 1.18f, Colors.White, 0.05);
+        HoverTip hoverTip = CreateHoverTip();
+        Control anchor = HoverAnchor is not null && GodotObject.IsInstanceValid(HoverAnchor)
+            ? HoverAnchor
+            : this;
+        NHoverTipSet.CreateAndShow(this, hoverTip)?.SetGlobalPosition(anchor.GlobalPosition + new Vector2(10f, -132f));
     }
 
     protected override void OnUnfocus()
     {
         base.OnUnfocus();
         Animate(Vector2.One * 1.05f, _active ? Colors.White : new Color(1f, 1f, 1f, 0.65f), 0.1);
+        NHoverTipSet.Remove(this);
     }
 
     private void BuildVisuals()
@@ -1300,12 +1599,20 @@ public partial class NMapToolButton : NButton
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             MouseFilter = MouseFilterEnum.Ignore,
             FlipV = FlipVertical,
+            FlipH = FlipHorizontal,
             Scale = Vector2.One * 1.05f,
             PivotOffset = new Vector2(30f, 30f),
             SelfModulate = new Color(1f, 1f, 1f, 0.65f)
         };
         _icon.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(_icon);
+    }
+
+    private HoverTip CreateHoverTip()
+    {
+        object boxed = new HoverTip(new LocString("map", "DRAWING_BUTTON.title_mkb"), HoverDescription);
+        HoverTipTitleProperty.SetValue(boxed, HoverTitle);
+        return (HoverTip)boxed;
     }
 
     private void AddGlow(Color color, Vector2 offset)

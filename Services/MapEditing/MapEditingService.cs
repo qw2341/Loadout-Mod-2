@@ -43,6 +43,7 @@ public static class MapEditingService
     };
 
     private static readonly ConditionalWeakTable<RunState, MapEditingArchive> Archives = new();
+    private static readonly ConditionalWeakTable<RunState, FutureMapBackups> FutureMapBackupsByRun = new();
     private static INetGameService? _runNetService;
     private static RunLobby? _runLobby;
     private static Delegate? _playerRejoinedHandler;
@@ -118,6 +119,82 @@ public static class MapEditingService
             Map = SerializableActMap.FromActMap(runState.Map),
             Positions = positions.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
         };
+    }
+
+    public static bool TryCaptureHistoryState(
+        RunState runState,
+        IReadOnlyDictionary<string, MapEditingPosition> positions,
+        out MapEditingHistoryState state,
+        out string error)
+    {
+        try
+        {
+            MapEditingArchive archive = Archives.TryGetValue(runState, out MapEditingArchive? current)
+                ? JsonSerializer.Deserialize<MapEditingArchive>(
+                    JsonSerializer.Serialize(current, JsonOptions),
+                    JsonOptions) ?? new MapEditingArchive()
+                : new MapEditingArchive();
+            archive.Acts[runState.CurrentActIndex] = CaptureCurrentAct(runState, positions);
+
+            Dictionary<int, SerializableActMap> pending = RunManager.Instance.SavedMapsToLoad ?? [];
+            state = new MapEditingHistoryState
+            {
+                ArchiveJson = JsonSerializer.Serialize(archive, JsonOptions),
+                PendingMapsJson = JsonSerializer.Serialize(pending, JsonOptions),
+                CurrentActQuests = CaptureQuests(runState.Map)
+            };
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            state = new MapEditingHistoryState();
+            error = $"could not capture map editor history: {exception.Message}";
+            return false;
+        }
+    }
+
+    public static bool TryRestoreHistoryState(
+        RunState runState,
+        NMapScreen screen,
+        MapEditingHistoryState state,
+        out string error)
+    {
+        try
+        {
+            error = string.Empty;
+            MapEditingArchive? archive = JsonSerializer.Deserialize<MapEditingArchive>(state.ArchiveJson, JsonOptions);
+            Dictionary<int, SerializableActMap>? pending =
+                JsonSerializer.Deserialize<Dictionary<int, SerializableActMap>>(state.PendingMapsJson, JsonOptions);
+            if (archive is null || pending is null
+                || !TryValidateArchive(archive, runState, requireKnownActs: true, out error)
+                || !archive.Acts.TryGetValue(runState.CurrentActIndex, out MapEditingActArchive? currentAct))
+            {
+                if (string.IsNullOrWhiteSpace(error))
+                    error = "map editor history is incomplete";
+                return false;
+            }
+
+            long currentRevision = Archives.TryGetValue(runState, out MapEditingArchive? current)
+                ? current.Revision
+                : 0L;
+            archive.SchemaVersion = CurrentSchemaVersion;
+            archive.Revision = Math.Max(currentRevision, archive.Revision) + 1L;
+            Archives.Remove(runState);
+            Archives.Add(runState, archive);
+            RunManager.Instance.SavedMapsToLoad = pending;
+            FutureMapBackupsByRun.Remove(runState);
+            ApplyAct(runState, screen, currentAct, state.CurrentActQuests);
+            BroadcastSnapshot(runState);
+            SaveCurrentRun();
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            error = $"could not restore map editor history: {exception.Message}";
+            return false;
+        }
     }
 
     public static IReadOnlyDictionary<string, MapEditingPosition> GetCurrentPositions(RunState runState)
@@ -311,7 +388,15 @@ public static class MapEditingService
 
     private static void ApplyAct(RunState runState, NMapScreen screen, MapEditingActArchive act)
     {
-        Dictionary<MapCoord, List<AbstractModel>> quests = CaptureQuests(runState.Map);
+        ApplyAct(runState, screen, act, CaptureQuests(runState.Map));
+    }
+
+    private static void ApplyAct(
+        RunState runState,
+        NMapScreen screen,
+        MapEditingActArchive act,
+        IReadOnlyDictionary<MapCoord, List<AbstractModel>> quests)
+    {
         SavedActMap rebuilt = new(act.Map);
         RestoreQuests(rebuilt, quests);
         runState.Map = rebuilt;
@@ -357,12 +442,35 @@ public static class MapEditingService
             return;
 
         Dictionary<int, SerializableActMap> pending = RunManager.Instance.SavedMapsToLoad ??= [];
+        FutureMapBackups backups = FutureMapBackupsByRun.GetValue(runState, static _ => new FutureMapBackups());
+        foreach (int actIndex in backups.Maps.Keys.ToArray())
+        {
+            bool remainsEdited = archive.Acts.TryGetValue(actIndex, out MapEditingActArchive? archivedAct)
+                                 && actIndex > runState.CurrentActIndex
+                                 && actIndex < runState.Acts.Count
+                                 && string.Equals(
+                                     runState.Acts[actIndex].Id.ToString(),
+                                     archivedAct.ActModelId,
+                                     StringComparison.Ordinal);
+            if (remainsEdited)
+                continue;
+
+            SerializableActMap? original = backups.Maps[actIndex];
+            if (original is null)
+                pending.Remove(actIndex);
+            else
+                pending[actIndex] = original;
+            backups.Maps.Remove(actIndex);
+        }
+
         foreach ((int actIndex, MapEditingActArchive act) in archive.Acts)
         {
             if (actIndex > runState.CurrentActIndex
                 && actIndex < runState.Acts.Count
                 && string.Equals(runState.Acts[actIndex].Id.ToString(), act.ActModelId, StringComparison.Ordinal))
             {
+                if (!backups.Maps.ContainsKey(actIndex))
+                    backups.Maps[actIndex] = pending.GetValueOrDefault(actIndex);
                 pending[actIndex] = act.Map;
             }
         }
@@ -682,6 +790,18 @@ public sealed class MapEditingActArchive
     public string ActModelId { get; set; } = string.Empty;
     public SerializableActMap Map { get; set; } = new();
     public Dictionary<string, MapEditingPosition> Positions { get; set; } = new(StringComparer.Ordinal);
+}
+
+public sealed class MapEditingHistoryState
+{
+    public string ArchiveJson { get; set; } = string.Empty;
+    public string PendingMapsJson { get; set; } = string.Empty;
+    public Dictionary<MapCoord, List<AbstractModel>> CurrentActQuests { get; set; } = [];
+}
+
+internal sealed class FutureMapBackups
+{
+    public Dictionary<int, SerializableActMap?> Maps { get; } = [];
 }
 
 public readonly record struct MapEditingPosition(float X, float Y)
