@@ -143,6 +143,14 @@ public static class BottledMonsterMorphService
             .ToList();
     }
 
+    public static bool IsPlayerMorphedAs<TModel>(Player? player)
+        where TModel : AbstractModel
+    {
+        return player is not null
+               && MorphModelsByPlayer.TryGetValue(player.NetId, out AbstractModel? model)
+               && model is TModel;
+    }
+
     public static bool ShouldFlipMonsterMorph(MonsterModel monster)
     {
         return monster is Architect
