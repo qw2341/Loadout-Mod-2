@@ -16,6 +16,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
@@ -780,14 +781,8 @@ public partial class NMapEditingToolbar : Control
     {
         if (_undoButton is null || _redoButton is null)
             return;
-        if (_undoHistory.Count > 0)
-            _undoButton.Enable();
-        else
-            _undoButton.Disable();
-        if (_redoHistory.Count > 0)
-            _redoButton.Enable();
-        else
-            _redoButton.Disable();
+        _undoButton.SetAvailable(_undoHistory.Count > 0);
+        _redoButton.SetAvailable(_redoHistory.Count > 0);
     }
 
     private void Pick(MapPointType pointType)
@@ -943,6 +938,7 @@ public partial class NMapEditingToolbar : Control
 
         if (CommitTopology(runState))
         {
+            RefreshConnectedPaths(dragged.Point.coord);
             if (before is not null)
                 RecordSuccessfulEdit(before);
             SetStatus(LocMan.Loc("MAP_EDITOR_NODE_MOVED", "Moved node."));
@@ -1212,6 +1208,247 @@ public partial class NMapEditingToolbar : Control
             }
             ReflowPath(sourceNode, destinationNode, ticks);
         }
+    }
+
+    private void RefreshConnectedPaths(MapCoord changed)
+    {
+        RunState? runState = TryGetRunState();
+        if (runState is null)
+            return;
+        Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>> paths = PathsField(_screen);
+        (MapCoord Source, MapCoord Destination)[] connections = paths.Keys
+            .Where(connection => connection.Item1 == changed || connection.Item2 == changed)
+            .Select(connection => (connection.Item1, connection.Item2))
+            .ToArray();
+        foreach ((MapCoord source, MapCoord destination) in connections)
+        {
+            RemoveConnectionVisual((source, destination));
+            MapPoint? sourcePoint = runState.Map.GetPoint(source);
+            MapPoint? destinationPoint = runState.Map.GetPoint(destination);
+            if (sourcePoint is not null && destinationPoint is not null)
+                CreateConnectionVisual(sourcePoint, destinationPoint);
+        }
+    }
+
+    public static void ApplyActIncrementally(
+        RunState runState,
+        NMapScreen screen,
+        MapEditingActArchive act,
+        IReadOnlyDictionary<MapCoord, List<AbstractModel>> quests)
+    {
+        ActMap map = runState.Map;
+        SavedActMap targetMap = new(act.Map);
+        if ((map.SecondBossMapPoint is null) != (targetMap.SecondBossMapPoint is null))
+            throw new InvalidOperationException("Map editor history changed the boss layout.");
+        Control pointsHolder = screen.GetNode<Control>("TheMap/Points");
+        Dictionary<MapCoord, NMapPoint> pointNodes = PointNodesField(screen);
+        Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>> paths = PathsField(screen);
+        MapPoint[] currentPoints = EnumerateIncludingAnchors(map).ToArray();
+        Dictionary<MapPoint, NMapPoint> nodeByPoint = pointNodes.Values
+            .ToDictionary(node => node.Point, node => node);
+        Dictionary<MapCoord, MapPoint> currentOrdinary = map.GetAllMapPoints()
+            .ToDictionary(point => point.coord, point => point);
+        Dictionary<MapCoord, MapPoint> targetOrdinary = targetMap.GetAllMapPoints()
+            .ToDictionary(point => point.coord, point => point);
+        HashSet<MapPoint> removedPoints = currentOrdinary
+            .Where(pair => !targetOrdinary.ContainsKey(pair.Key))
+            .Select(pair => pair.Value)
+            .ToHashSet();
+        HashSet<MapCoord> changedPositions = [];
+        HashSet<MapCoord> changedVisuals = [];
+
+        foreach (MapPoint source in currentPoints)
+        {
+            foreach (MapPoint destination in source.Children.Where(child => removedPoints.Contains(source) || removedPoints.Contains(child)).ToArray())
+            {
+                changedVisuals.Add(source.coord);
+                changedVisuals.Add(destination.coord);
+                source.RemoveChildPoint(destination);
+            }
+        }
+        foreach (MapPoint removed in removedPoints)
+        {
+            pointNodes.Remove(removed.coord);
+            if (nodeByPoint.TryGetValue(removed, out NMapPoint? removedNode))
+                removedNode.QueueFree();
+        }
+
+        (MapPoint Current, MapPoint Target)[] anchors = targetMap.SecondBossMapPoint is null
+            ? [(map.StartingMapPoint, targetMap.StartingMapPoint), (map.BossMapPoint, targetMap.BossMapPoint)]
+            :
+            [
+                (map.StartingMapPoint, targetMap.StartingMapPoint),
+                (map.BossMapPoint, targetMap.BossMapPoint),
+                (map.SecondBossMapPoint ?? throw new InvalidOperationException("Map editor history changed the boss layout."), targetMap.SecondBossMapPoint)
+            ];
+        foreach ((MapPoint current, MapPoint target) in anchors)
+        {
+            MapCoord oldCoord = current.coord;
+            if (nodeByPoint.TryGetValue(current, out NMapPoint? anchorNode) && oldCoord != target.coord)
+            {
+                pointNodes.Remove(oldCoord);
+                current.coord = target.coord;
+                pointNodes[target.coord] = anchorNode;
+                changedPositions.Add(oldCoord);
+                changedPositions.Add(target.coord);
+            }
+            else
+            {
+                current.coord = target.coord;
+            }
+            if (current.PointType != target.PointType || current.CanBeModified != target.CanBeModified)
+                changedVisuals.Add(current.coord);
+            current.PointType = target.PointType;
+            current.CanBeModified = target.CanBeModified;
+        }
+
+        Dictionary<MapCoord, MapPoint> liveOrdinary = [];
+        MapPoint?[,] replacementGrid = new MapPoint?[act.Map.GridWidth, act.Map.GridHeight];
+        foreach ((MapCoord coord, MapPoint target) in targetOrdinary)
+        {
+            MapPoint live;
+            if (currentOrdinary.TryGetValue(coord, out MapPoint? existing) && !removedPoints.Contains(existing))
+            {
+                live = existing;
+                if (live.PointType != target.PointType || live.CanBeModified != target.CanBeModified)
+                    changedVisuals.Add(coord);
+                live.PointType = target.PointType;
+                live.CanBeModified = target.CanBeModified;
+            }
+            else
+            {
+                live = new MapPoint(coord.col, coord.row)
+                {
+                    PointType = target.PointType,
+                    CanBeModified = target.CanBeModified
+                };
+                NNormalMapPoint newNode = NNormalMapPoint.Create(live, screen, runState);
+                pointNodes[coord] = newNode;
+                pointsHolder.AddChild(newNode);
+                nodeByPoint[live] = newNode;
+                changedVisuals.Add(coord);
+            }
+            liveOrdinary[coord] = live;
+            replacementGrid[coord.col, coord.row] = live;
+        }
+        SetGrid(map, replacementGrid);
+
+        Dictionary<MapCoord, MapPoint> liveByCoord = liveOrdinary.ToDictionary(pair => pair.Key, pair => pair.Value);
+        liveByCoord[map.StartingMapPoint.coord] = map.StartingMapPoint;
+        liveByCoord[map.BossMapPoint.coord] = map.BossMapPoint;
+        if (map.SecondBossMapPoint is not null)
+            liveByCoord[map.SecondBossMapPoint.coord] = map.SecondBossMapPoint;
+
+        map.startMapPoints.Clear();
+        foreach (MapPoint targetStart in targetMap.startMapPoints)
+        {
+            if (liveByCoord.TryGetValue(targetStart.coord, out MapPoint? liveStart))
+                map.startMapPoints.Add(liveStart);
+        }
+
+        HashSet<(MapCoord Source, MapCoord Destination)> desiredConnections = EnumerateIncludingAnchors(targetMap)
+            .SelectMany(source => source.Children.Select(destination => (source.coord, destination.coord)))
+            .ToHashSet();
+        foreach (MapPoint source in EnumerateIncludingAnchors(map).ToArray())
+        {
+            foreach (MapPoint destination in source.Children.ToArray())
+            {
+                if (desiredConnections.Contains((source.coord, destination.coord)))
+                    continue;
+                source.RemoveChildPoint(destination);
+                changedVisuals.Add(source.coord);
+                changedVisuals.Add(destination.coord);
+            }
+        }
+        foreach ((MapCoord sourceCoord, MapCoord destinationCoord) in desiredConnections)
+        {
+            if (!liveByCoord.TryGetValue(sourceCoord, out MapPoint? source)
+                || !liveByCoord.TryGetValue(destinationCoord, out MapPoint? destination)
+                || source.Children.Contains(destination))
+            {
+                continue;
+            }
+            source.AddChildPoint(destination);
+            changedVisuals.Add(sourceCoord);
+            changedVisuals.Add(destinationCoord);
+        }
+
+        foreach ((MapCoord coord, MapPoint point) in liveByCoord)
+        {
+            string key = KeyForHistoryPoint(point, map);
+            IReadOnlyList<AbstractModel> desiredQuests = quests.GetValueOrDefault(coord) ?? [];
+            foreach (AbstractModel quest in point.Quests.Where(existing => !desiredQuests.Contains(existing)).ToArray())
+                point.RemoveQuest(quest);
+            foreach (AbstractModel quest in desiredQuests.Where(desired => !point.Quests.Contains(desired)))
+                point.AddQuest(quest);
+
+            if (!pointNodes.TryGetValue(coord, out NMapPoint? node))
+                continue;
+            if (act.Positions.TryGetValue(key, out MapEditingPosition position)
+                && node.Position.DistanceSquaredTo(position.ToVector2()) > 0.01f)
+            {
+                node.Position = position.ToVector2();
+                changedPositions.Add(coord);
+            }
+            if (changedVisuals.Contains(coord))
+                node.RefreshVisualsInstantly();
+        }
+
+        foreach ((MapCoord source, MapCoord destination) in paths.Keys.ToArray())
+        {
+            if (desiredConnections.Contains((source, destination))
+                && !changedPositions.Contains(source)
+                && !changedPositions.Contains(destination))
+            {
+                continue;
+            }
+            if (!paths.Remove((source, destination), out IReadOnlyList<TextureRect>? ticks))
+                continue;
+            foreach (TextureRect tick in ticks)
+                tick.QueueFree();
+        }
+        foreach ((MapCoord source, MapCoord destination) in desiredConnections)
+        {
+            if (paths.ContainsKey((source, destination))
+                || !pointNodes.TryGetValue(source, out NMapPoint? sourceNode)
+                || !pointNodes.TryGetValue(destination, out NMapPoint? destinationNode))
+            {
+                continue;
+            }
+            IReadOnlyList<TextureRect> ticks = CreateNativePath(screen, sourceNode, destinationNode);
+            ApplyTraveledStyle((source, destination), ticks);
+            paths[(source, destination)] = ticks;
+        }
+
+        foreach (MapCoord coord in changedVisuals.Concat(changedPositions).Distinct())
+        {
+            if (pointNodes.TryGetValue(coord, out NMapPoint? node))
+                RefreshTravelability(node, runState);
+        }
+    }
+
+    public static bool CanApplyActIncrementally(NMapScreen screen)
+        => PointNodesField(screen).Count > 0;
+
+    private static IEnumerable<MapPoint> EnumerateIncludingAnchors(ActMap map)
+    {
+        yield return map.StartingMapPoint;
+        foreach (MapPoint point in map.GetAllMapPoints())
+            yield return point;
+        yield return map.BossMapPoint;
+        if (map.SecondBossMapPoint is not null)
+            yield return map.SecondBossMapPoint;
+    }
+
+    private static string KeyForHistoryPoint(MapPoint point, ActMap map)
+    {
+        if (ReferenceEquals(point, map.StartingMapPoint))
+            return "start";
+        if (ReferenceEquals(point, map.BossMapPoint))
+            return "boss";
+        if (ReferenceEquals(point, map.SecondBossMapPoint))
+            return "boss2";
+        return $"p:{point.coord.col}:{point.coord.row}";
     }
 
     public static void RebuildAllPaths(NMapScreen screen)
@@ -1531,6 +1768,7 @@ public partial class NMapToolButton : NButton
     private TextureRect? _icon;
     private Tween? _tween;
     private bool _active;
+    private bool _available = true;
 
     public string IconPath { get; set; } = string.Empty;
     public string GlowPath { get; set; } = string.Empty;
@@ -1559,7 +1797,18 @@ public partial class NMapToolButton : NButton
     {
         _active = active;
         if (_icon is not null)
-            _icon.SelfModulate = active ? Colors.White : new Color(1f, 1f, 1f, 0.65f);
+            _icon.SelfModulate = IdleColor;
+    }
+
+    public void SetAvailable(bool available)
+    {
+        _available = available;
+        if (available)
+            Enable();
+        else
+            Disable();
+        if (_icon is not null)
+            _icon.SelfModulate = IdleColor;
     }
 
     protected override void OnRelease() => Activated?.Invoke();
@@ -1578,7 +1827,7 @@ public partial class NMapToolButton : NButton
     protected override void OnUnfocus()
     {
         base.OnUnfocus();
-        Animate(Vector2.One * 1.05f, _active ? Colors.White : new Color(1f, 1f, 1f, 0.65f), 0.1);
+        Animate(Vector2.One * 1.05f, IdleColor, 0.1);
         NHoverTipSet.Remove(this);
     }
 
@@ -1602,7 +1851,7 @@ public partial class NMapToolButton : NButton
             FlipH = FlipHorizontal,
             Scale = Vector2.One * 1.05f,
             PivotOffset = new Vector2(30f, 30f),
-            SelfModulate = new Color(1f, 1f, 1f, 0.65f)
+            SelfModulate = IdleColor
         };
         _icon.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(_icon);
@@ -1642,6 +1891,12 @@ public partial class NMapToolButton : NButton
         _tween.TweenProperty(_icon, "scale", scale, seconds);
         _tween.TweenProperty(_icon, "self_modulate", color, seconds);
     }
+
+    private Color IdleColor => !_available
+        ? new Color(1f, 1f, 1f, 0.5f)
+        : _active
+            ? Colors.White
+            : new Color(1f, 1f, 1f, 0.65f);
 
     private static Texture2D? LoadTexture(string path)
         => ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;

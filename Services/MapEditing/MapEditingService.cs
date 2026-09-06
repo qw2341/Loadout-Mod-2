@@ -180,11 +180,11 @@ public static class MapEditingService
                 : 0L;
             archive.SchemaVersion = CurrentSchemaVersion;
             archive.Revision = Math.Max(currentRevision, archive.Revision) + 1L;
+            NMapEditingToolbar.ApplyActIncrementally(runState, screen, currentAct, state.CurrentActQuests);
             Archives.Remove(runState);
             Archives.Add(runState, archive);
             RunManager.Instance.SavedMapsToLoad = pending;
             FutureMapBackupsByRun.Remove(runState);
-            ApplyAct(runState, screen, currentAct, state.CurrentActQuests);
             BroadcastSnapshot(runState);
             SaveCurrentRun();
             error = string.Empty;
@@ -721,7 +721,18 @@ public static class MapEditingService
                 NMapScreen? screen = TryGetMapScreen();
                 if (screen is not null)
                 {
-                    ApplyAct(runState, screen, act);
+                    if (NMapEditingToolbar.CanApplyActIncrementally(screen))
+                    {
+                        NMapEditingToolbar.ApplyActIncrementally(
+                            runState,
+                            screen,
+                            act,
+                            CaptureQuests(runState.Map));
+                    }
+                    else
+                    {
+                        ApplyAct(runState, screen, act);
+                    }
                 }
                 else
                 {
