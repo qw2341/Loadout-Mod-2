@@ -19,17 +19,6 @@ using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 
-[HarmonyPatch(typeof(InfestedPower), nameof(InfestedPower.ShouldStopCombatFromEnding))]
-public static class LoadoutPlayerInfestedCombatEndPatch
-{
-    [HarmonyPostfix]
-    public static void Postfix(InfestedPower __instance, ref bool __result)
-    {
-        if (__instance.Owner.IsPlayer)
-            __result = false;
-    }
-}
-
 [HarmonyPatch(typeof(InfestedPower), nameof(InfestedPower.AfterDeath))]
 public static class LoadoutPlayerInfestedDeathPatch
 {
