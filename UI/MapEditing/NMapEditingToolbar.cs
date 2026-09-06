@@ -611,7 +611,7 @@ public partial class NMapEditingToolbar : Control
         SetStatus(message);
     }
 
-    private async void ImportMaps()
+    private void ImportMaps()
     {
         if (_importInProgress)
             return;
@@ -629,7 +629,7 @@ public partial class NMapEditingToolbar : Control
             try
             {
                 (bool Success, string Message) importResult =
-                    await MapEditingService.ImportFromClipboard(runState, _screen);
+                    MapEditingService.ImportFromClipboard(runState, _screen);
                 message = importResult.Message;
                 if (importResult.Success)
                     RecordSuccessfulEdit(before);
