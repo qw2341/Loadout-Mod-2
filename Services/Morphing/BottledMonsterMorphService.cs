@@ -47,7 +47,7 @@ using MegaCrit.Sts2.Core.Runs;
 
 public static class BottledMonsterMorphService
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const string RunDirectory = "loadout/services/bottled_monster_morph";
     private const string RunFilePrefix = "bottled_monster_morph_run";
 
@@ -209,6 +209,38 @@ public static class BottledMonsterMorphService
         TaskHelper.RunSafely(ApplyCurrentVisualAsync(player.NetId, revision));
         ScheduleMerchantVisualRefresh(player.NetId);
         ScheduleRestSiteVisualRefresh(player.NetId);
+    }
+
+    public static IReadOnlyDictionary<string, int>
+        GetReplacementFormPowerContributions(ulong playerNetId)
+    {
+        string playerKey = playerNetId.ToString();
+        return _state.ReplacementFormPowersByPlayer.TryGetValue(
+            playerKey,
+            out Dictionary<string, int>? powers)
+            ? new Dictionary<string, int>(powers, StringComparer.Ordinal)
+            : new Dictionary<string, int>(StringComparer.Ordinal);
+    }
+
+    public static void SetReplacementFormPowerContributions(
+        ulong playerNetId,
+        IReadOnlyDictionary<string, int> powers)
+    {
+        string playerKey = playerNetId.ToString();
+        Dictionary<string, int> normalized = powers
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key)
+                           && pair.Value != 0)
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.Ordinal);
+
+        if (normalized.Count == 0)
+            _state.ReplacementFormPowersByPlayer.Remove(playerKey);
+        else
+            _state.ReplacementFormPowersByPlayer[playerKey] = normalized;
+
+        SaveRunStateIfAuthoritative();
     }
 
     public static void SynchronizeAuthoritativeState()
@@ -1665,6 +1697,9 @@ public static class BottledMonsterMorphService
         _state.SchemaVersion = CurrentSchemaVersion;
         _state.RunStartTime = runStartTime.Value;
         _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
+        _state.ReplacementFormPowersByPlayer ??=
+            new Dictionary<string, Dictionary<string, int>>(
+                StringComparer.Ordinal);
 
         HashSet<string> validPlayers = RunManager.Instance.DebugOnlyGetState()!.Players
             .Select(player => player.NetId.ToString())
@@ -1674,7 +1709,43 @@ public static class BottledMonsterMorphService
             if (!validPlayers.Contains(key) || ResolveMorphModel(_state.Players[key]) is null)
                 _state.Players.Remove(key);
         }
+        NormalizeReplacementFormPowers(validPlayers);
         RebuildMorphModelCache();
+    }
+
+    private static void NormalizeReplacementFormPowers(
+        IReadOnlySet<string>? validPlayers = null)
+    {
+        foreach (string playerKey in
+                 _state.ReplacementFormPowersByPlayer.Keys.ToList())
+        {
+            if (validPlayers is not null
+                && !validPlayers.Contains(playerKey))
+            {
+                _state.ReplacementFormPowersByPlayer.Remove(playerKey);
+                continue;
+            }
+
+            Dictionary<string, int>? powers =
+                _state.ReplacementFormPowersByPlayer[playerKey];
+            if (powers is null)
+            {
+                _state.ReplacementFormPowersByPlayer.Remove(playerKey);
+                continue;
+            }
+
+            Dictionary<string, int> normalized = powers
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Key)
+                               && pair.Value != 0)
+                .ToDictionary(
+                    pair => pair.Key,
+                    pair => pair.Value,
+                    StringComparer.Ordinal);
+            if (normalized.Count == 0)
+                _state.ReplacementFormPowersByPlayer.Remove(playerKey);
+            else
+                _state.ReplacementFormPowersByPlayer[playerKey] = normalized;
+        }
     }
 
     private static void RebuildMorphModelCache()
@@ -1835,11 +1906,15 @@ public static class BottledMonsterMorphService
 
             _state = incoming;
             _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            _state.ReplacementFormPowersByPlayer ??=
+                new Dictionary<string, Dictionary<string, int>>(
+                    StringComparer.Ordinal);
             foreach (string key in _state.Players.Keys.ToList())
             {
                 if (ResolveMorphModel(_state.Players[key]) is null)
                     _state.Players.Remove(key);
             }
+            NormalizeReplacementFormPowers();
             RebuildMorphModelCache();
 
             foreach (ulong playerNetId in affectedPlayers)
@@ -1912,12 +1987,18 @@ public static class BottledMonsterMorphService
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
         public long RunStartTime { get; set; }
         public Dictionary<string, string> Players { get; set; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Dictionary<string, int>>
+            ReplacementFormPowersByPlayer { get; set; } =
+                new(StringComparer.Ordinal);
 
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             info.AddValue(nameof(SchemaVersion), SchemaVersion);
             info.AddValue(nameof(RunStartTime), RunStartTime);
             info.AddValue(nameof(Players), Players);
+            info.AddValue(
+                nameof(ReplacementFormPowersByPlayer),
+                ReplacementFormPowersByPlayer);
         }
     }
 }

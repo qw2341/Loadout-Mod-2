@@ -106,7 +106,10 @@ internal static class FatalKeywordAttackPatch
                 type));
         }
 
-        return new FatalTargetSnapshot(target.MaxHp, powers);
+        return new FatalTargetSnapshot(
+            target.MaxHp,
+            target.Monster?.Id ?? ModelId.none,
+            powers);
     }
 
     private static bool IsFatalEligible(Creature target)

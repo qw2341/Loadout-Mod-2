@@ -127,6 +127,8 @@ public static class LoadoutKeywordRegistry
         PermanentBuffStealKeyword.Instance,
         EffectStealKeyword.Instance,
         PermanentEffectStealKeyword.Instance,
+        PermanentFormStealKeyword.Instance,
+        PermanentFormStealStackingKeyword.Instance,
         DamageOnPlayKeyword.Instance,
         DoubleDamageOnPlayKeyword.Instance,
         AllDamageOnPlayKeyword.Instance,

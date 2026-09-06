@@ -15,6 +15,7 @@ public sealed record FatalPowerSnapshot(
 
 public sealed record FatalTargetSnapshot(
     int MaxHp,
+    ModelId MonsterId,
     IReadOnlyList<FatalPowerSnapshot> Powers);
 
 public sealed record FatalKeywordContext(

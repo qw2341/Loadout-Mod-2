@@ -124,6 +124,10 @@ public static class LoadoutKeywords
     public const string EffectStealKey = "FatalEffectSteal";
     public const string PermanentEffectStealKey =
         "FatalPermanentEffectSteal";
+    public const string PermanentFormStealKey =
+        "FatalPermanentFormSteal";
+    public const string PermanentFormStealStackingKey =
+        "FatalPermanentFormStealStacking";
     public const string DamageOnPlayKey = "ImprovementDamageOnPlay";
     public const string DoubleDamageOnPlayKey =
         "ImprovementDoubleDamageOnPlay";
@@ -495,6 +499,12 @@ public static class LoadoutKeywords
 
     [CustomEnum("FATAL_PERMANENT_EFFECT_STEAL")]
     public static CardKeyword PermanentEffectSteal;
+
+    [CustomEnum("FATAL_PERMANENT_FORM_STEAL")]
+    public static CardKeyword PermanentFormSteal;
+
+    [CustomEnum("FATAL_PERMANENT_FORM_STEAL_STACKING")]
+    public static CardKeyword PermanentFormStealStacking;
 
     public static IEnumerable<CardKeyword> All =>
         LoadoutKeywordRegistry.All.Select(model => model.Keyword);
