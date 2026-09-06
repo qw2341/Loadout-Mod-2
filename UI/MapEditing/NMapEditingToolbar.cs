@@ -842,7 +842,12 @@ public partial class NMapEditingToolbar : Control
         int column = -1;
         for (int candidate = 0; candidate < grid.GetLength(0); candidate++)
         {
-            if (grid[candidate, row] is null)
+            MapCoord candidateCoord = new(candidate, row);
+            if (grid[candidate, row] is null
+                && candidateCoord != runState.Map.StartingMapPoint.coord
+                && candidateCoord != runState.Map.BossMapPoint.coord
+                && (runState.Map.SecondBossMapPoint is null
+                    || candidateCoord != runState.Map.SecondBossMapPoint.coord))
             {
                 column = candidate;
                 break;
