@@ -185,6 +185,7 @@ public partial class NMapEditingToolbar : Control
     private readonly List<MapEditingHistoryState> _redoHistory = [];
     private MapEditingHistoryState? _dragHistoryState;
     private int _historyActIndex = -1;
+    private bool _importInProgress;
 
     public NMapEditingToolbar(NMapScreen screen)
     {
@@ -203,6 +204,7 @@ public partial class NMapEditingToolbar : Control
         _historyActIndex = TryGetRunState()?.CurrentActIndex ?? -1;
         _screen.Connect(CanvasItem.SignalName.VisibilityChanged, Callable.From(OnScreenVisibilityChanged));
         SetProcessInput(false);
+        RefreshImportAvailability();
     }
 
     public override void _ExitTree()
@@ -361,6 +363,7 @@ public partial class NMapEditingToolbar : Control
             _redoHistory.Clear();
             SetHistoryButtonsAvailability();
         }
+        RefreshImportAvailability();
     }
 
     private void BuildToolbar()
@@ -419,7 +422,7 @@ public partial class NMapEditingToolbar : Control
             SharePath,
             ImportMaps,
             LocMan.Loc("MAP_EDITOR_IMPORT_TITLE", "Import Maps"),
-            LocMan.Loc("MAP_EDITOR_IMPORT_TOOLTIP", "Import current and future act maps from the clipboard."),
+            LocMan.Loc("MAP_EDITOR_IMPORT_TOOLTIP", "Import the exported seed and current/future act maps. Available only in the first room of the act."),
             flipVertical: true);
         _undoButton = CreateButton(
             "Undo",
@@ -555,6 +558,7 @@ public partial class NMapEditingToolbar : Control
 
     private void SetToolbarExpanded(bool expanded)
     {
+        RefreshImportAvailability();
         _copyButton.Visible = expanded;
         _importButton.Visible = expanded;
         _undoButton.Visible = expanded;
@@ -607,8 +611,11 @@ public partial class NMapEditingToolbar : Control
         SetStatus(message);
     }
 
-    private void ImportMaps()
+    private async void ImportMaps()
     {
+        if (_importInProgress)
+            return;
+
         RunState? runState = TryGetRunState();
         string message;
         if (runState is not null)
@@ -617,8 +624,21 @@ public partial class NMapEditingToolbar : Control
             MapEditingHistoryState? before = CaptureHistoryState(runState);
             if (before is null)
                 return;
-            if (MapEditingService.ImportFromClipboard(runState, _screen, out message))
-                RecordSuccessfulEdit(before);
+            _importInProgress = true;
+            RefreshImportAvailability();
+            try
+            {
+                (bool Success, string Message) importResult =
+                    await MapEditingService.ImportFromClipboard(runState, _screen);
+                message = importResult.Message;
+                if (importResult.Success)
+                    RecordSuccessfulEdit(before);
+            }
+            finally
+            {
+                _importInProgress = false;
+                RefreshImportAvailability();
+            }
         }
         else
             message = LocMan.Loc("MAP_EDITOR_NO_RUN", "No active run map.");
@@ -783,6 +803,17 @@ public partial class NMapEditingToolbar : Control
             return;
         _undoButton.SetAvailable(_undoHistory.Count > 0);
         _redoButton.SetAvailable(_redoHistory.Count > 0);
+    }
+
+    private void RefreshImportAvailability()
+    {
+        if (_importButton is null)
+            return;
+        RunState? runState = TryGetRunState();
+        _importButton.SetAvailable(
+            !_importInProgress
+            && runState is not null
+            && MapEditingService.CanImportCurrentAct(runState));
     }
 
     private void Pick(MapPointType pointType)

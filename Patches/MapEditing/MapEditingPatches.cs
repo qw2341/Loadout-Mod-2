@@ -20,7 +20,7 @@ using MegaCrit.Sts2.Core.Saves;
 [HarmonyPatch]
 public static class MapEditingExtendedSavePatch
 {
-    private const string EmbeddedSaveKey = "Loadout.map_editor.archive_v1";
+    private const string EmbeddedSaveKey = "Loadout.map_editor.archive_v2";
     private static bool _registered;
 
     public static MethodBase TargetMethod()
