@@ -18,11 +18,15 @@ using Loadout.Services.Compatibility;
 using Loadout.Services.Networking;
 using Loadout.UI.MapEditing;
 using Loadout.UI.Managers;
+using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Extensions;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Events;
+using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
@@ -47,8 +51,20 @@ public static class MapEditingService
         AccessTools.Field(typeof(Player), "<PlayerRng>k__BackingField");
     private static readonly FieldInfo? PlayerOddsField =
         AccessTools.Field(typeof(Player), "<PlayerOdds>k__BackingField");
+    private static readonly FieldInfo? RunStateSharedRelicGrabBagField =
+        AccessTools.Field(typeof(RunState), "<SharedRelicGrabBag>k__BackingField");
+    private static readonly FieldInfo? PlayerRelicGrabBagField =
+        AccessTools.Field(typeof(Player), "<RelicGrabBag>k__BackingField");
     private static readonly FieldInfo? ActRoomsField =
         AccessTools.Field(typeof(ActModel), "_rooms");
+    private static readonly FieldInfo? EventSynchronizerRngField =
+        AccessTools.Field(typeof(EventSynchronizer), "_multiplayerOptionSelectionRng");
+    private static readonly FieldInfo? MapSelectionSynchronizerRngField =
+        AccessTools.Field(typeof(MapSelectionSynchronizer), "_multiplayerMapPointSelection");
+    private static readonly FieldInfo? TreasureSynchronizerRngField =
+        AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_rng");
+    private static readonly FieldInfo? TreasureSynchronizerGrabBagField =
+        AccessTools.Field(typeof(TreasureRoomRelicSynchronizer), "_sharedGrabBag");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -159,7 +175,6 @@ public static class MapEditingService
                     JsonOptions) ?? new MapEditingArchive()
                 : CreateArchive(runState);
             archive.RunSeed = runState.Rng.StringSeed;
-            archive.SeedRooms = CaptureSeedRooms(runState);
             archive.Acts[runState.CurrentActIndex] = CaptureCurrentAct(runState, positions);
 
             Dictionary<int, SerializableActMap> pending = RunManager.Instance.SavedMapsToLoad ?? [];
@@ -198,11 +213,8 @@ public static class MapEditingService
                 : 0L;
             archive.SchemaVersion = CurrentSchemaVersion;
             archive.Revision = Math.Max(currentRevision, archive.Revision) + 1L;
-            bool seedChanged = !string.Equals(runState.Rng.StringSeed, archive.RunSeed, StringComparison.Ordinal);
             if (!TryReplaceRunSeed(runState, archive.RunSeed, out error))
                 return false;
-            if (seedChanged)
-                ApplySeedRooms(runState, archive.SeedRooms);
             Archives.Remove(runState);
             Archives.Add(runState, archive);
             ApplyAct(runState, screen, currentAct);
@@ -248,7 +260,6 @@ public static class MapEditingService
         MapEditingArchive archive = GetOrCreateArchive(runState);
         archive.SchemaVersion = CurrentSchemaVersion;
         archive.RunSeed = runState.Rng.StringSeed;
-        archive.SeedRooms = CaptureSeedRooms(runState);
         archive.Revision++;
         archive.Acts[runState.CurrentActIndex] = act;
         error = string.Empty;
@@ -268,7 +279,6 @@ public static class MapEditingService
         try
         {
             archive.RunSeed = runState.Rng.StringSeed;
-            archive.SeedRooms = CaptureSeedRooms(runState);
             string json = JsonSerializer.Serialize(archive, JsonOptions);
             byte[] payload = Encoding.UTF8.GetBytes(json);
             using MemoryStream output = new();
@@ -329,7 +339,6 @@ public static class MapEditingService
 
             if (!TryReplaceRunSeed(runState, imported.RunSeed, out string error))
                 return (false, LocMan.Loc("MAP_EDITOR_IMPORT_INVALID", "Could not import maps: {0}", error));
-            ApplySeedRooms(runState, imported.SeedRooms);
 
             long previousRevision = Archives.TryGetValue(runState, out MapEditingArchive? previousArchive)
                 ? previousArchive.Revision
@@ -368,103 +377,115 @@ public static class MapEditingService
             return false;
         }
         if (RunStateRngField is null || RunStateOddsField is null
-            || PlayerRngField is null || PlayerOddsField is null)
+            || PlayerRngField is null || PlayerOddsField is null
+            || RunStateSharedRelicGrabBagField is null || PlayerRelicGrabBagField is null
+            || ActRoomsField is null)
         {
             error = "this game version does not expose the seed state required for map import";
             return false;
         }
 
-        RunRngSet previousRng = runState.Rng;
-        RunOddsSet previousOdds = runState.Odds;
-        List<PlayerSeedState> playerStates = runState.Players
-            .Select(player => new PlayerSeedState(player, player.PlayerRng, player.PlayerOdds))
-            .ToList();
-
         try
         {
-            SerializableRunRngSet serializedRunRng = previousRng.ToSerializable();
-            serializedRunRng.Seed = seed;
-            RunRngSet replacementRng = RunRngSet.FromSave(serializedRunRng);
-            RunOddsSet replacementOdds = RunOddsSet.FromSerializable(
-                previousOdds.ToSerializable(),
-                replacementRng.UnknownMapPoint);
-
-            List<PlayerSeedState> replacements = [];
-            foreach (PlayerSeedState previous in playerStates)
+            RunState regenerated = GenerateNativeSeedState(runState, seed);
+            RunStateRngField.SetValue(runState, regenerated.Rng);
+            RunStateOddsField.SetValue(runState, regenerated.Odds);
+            RunStateSharedRelicGrabBagField.SetValue(runState, regenerated.SharedRelicGrabBag);
+            for (int index = 0; index < runState.Players.Count; index++)
             {
-                SerializablePlayerRngSet serializedPlayerRng = previous.Rng.ToSerializable();
-                serializedPlayerRng.Seed = unchecked(
-                    (uint)StringHelper.GetDeterministicHashCode(seed)
-                    + (uint)runState.GetPlayerSlotIndex(previous.Player));
-                PlayerRngSet replacementPlayerRng = PlayerRngSet.FromSerializable(serializedPlayerRng);
-                PlayerOddsSet replacementPlayerOdds = PlayerOddsSet.FromSerializable(
-                    previous.Odds.ToSerializable(),
-                    replacementPlayerRng);
-                replacements.Add(new PlayerSeedState(
-                    previous.Player,
-                    replacementPlayerRng,
-                    replacementPlayerOdds));
+                Player target = runState.Players[index];
+                Player generated = regenerated.Players[index];
+                PlayerRngField.SetValue(target, generated.PlayerRng);
+                PlayerOddsField.SetValue(target, generated.PlayerOdds);
+                PlayerRelicGrabBagField.SetValue(target, generated.RelicGrabBag);
             }
-
-            RunStateRngField.SetValue(runState, replacementRng);
-            RunStateOddsField.SetValue(runState, replacementOdds);
-            foreach (PlayerSeedState replacement in replacements)
+            for (int actIndex = 0; actIndex < runState.Acts.Count; actIndex++)
             {
-                PlayerRngField.SetValue(replacement.Player, replacement.Rng);
-                PlayerOddsField.SetValue(replacement.Player, replacement.Odds);
+                ActRoomsField.SetValue(
+                    runState.Acts[actIndex],
+                    RoomSet.FromSave(regenerated.Acts[actIndex].ToSave().SerializableRooms));
             }
+            ResetSeededSynchronizers(runState);
             return true;
         }
         catch (Exception exception)
         {
-            try
-            {
-                RunStateRngField.SetValue(runState, previousRng);
-                RunStateOddsField.SetValue(runState, previousOdds);
-                foreach (PlayerSeedState previous in playerStates)
-                {
-                    PlayerRngField.SetValue(previous.Player, previous.Rng);
-                    PlayerOddsField.SetValue(previous.Player, previous.Odds);
-                }
-            }
-            catch
-            {
-                // Preserve the original failure below; a partial reflection failure is already non-recoverable here.
-            }
             error = $"could not replace the run seed: {exception.Message}";
             return false;
         }
     }
 
-    private static Dictionary<int, SerializableRoomSet> CaptureSeedRooms(RunState runState)
+    private static RunState GenerateNativeSeedState(RunState source, string seed)
     {
-        Dictionary<int, SerializableRoomSet> rooms = [];
-        for (int actIndex = 0; actIndex < runState.Acts.Count; actIndex++)
+        List<Player> players = source.Players
+            .Select(player => Player.CreateForNewRun(player.Character, player.UnlockState, player.NetId))
+            .ToList();
+        List<ActModel> acts = source.Acts
+            .Select(act => ModelDb.GetById<ActModel>(act.Id).ToMutable())
+            .ToList();
+        List<ModifierModel> modifiers = source.Modifiers
+            .Select(modifier => ModifierModel.FromSerializable(modifier.ToSerializable()))
+            .ToList();
+        RunState generated = RunState.CreateForNewRun(
+            players,
+            acts,
+            modifiers,
+            source.GameMode,
+            source.AscensionLevel,
+            seed);
+
+        generated.SharedRelicGrabBag.Populate(
+            ModelDb.RelicPool<SharedRelicPool>().GetUnlockedRelics(generated.UnlockState),
+            generated.Rng.UpFront);
+        foreach (Player player in generated.Players)
+            player.PopulateRelicGrabBagIfNecessary(generated.Rng.UpFront);
+        foreach (ModifierModel modifier in generated.Modifiers)
+            modifier.OnRunCreated(generated);
+        AscensionManager ascensionManager = new(generated.AscensionLevel);
+        foreach (Player player in generated.Players)
+            ascensionManager.ApplyEffectsTo(player);
+
+        List<AncientEventModel> sharedAncients = generated.UnlockState.SharedAncients
+            .ToList()
+            .UnstableShuffle(generated.Rng.UpFront);
+        foreach (ActModel act in generated.Acts.Skip(1))
         {
-            SerializableRoomSet source = runState.Acts[actIndex].ToSave().SerializableRooms;
-            rooms[actIndex] = new SerializableRoomSet
-            {
-                EventIds = source.EventIds.ToList(),
-                EventsVisited = 0,
-                NormalEncounterIds = source.NormalEncounterIds.ToList(),
-                NormalEncountersVisited = 0,
-                EliteEncounterIds = source.EliteEncounterIds.ToList(),
-                EliteEncountersVisited = 0,
-                BossEncountersVisited = 0,
-                BossId = source.BossId,
-                SecondBossId = source.SecondBossId,
-                AncientId = source.AncientId
-            };
+            int count = generated.Rng.UpFront.NextInt(sharedAncients.Count + 1);
+            List<AncientEventModel> subset = sharedAncients.Take(count).ToList();
+            sharedAncients = sharedAncients.Except(subset).ToList();
+            act.SetSharedAncientSubset(subset);
         }
-        return rooms;
+        for (int actIndex = 0; actIndex < generated.Acts.Count; actIndex++)
+        {
+            ActModel act = generated.Acts[actIndex];
+            act.GenerateRooms(generated.Rng.UpFront, generated.UnlockState, generated.Players.Count > 1);
+            if (RunManager.Instance.ShouldApplyTutorialModifications())
+                act.ApplyDiscoveryOrderModifications(generated.UnlockState);
+            if (actIndex == generated.Acts.Count - 1
+                && ascensionManager.HasLevel(AscensionLevel.DoubleBoss))
+            {
+                act.SetSecondBossEncounter(generated.Rng.UpFront.NextItem(
+                    act.AllBossEncounters.Where(encounter => encounter.Id != act.BossEncounter.Id)));
+            }
+        }
+        return generated;
     }
 
-    private static void ApplySeedRooms(
-        RunState runState,
-        IReadOnlyDictionary<int, SerializableRoomSet> rooms)
+    private static void ResetSeededSynchronizers(RunState runState)
     {
-        foreach ((int actIndex, SerializableRoomSet roomSet) in rooms)
-            ActRoomsField!.SetValue(runState.Acts[actIndex], RoomSet.FromSave(roomSet));
+        RunManager manager = RunManager.Instance;
+        EventSynchronizerRngField?.SetValue(
+            manager.EventSynchronizer,
+            new Rng(runState.Rng.Seed, "event_synchronizer"));
+        MapSelectionSynchronizerRngField?.SetValue(
+            manager.MapSelectionSynchronizer,
+            new Rng(runState.Rng.Seed, "map_point_selection"));
+        TreasureSynchronizerRngField?.SetValue(
+            manager.TreasureRoomRelicSynchronizer,
+            runState.Rng.TreasureRoomRelics);
+        TreasureSynchronizerGrabBagField?.SetValue(
+            manager.TreasureRoomRelicSynchronizer,
+            runState.SharedRelicGrabBag);
     }
 
     public static string KeyFor(MapPoint point, ActMap map)
@@ -628,14 +649,11 @@ public static class MapEditingService
             if (Archives.TryGetValue(runState, out MapEditingArchive? current) && incoming.Revision <= current.Revision)
                 return;
 
-            bool seedChanged = !string.Equals(runState.Rng.StringSeed, incoming.RunSeed, StringComparison.Ordinal);
             if (!TryReplaceRunSeed(runState, incoming.RunSeed, out string seedError))
             {
                 GD.PushWarning($"Loadout map editor: could not apply imported run seed. {seedError}");
                 return;
             }
-            if (seedChanged)
-                ApplySeedRooms(runState, incoming.SeedRooms);
             Archives.Remove(runState);
             Archives.Add(runState, incoming);
             InstallFutureMaps(runState, incoming);
@@ -681,7 +699,6 @@ public sealed class MapEditingArchive
 {
     public int SchemaVersion { get; set; } = MapEditingService.CurrentSchemaVersion;
     public string RunSeed { get; set; } = string.Empty;
-    public Dictionary<int, SerializableRoomSet> SeedRooms { get; set; } = [];
     public long Revision { get; set; }
     public Dictionary<int, MapEditingActArchive> Acts { get; set; } = [];
 }
@@ -699,8 +716,6 @@ public sealed class MapEditingHistoryState
     public string ArchiveJson { get; set; } = string.Empty;
     public string PendingMapsJson { get; set; } = string.Empty;
 }
-
-internal sealed record PlayerSeedState(Player Player, PlayerRngSet Rng, PlayerOddsSet Odds);
 
 public readonly record struct MapEditingPosition(float X, float Y)
 {
