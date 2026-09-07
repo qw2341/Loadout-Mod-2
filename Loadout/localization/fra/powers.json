@@ -1,5 +1,8 @@
 {
   "LOADOUT-WOUNDED_POWER.title": "Blessure",
   "LOADOUT-WOUNDED_POWER.description": "À [blue]10[/blue] cumuls de [gold]Blessure[/gold], devient [gold]Étourdi[/gold], puis retire toutes les Blessures.",
-  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "Lorsque vous infligez des dégâts d'Attaque non bloqués à un ennemi qui n'est pas étourdi, appliquez-lui [blue]1[/blue] [gold]Blessure[/gold].\nÀ [blue]10[/blue] cumuls de [gold]Blessure[/gold], étourdissez-le."
+  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "Lorsque vous infligez des dégâts d'Attaque non bloqués à un ennemi qui n'est pas étourdi, appliquez-lui [blue]1[/blue] [gold]Blessure[/gold].\nÀ [blue]10[/blue] cumuls de [gold]Blessure[/gold], étourdissez-le.",
+  "LOADOUT-DAZED_POWER.title": "Hébété",
+  "LOADOUT-DAZED_POWER.description": "À [blue]5[/blue] cumuls d'[gold]Hébété[/gold], devient [gold]Étourdi[/gold], puis retire tous les cumuls d'Hébété.",
+  "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "Lorsque vous êtes touché par une Attaque, appliquez [blue]{Amount}[/blue] cumuls d'[gold]Hébété[/gold] à l'attaquant.\nÀ [blue]5[/blue] cumuls d'[gold]Hébété[/gold], étourdissez-le."
 }

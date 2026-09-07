@@ -1,5 +1,8 @@
 {
   "LOADOUT-WOUNDED_POWER.title": "Heridas",
   "LOADOUT-WOUNDED_POWER.description": "Al llegar a [blue]10[/blue] de [gold]Heridas[/gold], queda [gold]Aturdido[/gold] y elimina todas las Heridas.",
-  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "Cuando infliges daño de Ataque no bloqueado a un enemigo que no está aturdido, aplícale [blue]1[/blue] de [gold]Heridas[/gold].\nA [blue]10[/blue] de [gold]Heridas[/gold], atúrdelo."
+  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "Cuando infliges daño de Ataque no bloqueado a un enemigo que no está aturdido, aplícale [blue]1[/blue] de [gold]Heridas[/gold].\nA [blue]10[/blue] de [gold]Heridas[/gold], atúrdelo.",
+  "LOADOUT-DAZED_POWER.title": "Desorientación",
+  "LOADOUT-DAZED_POWER.description": "Al llegar a [blue]5[/blue] de [gold]Desorientación[/gold], queda [gold]Aturdido[/gold] y elimina toda la Desorientación.",
+  "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "Cuando te golpea un Ataque, aplica [blue]{Amount}[/blue] de [gold]Desorientación[/gold] al atacante.\nA [blue]5[/blue] de [gold]Desorientación[/gold], atúrdelo."
 }

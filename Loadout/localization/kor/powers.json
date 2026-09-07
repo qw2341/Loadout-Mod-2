@@ -1,5 +1,8 @@
 {
   "LOADOUT-WOUNDED_POWER.title": "부상",
   "LOADOUT-WOUNDED_POWER.description": "[gold]부상[/gold]이 [blue]10[/blue]이 되면 [gold]기절[/gold]하고 모든 부상을 제거합니다.",
-  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "기절하지 않은 적에게 방어되지 않은 공격 피해를 줄 때마다 그 적에게 [gold]부상[/gold]을 [blue]1[/blue] 부여합니다.\n[gold]부상[/gold]이 [blue]10[/blue]이 되면 그 적을 기절시킵니다."
+  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "기절하지 않은 적에게 방어되지 않은 공격 피해를 줄 때마다 그 적에게 [gold]부상[/gold]을 [blue]1[/blue] 부여합니다.\n[gold]부상[/gold]이 [blue]10[/blue]이 되면 그 적을 기절시킵니다.",
+  "LOADOUT-DAZED_POWER.title": "어지러움",
+  "LOADOUT-DAZED_POWER.description": "[gold]어지러움[/gold]이 [blue]5[/blue]이 되면 [gold]기절[/gold]하고 모든 어지러움을 제거합니다.",
+  "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "공격에 적중당할 때마다 공격자에게 [gold]어지러움[/gold]을 [blue]{Amount}[/blue] 부여합니다.\n[gold]어지러움[/gold]이 [blue]5[/blue]이 되면 그 적을 기절시킵니다."
 }

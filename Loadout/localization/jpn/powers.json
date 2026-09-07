@@ -1,5 +1,8 @@
 {
   "LOADOUT-WOUNDED_POWER.title": "負傷",
   "LOADOUT-WOUNDED_POWER.description": "[gold]負傷[/gold]が[blue]10[/blue]になると[gold]スタン[/gold]し、すべての負傷を解除する。",
-  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "スタンしていない敵にブロックされなかったアタックダメージを与えるたび、その敵に[gold]負傷[/gold]を[blue]1[/blue]付与する。\n[gold]負傷[/gold]が[blue]10[/blue]になると、その敵をスタンさせる。"
+  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "スタンしていない敵にブロックされなかったアタックダメージを与えるたび、その敵に[gold]負傷[/gold]を[blue]1[/blue]付与する。\n[gold]負傷[/gold]が[blue]10[/blue]になると、その敵をスタンさせる。",
+  "LOADOUT-DAZED_POWER.title": "めまい",
+  "LOADOUT-DAZED_POWER.description": "[gold]めまい[/gold]が[blue]5[/blue]になると[gold]スタン[/gold]し、すべてのめまいを解除する。",
+  "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "アタックを受けるたび、攻撃者に[gold]めまい[/gold]を[blue]{Amount}[/blue]付与する。\n[gold]めまい[/gold]が[blue]5[/blue]になると、その敵をスタンさせる。"
 }
