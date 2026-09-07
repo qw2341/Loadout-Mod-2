@@ -28,6 +28,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Models.Powers;
@@ -44,10 +45,25 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
+
+public sealed class BottledMonsterMorphCombatSnapshotHook : AbstractModel
+{
+    public override bool ShouldReceiveCombatHooks => true;
+
+    public override Task BeforeCombatStart()
+    {
+        BottledMonsterMorphService.CaptureCombatStartSnapshot();
+        return Task.CompletedTask;
+    }
+
+}
 
 public static class BottledMonsterMorphService
 {
-    private const int CurrentSchemaVersion = 3;
+    private const int CurrentSchemaVersion = 4;
+    private const string CombatSnapshotHookId =
+        "Loadout.BottledMonsterMorph.CombatSnapshot";
     private const string RunDirectory = "loadout/services/bottled_monster_morph";
     private const string RunFilePrefix = "bottled_monster_morph_run";
 
@@ -93,6 +109,8 @@ public static class BottledMonsterMorphService
     private static INetGameService? _runNetService;
     private static RunLobby? _runLobby;
     private static Delegate? _playerRejoinedHandler;
+    private static bool _combatSnapshotHookRegistered;
+    private static bool _runSaveSubscribed;
 
     public static void OnRunLaunched()
     {
@@ -100,6 +118,8 @@ public static class BottledMonsterMorphService
 
         try
         {
+            RegisterCombatSnapshotHook();
+            SubscribeForRunSave();
             INetGameService netService = RunManager.Instance.NetService;
             RegisterRunNetService(netService);
 
@@ -120,6 +140,7 @@ public static class BottledMonsterMorphService
 
     public static void OnRunCleaningUp()
     {
+        UnsubscribeFromRunSave();
         UnbindRunLobby();
         UnregisterRunNetService();
         ClearRuntimeState();
@@ -315,6 +336,63 @@ public static class BottledMonsterMorphService
     public static void SynchronizeAuthoritativeState()
     {
         BroadcastSnapshot();
+    }
+
+    public static void CaptureCombatStartSnapshot()
+    {
+        if (_state.CombatStartSnapshot is not null)
+            return;
+
+        _state.CombatStartSnapshot = CreateCombatStartSnapshot();
+        SaveRunStateIfAuthoritative();
+    }
+
+    public static void CompleteCombatSnapshot()
+    {
+        if (_state.CombatStartSnapshot is null)
+            return;
+
+        _state.CombatStartSnapshot = null;
+        SaveRunStateIfAuthoritative();
+    }
+
+    private static void RegisterCombatSnapshotHook()
+    {
+        if (_combatSnapshotHookRegistered)
+            return;
+
+        BottledMonsterMorphCombatSnapshotHook hook =
+            ModelDb.GetById<BottledMonsterMorphCombatSnapshotHook>(
+                ModelDb.GetId<BottledMonsterMorphCombatSnapshotHook>());
+        ModHelper.SubscribeForRunStateHooks(CombatSnapshotHookId, _ => [hook]);
+        _combatSnapshotHookRegistered = true;
+    }
+
+    private static void SubscribeForRunSave()
+    {
+        if (_runSaveSubscribed)
+            return;
+
+        SaveManager.Instance.Saved += OnRunSaved;
+        _runSaveSubscribed = true;
+    }
+
+    private static void UnsubscribeFromRunSave()
+    {
+        if (!_runSaveSubscribed)
+            return;
+
+        SaveManager.Instance.Saved -= OnRunSaved;
+        _runSaveSubscribed = false;
+    }
+
+    private static void OnRunSaved()
+    {
+        if (!CombatManager.Instance.IsInProgress
+            && CombatManager.Instance.DebugOnlyGetState() is not null)
+        {
+            CompleteCombatSnapshot();
+        }
     }
 
     public static void OnCreatureReady(NCreature creatureNode)
@@ -1805,6 +1883,7 @@ public static class BottledMonsterMorphService
         _state.ReplacementFormPowersByPlayer ??=
             new Dictionary<string, Dictionary<string, int>>(
                 StringComparer.Ordinal);
+        bool restoredCombatStart = RestoreCombatStartSnapshot();
 
         HashSet<string> validPlayers = RunManager.Instance.DebugOnlyGetState()!.Players
             .Select(player => player.NetId.ToString())
@@ -1816,7 +1895,53 @@ public static class BottledMonsterMorphService
         }
         NormalizeTestSubjectPhases(validPlayers);
         NormalizeReplacementFormPowers(validPlayers);
+        if (restoredCombatStart)
+            _state.CombatStartSnapshot = CreateCombatStartSnapshot();
         RebuildMorphModelCache();
+    }
+
+    private static MorphCombatStartSnapshot CreateCombatStartSnapshot()
+    {
+        return new MorphCombatStartSnapshot
+        {
+            Players = new Dictionary<string, string>(
+                _state.Players,
+                StringComparer.Ordinal),
+            TestSubjectPhasesByPlayer = new Dictionary<string, int>(
+                _state.TestSubjectPhasesByPlayer,
+                StringComparer.Ordinal),
+            ReplacementFormPowersByPlayer =
+                _state.ReplacementFormPowersByPlayer.ToDictionary(
+                    pair => pair.Key,
+                    pair => new Dictionary<string, int>(
+                        pair.Value,
+                        StringComparer.Ordinal),
+                    StringComparer.Ordinal)
+        };
+    }
+
+    private static bool RestoreCombatStartSnapshot()
+    {
+        if (_state.CombatStartSnapshot is not { } snapshot)
+            return false;
+
+        _state.Players = new Dictionary<string, string>(
+            snapshot.Players ?? new Dictionary<string, string>(),
+            StringComparer.Ordinal);
+        _state.TestSubjectPhasesByPlayer = new Dictionary<string, int>(
+            snapshot.TestSubjectPhasesByPlayer
+            ?? new Dictionary<string, int>(),
+            StringComparer.Ordinal);
+        _state.ReplacementFormPowersByPlayer =
+            (snapshot.ReplacementFormPowersByPlayer
+             ?? new Dictionary<string, Dictionary<string, int>>())
+            .ToDictionary(
+                pair => pair.Key,
+                pair => new Dictionary<string, int>(
+                    pair.Value ?? new Dictionary<string, int>(),
+                    StringComparer.Ordinal),
+                StringComparer.Ordinal);
+        return true;
     }
 
     private static void NormalizeTestSubjectPhases(
@@ -1895,7 +2020,15 @@ public static class BottledMonsterMorphService
             if (type == NetGameType.Client)
                 return;
 
-            long? runStartTime = SaveUtility.GetCurrentRunStartTime();
+            if (_state.CombatStartSnapshot is not null
+                && !CombatManager.Instance.IsInProgress)
+            {
+                _state.CombatStartSnapshot = CreateCombatStartSnapshot();
+            }
+
+            long? runStartTime = _state.RunStartTime > 0
+                ? _state.RunStartTime
+                : SaveUtility.GetCurrentRunStartTime();
             if (!runStartTime.HasValue)
                 return;
 
@@ -2037,6 +2170,16 @@ public static class BottledMonsterMorphService
             _state.ReplacementFormPowersByPlayer ??=
                 new Dictionary<string, Dictionary<string, int>>(
                     StringComparer.Ordinal);
+            if (_state.CombatStartSnapshot is { } combatStartSnapshot)
+            {
+                combatStartSnapshot.Players ??=
+                    new Dictionary<string, string>(StringComparer.Ordinal);
+                combatStartSnapshot.TestSubjectPhasesByPlayer ??=
+                    new Dictionary<string, int>(StringComparer.Ordinal);
+                combatStartSnapshot.ReplacementFormPowersByPlayer ??=
+                    new Dictionary<string, Dictionary<string, int>>(
+                        StringComparer.Ordinal);
+            }
             foreach (string key in _state.Players.Keys.ToList())
             {
                 if (ResolveMorphModel(_state.Players[key]) is null)
@@ -2121,6 +2264,7 @@ public static class BottledMonsterMorphService
         public Dictionary<string, Dictionary<string, int>>
             ReplacementFormPowersByPlayer { get; set; } =
                 new(StringComparer.Ordinal);
+        public MorphCombatStartSnapshot? CombatStartSnapshot { get; set; }
 
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
@@ -2133,7 +2277,19 @@ public static class BottledMonsterMorphService
             info.AddValue(
                 nameof(ReplacementFormPowersByPlayer),
                 ReplacementFormPowersByPlayer);
+            info.AddValue(nameof(CombatStartSnapshot), CombatStartSnapshot);
         }
+    }
+
+    public sealed class MorphCombatStartSnapshot
+    {
+        public Dictionary<string, string> Players { get; set; } =
+            new(StringComparer.Ordinal);
+        public Dictionary<string, int> TestSubjectPhasesByPlayer { get; set; } =
+            new(StringComparer.Ordinal);
+        public Dictionary<string, Dictionary<string, int>>
+            ReplacementFormPowersByPlayer { get; set; } =
+                new(StringComparer.Ordinal);
     }
 }
 

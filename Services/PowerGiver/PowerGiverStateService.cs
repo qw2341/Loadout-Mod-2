@@ -47,12 +47,16 @@ public sealed class PowerGiverCombatStartHook : AbstractModel
     public override bool ShouldReceiveCombatHooks => true;
 
     public override Task BeforeCombatStart()
-        => PowerGiverStateService.ApplyConfiguredStartingPowersAsync();
+    {
+        PowerGiverStateService.CaptureCombatStartSnapshot();
+        return PowerGiverStateService.ApplyConfiguredStartingPowersAsync();
+    }
+
 }
 
 public static class PowerGiverStateService
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private const string CombatStartHookId = "Loadout.PowerGiver.StartingPowers";
     private const string FavoritesPath = "loadout/services/favorites/powers.json";
     private const string LegacyFavoritesPath = "loadout/power_giver_favorites.json";
@@ -94,6 +98,7 @@ public static class PowerGiverStateService
         _registered = true;
         RunManager.Instance.RunStarted += OnRunStarted;
         SaveManager.Instance.ProfileIdChanged += OnProfileIdChanged;
+        SaveManager.Instance.Saved += OnRunSaved;
         RegisterCombatStartHook();
         EnsureLoaded();
     }
@@ -111,6 +116,7 @@ public static class PowerGiverStateService
         ResetHostSnapshot();
         RunManager.Instance.RunStarted -= OnRunStarted;
         SaveManager.Instance.ProfileIdChanged -= OnProfileIdChanged;
+        SaveManager.Instance.Saved -= OnRunSaved;
         _registered = false;
     }
 
@@ -435,6 +441,31 @@ public static class PowerGiverStateService
             snapshot.MonsterCounters);
     }
 
+    public static void CaptureCombatStartSnapshot()
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            if (_run.CombatStartSnapshot is not null)
+                return;
+
+            _run.CombatStartSnapshot = CreateCounterSnapshotLocked();
+            SaveRunState();
+        }
+    }
+
+    public static void CompleteCombatSnapshot()
+    {
+        lock (SyncRoot)
+        {
+            if (_run.CombatStartSnapshot is null)
+                return;
+
+            _run.CombatStartSnapshot = null;
+            SaveRunState();
+        }
+    }
+
     private static void RegisterCombatStartHook()
     {
         if (_combatStartHookRegistered)
@@ -462,6 +493,15 @@ public static class PowerGiverStateService
         Favorites.Reset();
         ResetHostSnapshot();
         ReloadRunState();
+    }
+
+    private static void OnRunSaved()
+    {
+        if (!CombatManager.Instance.IsInProgress
+            && CombatManager.Instance.DebugOnlyGetState() is not null)
+        {
+            CompleteCombatSnapshot();
+        }
     }
 
     private static void RegisterMessageHandlers(INetGameService netService)
@@ -753,6 +793,7 @@ public static class PowerGiverStateService
             [legacyPath]);
 
         _run = NormalizeRunState(loaded.Value, runStartTime);
+        RestoreCombatStartSnapshotLocked();
         if (loaded.Loaded && (!loaded.LoadedFrom(primaryPath) || loaded.Value.SchemaVersion != CurrentSchemaVersion))
             SaveRunState();
     }
@@ -762,11 +803,33 @@ public static class PowerGiverStateService
         if (_loadedRunStartTime is null)
             return;
 
+        if (_run.CombatStartSnapshot is not null
+            && !CombatManager.Instance.IsInProgress)
+        {
+            _run.CombatStartSnapshot = CreateCounterSnapshotLocked();
+        }
+
         _run.SchemaVersion = CurrentSchemaVersion;
         _run.RunStartTime = _loadedRunStartTime.Value;
         _run = NormalizeRunState(_run, _loadedRunStartTime.Value);
         _run.LegacyPlayerCounters = null;
         SaveUtility.SaveProfileJson(GetRunPath(RunDirectory, _loadedRunStartTime.Value), _run);
+    }
+
+    private static void RestoreCombatStartSnapshotLocked()
+    {
+        if (_run.CombatStartSnapshot is not { } snapshot)
+            return;
+
+        _run.AllPlayerCounters = new Dictionary<string, int>(
+            snapshot.AllPlayerCounters,
+            StringComparer.Ordinal);
+        _run.PlayerCountersByNetId = snapshot.PlayerCountersByNetId.ToDictionary(
+            pair => pair.Key,
+            pair => new Dictionary<string, int>(pair.Value, StringComparer.Ordinal));
+        _run.MonsterCounters = new Dictionary<string, int>(
+            snapshot.MonsterCounters,
+            StringComparer.Ordinal);
     }
 
     private static Dictionary<string, int>? GetCounters(LoadoutTargetSelection target, bool createPlayerBucket)
@@ -836,6 +899,12 @@ public static class PowerGiverStateService
         }
 
         run.PlayerCountersByNetId = normalizedPlayers;
+        if (run.CombatStartSnapshot is not null)
+        {
+            run.CombatStartSnapshot = NormalizeCounterSnapshot(
+                run.CombatStartSnapshot);
+            run.CombatStartSnapshot.RunStartTime = runStartTime;
+        }
         return run;
     }
 
@@ -1014,6 +1083,9 @@ public static class PowerGiverStateService
         [JsonPropertyName("playerCounters")]
         public Dictionary<string, int>? LegacyPlayerCounters { get; set; }
 
+        [JsonPropertyName("combatStartSnapshot")]
+        public PowerGiverCounterSnapshot? CombatStartSnapshot { get; set; }
+
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             info.AddValue(nameof(SchemaVersion), SchemaVersion);
@@ -1021,6 +1093,7 @@ public static class PowerGiverStateService
             info.AddValue(nameof(AllPlayerCounters), AllPlayerCounters);
             info.AddValue(nameof(PlayerCountersByNetId), PlayerCountersByNetId);
             info.AddValue(nameof(MonsterCounters), MonsterCounters);
+            info.AddValue(nameof(CombatStartSnapshot), CombatStartSnapshot);
         }
     }
 }

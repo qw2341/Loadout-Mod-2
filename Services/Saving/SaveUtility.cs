@@ -5,16 +5,21 @@ using System.Runtime.Serialization;
 namespace Loadout.Services.Saving;
 
 using Godot;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 public static class SaveUtility
 {
+    private static readonly FieldInfo? RunStartTimeField =
+        AccessTools.Field(typeof(RunManager), "_startTime");
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -151,7 +156,10 @@ public static class SaveUtility
             if (!RunManager.Instance.IsInProgress || RunManager.Instance.DebugOnlyGetState() is null)
                 return null;
 
-            return RunManager.Instance.ToSave(null).StartTime;
+            return RunStartTimeField?.GetValue(RunManager.Instance) is long runStartTime
+                   && runStartTime > 0
+                ? runStartTime
+                : null;
         }
         catch (Exception)
         {
