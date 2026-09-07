@@ -118,6 +118,10 @@ public static class MapEditingService
 
     public static void OnRunCleaningUp()
     {
+        RunState? runState = TryGetRunState();
+        if (runState is not null)
+            Archives.Remove(runState);
+        RunManager.Instance.SavedMapsToLoad = null;
         MapEditingUiService.Detach();
         _pendingSnapshotJson = null;
         UnbindRunLobby();
