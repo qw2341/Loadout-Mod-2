@@ -47,7 +47,7 @@ using MegaCrit.Sts2.Core.Runs;
 
 public static class BottledMonsterMorphService
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private const string RunDirectory = "loadout/services/bottled_monster_morph";
     private const string RunFilePrefix = "bottled_monster_morph_run";
 
@@ -69,6 +69,8 @@ public static class BottledMonsterMorphService
     private static readonly MethodInfo? ConnectAnimatorSignalsMethod = AccessTools.Method(typeof(NCreature), "ConnectSpineAnimatorSignals");
     private static readonly MethodInfo? UpdateBoundsMethod = AccessTools.Method(typeof(NCreature), "UpdateBounds", [typeof(NCreatureVisuals)]);
     private static readonly MethodInfo? SetOrbManagerPositionMethod = AccessTools.Method(typeof(NCreature), "SetOrbManagerPosition");
+    private static readonly MethodInfo? SetTestSubjectRespawnsMethod =
+        AccessTools.PropertySetter(typeof(TestSubject), "Respawns");
     private static readonly FieldInfo? StateDisplayField = AccessTools.Field(typeof(NCreature), "_stateDisplay");
     private static readonly MethodInfo? RefreshStateDisplayMethod = AccessTools.Method(typeof(NCreatureStateDisplay), "RefreshValues");
     private static readonly FieldInfo? AnyStateField = AccessTools.Field(typeof(CreatureAnimator), "_anyState");
@@ -151,6 +153,19 @@ public static class BottledMonsterMorphService
                && model is TModel;
     }
 
+    public static int GetTestSubjectMorphPhase(Player? player)
+    {
+        if (!IsPlayerMorphedAs<TestSubject>(player))
+            return 0;
+
+        return Math.Clamp(
+            _state.TestSubjectPhasesByPlayer.GetValueOrDefault(
+                player!.NetId.ToString(),
+                1),
+            1,
+            3);
+    }
+
     public static bool ShouldFlipMonsterMorph(MonsterModel monster)
     {
         return monster is Architect
@@ -181,6 +196,24 @@ public static class BottledMonsterMorphService
         ModelId modelId,
         LoadoutTargetSelection target)
     {
+        await ApplySynchronizedMorphAsync(modelId, target, null);
+    }
+
+    public static async Task ApplySynchronizedTestSubjectMorphAsync(
+        int phase,
+        LoadoutTargetSelection target)
+    {
+        await ApplySynchronizedMorphAsync(
+            ModelDb.Monster<TestSubject>().Id,
+            target,
+            Math.Clamp(phase, 1, 3));
+    }
+
+    private static async Task ApplySynchronizedMorphAsync(
+        ModelId modelId,
+        LoadoutTargetSelection target,
+        int? testSubjectPhase)
+    {
         if (target.Scope != LoadoutTargetScope.Player || !target.PlayerNetId.HasValue)
             return;
 
@@ -200,10 +233,12 @@ public static class BottledMonsterMorphService
 
         string playerKey = player.NetId.ToString();
         bool changed;
+        bool phaseChanged = false;
         if (reset)
         {
             changed = _state.Players.Remove(playerKey);
             MorphModelsByPlayer.Remove(player.NetId);
+            phaseChanged = _state.TestSubjectPhasesByPlayer.Remove(playerKey);
         }
         else
         {
@@ -213,9 +248,27 @@ public static class BottledMonsterMorphService
             if (changed)
                 _state.Players[playerKey] = modelKey;
             MorphModelsByPlayer[player.NetId] = model;
+
+            if (model is TestSubject)
+            {
+                int phase = testSubjectPhase
+                            ?? _state.TestSubjectPhasesByPlayer.GetValueOrDefault(
+                                playerKey,
+                                1);
+                phase = Math.Clamp(phase, 1, 3);
+                phaseChanged = !_state.TestSubjectPhasesByPlayer.TryGetValue(
+                                   playerKey,
+                                   out int currentPhase)
+                               || currentPhase != phase;
+                _state.TestSubjectPhasesByPlayer[playerKey] = phase;
+            }
+            else
+            {
+                phaseChanged = _state.TestSubjectPhasesByPlayer.Remove(playerKey);
+            }
         }
 
-        if (!changed)
+        if (!changed && !phaseChanged)
             return;
 
         SaveRunStateIfAuthoritative();
@@ -612,7 +665,7 @@ public static class BottledMonsterMorphService
         // machine. That mutates the model, so querying it on ModelDb's canonical
         // instance throws before the visual can be loaded. Use one isolated mutable
         // monster for the entire visual installation instead.
-        visualModel = PrepareVisualModel(visualModel);
+        visualModel = PrepareVisualModel(visualModel, playerNetId);
         await EnsureVisualAssetLoadedAsync(visualModel);
         if (!IsCurrentRevision(playerNetId, revision)
             || !GodotObject.IsInstanceValid(creatureNode)
@@ -643,7 +696,7 @@ public static class BottledMonsterMorphService
         if (_state.Players.TryGetValue(playerNetId.ToString(), out string? modelId))
             visualModel = ResolveMorphModel(modelId) ?? player.Character;
 
-        visualModel = PrepareVisualModel(visualModel);
+        visualModel = PrepareVisualModel(visualModel, playerNetId);
         string? assetPath = GetMerchantVisualAssetPath(visualModel);
         if (string.IsNullOrWhiteSpace(assetPath))
             return;
@@ -684,7 +737,7 @@ public static class BottledMonsterMorphService
         if (_state.Players.TryGetValue(playerNetId.ToString(), out string? modelId))
             visualModel = ResolveMorphModel(modelId) ?? player.Character;
 
-        visualModel = PrepareVisualModel(visualModel);
+        visualModel = PrepareVisualModel(visualModel, playerNetId);
         string? assetPath = GetCombatVisualAssetPath(visualModel);
         if (string.IsNullOrWhiteSpace(assetPath))
             return;
@@ -737,7 +790,7 @@ public static class BottledMonsterMorphService
             return;
         }
 
-        visualModel = PrepareVisualModel(visualModel);
+        visualModel = PrepareVisualModel(visualModel, playerNetId);
         string? assetPath = visualModel switch
         {
             CharacterModel character => character.RestSiteAnimPath,
@@ -1137,7 +1190,13 @@ public static class BottledMonsterMorphService
                     ReadLoopingTriggers(animator),
                     visualModel.Id.ToString(),
                     new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-                SetIdle(ActiveVisuals[nodeId]);
+                if (visualModel is not TestSubject
+                    || !SetTestSubjectIdle(
+                        ActiveVisuals[nodeId],
+                        GetTestSubjectMorphPhase(creatureNode.Entity.Player)))
+                {
+                    SetIdle(ActiveVisuals[nodeId]);
+                }
             }
             else
             {
@@ -1329,13 +1388,26 @@ public static class BottledMonsterMorphService
         }
     }
 
-    private static AbstractModel PrepareVisualModel(AbstractModel model)
+    private static AbstractModel PrepareVisualModel(
+        AbstractModel model,
+        ulong playerNetId)
     {
         if (model is not MonsterModel monster)
             return model;
 
         MonsterModel visualMonster = monster.ToMutable();
         visualMonster.SetUpForCombat();
+        if (visualMonster is TestSubject testSubject
+            && SetTestSubjectRespawnsMethod is not null)
+        {
+            int phase = Math.Clamp(
+                _state.TestSubjectPhasesByPlayer.GetValueOrDefault(
+                    playerNetId.ToString(),
+                    1),
+                1,
+                3);
+            SetTestSubjectRespawnsMethod.Invoke(testSubject, [phase - 1]);
+        }
         _ = new Creature(visualMonster, CombatSide.Enemy, null)
         {
             CombatState = new NullCombatState()
@@ -1587,6 +1659,21 @@ public static class BottledMonsterMorphService
         }
     }
 
+    private static bool SetTestSubjectIdle(
+        MorphVisualRuntime runtime,
+        int phase)
+    {
+        string animation = $"idle_loop{Math.Clamp(phase, 1, 3)}";
+        if (!runtime.Spine.HasAnimation(animation))
+            return false;
+
+        Sts2Compatibility.SetAnimation(
+            runtime.Spine.GetAnimationState(),
+            animation,
+            true);
+        return true;
+    }
+
     private static AbstractModel? ResolveMorphModel(ModelId modelId)
     {
         return IsEmptyModelId(modelId) ? null : ResolveMorphModel(modelId.ToString(), modelId.Entry);
@@ -1713,6 +1800,8 @@ public static class BottledMonsterMorphService
         _state.SchemaVersion = CurrentSchemaVersion;
         _state.RunStartTime = runStartTime.Value;
         _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
+        _state.TestSubjectPhasesByPlayer ??=
+            new Dictionary<string, int>(StringComparer.Ordinal);
         _state.ReplacementFormPowersByPlayer ??=
             new Dictionary<string, Dictionary<string, int>>(
                 StringComparer.Ordinal);
@@ -1725,8 +1814,29 @@ public static class BottledMonsterMorphService
             if (!validPlayers.Contains(key) || ResolveMorphModel(_state.Players[key]) is null)
                 _state.Players.Remove(key);
         }
+        NormalizeTestSubjectPhases(validPlayers);
         NormalizeReplacementFormPowers(validPlayers);
         RebuildMorphModelCache();
+    }
+
+    private static void NormalizeTestSubjectPhases(
+        IReadOnlySet<string>? validPlayers = null)
+    {
+        foreach (string playerKey in _state.TestSubjectPhasesByPlayer.Keys.ToList())
+        {
+            if ((validPlayers is not null && !validPlayers.Contains(playerKey))
+                || !_state.Players.TryGetValue(playerKey, out string? modelId)
+                || ResolveMorphModel(modelId) is not TestSubject)
+            {
+                _state.TestSubjectPhasesByPlayer.Remove(playerKey);
+                continue;
+            }
+
+            _state.TestSubjectPhasesByPlayer[playerKey] = Math.Clamp(
+                _state.TestSubjectPhasesByPlayer[playerKey],
+                1,
+                3);
+        }
     }
 
     private static void NormalizeReplacementFormPowers(
@@ -1922,6 +2032,8 @@ public static class BottledMonsterMorphService
 
             _state = incoming;
             _state.Players ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            _state.TestSubjectPhasesByPlayer ??=
+                new Dictionary<string, int>(StringComparer.Ordinal);
             _state.ReplacementFormPowersByPlayer ??=
                 new Dictionary<string, Dictionary<string, int>>(
                     StringComparer.Ordinal);
@@ -1930,6 +2042,7 @@ public static class BottledMonsterMorphService
                 if (ResolveMorphModel(_state.Players[key]) is null)
                     _state.Players.Remove(key);
             }
+            NormalizeTestSubjectPhases();
             NormalizeReplacementFormPowers();
             RebuildMorphModelCache();
 
@@ -2003,6 +2116,8 @@ public static class BottledMonsterMorphService
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
         public long RunStartTime { get; set; }
         public Dictionary<string, string> Players { get; set; } = new(StringComparer.Ordinal);
+        public Dictionary<string, int> TestSubjectPhasesByPlayer { get; set; } =
+            new(StringComparer.Ordinal);
         public Dictionary<string, Dictionary<string, int>>
             ReplacementFormPowersByPlayer { get; set; } =
                 new(StringComparer.Ordinal);
@@ -2012,6 +2127,9 @@ public static class BottledMonsterMorphService
             info.AddValue(nameof(SchemaVersion), SchemaVersion);
             info.AddValue(nameof(RunStartTime), RunStartTime);
             info.AddValue(nameof(Players), Players);
+            info.AddValue(
+                nameof(TestSubjectPhasesByPlayer),
+                TestSubjectPhasesByPlayer);
             info.AddValue(
                 nameof(ReplacementFormPowersByPlayer),
                 ReplacementFormPowersByPlayer);

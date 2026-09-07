@@ -273,6 +273,39 @@ public static class PowerGiverStateService
         return true;
     }
 
+    public static async Task<bool> AdjustCounterForPlayerAsync(
+        string powerId,
+        int delta,
+        Player player)
+    {
+        if (string.IsNullOrWhiteSpace(powerId) || delta == 0)
+            return false;
+
+        LoadoutTargetSelection target =
+            LoadoutTargetSelection.ForPlayer(player.NetId);
+        EnsureLoaded();
+        bool adjusted;
+        int appliedDelta;
+        lock (SyncRoot)
+        {
+            adjusted = AdjustCounterLocked(
+                powerId,
+                delta,
+                target,
+                out appliedDelta);
+        }
+
+        if (!adjusted)
+            return false;
+
+        await ApplyCurrentCombatDeltaAsync(
+            powerId,
+            appliedDelta,
+            target,
+            player);
+        return true;
+    }
+
     public static bool IsFavorite(string powerId)
     {
         return Favorites.Contains(FavoriteCategory.Power, powerId);
