@@ -1187,7 +1187,7 @@ public partial class NMapEditingToolbar : Control
         (MapCoord, MapCoord)? best = null;
         foreach (ConnectionHitTarget target in _connectionHitTargets)
         {
-            float distance = DistanceToSegment(mouse, target.Start, target.End);
+            float distance = DistanceToPath(mouse, target.Ticks);
             if (distance < bestDistance)
             {
                 bestDistance = distance;
@@ -1205,7 +1205,7 @@ public partial class NMapEditingToolbar : Control
             float bestDistance = 14f;
             foreach (ConnectionHitTarget target in _connectionHitTargets)
             {
-                float distance = DistanceToSegment(mouseGlobalPosition, target.Start, target.End);
+                float distance = DistanceToPath(mouseGlobalPosition, target.Ticks);
                 if (distance < bestDistance)
                 {
                     bestDistance = distance;
@@ -1256,17 +1256,11 @@ public partial class NMapEditingToolbar : Control
         (MapCoord Source, MapCoord Destination) connection,
         IReadOnlyList<TextureRect> ticks)
     {
-        Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
-        if (!nodes.TryGetValue(connection.Source, out NMapPoint? sourceNode)
-            || !nodes.TryGetValue(connection.Destination, out NMapPoint? destinationNode))
-        {
+        if (ticks.Count == 0)
             return;
-        }
 
         _connectionHitTargets.Add(new ConnectionHitTarget(
             connection,
-            sourceNode.GetGlobalRect().GetCenter(),
-            destinationNode.GetGlobalRect().GetCenter(),
             ticks,
             ticks.Select(tick => tick.Modulate).ToArray()));
     }
@@ -1550,8 +1544,6 @@ public partial class NMapEditingToolbar : Control
 
     private sealed record ConnectionHitTarget(
         (MapCoord Source, MapCoord Destination) Connection,
-        Vector2 Start,
-        Vector2 End,
         IReadOnlyList<TextureRect> Ticks,
         Color[] Colors);
 
@@ -1584,14 +1576,16 @@ public partial class NMapEditingToolbar : Control
             _status.SetTextAutoSize(text);
     }
 
-    private static float DistanceToSegment(Vector2 point, Vector2 start, Vector2 end)
+    private static float DistanceToPath(Vector2 point, IReadOnlyList<TextureRect> ticks)
     {
-        Vector2 segment = end - start;
-        float lengthSquared = segment.LengthSquared();
-        if (lengthSquared <= 0.001f)
-            return point.DistanceTo(start);
-        float t = Mathf.Clamp((point - start).Dot(segment) / lengthSquared, 0f, 1f);
-        return point.DistanceTo(start + segment * t);
+        float closest = float.PositiveInfinity;
+        foreach (TextureRect tick in ticks)
+        {
+            if (!GodotObject.IsInstanceValid(tick) || !tick.IsVisibleInTree())
+                continue;
+            closest = MathF.Min(closest, point.DistanceTo(tick.GetGlobalRect().GetCenter()));
+        }
+        return closest;
     }
 
     private static RunState? TryGetRunState()
