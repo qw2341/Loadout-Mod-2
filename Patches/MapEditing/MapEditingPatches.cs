@@ -73,30 +73,12 @@ public static class MapEditingMapSetPatch
     public static void Postfix(NMapScreen __instance) => MapEditingUiService.OnMapSet(__instance);
 }
 
-[HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.Open))]
-public static class MapEditingMapOpenPatch
-{
-    [HarmonyPostfix]
-    public static void Postfix(NMapScreen __instance)
-        => MapEditingUiService.FocusCurrentMapPoint(__instance);
-}
-
-[HarmonyPatch(typeof(NClickableControl), nameof(NClickableControl._GuiInput))]
-public static class MapEditingClickableInputPatch
+[HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.Close))]
+public static class MapEditingMapClosePatch
 {
     [HarmonyPrefix]
-    [HarmonyPriority(Priority.First)]
-    public static bool Prefix(NClickableControl __instance, InputEvent inputEvent)
-        => !MapEditingUiService.HandleClickableInput(__instance, inputEvent);
-}
-
-[HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen._GuiInput))]
-public static class MapEditingScreenInputPatch
-{
-    [HarmonyPrefix]
-    [HarmonyPriority(Priority.First)]
-    public static bool Prefix(NMapScreen __instance, InputEvent inputEvent)
-        => !MapEditingUiService.HandleScreenInput(__instance, inputEvent);
+    public static void Prefix(NMapScreen __instance)
+        => MapEditingUiService.OnMapClosed(__instance);
 }
 
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.Launch))]

@@ -22,6 +22,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
@@ -29,14 +30,15 @@ using MegaCrit.Sts2.Core.Multiplayer.Transport;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Odds;
 using MegaCrit.Sts2.Core.Random;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
 public static class MapEditingService
 {
-    public const int CurrentSchemaVersion = 2;
-    public const string ClipboardPrefix = "STS2_LOADOUT_MAP_V2:";
+    public const int CurrentSchemaVersion = 3;
+    public const string ClipboardPrefix = "STS2_LOADOUT_MAP_V3:";
     private static readonly FieldInfo? RunStateRngField =
         AccessTools.Field(typeof(RunState), "<Rng>k__BackingField");
     private static readonly FieldInfo? RunStateOddsField =
@@ -45,6 +47,8 @@ public static class MapEditingService
         AccessTools.Field(typeof(Player), "<PlayerRng>k__BackingField");
     private static readonly FieldInfo? PlayerOddsField =
         AccessTools.Field(typeof(Player), "<PlayerOdds>k__BackingField");
+    private static readonly FieldInfo? ActRoomsField =
+        AccessTools.Field(typeof(ActModel), "_rooms");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -155,6 +159,7 @@ public static class MapEditingService
                     JsonOptions) ?? new MapEditingArchive()
                 : CreateArchive(runState);
             archive.RunSeed = runState.Rng.StringSeed;
+            archive.SeedRooms = CaptureSeedRooms(runState);
             archive.Acts[runState.CurrentActIndex] = CaptureCurrentAct(runState, positions);
 
             Dictionary<int, SerializableActMap> pending = RunManager.Instance.SavedMapsToLoad ?? [];
@@ -193,8 +198,11 @@ public static class MapEditingService
                 : 0L;
             archive.SchemaVersion = CurrentSchemaVersion;
             archive.Revision = Math.Max(currentRevision, archive.Revision) + 1L;
+            bool seedChanged = !string.Equals(runState.Rng.StringSeed, archive.RunSeed, StringComparison.Ordinal);
             if (!TryReplaceRunSeed(runState, archive.RunSeed, out error))
                 return false;
+            if (seedChanged)
+                ApplySeedRooms(runState, archive.SeedRooms);
             Archives.Remove(runState);
             Archives.Add(runState, archive);
             ApplyAct(runState, screen, currentAct);
@@ -240,6 +248,7 @@ public static class MapEditingService
         MapEditingArchive archive = GetOrCreateArchive(runState);
         archive.SchemaVersion = CurrentSchemaVersion;
         archive.RunSeed = runState.Rng.StringSeed;
+        archive.SeedRooms = CaptureSeedRooms(runState);
         archive.Revision++;
         archive.Acts[runState.CurrentActIndex] = act;
         error = string.Empty;
@@ -259,6 +268,7 @@ public static class MapEditingService
         try
         {
             archive.RunSeed = runState.Rng.StringSeed;
+            archive.SeedRooms = CaptureSeedRooms(runState);
             string json = JsonSerializer.Serialize(archive, JsonOptions);
             byte[] payload = Encoding.UTF8.GetBytes(json);
             using MemoryStream output = new();
@@ -319,6 +329,7 @@ public static class MapEditingService
 
             if (!TryReplaceRunSeed(runState, imported.RunSeed, out string error))
                 return (false, LocMan.Loc("MAP_EDITOR_IMPORT_INVALID", "Could not import maps: {0}", error));
+            ApplySeedRooms(runState, imported.SeedRooms);
 
             long previousRevision = Archives.TryGetValue(runState, out MapEditingArchive? previousArchive)
                 ? previousArchive.Revision
@@ -423,6 +434,37 @@ public static class MapEditingService
             error = $"could not replace the run seed: {exception.Message}";
             return false;
         }
+    }
+
+    private static Dictionary<int, SerializableRoomSet> CaptureSeedRooms(RunState runState)
+    {
+        Dictionary<int, SerializableRoomSet> rooms = [];
+        for (int actIndex = 0; actIndex < runState.Acts.Count; actIndex++)
+        {
+            SerializableRoomSet source = runState.Acts[actIndex].ToSave().SerializableRooms;
+            rooms[actIndex] = new SerializableRoomSet
+            {
+                EventIds = source.EventIds.ToList(),
+                EventsVisited = 0,
+                NormalEncounterIds = source.NormalEncounterIds.ToList(),
+                NormalEncountersVisited = 0,
+                EliteEncounterIds = source.EliteEncounterIds.ToList(),
+                EliteEncountersVisited = 0,
+                BossEncountersVisited = 0,
+                BossId = source.BossId,
+                SecondBossId = source.SecondBossId,
+                AncientId = source.AncientId
+            };
+        }
+        return rooms;
+    }
+
+    private static void ApplySeedRooms(
+        RunState runState,
+        IReadOnlyDictionary<int, SerializableRoomSet> rooms)
+    {
+        foreach ((int actIndex, SerializableRoomSet roomSet) in rooms)
+            ActRoomsField!.SetValue(runState.Acts[actIndex], RoomSet.FromSave(roomSet));
     }
 
     public static string KeyFor(MapPoint point, ActMap map)
@@ -586,11 +628,14 @@ public static class MapEditingService
             if (Archives.TryGetValue(runState, out MapEditingArchive? current) && incoming.Revision <= current.Revision)
                 return;
 
+            bool seedChanged = !string.Equals(runState.Rng.StringSeed, incoming.RunSeed, StringComparison.Ordinal);
             if (!TryReplaceRunSeed(runState, incoming.RunSeed, out string seedError))
             {
                 GD.PushWarning($"Loadout map editor: could not apply imported run seed. {seedError}");
                 return;
             }
+            if (seedChanged)
+                ApplySeedRooms(runState, incoming.SeedRooms);
             Archives.Remove(runState);
             Archives.Add(runState, incoming);
             InstallFutureMaps(runState, incoming);
@@ -636,6 +681,7 @@ public sealed class MapEditingArchive
 {
     public int SchemaVersion { get; set; } = MapEditingService.CurrentSchemaVersion;
     public string RunSeed { get; set; } = string.Empty;
+    public Dictionary<int, SerializableRoomSet> SeedRooms { get; set; } = [];
     public long Revision { get; set; }
     public Dictionary<int, MapEditingActArchive> Acts { get; set; } = [];
 }

@@ -25,12 +25,6 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 
 public static class MapEditingUiService
 {
-    private static readonly AccessTools.FieldRef<NMapLegendItem, MapPointType> LegendPointTypeField =
-        AccessTools.FieldRefAccess<NMapLegendItem, MapPointType>("_pointType");
-    private static readonly AccessTools.FieldRef<NMapScreen, Control> MapContainerField =
-        AccessTools.FieldRefAccess<NMapScreen, Control>("_mapContainer");
-    private static readonly AccessTools.FieldRef<NMapScreen, Vector2> TargetDragPositionField =
-        AccessTools.FieldRefAccess<NMapScreen, Vector2>("_targetDragPos");
     private static readonly AccessTools.FieldRef<NMapScreen, Dictionary<MapCoord, NMapPoint>> PointNodesField =
         AccessTools.FieldRefAccess<NMapScreen, Dictionary<MapCoord, NMapPoint>>("_mapPointDictionary");
 
@@ -42,6 +36,7 @@ public static class MapEditingUiService
         {
             if (ReferenceEquals(_toolbar.Screen, screen))
                 return;
+            _toolbar.DeactivateForDetach();
             _toolbar.QueueFree();
         }
 
@@ -55,30 +50,21 @@ public static class MapEditingUiService
     public static void Detach()
     {
         if (_toolbar is not null && GodotObject.IsInstanceValid(_toolbar))
+        {
+            _toolbar.DeactivateForDetach();
             _toolbar.QueueFree();
+        }
         _toolbar = null;
     }
 
-    public static bool HandleClickableInput(NClickableControl control, InputEvent inputEvent)
+    public static void OnMapClosed(NMapScreen screen)
     {
-        if (_toolbar is null || !GodotObject.IsInstanceValid(_toolbar) || !_toolbar.IsEditing)
-            return false;
-
-        if (control is NMapPoint point)
-            return _toolbar.HandlePointInput(point, inputEvent);
-
-        if (control is NMapLegendItem legend)
-            return _toolbar.HandleLegendInput(LegendPointTypeField(legend), inputEvent);
-
-        return false;
-    }
-
-    public static bool HandleScreenInput(NMapScreen screen, InputEvent inputEvent)
-    {
-        return _toolbar is not null
-               && GodotObject.IsInstanceValid(_toolbar)
-               && ReferenceEquals(_toolbar.Screen, screen)
-               && _toolbar.HandleMapInput(inputEvent);
+        if (_toolbar is not null
+            && GodotObject.IsInstanceValid(_toolbar)
+            && ReferenceEquals(_toolbar.Screen, screen))
+        {
+            _toolbar.OnMapClosed();
+        }
     }
 
     public static void OnMapSet(NMapScreen screen)
@@ -88,24 +74,6 @@ public static class MapEditingUiService
             NMapEditingToolbar.RebuildAllPaths(screen);
         if (_toolbar is not null && GodotObject.IsInstanceValid(_toolbar) && ReferenceEquals(_toolbar.Screen, screen))
             _toolbar.OnMapRebuilt();
-    }
-
-    public static void FocusCurrentMapPoint(NMapScreen screen)
-    {
-        RunState? runState = TryGetRunState();
-        if (runState is null
-            || !MapEditingService.IsCurrentActEdited(runState)
-            || runState.CurrentMapCoord is not { } currentCoord
-            || !PointNodesField(screen).TryGetValue(currentCoord, out NMapPoint? currentNode))
-        {
-            return;
-        }
-
-        Vector2 focusPosition = new(
-            0f,
-            Mathf.Clamp(140f - currentNode.Position.Y, -600f, 1800f));
-        MapContainerField(screen).Position = focusPosition;
-        TargetDragPositionField(screen) = focusPosition;
     }
 
     public static bool ApplyStoredVisualPositions(NMapScreen screen)
@@ -160,6 +128,8 @@ public static class MapEditingUiService
 
 public partial class NMapEditingToolbar : Control
 {
+    private static readonly AccessTools.FieldRef<NMapLegendItem, MapPointType> LegendPointTypeField =
+        AccessTools.FieldRefAccess<NMapLegendItem, MapPointType>("_pointType");
     private static readonly AccessTools.FieldRef<NMapScreen,
         Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>>> PathsField =
         AccessTools.FieldRefAccess<NMapScreen,
@@ -185,6 +155,7 @@ public partial class NMapEditingToolbar : Control
 
     private readonly NMapScreen _screen;
     private Control _points = null!;
+    private NMapLegendItem[] _legendItems = [];
     private NinePatchRect _background = null!;
     private GridContainer _buttons = null!;
     private NMapToolButton _editButton = null!;
@@ -202,8 +173,9 @@ public partial class NMapEditingToolbar : Control
     private Vector2 _dragOffset;
     private MapCoord? _placementChainTail;
     private MapCoord? _linkSource;
-    private (MapCoord Source, MapCoord Destination)? _highlightedConnection;
-    private readonly Dictionary<TextureRect, Color> _highlightedTickColors = [];
+    private readonly List<DragPath> _dragPaths = [];
+    private readonly List<ConnectionHitTarget> _connectionHitTargets = [];
+    private ConnectionHitTarget? _hoveredConnection;
     private readonly List<MapEditingHistoryState> _undoHistory = [];
     private readonly List<MapEditingHistoryState> _redoHistory = [];
     private MapEditingHistoryState? _dragHistoryState;
@@ -218,22 +190,32 @@ public partial class NMapEditingToolbar : Control
     public NMapScreen Screen => _screen;
     public bool IsEditing { get; private set; }
 
+    public void DeactivateForDetach()
+    {
+        SetProcessInput(false);
+        Visible = false;
+        MouseFilter = MouseFilterEnum.Ignore;
+        if (IsEditing)
+            SetEditing(false);
+    }
+
     public override void _Ready()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Ignore;
         _points = _screen.GetNode<Control>("TheMap/Points");
+        _legendItems = _screen.GetNode<Control>("MapLegend/LegendItems")
+            .GetChildren()
+            .OfType<NMapLegendItem>()
+            .ToArray();
         BuildToolbar();
         _historyActIndex = TryGetRunState()?.CurrentActIndex ?? -1;
-        _screen.Connect(CanvasItem.SignalName.VisibilityChanged, Callable.From(OnScreenVisibilityChanged));
         SetProcessInput(false);
         RefreshImportAvailability();
     }
 
     public override void _ExitTree()
     {
-        if (_screen.IsConnected(CanvasItem.SignalName.VisibilityChanged, Callable.From(OnScreenVisibilityChanged)))
-            _screen.Disconnect(CanvasItem.SignalName.VisibilityChanged, Callable.From(OnScreenVisibilityChanged));
         if (IsEditing)
             SetEditing(false);
         SetProcessInput(false);
@@ -242,8 +224,13 @@ public partial class NMapEditingToolbar : Control
 
     public override void _Input(InputEvent inputEvent)
     {
-        if (!IsEditing || !_screen.IsVisibleInTree())
+        if (!IsEditing)
             return;
+        if (!_screen.IsOpen)
+        {
+            SetEditing(false);
+            return;
+        }
 
         if (inputEvent is InputEventMouseMotion motion)
         {
@@ -253,13 +240,56 @@ public partial class NMapEditingToolbar : Control
             if (_dragNode is not null)
             {
                 _dragNode.Position = _points.GetLocalMousePosition() + _dragOffset;
-                ReflowConnectedPaths(_dragNode.Point.coord);
+                ReflowDragPaths();
                 GetViewport().SetInputAsHandled();
             }
             else
             {
-                UpdateHighlightedConnection();
+                UpdateHoveredConnection(motion.GlobalPosition);
             }
+            return;
+        }
+
+        if (inputEvent is InputEventMouseButton { Pressed: true } mousePress)
+        {
+            if (mousePress.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown
+                || _background.GetGlobalRect().HasPoint(mousePress.GlobalPosition))
+            {
+                return;
+            }
+
+            if (mousePress.ButtonIndex == MouseButton.Left
+                && TryFindLegend(mousePress.GlobalPosition, out MapPointType legendType))
+            {
+                Pick(legendType);
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
+            NMapPoint? point = FindPointAt(mousePress.GlobalPosition);
+            switch (mousePress.ButtonIndex)
+            {
+                case MouseButton.Left:
+                    if (_pickedType.HasValue)
+                        PlacePickedNode(keepArmed: Input.IsKeyPressed(Key.Shift));
+                    else if (point is not null)
+                        BeginDrag(point);
+                    else
+                        return;
+                    break;
+                case MouseButton.Middle when point is not null:
+                    Pick(point.Point.PointType);
+                    break;
+                case MouseButton.Right:
+                    if (point is not null)
+                        BeginConnectionDrag(point.Point.coord);
+                    else
+                        CancelTransientAction();
+                    break;
+                default:
+                    return;
+            }
+            GetViewport().SetInputAsHandled();
             return;
         }
 
@@ -285,6 +315,17 @@ public partial class NMapEditingToolbar : Control
             return;
         }
 
+        if (inputEvent is InputEventMouseButton { Pressed: false } mouseRelease)
+        {
+            if (!_background.GetGlobalRect().HasPoint(mouseRelease.GlobalPosition)
+                && (FindPointAt(mouseRelease.GlobalPosition) is not null
+                    || TryFindLegend(mouseRelease.GlobalPosition, out _)))
+            {
+                GetViewport().SetInputAsHandled();
+            }
+            return;
+        }
+
         if (inputEvent is not InputEventKey { Pressed: true, Echo: false } key)
             return;
 
@@ -300,82 +341,11 @@ public partial class NMapEditingToolbar : Control
         }
     }
 
-    public bool HandlePointInput(NMapPoint point, InputEvent inputEvent)
-    {
-        if (inputEvent is not InputEventMouseButton mouse)
-            return false;
-
-        if (!mouse.Pressed)
-            return mouse.ButtonIndex is MouseButton.Left or MouseButton.Middle or MouseButton.Right;
-
-        switch (mouse.ButtonIndex)
-        {
-            case MouseButton.Left:
-                if (_pickedType.HasValue)
-                    PlacePickedNode(keepArmed: Input.IsKeyPressed(Key.Shift));
-                else
-                    BeginDrag(point);
-                break;
-            case MouseButton.Middle:
-                Pick(point.Point.PointType);
-                break;
-            case MouseButton.Right:
-                BeginConnectionDrag(point.Point.coord);
-                break;
-            default:
-                return false;
-        }
-
-        point.AcceptEvent();
-        return true;
-    }
-
-    public bool HandleLegendInput(MapPointType pointType, InputEvent inputEvent)
-    {
-        if (inputEvent is not InputEventMouseButton { ButtonIndex: MouseButton.Left } mouse)
-            return false;
-
-        if (mouse.Pressed)
-            Pick(pointType);
-        return true;
-    }
-
-    public bool HandleMapInput(InputEvent inputEvent)
-    {
-        if (!IsEditing || inputEvent is not InputEventMouseButton mouse)
-            return false;
-
-        if (mouse.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
-            return false;
-
-        if (mouse.ButtonIndex == MouseButton.Left && mouse.Pressed && _pickedType.HasValue)
-        {
-            PlacePickedNode(keepArmed: Input.IsKeyPressed(Key.Shift));
-            _screen.AcceptEvent();
-            return true;
-        }
-
-        if (mouse.ButtonIndex == MouseButton.Right && mouse.Pressed)
-        {
-            CancelTransientAction();
-            _screen.AcceptEvent();
-            return true;
-        }
-
-        if (mouse.ButtonIndex == MouseButton.Middle)
-        {
-            _screen.AcceptEvent();
-            return true;
-        }
-
-        return false;
-    }
-
     public void OnMapRebuilt()
     {
-        RestoreHighlightedTicks();
-        _highlightedConnection = null;
+        ClearHoveredConnection();
         _dragNode = null;
+        _dragPaths.Clear();
         _dragHistoryState = null;
         _placementChainTail = null;
         UpdateGhostPosition();
@@ -386,6 +356,7 @@ public partial class NMapEditingToolbar : Control
             _redoHistory.Clear();
             SetHistoryButtonsAvailability();
         }
+        RebuildConnectionHitTargets();
         RefreshImportAvailability();
     }
 
@@ -560,8 +531,12 @@ public partial class NMapEditingToolbar : Control
     private void SetEditing(bool editing)
     {
         IsEditing = editing;
-        SetProcessInput(editing && _screen.IsVisibleInTree());
+        SetProcessInput(editing && _screen.IsOpen);
         CancelTransientAction();
+        if (editing)
+            UpdateHoveredConnection(GetViewport().GetMousePosition());
+        else
+            ClearHoveredConnection();
         if (_editButton is not null)
         {
             SetToolbarExpanded(editing);
@@ -593,17 +568,10 @@ public partial class NMapEditingToolbar : Control
         _buttons.OffsetBottom = expanded ? -60f : -120f;
     }
 
-    private void OnScreenVisibilityChanged()
+    public void OnMapClosed()
     {
-        bool visible = _screen.IsVisibleInTree();
-        SetProcessInput(IsEditing && visible);
-        if (!visible)
-        {
-            if (IsEditing)
-                SetEditing(false);
-            else
-                CancelTransientAction();
-        }
+        if (IsEditing)
+            SetEditing(false);
     }
 
     private void SetNativeDrawingToolsEnabled(bool enabled)
@@ -956,10 +924,22 @@ public partial class NMapEditingToolbar : Control
         if (_dragHistoryState is null)
             return;
         _dragNode = point;
+        ClearHoveredConnection();
         _dragStartPosition = point.Position;
         _dragOffset = point.Position - _points.GetLocalMousePosition();
         _linkSource = null;
-        RestoreHighlightedTicks();
+        _dragPaths.Clear();
+        Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
+        foreach (((MapCoord source, MapCoord destination), IReadOnlyList<TextureRect> ticks) in PathsField(_screen))
+        {
+            if (source != point.Point.coord && destination != point.Point.coord)
+                continue;
+            if (nodes.TryGetValue(source, out NMapPoint? sourceNode)
+                && nodes.TryGetValue(destination, out NMapPoint? destinationNode))
+            {
+                _dragPaths.Add(new DragPath(sourceNode, destinationNode, ticks));
+            }
+        }
         SetStatus(LocMan.Loc("MAP_EDITOR_DRAGGING", "Dragging node."));
     }
 
@@ -981,17 +961,20 @@ public partial class NMapEditingToolbar : Control
             if (requiredAnchor)
             {
                 dragged.Position = _dragStartPosition;
-                ReflowConnectedPaths(dragged.Point.coord);
+                ReflowDragPaths();
+                _dragPaths.Clear();
                 SetStatus(LocMan.Loc("MAP_EDITOR_ANCHOR_REQUIRED", "Start and boss anchors cannot be deleted."));
                 return;
             }
 
+            _dragPaths.Clear();
             DeleteNode(dragged, before);
             return;
         }
 
         if (dragged.Position.DistanceSquaredTo(_dragStartPosition) <= 0.01f)
         {
+            _dragPaths.Clear();
             SetStatus(LocMan.Loc("MAP_EDITOR_ACTIVE", "Map editing mode"));
             return;
         }
@@ -1006,8 +989,9 @@ public partial class NMapEditingToolbar : Control
         else
         {
             dragged.Position = _dragStartPosition;
-            ReflowConnectedPaths(dragged.Point.coord);
+            ReflowDragPaths();
         }
+        _dragPaths.Clear();
     }
 
     private void BeginConnectionDrag(MapCoord coord)
@@ -1068,8 +1052,8 @@ public partial class NMapEditingToolbar : Control
             return;
         }
 
-        if (_highlightedConnection.HasValue)
-            DeleteConnection(_highlightedConnection.Value);
+        if (FindClosestConnection(14f) is { } connection)
+            DeleteConnection(connection);
     }
 
     private void DeleteNode(NMapPoint node, MapEditingHistoryState? historyState = null)
@@ -1141,8 +1125,6 @@ public partial class NMapEditingToolbar : Control
             return;
 
         source.RemoveChildPoint(destination);
-        _highlightedConnection = null;
-        RestoreHighlightedTicks();
         if (!CommitTopology(runState))
         {
             source.AddChildPoint(destination);
@@ -1198,76 +1180,112 @@ public partial class NMapEditingToolbar : Control
         _connectionPreview.ShowLine(sourceNode.GetGlobalRect().GetCenter(), mouseGlobalPosition, color);
     }
 
-    private void UpdateHighlightedConnection()
-    {
-        RestoreHighlightedTicks();
-        _highlightedConnection = FindClosestConnection(14f);
-        if (!_highlightedConnection.HasValue)
-            return;
-
-        if (!PathsField(_screen).TryGetValue(
-                (_highlightedConnection.Value.Source, _highlightedConnection.Value.Destination),
-                out IReadOnlyList<TextureRect>? ticks))
-        {
-            return;
-        }
-
-        foreach (TextureRect tick in ticks)
-        {
-            _highlightedTickColors[tick] = tick.Modulate;
-            tick.Modulate = new Color(1f, 0.3f, 0.3f, 1f);
-        }
-    }
-
     private (MapCoord Source, MapCoord Destination)? FindClosestConnection(float maxDistance)
     {
         Vector2 mouse = GetViewport().GetMousePosition();
-        Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
         float bestDistance = maxDistance;
         (MapCoord, MapCoord)? best = null;
-        foreach (NMapPoint sourceNode in nodes.Values)
+        foreach (ConnectionHitTarget target in _connectionHitTargets)
         {
-            foreach (MapPoint child in sourceNode.Point.Children)
+            float distance = DistanceToSegment(mouse, target.Start, target.End);
+            if (distance < bestDistance)
             {
-                if (!nodes.TryGetValue(child.coord, out NMapPoint? childNode))
-                    continue;
-                Vector2 start = sourceNode.GetGlobalRect().GetCenter();
-                Vector2 end = childNode.GetGlobalRect().GetCenter();
-                float distance = DistanceToSegment(mouse, start, end);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    best = (sourceNode.Point.coord, child.coord);
-                }
+                bestDistance = distance;
+                best = target.Connection;
             }
         }
         return best;
     }
 
-    private void RestoreHighlightedTicks()
+    private void UpdateHoveredConnection(Vector2 mouseGlobalPosition)
     {
-        foreach ((TextureRect tick, Color color) in _highlightedTickColors)
+        ConnectionHitTarget? next = null;
+        if (FindPointAt(mouseGlobalPosition) is null)
         {
-            if (GodotObject.IsInstanceValid(tick))
-                tick.Modulate = color;
+            float bestDistance = 14f;
+            foreach (ConnectionHitTarget target in _connectionHitTargets)
+            {
+                float distance = DistanceToSegment(mouseGlobalPosition, target.Start, target.End);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    next = target;
+                }
+            }
         }
-        _highlightedTickColors.Clear();
+
+        if (ReferenceEquals(next, _hoveredConnection))
+            return;
+
+        ClearHoveredConnection();
+        _hoveredConnection = next;
+        if (next is null)
+            return;
+        for (int index = 0; index < next.Ticks.Count; index++)
+        {
+            TextureRect tick = next.Ticks[index];
+            if (GodotObject.IsInstanceValid(tick))
+            {
+                next.Colors[index] = tick.Modulate;
+                tick.Modulate = Colors.Red;
+            }
+        }
     }
 
-    private void ReflowConnectedPaths(MapCoord moved)
+    private void ClearHoveredConnection()
+    {
+        if (_hoveredConnection is not { } hovered)
+            return;
+        for (int index = 0; index < hovered.Ticks.Count; index++)
+        {
+            TextureRect tick = hovered.Ticks[index];
+            if (GodotObject.IsInstanceValid(tick))
+                tick.Modulate = hovered.Colors[index];
+        }
+        _hoveredConnection = null;
+    }
+
+    private void RebuildConnectionHitTargets()
+    {
+        _connectionHitTargets.Clear();
+        foreach (((MapCoord source, MapCoord destination), IReadOnlyList<TextureRect> ticks) in PathsField(_screen))
+            AddConnectionHitTarget((source, destination), ticks);
+    }
+
+    private void AddConnectionHitTarget(
+        (MapCoord Source, MapCoord Destination) connection,
+        IReadOnlyList<TextureRect> ticks)
     {
         Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
-        foreach (((MapCoord source, MapCoord destination), IReadOnlyList<TextureRect> ticks) in PathsField(_screen))
+        if (!nodes.TryGetValue(connection.Source, out NMapPoint? sourceNode)
+            || !nodes.TryGetValue(connection.Destination, out NMapPoint? destinationNode))
         {
-            if (source != moved && destination != moved)
-                continue;
-            if (!nodes.TryGetValue(source, out NMapPoint? sourceNode)
-                || !nodes.TryGetValue(destination, out NMapPoint? destinationNode))
-            {
-                continue;
-            }
-            ReflowPath(sourceNode, destinationNode, ticks);
+            return;
         }
+
+        _connectionHitTargets.Add(new ConnectionHitTarget(
+            connection,
+            sourceNode.GetGlobalRect().GetCenter(),
+            destinationNode.GetGlobalRect().GetCenter(),
+            ticks,
+            ticks.Select(tick => tick.Modulate).ToArray()));
+    }
+
+    private void RemoveConnectionHitTarget((MapCoord Source, MapCoord Destination) connection)
+    {
+        ConnectionHitTarget? target = _connectionHitTargets.FirstOrDefault(
+            candidate => candidate.Connection == connection);
+        if (target is null)
+            return;
+        if (ReferenceEquals(target, _hoveredConnection))
+            ClearHoveredConnection();
+        _connectionHitTargets.Remove(target);
+    }
+
+    private void ReflowDragPaths()
+    {
+        foreach (DragPath path in _dragPaths)
+            ReflowPath(path.Source, path.Destination, path.Ticks);
     }
 
     private void RefreshConnectedPaths(MapCoord changed)
@@ -1357,6 +1375,7 @@ public partial class NMapEditingToolbar : Control
         IReadOnlyList<TextureRect> ticks = CreateNativePath(_screen, sourceNode, destinationNode);
         ApplyTraveledStyle(connection, ticks);
         PathsField(_screen).Add(connection, ticks);
+        AddConnectionHitTarget(connection, ticks);
     }
 
     private static IReadOnlyList<TextureRect> CreateNativePath(
@@ -1397,6 +1416,7 @@ public partial class NMapEditingToolbar : Control
 
     private void RemoveConnectionVisual((MapCoord Source, MapCoord Destination) connection)
     {
+        RemoveConnectionHitTarget(connection);
         Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>> paths = PathsField(_screen);
         if (!paths.Remove(connection, out IReadOnlyList<TextureRect>? ticks))
             return;
@@ -1482,20 +1502,33 @@ public partial class NMapEditingToolbar : Control
         return null;
     }
 
+    private bool TryFindLegend(Vector2 globalPosition, out MapPointType pointType)
+    {
+        foreach (NMapLegendItem legend in _legendItems)
+        {
+            if (legend.IsVisibleInTree() && legend.GetGlobalRect().HasPoint(globalPosition))
+            {
+                pointType = LegendPointTypeField(legend);
+                return true;
+            }
+        }
+        pointType = default;
+        return false;
+    }
+
     private void CancelTransientAction()
     {
         if (_dragNode is not null)
         {
             _dragNode.Position = _dragStartPosition;
-            ReflowConnectedPaths(_dragNode.Point.coord);
+            ReflowDragPaths();
             _dragNode = null;
+            _dragPaths.Clear();
         }
         _dragHistoryState = null;
         _linkSource = null;
         _connectionPreview?.HideLine();
         ClearPicker();
-        RestoreHighlightedTicks();
-        _highlightedConnection = null;
     }
 
     private bool HasTransientAction() => _dragNode is not null || _linkSource.HasValue || _pickedType.HasValue;
@@ -1509,6 +1542,18 @@ public partial class NMapEditingToolbar : Control
     }
 
     private List<NMapPoint> GetPointNodes() => PointNodesField(_screen).Values.ToList();
+
+    private readonly record struct DragPath(
+        NMapPoint Source,
+        NMapPoint Destination,
+        IReadOnlyList<TextureRect> Ticks);
+
+    private sealed record ConnectionHitTarget(
+        (MapCoord Source, MapCoord Destination) Connection,
+        Vector2 Start,
+        Vector2 End,
+        IReadOnlyList<TextureRect> Ticks,
+        Color[] Colors);
 
     private Texture2D? LoadPointTexture(MapPointType pointType)
     {
