@@ -1,0 +1,6 @@
+{
+  "LOADOUT-TAINTED.playerInfestedPrismDescription": "Al jugar esta carta, aplica [blue]{EnemyAmount}[/blue] de [gold]Impureza[/gold] a todos los enemigos.",
+  "LOADOUT-TAINTED.playerInfestedPrismExtraCardText": "Aplica {EnemyAmount} de Impureza a todos los enemigos.",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedDescription": "Al jugar esta carta, obtienes [blue]{SelfAmount}[/blue] de [gold]Impureza[/gold] y aplicas [blue]{EnemyAmount}[/blue] a todos los enemigos.",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedExtraCardText": "Obtienes {SelfAmount} de Impureza. Aplica {EnemyAmount} a todos los enemigos."
+}

@@ -1,0 +1,6 @@
+{
+  "LOADOUT-TAINTED.playerInfestedPrismDescription": "打出时给予所有敌人[blue]{EnemyAmount}[/blue]层[gold]污染[/gold]。",
+  "LOADOUT-TAINTED.playerInfestedPrismExtraCardText": "给予所有敌人{EnemyAmount}层污染。",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedDescription": "打出时获得[blue]{SelfAmount}[/blue]层[gold]污染[/gold]，并给予所有敌人[blue]{EnemyAmount}[/blue]层[gold]污染[/gold]。",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedExtraCardText": "获得{SelfAmount}层污染。给予所有敌人{EnemyAmount}层污染。"
+}

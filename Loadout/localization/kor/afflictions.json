@@ -1,0 +1,6 @@
+{
+  "LOADOUT-TAINTED.playerInfestedPrismDescription": "사용 시 모든 적에게 [gold]훼손됨[/gold]을 [blue]{EnemyAmount}[/blue] 부여합니다.",
+  "LOADOUT-TAINTED.playerInfestedPrismExtraCardText": "모든 적에게 훼손됨을 {EnemyAmount} 부여합니다.",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedDescription": "사용 시 [gold]훼손됨[/gold]을 [blue]{SelfAmount}[/blue] 얻고 모든 적에게 [blue]{EnemyAmount}[/blue] 부여합니다.",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedExtraCardText": "훼손됨을 {SelfAmount} 얻습니다. 모든 적에게 {EnemyAmount} 부여합니다."
+}

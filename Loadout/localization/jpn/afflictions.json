@@ -1,0 +1,6 @@
+{
+  "LOADOUT-TAINTED.playerInfestedPrismDescription": "プレイした時、すべての敵に[gold]汚染[/gold][blue]{EnemyAmount}[/blue]を与える。",
+  "LOADOUT-TAINTED.playerInfestedPrismExtraCardText": "すべての敵に汚染{EnemyAmount}を与える。",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedDescription": "プレイした時、[gold]汚染[/gold][blue]{SelfAmount}[/blue]を受け、すべての敵に[gold]汚染[/gold][blue]{EnemyAmount}[/blue]を与える。",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedExtraCardText": "汚染{SelfAmount}を受ける。すべての敵に汚染{EnemyAmount}を与える。"
+}

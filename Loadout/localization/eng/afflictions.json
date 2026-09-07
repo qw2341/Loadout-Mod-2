@@ -1,0 +1,6 @@
+{
+  "LOADOUT-TAINTED.playerInfestedPrismDescription": "Give [blue]{EnemyAmount}[/blue] [gold]Tainted[/gold] to all enemies when played.",
+  "LOADOUT-TAINTED.playerInfestedPrismExtraCardText": "Give all enemies {EnemyAmount} Tainted.",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedDescription": "Gain [blue]{SelfAmount}[/blue] [gold]Tainted[/gold] and give [blue]{EnemyAmount}[/blue] [gold]Tainted[/gold] to all enemies when played.",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedExtraCardText": "Gain {SelfAmount} Tainted. Give all enemies {EnemyAmount} Tainted."
+}

@@ -1,0 +1,6 @@
+{
+  "LOADOUT-TAINTED.playerInfestedPrismDescription": "Lorsque vous jouez cette carte, donnez [blue]{EnemyAmount}[/blue] de [gold]Souillure[/gold] à tous les ennemis.",
+  "LOADOUT-TAINTED.playerInfestedPrismExtraCardText": "Donnez {EnemyAmount} de Souillure à tous les ennemis.",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedDescription": "Lorsque vous jouez cette carte, gagnez [blue]{SelfAmount}[/blue] de [gold]Souillure[/gold] et donnez-en [blue]{EnemyAmount}[/blue] à tous les ennemis.",
+  "LOADOUT-TAINTED.playerInfestedPrismCombinedExtraCardText": "Gagnez {SelfAmount} de Souillure. Donnez-en {EnemyAmount} à tous les ennemis."
+}
