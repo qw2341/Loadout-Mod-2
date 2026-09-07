@@ -27,6 +27,12 @@ public static class MapEditingUiService
 {
     private static readonly AccessTools.FieldRef<NMapLegendItem, MapPointType> LegendPointTypeField =
         AccessTools.FieldRefAccess<NMapLegendItem, MapPointType>("_pointType");
+    private static readonly AccessTools.FieldRef<NMapScreen, Control> MapContainerField =
+        AccessTools.FieldRefAccess<NMapScreen, Control>("_mapContainer");
+    private static readonly AccessTools.FieldRef<NMapScreen, Vector2> TargetDragPositionField =
+        AccessTools.FieldRefAccess<NMapScreen, Vector2>("_targetDragPos");
+    private static readonly AccessTools.FieldRef<NMapScreen, Dictionary<MapCoord, NMapPoint>> PointNodesField =
+        AccessTools.FieldRefAccess<NMapScreen, Dictionary<MapCoord, NMapPoint>>("_mapPointDictionary");
 
     private static NMapEditingToolbar? _toolbar;
 
@@ -82,6 +88,24 @@ public static class MapEditingUiService
             NMapEditingToolbar.RebuildAllPaths(screen);
         if (_toolbar is not null && GodotObject.IsInstanceValid(_toolbar) && ReferenceEquals(_toolbar.Screen, screen))
             _toolbar.OnMapRebuilt();
+    }
+
+    public static void FocusCurrentMapPoint(NMapScreen screen)
+    {
+        RunState? runState = TryGetRunState();
+        if (runState is null
+            || !MapEditingService.IsCurrentActEdited(runState)
+            || runState.CurrentMapCoord is not { } currentCoord
+            || !PointNodesField(screen).TryGetValue(currentCoord, out NMapPoint? currentNode))
+        {
+            return;
+        }
+
+        Vector2 focusPosition = new(
+            0f,
+            Mathf.Clamp(140f - currentNode.Position.Y, -600f, 1800f));
+        MapContainerField(screen).Position = focusPosition;
+        TargetDragPositionField(screen) = focusPosition;
     }
 
     public static bool ApplyStoredVisualPositions(NMapScreen screen)
@@ -911,16 +935,17 @@ public partial class NMapEditingToolbar : Control
 
     private int FindNearestRow(float y, RunState runState)
     {
-        List<(int Row, float Y)> rows = GetPointNodes()
-            .Where(node => !ReferenceEquals(node.Point, runState.Map.StartingMapPoint)
-                           && !ReferenceEquals(node.Point, runState.Map.BossMapPoint)
-                           && !ReferenceEquals(node.Point, runState.Map.SecondBossMapPoint))
-            .GroupBy(node => node.Point.coord.row)
-            .Select(group => (group.Key, group.Average(node => node.Position.Y + node.Size.Y * 0.5f)))
-            .ToList();
-        return rows.Count == 0
-            ? 0
-            : rows.MinBy(candidate => Math.Abs(candidate.Y - y)).Row;
+        Dictionary<MapCoord, NMapPoint> nodes = PointNodesField(_screen);
+        NMapPoint start = nodes[runState.Map.StartingMapPoint.coord];
+        NMapPoint boss = nodes[runState.Map.BossMapPoint.coord];
+        float startY = start.Position.Y + start.Size.Y * 0.5f;
+        float bossY = boss.Position.Y + boss.Size.Y * 0.5f;
+        float visualProgress = Mathf.InverseLerp(startY, bossY, y);
+        int row = Mathf.RoundToInt(Mathf.Lerp(
+            runState.Map.StartingMapPoint.coord.row,
+            runState.Map.BossMapPoint.coord.row,
+            visualProgress));
+        return Math.Clamp(row, 0, GetGrid(runState.Map).GetLength(1) - 1);
     }
 
     private void BeginDrag(NMapPoint point)

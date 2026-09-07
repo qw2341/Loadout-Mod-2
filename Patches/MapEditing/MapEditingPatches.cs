@@ -73,6 +73,14 @@ public static class MapEditingMapSetPatch
     public static void Postfix(NMapScreen __instance) => MapEditingUiService.OnMapSet(__instance);
 }
 
+[HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.Open))]
+public static class MapEditingMapOpenPatch
+{
+    [HarmonyPostfix]
+    public static void Postfix(NMapScreen __instance)
+        => MapEditingUiService.FocusCurrentMapPoint(__instance);
+}
+
 [HarmonyPatch(typeof(NClickableControl), nameof(NClickableControl._GuiInput))]
 public static class MapEditingClickableInputPatch
 {
