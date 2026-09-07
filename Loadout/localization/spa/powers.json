@@ -1,0 +1,5 @@
+{
+  "LOADOUT-WOUNDED_POWER.title": "Heridas",
+  "LOADOUT-WOUNDED_POWER.description": "Al llegar a [blue]10[/blue] de [gold]Heridas[/gold], queda [gold]Aturdido[/gold] y elimina todas las Heridas.",
+  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "Cuando infliges daño de Ataque no bloqueado a un enemigo que no está aturdido, aplícale [blue]1[/blue] de [gold]Heridas[/gold].\nA [blue]10[/blue] de [gold]Heridas[/gold], atúrdelo."
+}

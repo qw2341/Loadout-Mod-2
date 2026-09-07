@@ -1,0 +1,5 @@
+{
+  "LOADOUT-WOUNDED_POWER.title": "Wounded",
+  "LOADOUT-WOUNDED_POWER.description": "At [blue]10[/blue] [gold]Wounded[/gold], become [gold]Stunned[/gold], then remove all Wounded.",
+  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "Whenever you deal unblocked Attack damage to an unstunned enemy, apply [blue]1[/blue] [gold]Wounded[/gold] to that enemy.\nAt [blue]10[/blue] [gold]Wounded[/gold], stun them."
+}

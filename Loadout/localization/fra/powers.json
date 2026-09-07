@@ -1,0 +1,5 @@
+{
+  "LOADOUT-WOUNDED_POWER.title": "Blessure",
+  "LOADOUT-WOUNDED_POWER.description": "À [blue]10[/blue] cumuls de [gold]Blessure[/gold], devient [gold]Étourdi[/gold], puis retire toutes les Blessures.",
+  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "Lorsque vous infligez des dégâts d'Attaque non bloqués à un ennemi qui n'est pas étourdi, appliquez-lui [blue]1[/blue] [gold]Blessure[/gold].\nÀ [blue]10[/blue] cumuls de [gold]Blessure[/gold], étourdissez-le."
+}

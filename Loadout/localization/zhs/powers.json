@@ -1,0 +1,5 @@
+{
+  "LOADOUT-WOUNDED_POWER.title": "负伤",
+  "LOADOUT-WOUNDED_POWER.description": "[gold]负伤[/gold]达到[blue]10[/blue]层时，陷入[gold]晕眩[/gold]并移除所有负伤。",
+  "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "每当你对未处于晕眩状态的敌人造成未被格挡的攻击伤害时，对其施加[blue]1[/blue]层[gold]负伤[/gold]。\n[gold]负伤[/gold]达到[blue]10[/blue]层时，使其陷入晕眩。"
+}
