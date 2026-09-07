@@ -174,6 +174,13 @@ public static class BottledMonsterMorphService
 
     public static void ApplySynchronizedMorph(ModelId modelId, LoadoutTargetSelection target)
     {
+        TaskHelper.RunSafely(ApplySynchronizedMorphAsync(modelId, target));
+    }
+
+    public static async Task ApplySynchronizedMorphAsync(
+        ModelId modelId,
+        LoadoutTargetSelection target)
+    {
         if (target.Scope != LoadoutTargetScope.Player || !target.PlayerNetId.HasValue)
             return;
 
@@ -214,9 +221,10 @@ public static class BottledMonsterMorphService
         SaveRunStateIfAuthoritative();
         RefreshCombatDisplayName(player.NetId);
         int revision = NextRevision(player.NetId);
-        TaskHelper.RunSafely(ApplyCurrentVisualAsync(player.NetId, revision));
+        Task visualTask = ApplyCurrentVisualAsync(player.NetId, revision);
         ScheduleMerchantVisualRefresh(player.NetId);
         ScheduleRestSiteVisualRefresh(player.NetId);
+        await visualTask;
     }
 
     public static IReadOnlyDictionary<string, int>

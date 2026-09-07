@@ -300,6 +300,42 @@ public static class PowerGiverStateService
         }
     }
 
+    public static bool ConsumePositivePlayerCounter(string powerId, ulong playerNetId)
+    {
+        if (string.IsNullOrWhiteSpace(powerId))
+            return false;
+
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            LoadoutTargetSelection playerTarget =
+                LoadoutTargetSelection.ForPlayer(playerNetId);
+            Dictionary<string, int>? playerCounters = GetCounters(
+                playerTarget,
+                createPlayerBucket: false);
+            if (playerCounters?.GetValueOrDefault(powerId, 0) > 0)
+            {
+                return AdjustCounterLocked(
+                    powerId,
+                    -1,
+                    playerTarget,
+                    out _);
+            }
+
+            LoadoutTargetSelection allPlayersTarget =
+                new(LoadoutTargetScope.AllPlayers);
+            Dictionary<string, int>? allPlayerCounters = GetCounters(
+                allPlayersTarget,
+                createPlayerBucket: false);
+            return allPlayerCounters?.GetValueOrDefault(powerId, 0) > 0
+                   && AdjustCounterLocked(
+                       powerId,
+                       -1,
+                       allPlayersTarget,
+                       out _);
+        }
+    }
+
     public static void ReplaceCustomRunPlayerCounters(
         ulong playerNetId,
         IReadOnlyDictionary<string, int> counters)

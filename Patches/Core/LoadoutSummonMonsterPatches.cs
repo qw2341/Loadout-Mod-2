@@ -1,7 +1,5 @@
 #nullable enable
 
-using MegaCrit.Sts2.Core.Combat;
-
 namespace Loadout.Patches.Core;
 
 using System;
@@ -9,66 +7,11 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using HarmonyLib;
 using Loadout.Services.Actions;
-using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Creatures;
-using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.Encounters;
 using MegaCrit.Sts2.Core.Models.Monsters;
-using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
-
-[HarmonyPatch(typeof(InfestedPower), nameof(InfestedPower.AfterDeath))]
-public static class LoadoutPlayerInfestedDeathPatch
-{
-    [HarmonyPrefix]
-    public static bool Prefix(
-        InfestedPower __instance,
-        Creature target,
-        bool wasRemovalPrevented,
-        float deathAnimLength,
-        ref Task __result)
-    {
-        if (!__instance.Owner.IsPlayer)
-            return true;
-
-        __result = AfterPlayerDeath(
-            __instance,
-            target,
-            wasRemovalPrevented,
-            deathAnimLength);
-        return false;
-    }
-
-    private static async Task AfterPlayerDeath(
-        InfestedPower infestedPower,
-        Creature target,
-        bool wasRemovalPrevented,
-        float deathAnimLength)
-    {
-        if (wasRemovalPrevented || infestedPower.Owner != target)
-            return;
-
-        for (int index = 0; index < 4; index++)
-        {
-            string slotName = PhrogParasiteElite.GetWrigglerSlotName(index);
-            Wriggler wriggler = (Wriggler)ModelDb.Monster<Wriggler>().ToMutable();
-            wriggler.StartStunned = true;
-            IReadOnlyList<NCreature> existingEnemyNodes =
-                LoadoutSummonMonsterService.GetCurrentEnemyNodes();
-            Creature creature = await CreatureCmd.Add(
-                wriggler,
-                infestedPower.CombatState,
-                CombatSide.Enemy,
-                null);
-            creature.SlotName = slotName;
-            LoadoutSummonMonsterService.PositionUnslottedNestedSummon(
-                creature,
-                existingEnemyNodes);
-        }
-    }
-}
 
 [HarmonyPatch(typeof(ConditionalBranchState), nameof(ConditionalBranchState.GetNextState))]
 public static class LoadoutSummonMonsterConditionalBranchPatch
