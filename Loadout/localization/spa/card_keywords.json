@@ -355,5 +355,7 @@
   "LOADOUT-GAIN_POWER_PERMANENTLY.cardText": "{LoadoutGainPowerPermanentlyList}",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.title": "Obtener poder permanentemente con Fatal",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "Cambia permanentemente tus cantidades del Otorgador de poderes si es [gold]Fatal[/gold].",
-  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}"
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}",
+  "LOADOUT-MULTI_HIT.title": "!?Multigolpe?!",
+  "LOADOUT-MULTI_HIT.description": "Divide el valor de Daño original en esa cantidad de golpes de 1 de daño. Las mejoras y los cambios directos a Daño modifican la cantidad de golpes. La Fuerza y los demás modificadores se aplican a cada golpe. Las repeticiones existentes se conservan."
 }

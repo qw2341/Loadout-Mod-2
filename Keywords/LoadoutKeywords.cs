@@ -21,6 +21,7 @@ public static class LoadoutKeywords
     public const string LessonLearnedKey = "LessonLearned";
     public const string HeavenlyKey = "Heavenly";
     public const string AltHeavenlyKey = "AltHeavenly";
+    public const string MultiHitKey = "MultiHit";
     public const string LifestealKey = "Lifesteal";
     public const string WallopKey = "Wallop";
     public const string AutoplayKey = "Autoplay";
@@ -184,6 +185,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("ALT_HEAVENLY")]
     public static CardKeyword AltHeavenly;
+
+    [CustomEnum("MULTI_HIT"),KeywordProperties(AutoKeywordPosition.Before)]
+    public static CardKeyword MultiHit;
 
     [CustomEnum("LIFESTEAL")]
     public static CardKeyword Lifesteal;

@@ -7,7 +7,7 @@
   "LOADOUT-X_COST.description": "Costs X. This card's effect is repeated X times.",
   "LOADOUT-INFINITE_UPGRADE.title": "Infinite Upgrade",
   "LOADOUT-INFINITE_UPGRADE.description": "Can be upgraded indefinitely.",
-  "LOADOUT-JOKE_INFINITE_UPGRADE.title": "!? Infinite Upgrade ?!",
+  "LOADOUT-JOKE_INFINITE_UPGRADE.title": "!?Infinite Upgrade?!",
   "LOADOUT-JOKE_INFINITE_UPGRADE.description": "Can be upgraded indefinitely. Each value upgraded is doubled instead of receiving its normal increase.",
   "LOADOUT-PASSING.title": "Passing",
   "LOADOUT-PASSING.description": "This card is shuffled into a random ally's [gold]Draw Pile[/gold] after being played.",
@@ -355,5 +355,7 @@
   "LOADOUT-GAIN_POWER_PERMANENTLY.cardText": "{LoadoutGainPowerPermanentlyList}",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.title": "Gain Power Permanently on Fatal",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "Permanently change your Power Giver amounts when [gold]Fatal[/gold].",
-  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}"
+  "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}",
+  "LOADOUT-MULTI_HIT.title": "!?Multi-Hit?!",
+  "LOADOUT-MULTI_HIT.description": "Split Base Damage value into that many 1-damage hits."
 }
