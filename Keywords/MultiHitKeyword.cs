@@ -16,6 +16,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.ValueProps;
@@ -202,7 +203,11 @@ public static class MultiHitKeywordPatches
     {
         if (IsOriginalDamage(__instance, out CardModel card)
             && card.DynamicVars.TryGetValue(MultiHitKeyword.UnitDamageVarName, out DynamicVar? unit))
+        {
             __result = $"{unit.ToHighlightedString(inverse)} x {__result}";
+            if (LocManager.Instance?.Language is "zhs" or "zht")
+                __result = $" {__result} ";
+        }
     }
 
     public static bool DamagePrefix(
