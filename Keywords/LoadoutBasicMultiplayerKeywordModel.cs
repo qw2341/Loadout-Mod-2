@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -163,16 +164,43 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
                     await CreatureCmd.GainBlock(target, block, cardPlay);
                 break;
             case LoadoutBasicMultiplayerEffect.Draw:
-                await CardPileCmd.Draw(choiceContext, amountVar.IntValue, targetPlayer);
+                await Sts2Compatibility.RunWithBranchingPlayerChoice(
+                    sourceCard,
+                    choiceContext,
+                    targetContext => CardPileCmd.Draw(
+                        targetContext,
+                        amountVar.IntValue,
+                        targetPlayer));
                 break;
             case LoadoutBasicMultiplayerEffect.Discard:
-                await SelectAndDiscard(sourceCard, choiceContext, targetPlayer, amountVar.IntValue);
+                await Sts2Compatibility.RunWithBranchingPlayerChoice(
+                    sourceCard,
+                    choiceContext,
+                    targetContext => SelectAndDiscard(
+                        sourceCard,
+                        targetContext,
+                        targetPlayer,
+                        amountVar.IntValue));
                 break;
             case LoadoutBasicMultiplayerEffect.Exhaust:
-                await SelectAndExhaust(sourceCard, choiceContext, targetPlayer, amountVar.IntValue);
+                await Sts2Compatibility.RunWithBranchingPlayerChoice(
+                    sourceCard,
+                    choiceContext,
+                    targetContext => SelectAndExhaust(
+                        sourceCard,
+                        targetContext,
+                        targetPlayer,
+                        amountVar.IntValue));
                 break;
             case LoadoutBasicMultiplayerEffect.Transform:
-                await SelectAndTransform(sourceCard, choiceContext, targetPlayer, amountVar.IntValue);
+                await Sts2Compatibility.RunWithBranchingPlayerChoice(
+                    sourceCard,
+                    choiceContext,
+                    targetContext => SelectAndTransform(
+                        sourceCard,
+                        targetContext,
+                        targetPlayer,
+                        amountVar.IntValue));
                 break;
             case LoadoutBasicMultiplayerEffect.Heal:
                 await CreatureCmd.Heal(target, amount);

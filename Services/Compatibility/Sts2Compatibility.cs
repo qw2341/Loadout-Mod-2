@@ -10,6 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Animation;
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Combat;
@@ -81,6 +82,16 @@ internal static class Sts2Compatibility
         HookPlayerChoiceContext context,
         Player player);
 
+    private delegate PlayerChoiceContext BranchingPlayerChoiceContextFactory(
+        AbstractModel source,
+        ulong localPlayerId,
+        GameActionType gameActionType,
+        PlayerChoiceContext originalContext);
+
+    private delegate Task BranchingPlayerChoiceTaskInvoker(
+        PlayerChoiceContext context,
+        Task task);
+
     private delegate string HextechCollectionHeaderFormatter(
         string starterHeader,
         string zhHeader,
@@ -122,6 +133,28 @@ internal static class Sts2Compatibility
             Type.EmptyTypes);
     private static readonly HookPlayerChoiceEndInvoker EndHookPlayerChoice =
         CreateHookPlayerChoiceEndInvoker();
+
+    private static readonly Type? BranchingPlayerChoiceContextType =
+        typeof(PlayerChoiceContext).Assembly.GetType(
+            "MegaCrit.Sts2.Core.GameActions.Multiplayer.BranchingPlayerChoiceContext");
+    private static readonly ConstructorInfo? BranchingPlayerChoiceContextConstructor =
+        BranchingPlayerChoiceContextType?.GetConstructor(
+            [
+                typeof(AbstractModel),
+                typeof(ulong),
+                typeof(GameActionType),
+                typeof(PlayerChoiceContext)
+            ]);
+    private static readonly MethodInfo? AssignBranchingPlayerChoiceTaskMethod =
+        BranchingPlayerChoiceContextType?.GetMethod(
+            "AssignTaskAndWaitForPauseOrCompletion",
+            [typeof(Task)]);
+    private static readonly BranchingPlayerChoiceContextFactory?
+        CreateBranchingPlayerChoiceContext =
+            CompileBranchingPlayerChoiceContextFactory();
+    private static readonly BranchingPlayerChoiceTaskInvoker?
+        AssignBranchingPlayerChoiceTask =
+            CompileBranchingPlayerChoiceTaskInvoker();
 
     private static readonly EventInfo StartRunLobbyPlayerConnectedEvent =
         ResolveEvent(typeof(StartRunLobby), "PlayerConnected");
@@ -307,6 +340,32 @@ internal static class Sts2Compatibility
         Player player)
     {
         return EndHookPlayerChoice(context, player);
+    }
+
+    internal static Task RunWithBranchingPlayerChoice(
+        AbstractModel source,
+        PlayerChoiceContext originalContext,
+        Func<PlayerChoiceContext, Task> operation)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(originalContext);
+        ArgumentNullException.ThrowIfNull(operation);
+
+        if (CreateBranchingPlayerChoiceContext is null
+            || AssignBranchingPlayerChoiceTask is null
+            || LocalContext.NetId is not ulong localPlayerId)
+        {
+            return operation(originalContext);
+        }
+
+        PlayerChoiceContext branchingContext =
+            CreateBranchingPlayerChoiceContext(
+                source,
+                localPlayerId,
+                GameActionType.Combat,
+                originalContext);
+        Task task = operation(branchingContext);
+        return AssignBranchingPlayerChoiceTask(branchingContext, task);
     }
 
     internal static IEnumerable<StartRunLobbyPlayerInfo> EnumerateStartRunLobbyPlayers(StartRunLobby lobby)
@@ -1265,6 +1324,54 @@ internal static class Sts2Compatibility
             ? Expression.Call(context, HookPlayerChoiceEndMethod, player)
             : Expression.Call(context, HookPlayerChoiceEndMethod);
         return Expression.Lambda<HookPlayerChoiceEndInvoker>(call, context, player).Compile();
+    }
+
+    private static BranchingPlayerChoiceContextFactory?
+        CompileBranchingPlayerChoiceContextFactory()
+    {
+        if (BranchingPlayerChoiceContextConstructor is null)
+            return null;
+
+        ParameterExpression source = Expression.Parameter(typeof(AbstractModel), "source");
+        ParameterExpression localPlayerId = Expression.Parameter(typeof(ulong), "localPlayerId");
+        ParameterExpression gameActionType =
+            Expression.Parameter(typeof(GameActionType), "gameActionType");
+        ParameterExpression originalContext =
+            Expression.Parameter(typeof(PlayerChoiceContext), "originalContext");
+        NewExpression create = Expression.New(
+            BranchingPlayerChoiceContextConstructor,
+            source,
+            localPlayerId,
+            gameActionType,
+            originalContext);
+        return Expression.Lambda<BranchingPlayerChoiceContextFactory>(
+            Expression.Convert(create, typeof(PlayerChoiceContext)),
+            source,
+            localPlayerId,
+            gameActionType,
+            originalContext).Compile();
+    }
+
+    private static BranchingPlayerChoiceTaskInvoker?
+        CompileBranchingPlayerChoiceTaskInvoker()
+    {
+        if (BranchingPlayerChoiceContextType is null
+            || AssignBranchingPlayerChoiceTaskMethod is null)
+        {
+            return null;
+        }
+
+        ParameterExpression context =
+            Expression.Parameter(typeof(PlayerChoiceContext), "context");
+        ParameterExpression task = Expression.Parameter(typeof(Task), "task");
+        MethodCallExpression assign = Expression.Call(
+            Expression.Convert(context, BranchingPlayerChoiceContextType),
+            AssignBranchingPlayerChoiceTaskMethod,
+            task);
+        return Expression.Lambda<BranchingPlayerChoiceTaskInvoker>(
+            assign,
+            context,
+            task).Compile();
     }
 
     private static string ResolveControllerAction(string betaFieldName, string legacyFieldName)
