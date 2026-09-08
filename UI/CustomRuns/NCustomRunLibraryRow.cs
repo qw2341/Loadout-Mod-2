@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 namespace Loadout.UI.CustomRuns;
 
@@ -24,7 +24,9 @@ public sealed record CustomRunLibraryRowOptions(
     bool PrimaryEnabled = true,
     bool IsCreateRow = false,
     string? ReorderId = null,
-    Action<string, string?, bool>? ReorderAction = null);
+    Action<string, string?, bool>? ReorderAction = null,
+    bool IsDefault = false,
+    Action<bool>? DefaultAction = null);
 
 public partial class NCustomRunLibraryRow : NButton
 {
@@ -36,12 +38,13 @@ public partial class NCustomRunLibraryRow : NButton
     private ColorRect? _topDropIndicator;
     private ColorRect? _bottomDropIndicator;
     private Tween? _tween;
+    private NLoadoutToggle? _defaultToggle;
     private int _focusedActions;
-    private readonly List<NClickableControl> _actions = [];
+    private readonly List<Control> _actions = [];
     private readonly List<string> _actionSlots = [];
 
-    public IReadOnlyList<NClickableControl> Actions => _actions;
-    public NClickableControl? PrimaryFocusControl => _actions.Count > 0 ? _actions[0] : null;
+    public IReadOnlyList<Control> Actions => _actions;
+    public Control? PrimaryFocusControl => _actions.Count > 0 ? _actions[0] : null;
     public string GetActionSlot(int index) => _actionSlots[index];
     public int FindActionSlot(string slot) => _actionSlots.FindIndex(candidate => string.Equals(candidate, slot, StringComparison.Ordinal));
 
@@ -219,6 +222,24 @@ public partial class NCustomRunLibraryRow : NButton
         text.AddChild(description);
 
         RegisterAction(this, "edit");
+        if (_options.DefaultAction is not null)
+        {
+            _defaultToggle = new NLoadoutToggle
+            {
+                Name = "DefaultToggle",
+                CustomMinimumSize = new Vector2(180f, 64f),
+                SizeFlagsVertical = SizeFlags.ShrinkCenter,
+                TooltipText = LocMan.Loc("CUSTOM_RUN_DEFAULT_TOOLTIP", "Automatically select this Custom Run when opening run setup. You can still cancel it or choose another run.")
+            };
+            _defaultToggle.Init("default", LocMan.Loc("CUSTOM_RUN_DEFAULT", "Default"), _options.IsDefault);
+            _defaultToggle.Connect(NLoadoutToggle.SignalName.Toggled,
+                Callable.From<NLoadoutToggle>(toggle => _options.DefaultAction(toggle.IsChecked)));
+            row.AddChild(_defaultToggle);
+            _actions.Add(_defaultToggle);
+            _actionSlots.Add("default");
+            _defaultToggle.FocusEntered += OnActionFocused;
+            _defaultToggle.FocusExited += OnActionUnfocused;
+        }
         AddSettingsAction(row, "export", _options.TrailingLabel, 150f, _options.TrailingAction);
 
         if (_options.ShowDelete && _options.DeleteAction is not null)
@@ -234,6 +255,11 @@ public partial class NCustomRunLibraryRow : NButton
             row.AddChild(delete);
             RegisterAction(delete, "delete");
         }
+    }
+
+    public void SetDefaultChecked(bool isDefault)
+    {
+        _defaultToggle?.SetChecked(isDefault);
     }
 
     private void BuildCreateRow()

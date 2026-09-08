@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 namespace Loadout.UI.CustomRuns;
 
@@ -110,7 +110,7 @@ public partial class NCustomRunLibraryScreen : Control
                 return;
             NCustomRunLibraryRow row = _rows[rowIndex].Row;
             int editIndex = row.FindActionSlot("edit");
-            IReadOnlyList<NClickableControl> actions = row.Actions;
+            IReadOnlyList<Control> actions = row.Actions;
             if (actions.Count > 0)
                 actions[Math.Clamp(editIndex >= 0 ? editIndex : 0, 0, actions.Count - 1)].GrabFocus();
         }).CallDeferred();
@@ -133,6 +133,7 @@ public partial class NCustomRunLibraryScreen : Control
         CustomRunStorageService.Register();
         PermanentRuleStorageService.Register();
         CustomRunStorageService.Changed += OnDefinitionsChanged;
+        CustomRunStorageService.DefaultChanged += OnDefaultChanged;
         PermanentRuleStorageService.Changed += OnPermanentRulesChanged;
         CustomRunLobbyService.RemoteDefinitionChanged += OnDefinitionsChanged;
         BuildStaticUi();
@@ -146,6 +147,7 @@ public partial class NCustomRunLibraryScreen : Control
     {
         _statusTween?.Kill();
         CustomRunStorageService.Changed -= OnDefinitionsChanged;
+        CustomRunStorageService.DefaultChanged -= OnDefaultChanged;
         PermanentRuleStorageService.Changed -= OnPermanentRulesChanged;
         CustomRunLobbyService.RemoteDefinitionChanged -= OnDefinitionsChanged;
     }
@@ -355,7 +357,10 @@ public partial class NCustomRunLibraryScreen : Control
             TrailingAction: () => Export(captured),
             PrimaryEnabled: canPlay,
             ReorderId: isLobbyDefinition ? null : captured.Id,
-            ReorderAction: isLobbyDefinition ? null : ReorderCustomRun));
+            ReorderAction: isLobbyDefinition ? null : ReorderCustomRun,
+            IsDefault: string.Equals(captured.Id, CustomRunStorageService.GetDefaultDefinitionId(), StringComparison.Ordinal),
+            DefaultAction: isLobbyDefinition ? null : enabled =>
+                CustomRunStorageService.SetDefaultDefinition(enabled ? captured.Id : null)));
         _customList.AddChild(row);
         _rows.Add((isLobbyDefinition ? $"host:{captured.Id}" : captured.Id, row));
     }
@@ -558,10 +563,10 @@ public partial class NCustomRunLibraryScreen : Control
     {
         for (int rowIndex = 0; rowIndex < _rows.Count; rowIndex++)
         {
-            IReadOnlyList<NClickableControl> actions = _rows[rowIndex].Row.Actions;
+            IReadOnlyList<Control> actions = _rows[rowIndex].Row.Actions;
             for (int actionIndex = 0; actionIndex < actions.Count; actionIndex++)
             {
-                NClickableControl action = actions[actionIndex];
+                Control action = actions[actionIndex];
                 if (actionIndex > 0)
                     action.FocusNeighborLeft = actions[actionIndex - 1].GetPath();
                 if (actionIndex + 1 < actions.Count)
@@ -655,7 +660,7 @@ public partial class NCustomRunLibraryScreen : Control
             return;
         for (int rowIndex = 0; rowIndex < _rows.Count; rowIndex++)
         {
-            IReadOnlyList<NClickableControl> actions = _rows[rowIndex].Row.Actions;
+            IReadOnlyList<Control> actions = _rows[rowIndex].Row.Actions;
             for (int actionIndex = 0; actionIndex < actions.Count; actionIndex++)
             {
                 if (ReferenceEquals(actions[actionIndex], focus))
@@ -690,7 +695,7 @@ public partial class NCustomRunLibraryScreen : Control
             : _rows.FindIndex(row => string.Equals(row.Id, _focusDefinitionId, StringComparison.Ordinal));
         if (rowIndex < 0)
             rowIndex = Math.Min(_rows.Count - 1, Math.Max(0, _rows.Count - 2));
-        IReadOnlyList<NClickableControl> actions = _rows[rowIndex].Row.Actions;
+        IReadOnlyList<Control> actions = _rows[rowIndex].Row.Actions;
         if (actions.Count == 0)
             return;
         actions[Math.Min(_focusActionIndex, actions.Count - 1)].GrabFocus();
@@ -894,6 +899,13 @@ public partial class NCustomRunLibraryScreen : Control
         _statusTween = CreateTween();
         _statusTween.TweenInterval(2.8f);
         _statusTween.TweenProperty(_statusLabel, "modulate:a", 0f, 0.45f);
+    }
+
+    private void OnDefaultChanged()
+    {
+        string? defaultId = CustomRunStorageService.GetDefaultDefinitionId();
+        foreach ((string id, NCustomRunLibraryRow row) in _rows)
+            row.SetDefaultChecked(string.Equals(id, defaultId, StringComparison.Ordinal));
     }
 
     private void OnDefinitionsChanged()

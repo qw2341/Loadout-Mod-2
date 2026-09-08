@@ -879,3 +879,5 @@ MAP_EDITOR_UNDONE,Undid map edit.,已撤销地图编辑。,Modification de carte
 MAP_EDITOR_REDONE,Redid map edit.,已重做地图编辑。,Modification de carte rétablie.,マップ編集をやり直しました。,지도 편집을 다시 실행했습니다.,Edición del mapa rehecha.
 MAP_EDITOR_NOTHING_TO_CLEAR,No removable nodes remain.,没有可清除的节点。,Il ne reste aucun nœud pouvant être supprimé.,削除できるノードは残っていません。,제거할 수 있는 노드가 없습니다.,No quedan nodos que se puedan borrar.
 MAP_EDITOR_CLEARED,Cleared removable map nodes.,已清除可移除的地图节点。,Les nœuds supprimables ont été effacés.,削除可能なマップノードを消去しました。,제거 가능한 지도 노드를 지웠습니다.,Se borraron los nodos eliminables del mapa.
+CUSTOM_RUN_DEFAULT,Default,默认,Par défaut,デフォルト,기본,Predeterminada
+CUSTOM_RUN_DEFAULT_TOOLTIP,Automatically select this Custom Run when opening run setup. You can still cancel it or choose another run.,打开开局设置时自动选择此自定义开局。你仍可取消或选择其他开局。,Sélectionne automatiquement cette partie personnalisée à l’ouverture de la configuration. Vous pouvez toujours l’annuler ou en choisir une autre.,ラン設定を開くと、このカスタムランを自動的に選択します。キャンセルしたり、別のランを選んだりできます。,게임 설정을 열 때 이 커스텀 런을 자동으로 선택합니다. 취소하거나 다른 런을 선택할 수 있습니다.,Selecciona automáticamente esta partida personalizada al abrir la configuración. Puedes cancelarla o elegir otra.

@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 namespace Loadout.Services.CustomRuns.Persistence;
 
@@ -22,6 +22,7 @@ public static class CustomRunStorageService
     private static bool _registered;
 
     public static event Action? Changed;
+    public static event Action? DefaultChanged;
 
     public static void Register()
     {
@@ -47,6 +48,40 @@ public static class CustomRunStorageService
                 .Select(CustomRunNormalizationService.Clone)
                 .ToList();
         }
+    }
+
+    public static string? GetDefaultDefinitionId()
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+            return _store.DefaultDefinitionId;
+    }
+
+    public static CustomRunDefinition? GetDefaultDefinition()
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            CustomRunDefinition? definition = _store.Definitions.Find(candidate =>
+                string.Equals(candidate.Id, _store.DefaultDefinitionId, StringComparison.Ordinal));
+            return definition is null ? null : CustomRunNormalizationService.Clone(definition);
+        }
+    }
+
+    public static void SetDefaultDefinition(string? id)
+    {
+        EnsureLoaded();
+        lock (SyncRoot)
+        {
+            if (id is not null && !_store.Definitions.Any(definition =>
+                    string.Equals(definition.Id, id, StringComparison.Ordinal)))
+                return;
+            if (string.Equals(_store.DefaultDefinitionId, id, StringComparison.Ordinal))
+                return;
+            _store.DefaultDefinitionId = id;
+            SaveLocked();
+        }
+        DefaultChanged?.Invoke();
     }
 
     public static CustomRunDefinition CreateNew()
@@ -181,6 +216,9 @@ public static class CustomRunStorageService
             .GroupBy(definition => definition.Id, StringComparer.Ordinal)
             .Select(group => group.Last())
             .ToList();
+        if (!store.Definitions.Any(definition =>
+                string.Equals(definition.Id, store.DefaultDefinitionId, StringComparison.Ordinal)))
+            store.DefaultDefinitionId = null;
         return store;
     }
 
@@ -203,9 +241,13 @@ public sealed class CustomRunSaveData : ISerializable
     [JsonPropertyName("definitions")]
     public List<CustomRunDefinition> Definitions { get; set; } = [];
 
+    [JsonPropertyName("defaultDefinitionId")]
+    public string? DefaultDefinitionId { get; set; }
+
     public void GetObjectData(SerializationInfo info, StreamingContext context)
     {
         info.AddValue(nameof(SchemaVersion), SchemaVersion);
         info.AddValue(nameof(Definitions), Definitions);
+        info.AddValue(nameof(DefaultDefinitionId), DefaultDefinitionId);
     }
 }

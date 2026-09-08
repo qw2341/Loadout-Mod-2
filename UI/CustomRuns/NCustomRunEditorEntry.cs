@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 namespace Loadout.UI.CustomRuns;
 
@@ -9,6 +9,8 @@ using Godot;
 using Loadout.Services.Compatibility;
 using Loadout.Services.Configuration;
 using Loadout.Services.CustomRuns.Models;
+using Loadout.Services.CustomRuns.Compilation;
+using Loadout.Services.CustomRuns.Persistence;
 using Loadout.Services.CustomRuns.Networking;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
@@ -93,6 +95,13 @@ public static class NCustomRunEditorEntry
             screen.GetNodeOrNull<NCustomRunCharacterSelectOverlay>(OverlayNodeName);
         if (overlay is null)
         {
+            if (canManageCustomRuns && CustomRunLobbyService.GetLoadedDefinition(lobby) is null
+                && CustomRunStorageService.GetDefaultDefinition() is { } defaultDefinition
+                && CustomRunCompiler.ValidateForLobbyLoad(
+                    CustomRunDefinitionResolver.WithEnabledPermanentRules(defaultDefinition)).IsValid)
+            {
+                CustomRunLobbyService.ApplyHostDefinition(lobby, defaultDefinition, out _);
+            }
             overlay = new NCustomRunCharacterSelectOverlay { Name = OverlayNodeName };
             overlay.Init(screen, lobby);
             screen.AddChild(overlay);
