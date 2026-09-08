@@ -66,6 +66,7 @@ internal static class LoadoutKeywordRuntimePatches
     public static bool XCostEnabled { get; private set; }
     public static bool StickyEnabled { get; private set; }
     public static bool PassingEnabled { get; private set; }
+    public static bool ParticleEnabled { get; private set; }
     public static bool InevitableEnabled { get; private set; }
     public static bool LividEnabled { get; private set; }
     public static bool DescriptionKeywordsEnabled { get; private set; }
@@ -88,6 +89,8 @@ internal static class LoadoutKeywordRuntimePatches
             SetStickyEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.PassingKey))
             SetPassingEnabled(true);
+        if (IsEnabled(delta, LoadoutKeywords.ParticleKey))
+            SetParticleEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.InevitableKey))
             SetInevitableEnabled(true);
         if (IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid)))
@@ -134,6 +137,8 @@ internal static class LoadoutKeywordRuntimePatches
             SetStickyEnabled(true);
         if (IsEnabled(overrides, LoadoutKeywords.PassingKey))
             SetPassingEnabled(true);
+        if (IsEnabled(overrides, LoadoutKeywords.ParticleKey))
+            SetParticleEnabled(true);
         if (IsEnabled(overrides, LoadoutKeywords.InevitableKey))
             SetInevitableEnabled(true);
         if (IsEnabled(overrides, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid)))
@@ -252,6 +257,7 @@ internal static class LoadoutKeywordRuntimePatches
         SetXCostEnabled(required.XCost);
         SetStickyEnabled(required.Sticky);
         SetPassingEnabled(required.Passing);
+        SetParticleEnabled(required.Particle);
         SetInevitableEnabled(required.Inevitable);
         SetLividEnabled(required.Livid);
         SetDescriptionKeywordsEnabled(
@@ -269,6 +275,7 @@ internal static class LoadoutKeywordRuntimePatches
         SetXCostEnabled(false);
         SetStickyEnabled(false);
         SetPassingEnabled(false);
+        SetParticleEnabled(false);
         SetInevitableEnabled(false);
         SetLividEnabled(false);
         RunKeywordPatchesPrepared = false;
@@ -320,6 +327,7 @@ internal static class LoadoutKeywordRuntimePatches
         state.XCost |= IsEnabled(delta, LoadoutKeywords.XCostKey);
         state.Sticky |= IsEnabled(delta, LoadoutKeywords.StickyKey);
         state.Passing |= IsEnabled(delta, LoadoutKeywords.PassingKey);
+        state.Particle |= IsEnabled(delta, LoadoutKeywords.ParticleKey);
         state.Inevitable |= IsEnabled(delta, LoadoutKeywords.InevitableKey);
         state.Livid |= IsEnabled(delta, LoadoutKeywords.GetStorageKey(LoadoutKeywords.Livid));
         AddDescriptionKeywordFeatures(delta.KeywordOverrides, ref state);
@@ -338,6 +346,9 @@ internal static class LoadoutKeywordRuntimePatches
         state.Passing |= IsEnabled(
             delta.UpgradeModification.KeywordOverrides,
             LoadoutKeywords.PassingKey);
+        state.Particle |= IsEnabled(
+            delta.UpgradeModification.KeywordOverrides,
+            LoadoutKeywords.ParticleKey);
         state.Inevitable |= IsEnabled(
             delta.UpgradeModification.KeywordOverrides,
             LoadoutKeywords.InevitableKey);
@@ -426,6 +437,7 @@ internal static class LoadoutKeywordRuntimePatches
             state.XCost |= LoadoutKeywords.Has(card, LoadoutKeywords.XCost);
             state.Sticky |= LoadoutKeywords.Has(card, LoadoutKeywords.Sticky);
             state.Passing |= LoadoutKeywords.Has(card, LoadoutKeywords.Passing);
+            state.Particle |= LoadoutKeywords.Has(card, LoadoutKeywords.Particle);
             state.Inevitable |= LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable);
             state.Livid |= LoadoutKeywords.Has(card, LoadoutKeywords.Livid);
             foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.DescriptionOnly)
@@ -618,9 +630,18 @@ internal static class LoadoutKeywordRuntimePatches
         RefreshCardResultLocationPatch();
     }
 
+    private static void SetParticleEnabled(bool enabled)
+    {
+        if (enabled == ParticleEnabled)
+            return;
+
+        ParticleEnabled = enabled;
+        RefreshCardResultLocationPatch();
+    }
+
     private static void RefreshCardResultLocationPatch()
     {
-        bool enabled = StickyEnabled || PassingEnabled;
+        bool enabled = StickyEnabled || PassingEnabled || ParticleEnabled;
         if (enabled == CardResultLocationEnabled)
             return;
 
@@ -988,6 +1009,7 @@ internal static class LoadoutKeywordRuntimePatches
         public bool XCost;
         public bool Sticky;
         public bool Passing;
+        public bool Particle;
         public bool Inevitable;
         public bool Livid;
         public bool PowerKeywords;
@@ -1001,6 +1023,7 @@ internal static class LoadoutKeywordRuntimePatches
             && XCost
             && Sticky
             && Passing
+            && Particle
             && Inevitable
             && Livid
             && PowerKeywords

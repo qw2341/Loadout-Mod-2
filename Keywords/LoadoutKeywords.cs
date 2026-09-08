@@ -27,6 +27,9 @@ public static class LoadoutKeywords
     public const string ReplayXKey = "ReplayX";
     public const string GatlingKey = "Gatling";
     public const string MegaGatlingKey = "MegaGatling";
+    public const string BolasKey = "Bolas";
+    public const string ParticleKey = "Particle";
+    public const string AngerKey = "Anger";
     public const string BlankSlateKey = "BlankSlate";
     public const string BasicDamageKey = "BasicDamage";
     public const string BasicDamageAoeKey = "BasicDamageAoe";
@@ -199,6 +202,15 @@ public static class LoadoutKeywords
 
     [CustomEnum("MEGA_GATLING")]
     public static CardKeyword MegaGatling;
+
+    [CustomEnum("BOLAS")]
+    public static CardKeyword Bolas;
+
+    [CustomEnum("PARTICLE")]
+    public static CardKeyword Particle;
+
+    [CustomEnum("ANGER")]
+    public static CardKeyword Anger;
 
     [CustomEnum("BLANK_SLATE")]
     public static CardKeyword BlankSlate;

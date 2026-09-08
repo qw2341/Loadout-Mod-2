@@ -56,19 +56,31 @@ public static class CardResultLocationKeywordPatch
             return;
         }
 
-        if (!LoadoutKeywords.Has(card, LoadoutKeywords.Passing))
-            return;
-
         Player currentPlayer = CardLocationResult<TResult>.GetPlayer(__result);
-        Player? receivingPlayer = PassingKeyword.GetTarget(card, currentPlayer);
-        if (receivingPlayer is null)
-            return;
-
         PileType originalPileType = CardLocationResult<TResult>.GetPileType(__result);
         CardPilePosition originalPosition = CardLocationResult<TResult>.GetPosition(__result);
+        Player receivingPlayer = currentPlayer;
         PileType pileType = originalPileType;
         CardPilePosition position = originalPosition;
-        if (receivingPlayer != card.Owner && pileType == PileType.Discard)
+
+        if (LoadoutKeywords.Has(card, LoadoutKeywords.Particle)
+            && pileType == PileType.Discard)
+        {
+            pileType = PileType.Hand;
+            position = CardPilePosition.Bottom;
+        }
+
+        bool hasPassing = LoadoutKeywords.Has(card, LoadoutKeywords.Passing);
+        if (hasPassing)
+        {
+            Player? passingTarget = PassingKeyword.GetTarget(card, currentPlayer);
+            if (passingTarget is not null)
+                receivingPlayer = passingTarget;
+        }
+
+        if (hasPassing
+            && receivingPlayer != card.Owner
+            && pileType == PileType.Discard)
         {
             pileType = PileType.Draw;
             position = CardPilePosition.Random;
@@ -94,7 +106,16 @@ public static class CardResultLocationKeywordPatch
         ref ValueTuple<PileType, CardPilePosition> __result)
     {
         if (LoadoutKeywords.Has(card, LoadoutKeywords.Sticky))
+        {
             __result = (PileType.Hand, CardPilePosition.Bottom);
+            return;
+        }
+
+        if (LoadoutKeywords.Has(card, LoadoutKeywords.Particle)
+            && __result.Item1 == PileType.Discard)
+        {
+            __result = (PileType.Hand, CardPilePosition.Bottom);
+        }
     }
 
     private static class CardLocationResult<TResult>
