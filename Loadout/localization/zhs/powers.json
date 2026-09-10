@@ -4,5 +4,8 @@
   "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "每当你对未处于晕眩状态的敌人造成未被格挡的攻击伤害时，对其施加[blue]1[/blue]层[gold]负伤[/gold]。",
   "LOADOUT-DAZED_POWER.title": "眩晕",
   "LOADOUT-DAZED_POWER.description": "[gold]眩晕[/gold]达到[blue]5[/blue]层时，被[gold]击晕[/gold]并移除所有眩晕。",
-  "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "每当你被攻击命中时，对攻击者施加[blue]{Amount}[/blue]层[gold]眩晕[/gold]。"
+  "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "每当你被攻击命中时，对攻击者施加[blue]{Amount}[/blue]层[gold]眩晕[/gold]。",
+  "LOADOUT-WITHER_POWER.title": "凋萎",
+  "LOADOUT-WITHER_POWER.description": "在该生物的回合结束时，使其受到[blue]{Damage}[/blue]点伤害。",
+  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "每当你打出[blue]6[/blue]张牌，对所有敌人施加[blue]1[/blue]层[gold]凋萎[/gold]。升级目标已有的[gold]凋萎[/gold]。"
 }

@@ -4,5 +4,8 @@
   "LOADOUT-PAINFUL_STABS_POWER.playerDescription": "Lorsque vous infligez des dégâts d'Attaque non bloqués à un ennemi qui n'est pas étourdi, appliquez-lui [blue]1[/blue] [gold]Blessure[/gold].\nÀ [blue]10[/blue] cumuls de [gold]Blessure[/gold], étourdissez-le.",
   "LOADOUT-DAZED_POWER.title": "Hébété",
   "LOADOUT-DAZED_POWER.description": "À [blue]5[/blue] cumuls d'[gold]Hébété[/gold], devient [gold]Étourdi[/gold], puis retire tous les cumuls d'Hébété.",
-  "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "Lorsque vous êtes touché par une Attaque, appliquez [blue]{Amount}[/blue] cumuls d'[gold]Hébété[/gold] à l'attaquant.\nÀ [blue]5[/blue] cumuls d'[gold]Hébété[/gold], étourdissez-le."
+  "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "Lorsque vous êtes touché par une Attaque, appliquez [blue]{Amount}[/blue] cumuls d'[gold]Hébété[/gold] à l'attaquant.\nÀ [blue]5[/blue] cumuls d'[gold]Hébété[/gold], étourdissez-le.",
+  "LOADOUT-WITHER_POWER.title": "Flétrissure",
+  "LOADOUT-WITHER_POWER.description": "À la fin du tour de cette créature, elle subit [blue]{Damage}[/blue] dégâts.",
+  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "Chaque fois que vous jouez [blue]6[/blue] cartes, appliquez [blue]1[/blue] [gold]Flétrissure[/gold] à TOUS les ennemis. Améliore la [gold]Flétrissure[/gold] existante sur les cibles."
 }
