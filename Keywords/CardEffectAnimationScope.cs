@@ -59,6 +59,7 @@ internal static class CardEffectAnimationScope
     {
         if (!LoadoutKeywords.Has(card, LoadoutKeywords.AltHeavenly)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.MultiHit)
+            && !LoadoutKeywords.Has(card, LoadoutKeywords.MultiBlock)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.Gatling)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.MegaGatling)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.ReplayX))

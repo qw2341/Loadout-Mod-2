@@ -357,5 +357,7 @@
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "Modifie définitivement vos quantités du Donneur de pouvoirs en cas de [gold]Fatal[/gold].",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}",
   "LOADOUT-MULTI_HIT.title": "!?Multi-frappe?!",
-  "LOADOUT-MULTI_HIT.description": "Divise la valeur de Dégâts d’origine en autant de coups infligeant 1 dégât. Les améliorations et modifications directes de cette valeur changent le nombre de coups. La Force et les autres modificateurs s’appliquent à chaque coup. Les répétitions existantes sont conservées."
+  "LOADOUT-MULTI_HIT.description": "Divise la valeur de Dégâts d’origine en autant de coups infligeant 1 dégât. Les améliorations et modifications directes de cette valeur changent le nombre de coups. La Force et les autres modificateurs s’appliquent à chaque coup. Les répétitions existantes sont conservées.",
+  "LOADOUT-MULTI_BLOCK.title": "!?Multi-blocage?!",
+  "LOADOUT-MULTI_BLOCK.description": "Divise la valeur de Blocage de base en autant de gains de 1 Blocage."
 }

@@ -35,6 +35,7 @@ public static class LoadoutKeywordRegistry
         HeavenlyKeyword.Instance,
         AltHeavenlyKeyword.Instance,
         MultiHitKeyword.Instance,
+        MultiBlockKeyword.Instance,
         LifestealKeyword.Instance,
         WallopKeyword.Instance,
         AutoplayKeyword.Instance,
@@ -496,6 +497,8 @@ public static class LoadoutKeywordRegistry
     {
         if (MultiHitKeyword.Instance.IsEnabled(card, overrides))
             MultiHitKeywordPatches.Prepare(card);
+        if (MultiBlockKeyword.Instance.IsEnabled(card, overrides))
+            MultiBlockKeywordPatches.Prepare();
         Dictionary<string, DynamicVar> variables = GetMutableVariables(card.DynamicVars);
         foreach (LoadoutKeywordModel model in Models)
         {

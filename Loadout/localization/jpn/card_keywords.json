@@ -357,5 +357,7 @@
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "[gold]Fatal[/gold]時、自分のパワー付与器の値を永久に変更する。",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}",
   "LOADOUT-MULTI_HIT.title": "!?多段ヒット?!",
-  "LOADOUT-MULTI_HIT.description": "元のダメージ値を、その回数の1ダメージ攻撃に分割する。アップグレードやダメージ値への直接変更はヒット回数を変える。筋力などのダメージ補正は各ヒットに適用される。既存の繰り返し回数は変わらない。"
+  "LOADOUT-MULTI_HIT.description": "元のダメージ値を、その回数の1ダメージ攻撃に分割する。アップグレードやダメージ値への直接変更はヒット回数を変える。筋力などのダメージ補正は各ヒットに適用される。既存の繰り返し回数は変わらない。",
+  "LOADOUT-MULTI_BLOCK.title": "!?多段ブロック?!",
+  "LOADOUT-MULTI_BLOCK.description": "基本ブロック値を、その回数の1ブロック獲得に分割する。"
 }

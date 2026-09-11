@@ -357,5 +357,7 @@
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "Permanently change your Power Giver amounts when [gold]Fatal[/gold].",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}",
   "LOADOUT-MULTI_HIT.title": "!?Multi-Hit?!",
-  "LOADOUT-MULTI_HIT.description": "Split Base Damage value into that many 1-damage hits."
+  "LOADOUT-MULTI_HIT.description": "Split Base Damage value into that many 1-damage hits.",
+  "LOADOUT-MULTI_BLOCK.title": "!?Multi-Block?!",
+  "LOADOUT-MULTI_BLOCK.description": "Split Base Block value into that many gains of 1 Block."
 }

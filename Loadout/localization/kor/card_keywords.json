@@ -357,5 +357,7 @@
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "[gold]Fatal[/gold] 시 자신의 능력 부여기 수치를 영구적으로 변경합니다.",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}",
   "LOADOUT-MULTI_HIT.title": "!?다중 타격?!",
-  "LOADOUT-MULTI_HIT.description": "원래 피해 수치만큼 피해 1의 타격을 가합니다. 강화와 피해 수치의 직접 변경은 타격 횟수를 변경합니다. 힘과 기타 피해 보정은 각 타격에 적용됩니다. 기존 반복 횟수는 유지됩니다."
+  "LOADOUT-MULTI_HIT.description": "원래 피해 수치만큼 피해 1의 타격을 가합니다. 강화와 피해 수치의 직접 변경은 타격 횟수를 변경합니다. 힘과 기타 피해 보정은 각 타격에 적용됩니다. 기존 반복 횟수는 유지됩니다.",
+  "LOADOUT-MULTI_BLOCK.title": "!?다중 방어도?!",
+  "LOADOUT-MULTI_BLOCK.description": "기본 방어도 수치만큼 방어도를 1씩 얻습니다."
 }

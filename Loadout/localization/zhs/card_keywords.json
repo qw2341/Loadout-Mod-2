@@ -357,5 +357,7 @@
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.description": "[gold]斩杀[/gold]时永久改变自身的能力给予器数值。",
   "LOADOUT-GAIN_POWER_PERMANENTLY_ON_FATAL.cardText": "{LoadoutGainPowerPermanentlyOnFatalList}",
   "LOADOUT-MULTI_HIT.title": "!?多段攻击?!",
-  "LOADOUT-MULTI_HIT.description": "基础伤害数值改为等量次数的1点伤害。"
+  "LOADOUT-MULTI_HIT.description": "基础伤害数值改为等量次数的1点伤害。",
+  "LOADOUT-MULTI_BLOCK.title": "!?多段格挡?!",
+  "LOADOUT-MULTI_BLOCK.description": "将基础格挡值拆分为等量次数的1点格挡。"
 }
