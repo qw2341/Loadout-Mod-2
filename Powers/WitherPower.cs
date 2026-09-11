@@ -44,7 +44,8 @@ public sealed class WitherPower : CustomPowerModel
         get
         {
             LocString description = base.Description;
-            description.Add("Damage", TotalDamage);
+            description.Add("Damage", DamagePerStack);
+            description.Add("Hits", Amount);
             return description;
         }
     }
@@ -61,7 +62,7 @@ public sealed class WitherPower : CustomPowerModel
         InvokeDisplayAmountChanged();
     }
 
-    public override async Task AfterSideTurnEndLate(
+    public override async Task AfterSideTurnEnd(
         PlayerChoiceContext choiceContext,
         CombatSide side,
         IEnumerable<Creature> participants)
@@ -69,22 +70,29 @@ public sealed class WitherPower : CustomPowerModel
         if (!participants.Contains(Owner) || Amount <= 0)
             return;
 
-        await CreatureCmd.Damage(
-            choiceContext,
-            Owner,
-            TotalDamage,
-            ValueProp.Unpowered,
-            Owner);
-        VfxCmd.PlayOnCreatureCenter(Owner, "vfx/vfx_attack_blunt");
+        int hitCount = Amount;
+        int damagePerHit = DamagePerStack;
+        for (int hit = 0; hit < hitCount && !Owner.IsDead; hit++)
+        {
+            await CreatureCmd.Damage(
+                choiceContext,
+                Owner,
+                damagePerHit,
+                ValueProp.Unpowered,
+                Owner);
+            VfxCmd.PlayOnCreatureCenter(Owner, "vfx/vfx_attack_blunt");
+        }
     }
 
     public override IEnumerable<HealthBarForecastSegment> GetHealthBarForecastSegments(
         HealthBarForecastContext context)
     {
-        int damage = TotalDamage;
+        int damagePerHit = DamagePerStack;
+        int hitCount = Amount;
         if (!ReferenceEquals(context.Creature, Owner)
             || Owner.IsDead
-            || damage <= 0)
+            || damagePerHit <= 0
+            || hitCount <= 0)
         {
             return [];
         }
@@ -92,13 +100,13 @@ public sealed class WitherPower : CustomPowerModel
         _forecastMaterial ??= ShaderUtils.CreateDoomBarShaderMaterial(
             CreateBlackForecastGradient());
 
-        return HealthBarForecasts
-            .FromLeft(context, ForecastLabelColor)
-            .Add(
-                damage,
-                HealthBarForecastOrder.ForSideTurnEnd(Owner, Owner.Side),
-                _forecastMaterial)
-            .Build();
+        HealthBarForecastLaneBuilder forecast = HealthBarForecasts
+            .FromLeft(context, ForecastLabelColor);
+        int order = HealthBarForecastOrder.ForSideTurnEnd(Owner, Owner.Side);
+        for (int hit = 0; hit < hitCount; hit++)
+            forecast.Add(damagePerHit, order, _forecastMaterial);
+
+        return forecast.Build();
     }
 
     private static GradientTexture1D CreateBlackForecastGradient()

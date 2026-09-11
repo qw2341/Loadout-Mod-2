@@ -6,6 +6,6 @@
   "LOADOUT-DAZED_POWER.description": "Al llegar a [blue]5[/blue] de [gold]Desorientación[/gold], queda [gold]Aturdido[/gold] y elimina toda la Desorientación.",
   "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "Cuando te golpea un Ataque, aplica [blue]{Amount}[/blue] de [gold]Desorientación[/gold] al atacante.\nA [blue]5[/blue] de [gold]Desorientación[/gold], atúrdelo.",
   "LOADOUT-WITHER_POWER.title": "Marchitamiento",
-  "LOADOUT-WITHER_POWER.description": "Al final del turno de esta criatura, recibe [blue]{Damage}[/blue] de daño.",
+  "LOADOUT-WITHER_POWER.description": "Al final del turno de esta criatura, recibe [blue]{Damage}[/blue] de daño [blue]{Hits}[/blue] {Hits:plural:vez|veces}.",
   "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "Cada vez que juegas [blue]6[/blue] cartas, aplica [blue]1[/blue] de [gold]Marchitamiento[/gold] a TODOS los enemigos. Mejora el [gold]Marchitamiento[/gold] existente en los objetivos."
 }

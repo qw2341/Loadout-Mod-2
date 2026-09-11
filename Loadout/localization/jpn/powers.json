@@ -6,6 +6,6 @@
   "LOADOUT-DAZED_POWER.description": "[gold]めまい[/gold]が[blue]5[/blue]になると[gold]スタン[/gold]し、すべてのめまいを解除する。",
   "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "アタックを受けるたび、攻撃者に[gold]めまい[/gold]を[blue]{Amount}[/blue]付与する。\n[gold]めまい[/gold]が[blue]5[/blue]になると、その敵をスタンさせる。",
   "LOADOUT-WITHER_POWER.title": "衰弱",
-  "LOADOUT-WITHER_POWER.description": "このクリーチャーのターン終了時、[blue]{Damage}[/blue]ダメージを受ける。",
+  "LOADOUT-WITHER_POWER.description": "このクリーチャーのターン終了時、[blue]{Damage}[/blue]ダメージを[blue]{Hits}[/blue]回受ける。",
   "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "カードを[blue]6[/blue]枚プレイするたび、すべての敵に[gold]衰弱[/gold]を[blue]1[/blue]付与する。対象にある既存の[gold]衰弱[/gold]を強化する。"
 }
