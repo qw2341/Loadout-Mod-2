@@ -48,6 +48,12 @@ public static class PersonalHivePowerPatch
             return true;
         }
 
+        if (!UsesPlayerEntomancerBehavior(__instance))
+        {
+            __result = Task.CompletedTask;
+            return false;
+        }
+
         __result = ApplyDazedAfterHit(
             __instance,
             choiceContext,
@@ -76,8 +82,7 @@ public static class PersonalHivePowerPatch
         CardModel? cardSource)
     {
         Creature owner = power.Owner;
-        if (!UsesPlayerEntomancerBehavior(power)
-            || target != owner
+        if (target != owner
             || dealer is null
             || !dealer.IsMonster
             || dealer.Side == owner.Side

@@ -30,10 +30,13 @@ public static class ThieveryPowerPatch
         Player? player = attacker?.Player;
         if (attacker?.IsPlayer != true
             || player is null
-            || !command.Results.Any(hit => hit.Count > 0))
+            || attacker.GetPower<ThieveryPower>() is null)
         {
             return;
         }
+
+        if (!command.Results.Any(hit => hit.Count > 0))
+            return;
 
         List<ThieveryPower> powers =
             attacker.GetPowerInstances<ThieveryPower>().ToList();
