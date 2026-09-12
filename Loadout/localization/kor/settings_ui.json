@@ -1,4 +1,9 @@
 {
+  "LOADOUT-MASS_ADD_KEYWORD.title": "모든 카드에 키워드 영구 추가",
+  "LOADOUT-SELECT_MASS_KEYWORD.title": "키워드 선택...",
+  "LOADOUT-MASS_ADD_KEYWORD_CONFIRM_BODY.title": "모든 카드에 {Keyword} 키워드를 추가하시겠습니까?",
+  "LOADOUT-MASS_ADD_KEYWORD_NO.title": "취소",
+  "LOADOUT-MASS_ADD_KEYWORD_YES.title": "추가",
   "LOADOUT-EDIT_CUSTOM_COMPANION.title": "사용자 동료 편집",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "브러시 모드",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "브러시",

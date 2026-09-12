@@ -786,7 +786,7 @@ public partial class NCardKeywordEditor : VBoxContainer
         return label;
     }
 
-    private static string GetKeywordLabel(CardKeyword keyword)
+    public static string GetKeywordLabel(CardKeyword keyword)
     {
         try
         {
@@ -813,7 +813,7 @@ public partial class NCardKeywordEditor : VBoxContainer
         }
     }
 
-    private static IReadOnlyList<IHoverTip> GetKeywordHoverTips(
+    public static IReadOnlyList<IHoverTip> GetKeywordHoverTips(
         CardKeyword keyword)
     {
         try

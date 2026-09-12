@@ -5,12 +5,15 @@ namespace Loadout.Config;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using BaseLib.Config;
 using BaseLib.Config.UI;
+using BaseLib.Patches.Content;
 using Godot;
 using Loadout.Companions;
+using Loadout.Keywords;
 using Loadout.PanelItems;
 using Loadout.Services.CardModification;
 using Loadout.Patches.Cards.CardModification;
@@ -21,6 +24,8 @@ using Loadout.UI.ImageEditing;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -136,6 +141,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
             () => TildeKey.OpenStartingDefaultsScreen(optionContainer.GetTree())));
 
         optionContainer.AddChild(CreateSectionHeader(GetLabelText("CardModificationsSection")));
+        AddMassKeywordOption(optionContainer);
         AddOptionRow(optionContainer, nameof(CardCustomizationScope), CreateRawDropdownControl);
         var resetStatus = CreateRawLabelControl(GetLabelText("ResetStatusReady"), 22);
         resetStatus.Name = "PermanentCardModificationResetStatus";
@@ -200,6 +206,115 @@ public sealed class LoadoutModConfig : SimpleModConfig
         optionContainer.AddChild(relicResetStatus);
 
         SetupFocusNeighbors(optionContainer);
+    }
+
+    private void AddMassKeywordOption(Control optionContainer)
+    {
+        HashSet<CardKeyword> keywords = new(Enum.GetValues<CardKeyword>());
+        keywords.UnionWith(LoadoutKeywords.All);
+        keywords.UnionWith(CustomKeywords.KeywordIDs.Keys.Select(value => (CardKeyword)value));
+        keywords.Remove(CardKeyword.None);
+        Dictionary<string, CardKeyword> keywordsById = keywords.ToDictionary(LoadoutKeywords.GetStorageKey);
+        List<LoadoutDropdownOption> options =
+        [
+            new(string.Empty, GetLabelText("SelectMassKeyword"), Enabled: false)
+        ];
+        options.AddRange(keywords
+            .Select(keyword => new LoadoutDropdownOption(
+                LoadoutKeywords.GetStorageKey(keyword),
+                NCardKeywordEditor.GetKeywordLabel(keyword),
+                () => NCardKeywordEditor.GetKeywordHoverTips(keyword)))
+            .OrderBy(option => option.Label, StringComparer.CurrentCulture));
+        NLoadoutDropdown dropdown = new()
+        {
+            Name = "MassAddKeywordDropdown",
+            DropdownWidth = BaseLibDropdownWidth,
+            ButtonHeight = BaseLibDropdownHeight,
+            CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
+            ExpandToAvailableWidth = false
+        };
+        dropdown.SetItems(string.Empty, options, string.Empty);
+        dropdown.SelectedItemChanged += id =>
+        {
+            if (keywordsById.TryGetValue(id, out CardKeyword keyword))
+                TaskHelper.RunSafely(ConfirmMassKeywordAsync(keyword, dropdown));
+        };
+        Control positioner = new()
+        {
+            CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        positioner.AddChild(dropdown);
+        optionContainer.AddChild(new NConfigOptionRow(
+            ModPrefix,
+            "MassAddKeyword",
+            CreateRawLabelControl(GetLabelText("MassAddKeyword"), 28),
+            positioner));
+    }
+
+    private async Task ConfirmMassKeywordAsync(CardKeyword keyword, NLoadoutDropdown dropdown)
+    {
+        try
+        {
+            NModalContainer? modalContainer = NModalContainer.Instance;
+            if (modalContainer is null
+                || !GodotObject.IsInstanceValid(modalContainer)
+                || modalContainer.OpenModal is not null)
+                return;
+            NGenericPopup? popup = NGenericPopup.Create();
+            if (popup is null)
+                return;
+
+            LocString body = new("settings_ui", "LOADOUT-MASS_ADD_KEYWORD_CONFIRM_BODY.title");
+            body.Add("Keyword", NCardKeywordEditor.GetKeywordLabel(keyword));
+            modalContainer.Add(popup);
+            bool confirmed = await popup.WaitForConfirmation(
+                body,
+                new LocString("settings_ui", "LOADOUT-MASS_ADD_KEYWORD.title"),
+                new LocString("settings_ui", "LOADOUT-MASS_ADD_KEYWORD_NO.title"),
+                new LocString("settings_ui", "LOADOUT-MASS_ADD_KEYWORD_YES.title"));
+            if (!confirmed)
+                return;
+
+            string key = LoadoutKeywords.GetStorageKey(keyword);
+            bool isPowerKeyword = LoadoutKeywordRegistry.TryGet(keyword, out var definition)
+                                  && definition is LoadoutPowerKeywordModel;
+            IReadOnlyDictionary<ModelId, CardModificationDelta> existing =
+                PermanentCardModificationStore.GetProfileDeltasSnapshot();
+            Dictionary<ModelId, CardModificationDelta> entries = new();
+            foreach (CardModel card in ModelDb.AllCards)
+            {
+                CardModificationDelta delta = existing.TryGetValue(card.Id, out var saved)
+                    ? saved.Clone()
+                    : new CardModificationDelta();
+                delta.KeywordOverrides[key] = true;
+                if (isPowerKeyword
+                    && (delta.PowerKeywordEntries is null
+                        || !delta.PowerKeywordEntries.Any(entry =>
+                            string.Equals(entry.KeywordKey, key, StringComparison.OrdinalIgnoreCase))))
+                {
+                    delta.PowerKeywordEntries ??= [];
+                    delta.PowerKeywordEntries.Add(new LoadoutPowerKeywordEntry
+                    {
+                        KeywordKey = key,
+                        PowerId = LoadoutPowerKeywordState.GetDefaultStrengthPowerId(),
+                        Amount = 1
+                    });
+                }
+                entries[card.Id] = delta;
+            }
+            IReadOnlyList<ModelId> changed = PermanentCardModificationStore.ApplyProfileEntriesQuiet(entries);
+            CardModificationRuntime.ReconcileQuietPermanentImport(changed);
+            LoadoutKeywordRuntimePatches.Reconcile();
+            // CardPrinter.RefreshImportedPermanentCards(entries.Keys);
+        }
+        finally
+        {
+            if (GodotObject.IsInstanceValid(dropdown))
+                dropdown.SetSelectedItem(string.Empty);
+        }
     }
 
     private void ResetAllPermanentCardModifications(MegaCrit.Sts2.addons.mega_text.MegaRichTextLabel status)

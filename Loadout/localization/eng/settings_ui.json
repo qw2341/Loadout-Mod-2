@@ -1,4 +1,9 @@
 {
+  "LOADOUT-MASS_ADD_KEYWORD.title": "Mass add keyword permanently",
+  "LOADOUT-SELECT_MASS_KEYWORD.title": "Select keyword...",
+  "LOADOUT-MASS_ADD_KEYWORD_CONFIRM_BODY.title": "Are you sure you want to add {Keyword} to all cards?",
+  "LOADOUT-MASS_ADD_KEYWORD_NO.title": "Cancel",
+  "LOADOUT-MASS_ADD_KEYWORD_YES.title": "Add",
   "LOADOUT-EDIT_CUSTOM_COMPANION.title": "Edit Custom Companion",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "Brush mode",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "Brush",

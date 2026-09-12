@@ -1,4 +1,9 @@
 {
+  "LOADOUT-MASS_ADD_KEYWORD.title": "Añadir palabra clave permanentemente a todas las cartas",
+  "LOADOUT-SELECT_MASS_KEYWORD.title": "Seleccionar palabra clave...",
+  "LOADOUT-MASS_ADD_KEYWORD_CONFIRM_BODY.title": "¿Seguro que quieres añadir {Keyword} a todas las cartas?",
+  "LOADOUT-MASS_ADD_KEYWORD_NO.title": "Cancelar",
+  "LOADOUT-MASS_ADD_KEYWORD_YES.title": "Añadir",
   "LOADOUT-EDIT_CUSTOM_COMPANION.title": "Editar compañero personalizado",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "Modo de pincel",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "Pincel",

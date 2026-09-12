@@ -1,4 +1,9 @@
 {
+  "LOADOUT-MASS_ADD_KEYWORD.title": "全カードにキーワードを永続的に追加",
+  "LOADOUT-SELECT_MASS_KEYWORD.title": "キーワードを選択...",
+  "LOADOUT-MASS_ADD_KEYWORD_CONFIRM_BODY.title": "すべてのカードに{Keyword}を追加してもよろしいですか？",
+  "LOADOUT-MASS_ADD_KEYWORD_NO.title": "キャンセル",
+  "LOADOUT-MASS_ADD_KEYWORD_YES.title": "追加",
   "LOADOUT-EDIT_CUSTOM_COMPANION.title": "カスタムコンパニオンを編集",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "ブラシモード",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "ブラシ",

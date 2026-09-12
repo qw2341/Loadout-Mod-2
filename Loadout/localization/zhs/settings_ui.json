@@ -1,4 +1,9 @@
 {
+  "LOADOUT-MASS_ADD_KEYWORD.title": "为所有卡牌永久添加关键词",
+  "LOADOUT-SELECT_MASS_KEYWORD.title": "选择关键词...",
+  "LOADOUT-MASS_ADD_KEYWORD_CONFIRM_BODY.title": "确定要为所有卡牌添加{Keyword}吗？",
+  "LOADOUT-MASS_ADD_KEYWORD_NO.title": "取消",
+  "LOADOUT-MASS_ADD_KEYWORD_YES.title": "添加",
   "LOADOUT-EDIT_CUSTOM_COMPANION.title": "编辑自定义伙伴",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "画笔模式",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "画笔",

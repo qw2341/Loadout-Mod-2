@@ -1,4 +1,9 @@
 {
+  "LOADOUT-MASS_ADD_KEYWORD.title": "Ajouter un mot-clé définitivement à toutes les cartes",
+  "LOADOUT-SELECT_MASS_KEYWORD.title": "Choisir un mot-clé...",
+  "LOADOUT-MASS_ADD_KEYWORD_CONFIRM_BODY.title": "Voulez-vous vraiment ajouter {Keyword} à toutes les cartes ?",
+  "LOADOUT-MASS_ADD_KEYWORD_NO.title": "Annuler",
+  "LOADOUT-MASS_ADD_KEYWORD_YES.title": "Ajouter",
   "LOADOUT-EDIT_CUSTOM_COMPANION.title": "Modifier le compagnon personnalisé",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE.title": "Mode de brosse",
   "LOADOUT-IMAGE_EDITOR_BRUSH_MODE_BRUSH.title": "Brosse",
