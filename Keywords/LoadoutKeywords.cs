@@ -199,7 +199,7 @@ public static class LoadoutKeywords
     [CustomEnum("WALLOP")]
     public static CardKeyword Wallop;
 
-    [CustomEnum("AUTOPLAY")]
+    [CustomEnum("AUTOPLAY"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword Autoplay;
 
     [CustomEnum("REPLAY_X"),KeywordProperties(AutoKeywordPosition.After)]
