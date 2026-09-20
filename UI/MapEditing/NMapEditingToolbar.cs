@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using Godot;
 using HarmonyLib;
+using Loadout.Services.Configuration;
 using Loadout.Services.MapEditing;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.addons.mega_text;
@@ -212,15 +213,21 @@ public partial class NMapEditingToolbar : Control
         _historyActIndex = TryGetRunState()?.CurrentActIndex ?? -1;
         SetProcessInput(false);
         RefreshImportAvailability();
+        LoadoutConfigService.MapEditingButtonVisibilityChanged += RefreshConfigVisibility;
+        RefreshConfigVisibility();
     }
 
     public override void _ExitTree()
     {
+        LoadoutConfigService.MapEditingButtonVisibilityChanged -= RefreshConfigVisibility;
         if (IsEditing)
             SetEditing(false);
         SetProcessInput(false);
         base._ExitTree();
     }
+
+    private void RefreshConfigVisibility()
+        => Visible = LoadoutConfigService.EnableMapEditingButton;
 
     public override void _Input(InputEvent inputEvent)
     {

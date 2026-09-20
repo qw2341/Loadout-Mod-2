@@ -4,6 +4,7 @@ namespace Loadout.Config;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -73,6 +74,42 @@ public sealed class LoadoutModConfig : SimpleModConfig
         set => LoadoutConfigService.EnableCreatureManipulationPanel = value;
     }
 
+    public static bool EnableMapEditingButton
+    {
+        get => LoadoutConfigService.EnableMapEditingButton;
+        set => LoadoutConfigService.EnableMapEditingButton = value;
+    }
+
+    public static int FastAnimationMinimumResult
+    {
+        get => CardEffectAnimationScope.FastAnimationMinimumResult;
+        set => CardEffectAnimationScope.FastAnimationMinimumResult = Math.Max(1, value);
+    }
+
+    public static int VeryFastAnimationMinimumResult
+    {
+        get => CardEffectAnimationScope.VeryFastAnimationMinimumResult;
+        set => CardEffectAnimationScope.VeryFastAnimationMinimumResult = Math.Max(1, value);
+    }
+
+    public static int VeryVeryFastAnimationMinimumResult
+    {
+        get => CardEffectAnimationScope.VeryVeryFastAnimationMinimumResult;
+        set => CardEffectAnimationScope.VeryVeryFastAnimationMinimumResult = Math.Max(1, value);
+    }
+
+    public static int ExtremelyFastAnimationMinimumResult
+    {
+        get => CardEffectAnimationScope.ExtremelyFastAnimationMinimumResult;
+        set => CardEffectAnimationScope.ExtremelyFastAnimationMinimumResult = Math.Max(1, value);
+    }
+
+    public static int InstantAnimationMinimumResult
+    {
+        get => CardEffectAnimationScope.InstantAnimationMinimumResult;
+        set => CardEffectAnimationScope.InstantAnimationMinimumResult = Math.Max(1, value);
+    }
+
     public static bool EnableCustomRuns
     {
         get => LoadoutConfigService.EnableCustomRuns;
@@ -128,6 +165,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         optionContainer.AddChild(CreateSectionHeader(GetLabelText("LoadoutPanelSection"), alignToTop: true));
         AddOptionRow(optionContainer, nameof(EnableDeckLoadoutScreen), CreateRawTickboxControl);
         AddOptionRow(optionContainer, nameof(EnableCreatureManipulationPanel), CreateRawTickboxControl);
+        AddOptionRow(optionContainer, nameof(EnableMapEditingButton), CreateRawTickboxControl);
         AddOptionRow(optionContainer, nameof(EnableCustomRuns), CreateRawTickboxControl);
         AddOptionRow(optionContainer, nameof(PanelSkin), CreateRawDropdownControl);
         AddOptionRow(optionContainer, nameof(PanelAnimation), CreateRawDropdownControl);
@@ -139,6 +177,18 @@ public sealed class LoadoutModConfig : SimpleModConfig
             "RealityManipulatorStartingDefaults",
             "OpenRealityManipulatorStartingDefaults",
             () => TildeKey.OpenStartingDefaultsScreen(optionContainer.GetTree())));
+
+        optionContainer.AddChild(CreateSectionHeader(GetLabelText("CardEffectAnimationsSection")));
+        AddAnimationThresholdRow(optionContainer, nameof(FastAnimationMinimumResult),
+            CardEffectAnimationScope.DefaultFastAnimationMinimumResult, CardEffectAnimationScope.FastWaitMultiplier);
+        AddAnimationThresholdRow(optionContainer, nameof(VeryFastAnimationMinimumResult),
+            CardEffectAnimationScope.DefaultVeryFastAnimationMinimumResult, CardEffectAnimationScope.VeryFastWaitMultiplier);
+        AddAnimationThresholdRow(optionContainer, nameof(VeryVeryFastAnimationMinimumResult),
+            CardEffectAnimationScope.DefaultVeryVeryFastAnimationMinimumResult, CardEffectAnimationScope.VeryVeryFastWaitMultiplier);
+        AddAnimationThresholdRow(optionContainer, nameof(ExtremelyFastAnimationMinimumResult),
+            CardEffectAnimationScope.DefaultExtremelyFastAnimationMinimumResult, CardEffectAnimationScope.ExtremelyFastWaitMultiplier);
+        AddAnimationThresholdRow(optionContainer, nameof(InstantAnimationMinimumResult),
+            CardEffectAnimationScope.DefaultInstantAnimationMinimumResult);
 
         optionContainer.AddChild(CreateSectionHeader(GetLabelText("CardModificationsSection")));
         AddMassKeywordOption(optionContainer);
@@ -442,7 +492,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
         }
     }
 
-    private void AddOptionRow(
+    private NConfigOptionRow AddOptionRow(
         Control optionContainer,
         string propertyName,
         Func<PropertyInfo, Control> controlFactory)
@@ -451,7 +501,45 @@ public sealed class LoadoutModConfig : SimpleModConfig
                                 ?? throw new MissingMemberException(GetType().FullName, propertyName);
         Control control = controlFactory(property);
         Control label = CreateRawLabelControl(GetLabelText(propertyName), 28);
-        optionContainer.AddChild(new NConfigOptionRow(ModPrefix, propertyName, label, control));
+        NConfigOptionRow row = new(ModPrefix, propertyName, label, control);
+        optionContainer.AddChild(row);
+        return row;
+    }
+
+    private void AddAnimationThresholdRow(
+        Control optionContainer,
+        string propertyName,
+        int defaultThreshold,
+        float? waitMultiplier = null)
+    {
+        NConfigOptionRow row = AddOptionRow(optionContainer, propertyName, CreateAnimationThresholdControl);
+        CommonHelpers.AttachHoverTips(row, () =>
+        {
+            LocString description = new("settings_ui", waitMultiplier.HasValue
+                ? "LOADOUT-ANIMATION_THRESHOLD.hover.desc"
+                : "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.hover.desc");
+            description.Add("Default", defaultThreshold);
+            if (waitMultiplier.HasValue)
+                description.Add("Speed", (1f / waitMultiplier.Value).ToString("0.##", CultureInfo.InvariantCulture));
+            return [new HoverTip(description)];
+        }, cacheResult: false);
+    }
+
+    private Control CreateAnimationThresholdControl(PropertyInfo property)
+    {
+        NLoadoutNumberStepper stepper = new()
+        {
+            Name = property.Name,
+            CustomMinimumSize = new Vector2(BaseLibDropdownWidth, BaseLibDropdownHeight),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd
+        };
+        stepper.Init((int)property.GetValue(null)!, minimum: 1);
+        stepper.ValueChanged += value =>
+        {
+            property.SetValue(null, value);
+            Changed();
+        };
+        return stepper;
     }
 
     private Control CreateCompanionDropdownControl(PropertyInfo _)

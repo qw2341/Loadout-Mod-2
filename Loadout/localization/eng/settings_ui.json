@@ -1,4 +1,13 @@
 {
+  "LOADOUT-ENABLE_MAP_EDITING_BUTTON.title": "Enable map editing button",
+  "LOADOUT-CARD_EFFECT_ANIMATIONS_SECTION.title": "Animation speed thresholds",
+  "LOADOUT-FAST_ANIMATION_MINIMUM_RESULT.title": "Fast threshold",
+  "LOADOUT-ANIMATION_THRESHOLD.hover.desc": "Animation waits are {Speed}x faster at this repeat count. Default: {Default}. Applies to supported repeated card effects.",
+  "LOADOUT-VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "Very fast threshold",
+  "LOADOUT-VERY_VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "Very very fast threshold",
+  "LOADOUT-EXTREMELY_FAST_ANIMATION_MINIMUM_RESULT.title": "Extremely fast threshold",
+  "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.title": "Instant threshold",
+  "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.hover.desc": "Animation waits are instant at this repeat count. Default: {Default}. Applies to supported repeated card effects.",
   "LOADOUT-MASS_ADD_KEYWORD.title": "Mass add keyword permanently",
   "LOADOUT-SELECT_MASS_KEYWORD.title": "Select keyword...",
   "LOADOUT-MASS_ADD_KEYWORD_CONFIRM_BODY.title": "Are you sure you want to add {Keyword} to all cards?",

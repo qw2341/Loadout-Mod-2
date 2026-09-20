@@ -12,10 +12,12 @@ public static class LoadoutConfigService
 {
     private static bool _enableDeckLoadoutScreen = true;
     private static bool _enableCreatureManipulationPanel = true;
+    private static bool _enableMapEditingButton = true;
     private static bool _enableCustomRuns = true;
 
     public static event Action? DeckLoadoutScreenVisibilityChanged;
     public static event Action? CreatureManipulationPanelVisibilityChanged;
+    public static event Action? MapEditingButtonVisibilityChanged;
     public static event Action? CustomRunsButtonVisibilityChanged;
 
     public static bool EnableDeckLoadoutScreen
@@ -41,6 +43,19 @@ public static class LoadoutConfigService
 
             _enableCreatureManipulationPanel = value;
             CreatureManipulationPanelVisibilityChanged?.Invoke();
+        }
+    }
+
+    public static bool EnableMapEditingButton
+    {
+        get => _enableMapEditingButton;
+        set
+        {
+            if (_enableMapEditingButton == value)
+                return;
+
+            _enableMapEditingButton = value;
+            MapEditingButtonVisibilityChanged?.Invoke();
         }
     }
 

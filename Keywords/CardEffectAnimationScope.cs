@@ -16,11 +16,16 @@ using MegaCrit.Sts2.Core.Settings;
 
 internal static class CardEffectAnimationScope
 {
-    public const int FastAnimationMinimumResult = 8;
-    public const int VeryFastAnimationMinimumResult = 16;
-    public const int VeryVeryFastAnimationMinimumResult = 32;
-    public const int ExtremelyFastAnimationMinimumResult = 50;
-    public const int InstantAnimationMinimumResult = 1000;
+    public const int DefaultFastAnimationMinimumResult = 8;
+    public const int DefaultVeryFastAnimationMinimumResult = 16;
+    public const int DefaultVeryVeryFastAnimationMinimumResult = 32;
+    public const int DefaultExtremelyFastAnimationMinimumResult = 50;
+    public const int DefaultInstantAnimationMinimumResult = 1000;
+    public static int FastAnimationMinimumResult { get; set; } = DefaultFastAnimationMinimumResult;
+    public static int VeryFastAnimationMinimumResult { get; set; } = DefaultVeryFastAnimationMinimumResult;
+    public static int VeryVeryFastAnimationMinimumResult { get; set; } = DefaultVeryVeryFastAnimationMinimumResult;
+    public static int ExtremelyFastAnimationMinimumResult { get; set; } = DefaultExtremelyFastAnimationMinimumResult;
+    public static int InstantAnimationMinimumResult { get; set; } = DefaultInstantAnimationMinimumResult;
     public const float FastWaitMultiplier = 0.8f;
     public const float VeryFastWaitMultiplier = 0.5f;
     public const float VeryVeryFastWaitMultiplier = 0.25f;
@@ -97,14 +102,15 @@ internal static class CardEffectAnimationScope
 
     public static void MarkRepeatedHits(object source, int result)
     {
-        if (result < FastAnimationMinimumResult)
+        AnimationSpeed speed = GetSpeed(result);
+        if (speed == AnimationSpeed.Normal)
             return;
 
         Scope? scope = Find(source);
         if (scope is null)
             return;
 
-        Promote(scope, GetSpeed(result));
+        Promote(scope, speed);
     }
 
     public static void MarkRepeatedCardPlays(
@@ -124,11 +130,11 @@ internal static class CardEffectAnimationScope
 
     private static AnimationSpeed GetSpeed(int count) => count switch
     {
-        >= InstantAnimationMinimumResult => AnimationSpeed.Instant,
-        >= ExtremelyFastAnimationMinimumResult => AnimationSpeed.ExtremelyFast,
-        >= VeryVeryFastAnimationMinimumResult => AnimationSpeed.VeryVeryFast,
-        >= VeryFastAnimationMinimumResult => AnimationSpeed.VeryFast,
-        >= FastAnimationMinimumResult => AnimationSpeed.Faster,
+        _ when count >= InstantAnimationMinimumResult => AnimationSpeed.Instant,
+        _ when count >= ExtremelyFastAnimationMinimumResult => AnimationSpeed.ExtremelyFast,
+        _ when count >= VeryVeryFastAnimationMinimumResult => AnimationSpeed.VeryVeryFast,
+        _ when count >= VeryFastAnimationMinimumResult => AnimationSpeed.VeryFast,
+        _ when count >= FastAnimationMinimumResult => AnimationSpeed.Faster,
         _ => AnimationSpeed.Normal
     };
 
