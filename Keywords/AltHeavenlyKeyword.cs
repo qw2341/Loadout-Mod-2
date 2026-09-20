@@ -11,6 +11,7 @@ public sealed class AltHeavenlyKeyword : LoadoutKeywordModel
 {
     public const string EnergyVar = "LoadoutAltHeavenlyEnergy";
     public const int FastAnimationMinimumResult = 10;
+    public const int VeryFastAnimationMinimumResult = 25;
     public const int ExtremelyFastAnimationMinimumResult = 50;
     public const int InstantAnimationMinimumResult = 1000;
 

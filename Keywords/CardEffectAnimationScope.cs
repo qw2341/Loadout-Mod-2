@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Commands.Builders;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -19,15 +20,16 @@ internal static class CardEffectAnimationScope
     {
         Normal,
         Faster,
+        VeryFast,
         ExtremelyFast,
         Instant
     }
 
     internal sealed class Scope(
-        CardModel card,
+        object source,
         Scope? previous)
     {
-        public CardModel Card { get; } = card;
+        public object Source { get; } = source;
 
         public Scope? Previous { get; } = previous;
 
@@ -73,11 +75,21 @@ internal static class CardEffectAnimationScope
     }
 
     public static void MarkAltHeavenlyResult(CardModel card, int result)
+        => MarkRepeatedHits(card, result);
+
+    public static Scope EnterAttack(AttackCommand attack)
+    {
+        Scope scope = new(attack, Current.Value);
+        Current.Value = scope;
+        return scope;
+    }
+
+    public static void MarkRepeatedHits(object source, int result)
     {
         if (result < AltHeavenlyKeyword.FastAnimationMinimumResult)
             return;
 
-        Scope? scope = Find(card);
+        Scope? scope = Find(source);
         if (scope is null)
             return;
 
@@ -87,6 +99,8 @@ internal static class CardEffectAnimationScope
                 AnimationSpeed.Instant,
             >= AltHeavenlyKeyword.ExtremelyFastAnimationMinimumResult =>
                 AnimationSpeed.ExtremelyFast,
+            >= AltHeavenlyKeyword.VeryFastAnimationMinimumResult =>
+                AnimationSpeed.VeryFast,
             _ => AnimationSpeed.Faster
         };
         Promote(scope, speed);
@@ -174,13 +188,13 @@ internal static class CardEffectAnimationScope
             Current.Value = scope.Previous;
     }
 
-    private static Scope? Find(CardModel card)
+    private static Scope? Find(object source)
     {
         for (Scope? scope = Current.Value;
              scope is not null;
              scope = scope.Previous)
         {
-            if (ReferenceEquals(scope.Card, card))
+            if (ReferenceEquals(scope.Source, source))
                 return scope;
         }
 
@@ -235,6 +249,7 @@ internal static class CardEffectFastModePatch
         switch (CardEffectAnimationScope.CurrentSpeed)
         {
             case CardEffectAnimationScope.AnimationSpeed.Faster:
+            case CardEffectAnimationScope.AnimationSpeed.VeryFast:
             case CardEffectAnimationScope.AnimationSpeed.ExtremelyFast:
                 if (__result < FastModeType.Fast)
                     __result = FastModeType.Fast;
@@ -252,17 +267,22 @@ internal static class CardEffectFastModePatch
     typeof(float),
     typeof(CancellationToken),
     typeof(bool))]
-internal static class CardEffectExtremelyFastWaitPatch
+internal static class CardEffectAcceleratedWaitPatch
 {
-    private const float WaitMultiplier = 0.01f;
+    private const float VeryFastWaitMultiplier = 0.1f;
+    private const float ExtremelyFastWaitMultiplier = 0.01f;
 
     [HarmonyPrefix]
     private static void Prefix(ref float seconds)
     {
-        if (CardEffectAnimationScope.CurrentSpeed
-            == CardEffectAnimationScope.AnimationSpeed.ExtremelyFast)
+        switch (CardEffectAnimationScope.CurrentSpeed)
         {
-            seconds *= WaitMultiplier;
+            case CardEffectAnimationScope.AnimationSpeed.VeryFast:
+                seconds *= VeryFastWaitMultiplier;
+                break;
+            case CardEffectAnimationScope.AnimationSpeed.ExtremelyFast:
+                seconds *= ExtremelyFastWaitMultiplier;
+                break;
         }
     }
 }
