@@ -6,6 +6,7 @@
   "LOADOUT-VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "매우 빠름 임계값",
   "LOADOUT-VERY_VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "초고속 임계값",
   "LOADOUT-EXTREMELY_FAST_ANIMATION_MINIMUM_RESULT.title": "극초고속 임계값",
+  "LOADOUT-ALMOST_INSTANT_ANIMATION_MINIMUM_RESULT.title": "거의 즉시 임계값",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.title": "즉시 임계값",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.hover.desc": "이 반복 횟수에 도달하면 애니메이션 대기가 사라집니다. 기본값: {Default}. 지원되는 반복 카드 효과에 적용됩니다.",
   "LOADOUT-MASS_ADD_KEYWORD.title": "모든 카드에 키워드 영구 추가",

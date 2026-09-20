@@ -6,6 +6,7 @@
   "LOADOUT-VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "Seuil très rapide",
   "LOADOUT-VERY_VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "Seuil ultra-rapide",
   "LOADOUT-EXTREMELY_FAST_ANIMATION_MINIMUM_RESULT.title": "Seuil extrêmement rapide",
+  "LOADOUT-ALMOST_INSTANT_ANIMATION_MINIMUM_RESULT.title": "Seuil presque instantané",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.title": "Seuil instantané",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.hover.desc": "À ce nombre de répétitions, les attentes des animations sont instantanées. Par défaut : {Default}. Concerne les effets de cartes répétés pris en charge.",
   "LOADOUT-MASS_ADD_KEYWORD.title": "Ajouter un mot-clé définitivement à toutes les cartes",

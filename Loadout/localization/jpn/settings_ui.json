@@ -6,6 +6,7 @@
   "LOADOUT-VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "より高速のしきい値",
   "LOADOUT-VERY_VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "超高速のしきい値",
   "LOADOUT-EXTREMELY_FAST_ANIMATION_MINIMUM_RESULT.title": "最高速のしきい値",
+  "LOADOUT-ALMOST_INSTANT_ANIMATION_MINIMUM_RESULT.title": "ほぼ瞬時のしきい値",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.title": "瞬時のしきい値",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.hover.desc": "この繰り返し回数に達すると、アニメーションの待機がなくなります。初期値：{Default}。対応するカード効果の繰り返しに適用されます。",
   "LOADOUT-MASS_ADD_KEYWORD.title": "全カードにキーワードを永続的に追加",

@@ -6,6 +6,7 @@
   "LOADOUT-VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "Very fast threshold",
   "LOADOUT-VERY_VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "Very very fast threshold",
   "LOADOUT-EXTREMELY_FAST_ANIMATION_MINIMUM_RESULT.title": "Extremely fast threshold",
+  "LOADOUT-ALMOST_INSTANT_ANIMATION_MINIMUM_RESULT.title": "Almost instant threshold",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.title": "Instant threshold",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.hover.desc": "Animation waits are instant at this repeat count. Default: {Default}. Applies to supported repeated card effects.",
   "LOADOUT-MASS_ADD_KEYWORD.title": "Mass add keyword permanently",

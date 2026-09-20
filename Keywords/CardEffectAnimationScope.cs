@@ -20,16 +20,19 @@ internal static class CardEffectAnimationScope
     public const int DefaultVeryFastAnimationMinimumResult = 16;
     public const int DefaultVeryVeryFastAnimationMinimumResult = 32;
     public const int DefaultExtremelyFastAnimationMinimumResult = 50;
-    public const int DefaultInstantAnimationMinimumResult = 1000;
+    public const int DefaultAlmostInstantAnimationMinimumResult = 1000;
+    public const int DefaultInstantAnimationMinimumResult = 10000;
     public static int FastAnimationMinimumResult { get; set; } = DefaultFastAnimationMinimumResult;
     public static int VeryFastAnimationMinimumResult { get; set; } = DefaultVeryFastAnimationMinimumResult;
     public static int VeryVeryFastAnimationMinimumResult { get; set; } = DefaultVeryVeryFastAnimationMinimumResult;
     public static int ExtremelyFastAnimationMinimumResult { get; set; } = DefaultExtremelyFastAnimationMinimumResult;
+    public static int AlmostInstantAnimationMinimumResult { get; set; } = DefaultAlmostInstantAnimationMinimumResult;
     public static int InstantAnimationMinimumResult { get; set; } = DefaultInstantAnimationMinimumResult;
     public const float FastWaitMultiplier = 0.8f;
     public const float VeryFastWaitMultiplier = 0.5f;
     public const float VeryVeryFastWaitMultiplier = 0.25f;
     public const float ExtremelyFastWaitMultiplier = 0.01f;
+    public const float AlmostInstantWaitMultiplier = 0.001f;
 
     internal enum AnimationSpeed
     {
@@ -38,6 +41,7 @@ internal static class CardEffectAnimationScope
         VeryFast,
         VeryVeryFast,
         ExtremelyFast,
+        AlmostInstant,
         Instant
     }
 
@@ -131,6 +135,7 @@ internal static class CardEffectAnimationScope
     private static AnimationSpeed GetSpeed(int count) => count switch
     {
         _ when count >= InstantAnimationMinimumResult => AnimationSpeed.Instant,
+        _ when count >= AlmostInstantAnimationMinimumResult => AnimationSpeed.AlmostInstant,
         _ when count >= ExtremelyFastAnimationMinimumResult => AnimationSpeed.ExtremelyFast,
         _ when count >= VeryVeryFastAnimationMinimumResult => AnimationSpeed.VeryVeryFast,
         _ when count >= VeryFastAnimationMinimumResult => AnimationSpeed.VeryFast,
@@ -220,6 +225,7 @@ internal static class CardEffectFastModePatch
             case CardEffectAnimationScope.AnimationSpeed.VeryFast:
             case CardEffectAnimationScope.AnimationSpeed.VeryVeryFast:
             case CardEffectAnimationScope.AnimationSpeed.ExtremelyFast:
+            case CardEffectAnimationScope.AnimationSpeed.AlmostInstant:
                 if (__result < FastModeType.Fast)
                     __result = FastModeType.Fast;
                 break;
@@ -254,6 +260,9 @@ internal static class CardEffectAcceleratedWaitPatch
                 break;
             case CardEffectAnimationScope.AnimationSpeed.ExtremelyFast:
                 seconds *= CardEffectAnimationScope.ExtremelyFastWaitMultiplier;
+                break;
+            case CardEffectAnimationScope.AnimationSpeed.AlmostInstant:
+                seconds *= CardEffectAnimationScope.AlmostInstantWaitMultiplier;
                 break;
         }
     }

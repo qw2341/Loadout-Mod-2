@@ -6,6 +6,7 @@
   "LOADOUT-VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "Umbral muy rápido",
   "LOADOUT-VERY_VERY_FAST_ANIMATION_MINIMUM_RESULT.title": "Umbral ultrarrápido",
   "LOADOUT-EXTREMELY_FAST_ANIMATION_MINIMUM_RESULT.title": "Umbral extremadamente rápido",
+  "LOADOUT-ALMOST_INSTANT_ANIMATION_MINIMUM_RESULT.title": "Umbral casi instantáneo",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.title": "Umbral instantáneo",
   "LOADOUT-INSTANT_ANIMATION_MINIMUM_RESULT.hover.desc": "Con este número de repeticiones, las esperas de animación son instantáneas. Predeterminado: {Default}. Se aplica a los efectos repetidos de cartas compatibles.",
   "LOADOUT-MASS_ADD_KEYWORD.title": "Añadir palabra clave permanentemente a todas las cartas",

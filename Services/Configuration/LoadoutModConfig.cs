@@ -104,6 +104,12 @@ public sealed class LoadoutModConfig : SimpleModConfig
         set => CardEffectAnimationScope.ExtremelyFastAnimationMinimumResult = Math.Max(1, value);
     }
 
+    public static int AlmostInstantAnimationMinimumResult
+    {
+        get => CardEffectAnimationScope.AlmostInstantAnimationMinimumResult;
+        set => CardEffectAnimationScope.AlmostInstantAnimationMinimumResult = Math.Max(1, value);
+    }
+
     public static int InstantAnimationMinimumResult
     {
         get => CardEffectAnimationScope.InstantAnimationMinimumResult;
@@ -187,6 +193,8 @@ public sealed class LoadoutModConfig : SimpleModConfig
             CardEffectAnimationScope.DefaultVeryVeryFastAnimationMinimumResult, CardEffectAnimationScope.VeryVeryFastWaitMultiplier);
         AddAnimationThresholdRow(optionContainer, nameof(ExtremelyFastAnimationMinimumResult),
             CardEffectAnimationScope.DefaultExtremelyFastAnimationMinimumResult, CardEffectAnimationScope.ExtremelyFastWaitMultiplier);
+        AddAnimationThresholdRow(optionContainer, nameof(AlmostInstantAnimationMinimumResult),
+            CardEffectAnimationScope.DefaultAlmostInstantAnimationMinimumResult, CardEffectAnimationScope.AlmostInstantWaitMultiplier);
         AddAnimationThresholdRow(optionContainer, nameof(InstantAnimationMinimumResult),
             CardEffectAnimationScope.DefaultInstantAnimationMinimumResult);
 
