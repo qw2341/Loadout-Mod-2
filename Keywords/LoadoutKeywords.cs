@@ -16,6 +16,7 @@ public static class LoadoutKeywords
     public const string PassingKey = "Passing";
     public const string LividKey = "Livid";
     public const string XCostKey = "XCost";
+    public const string XValueKey = "XValue";
     public const string InfiniteUpgradeKey = "InfiniteUpgrade";
     public const string JokeInfiniteUpgradeKey = "JokeInfiniteUpgrade";
     public const string LessonLearnedKey = "LessonLearned";
@@ -171,6 +172,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("X_COST")]
     public static CardKeyword XCost;
+
+    [CustomEnum("X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
+    public static CardKeyword XValue;
 
     [CustomEnum("INFINITE_UPGRADE"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword InfiniteUpgrade;

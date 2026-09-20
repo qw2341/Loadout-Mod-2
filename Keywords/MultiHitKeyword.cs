@@ -184,9 +184,9 @@ public static class MultiHitKeywordPatches
 
     public static AttackCommand Attack(DamageVar damage)
     {
-        if (!IsOriginalDamage(damage, out _))
+        if (!IsOriginalDamage(damage, out CardModel card))
             return DamageCmd.Attack(damage.BaseValue);
-        AttackCommand command = DamageCmd.Attack(1m);
+        AttackCommand command = DamageCmd.Attack(XValueKeywordRuntime.GetInstanceValue(card));
         AttackHits.Add(command, new HitCount(MultiHitKeyword.GetHitCount(damage.BaseValue)));
         return command;
     }
@@ -264,6 +264,7 @@ public static class MultiHitKeywordPatches
         ValueProp props, Creature? dealer, CardModel cardSource, CardPlay? cardPlay)
     {
         CardEffectAnimationScope.MarkAltHeavenlyResult(cardSource, count);
+        decimal amount = XValueKeywordRuntime.GetInstanceValue(cardSource);
         List<Creature> remainingTargets = targets.ToList();
         List<DamageResult> results = [];
         for (int i = 0; i < count && dealer?.IsDead != true; i++)
@@ -271,7 +272,7 @@ public static class MultiHitKeywordPatches
             remainingTargets.RemoveAll(target => !target.IsAlive);
             if (remainingTargets.Count == 0)
                 break;
-            results.AddRange(await Sts2Compatibility.Damage(choiceContext, remainingTargets, 1m, props, dealer, cardSource, cardPlay));
+            results.AddRange(await Sts2Compatibility.Damage(choiceContext, remainingTargets, amount, props, dealer, cardSource, cardPlay));
         }
         return results;
     }

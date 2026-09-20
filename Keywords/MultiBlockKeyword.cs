@@ -115,9 +115,10 @@ public static class MultiBlockKeywordPatches
         Creature creature, int count, ValueProp props, CardPlay? cardPlay, bool fast, CardModel card)
     {
         CardEffectAnimationScope.MarkAltHeavenlyResult(card, count);
+        decimal amount = XValueKeywordRuntime.GetInstanceValue(card);
         decimal total = 0m;
         for (int i = 0; i < count && !creature.IsDead && !CombatManager.Instance.IsOverOrEnding; i++)
-            total += await CreatureCmd.GainBlock(creature, 1m, props, cardPlay, fast);
+            total += await CreatureCmd.GainBlock(creature, amount, props, cardPlay, fast);
         return total;
     }
 }

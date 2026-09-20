@@ -359,5 +359,7 @@
   "LOADOUT-MULTI_HIT.title": "!?Multigolpe?!",
   "LOADOUT-MULTI_HIT.description": "Divide el valor de Daño original en esa cantidad de golpes de 1 de daño. Las mejoras y los cambios directos a Daño modifican la cantidad de golpes. La Fuerza y los demás modificadores se aplican a cada golpe. Las repeticiones existentes se conservan.",
   "LOADOUT-MULTI_BLOCK.title": "!?Multibloqueo?!",
-  "LOADOUT-MULTI_BLOCK.description": "Divide el valor de Bloqueo base en esa cantidad de ganancias de 1 de Bloqueo."
+  "LOADOUT-MULTI_BLOCK.description": "Divide el valor de Bloqueo base en esa cantidad de ganancias de 1 de Bloqueo.",
+  "LOADOUT-X_VALUE.title": "Valor X",
+  "LOADOUT-X_VALUE.description": "Cuesta X de Energía. Todos los valores de esta carta son X. Sustituye las repeticiones adicionales de la palabra clave Coste X."
 }
