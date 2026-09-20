@@ -146,7 +146,7 @@ public static class XValueHighlightPatch
     public static void Postfix(DynamicVar __instance, ref string __result)
     {
         if (XValueKeywordRuntime.HasXValue(__instance))
-            __result = LocManager.Instance?.Language is "zhs" or "zht" ? " X " : "X";
+            __result = XValueKeywordRuntime.FormatValue(__instance);
     }
 }
 

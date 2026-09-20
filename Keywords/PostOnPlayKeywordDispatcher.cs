@@ -70,6 +70,7 @@ internal static class PostOnPlayKeywordDispatcher
         CardPlay cardPlay = __1;
         List<KeywordEffectState>? effects = null;
         int executionCount = suppressOriginal
+                             && !LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue)
                              && LoadoutKeywords.Has(
                                  __instance,
                                  LoadoutKeywords.XCost)

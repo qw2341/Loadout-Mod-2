@@ -47,7 +47,8 @@ public static class XCostKeywordMechanics
         bool canonicalCostsX = canonical?.EnergyCost.CostsX ?? false;
         bool explicitlyDisabled =
             overrides.TryGetValue(LoadoutKeywords.XCostKey, out requested) && !requested;
-        bool shouldCostX = enabled || (canonicalCostsX && !explicitlyDisabled);
+        bool shouldCostX = XValueKeyword.Instance.IsEnabled(card, overrides)
+                           || enabled || (canonicalCostsX && !explicitlyDisabled);
 
         if (card.EnergyCost.CostsX == shouldCostX)
         {
@@ -121,6 +122,7 @@ public static class XCostOnPlayPatch
     {
         __state = 0;
         if (IsRepeating(__instance, __1)
+            || LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue)
             || !LoadoutKeywords.Has(__instance, LoadoutKeywords.XCost))
         {
             return true;

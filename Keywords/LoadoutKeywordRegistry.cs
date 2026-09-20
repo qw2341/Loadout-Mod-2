@@ -30,6 +30,7 @@ public static class LoadoutKeywordRegistry
         PassingKeyword.Instance,
         LividKeyword.Instance,
         XCostKeyword.Instance,
+        XValueKeyword.Instance,
         InfiniteUpgradeKeyword.Instance,
         JokeInfiniteUpgradeKeyword.Instance,
         HeavenlyKeyword.Instance,
@@ -495,6 +496,8 @@ public static class LoadoutKeywordRegistry
         CardModel card,
         IReadOnlyDictionary<string, bool>? overrides = null)
     {
+        if (XValueKeyword.Instance.IsEnabled(card, overrides))
+            XValueKeywordRuntime.Prepare(card);
         if (MultiHitKeyword.Instance.IsEnabled(card, overrides))
             MultiHitKeywordPatches.Prepare(card);
         if (MultiBlockKeyword.Instance.IsEnabled(card, overrides))
