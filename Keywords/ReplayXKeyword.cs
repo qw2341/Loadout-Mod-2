@@ -10,10 +10,6 @@ using MegaCrit.Sts2.Core.Models;
 
 public sealed class ReplayXKeyword : LoadoutKeywordModel
 {
-    public const int FastAnimationAdditionalPlayThreshold = 10;
-    public const int ExtremelyFastAnimationAdditionalPlayThreshold = 50;
-    public const int InstantAnimationAdditionalPlayThreshold = 1000;
-
     public static ReplayXKeyword Instance { get; } = new();
 
     private ReplayXKeyword()
@@ -46,7 +42,7 @@ internal static class ReplayXModifyCardPlayCountPatch
             return;
 
         int additionalPlayCount = ReplayXKeyword.ResolveReplayCount(card);
-        CardEffectAnimationScope.MarkReplayXReplay(
+        CardEffectAnimationScope.MarkRepeatedCardPlays(
             card,
             additionalPlayCount);
         playCount += additionalPlayCount;

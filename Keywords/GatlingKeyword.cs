@@ -16,9 +16,6 @@ public sealed class GatlingKeyword : LoadoutKeywordModel
         "LoadoutGatlingChancePercentage";
     public const string AdditionalPlayCountVar =
         "LoadoutGatlingAdditionalPlayCount";
-    public const int FastAnimationAdditionalPlayThreshold = 10;
-    public const int ExtremelyFastAnimationAdditionalPlayThreshold = 50;
-    public const int InstantAnimationAdditionalPlayThreshold = 1000;
 
     private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition>
         VariableDefinitions =
@@ -95,7 +92,7 @@ internal static class GatlingModifyCardPlayCountPatch
             return;
         }
 
-        CardEffectAnimationScope.MarkGatlingReplay(
+        CardEffectAnimationScope.MarkRepeatedCardPlays(
             card,
             additionalPlayCount);
         playCount += additionalPlayCount;

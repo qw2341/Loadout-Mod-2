@@ -210,7 +210,7 @@ internal static class MegaGatlingModifyCardPlayCountPatch
             return;
 
         int additionalPlayCount = totalPlayCount - 1;
-        CardEffectAnimationScope.MarkMegaGatlingReplay(
+        CardEffectAnimationScope.MarkRepeatedCardPlays(
             card,
             additionalPlayCount);
         playCount += additionalPlayCount;

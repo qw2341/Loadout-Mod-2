@@ -16,6 +16,15 @@ using MegaCrit.Sts2.Core.Settings;
 
 internal static class CardEffectAnimationScope
 {
+    public const int FastAnimationMinimumResult = 8;
+    public const int VeryFastAnimationMinimumResult = 10;
+    public const int ExtremelyFastAnimationMinimumResult = 50;
+    public const int InstantAnimationMinimumResult = 1000;
+    public const float FastWaitMultiplier = 0.8f;
+    public const float VeryFastWaitMultiplier = 0.5f;
+    public const float VeryVeryFastWaitMultiplier = 0.25f;
+    public const float ExtremelyFastWaitMultiplier = 0.01f;
+
     internal enum AnimationSpeed
     {
         Normal,
@@ -86,68 +95,19 @@ internal static class CardEffectAnimationScope
 
     public static void MarkRepeatedHits(object source, int result)
     {
-        if (result < AltHeavenlyKeyword.FastAnimationMinimumResult)
+        if (result < FastAnimationMinimumResult)
             return;
 
         Scope? scope = Find(source);
         if (scope is null)
             return;
 
-        AnimationSpeed speed = result switch
-        {
-            >= AltHeavenlyKeyword.InstantAnimationMinimumResult =>
-                AnimationSpeed.Instant,
-            >= AltHeavenlyKeyword.ExtremelyFastAnimationMinimumResult =>
-                AnimationSpeed.ExtremelyFast,
-            >= AltHeavenlyKeyword.VeryFastAnimationMinimumResult =>
-                AnimationSpeed.VeryFast,
-            _ => AnimationSpeed.Faster
-        };
-        Promote(scope, speed);
+        Promote(scope, GetSpeed(result));
     }
 
-    public static void MarkGatlingReplay(
+    public static void MarkRepeatedCardPlays(
         CardModel card,
         int additionalPlayCount)
-    {
-        MarkRepeatedCardPlays(
-            card,
-            additionalPlayCount,
-            GatlingKeyword.FastAnimationAdditionalPlayThreshold,
-            GatlingKeyword.ExtremelyFastAnimationAdditionalPlayThreshold,
-            GatlingKeyword.InstantAnimationAdditionalPlayThreshold);
-    }
-
-    public static void MarkReplayXReplay(
-        CardModel card,
-        int additionalPlayCount)
-    {
-        MarkRepeatedCardPlays(
-            card,
-            additionalPlayCount,
-            ReplayXKeyword.FastAnimationAdditionalPlayThreshold,
-            ReplayXKeyword.ExtremelyFastAnimationAdditionalPlayThreshold,
-            ReplayXKeyword.InstantAnimationAdditionalPlayThreshold);
-    }
-
-    public static void MarkMegaGatlingReplay(
-        CardModel card,
-        int additionalPlayCount)
-    {
-        MarkRepeatedCardPlays(
-            card,
-            additionalPlayCount,
-            GatlingKeyword.FastAnimationAdditionalPlayThreshold,
-            GatlingKeyword.ExtremelyFastAnimationAdditionalPlayThreshold,
-            GatlingKeyword.InstantAnimationAdditionalPlayThreshold);
-    }
-
-    private static void MarkRepeatedCardPlays(
-        CardModel card,
-        int additionalPlayCount,
-        int fastAnimationThreshold,
-        int extremelyFastAnimationThreshold,
-        int instantAnimationThreshold)
     {
         if (additionalPlayCount <= 0)
             return;
@@ -157,18 +117,17 @@ internal static class CardEffectAnimationScope
             return;
 
         scope.SuppressMultiCardPlay = true;
-        AnimationSpeed speed = additionalPlayCount switch
-        {
-            _ when additionalPlayCount > instantAnimationThreshold =>
-                AnimationSpeed.Instant,
-            _ when additionalPlayCount > extremelyFastAnimationThreshold =>
-                AnimationSpeed.ExtremelyFast,
-            _ when additionalPlayCount > fastAnimationThreshold =>
-                AnimationSpeed.Faster,
-            _ => AnimationSpeed.Normal
-        };
-        Promote(scope, speed);
+        Promote(scope, GetSpeed(additionalPlayCount));
     }
+
+    private static AnimationSpeed GetSpeed(int count) => count switch
+    {
+        >= InstantAnimationMinimumResult => AnimationSpeed.Instant,
+        >= ExtremelyFastAnimationMinimumResult => AnimationSpeed.ExtremelyFast,
+        >= VeryFastAnimationMinimumResult => AnimationSpeed.VeryFast,
+        >= FastAnimationMinimumResult => AnimationSpeed.Faster,
+        _ => AnimationSpeed.Normal
+    };
 
     private static void Promote(Scope scope, AnimationSpeed speed)
     {
@@ -269,19 +228,16 @@ internal static class CardEffectFastModePatch
     typeof(bool))]
 internal static class CardEffectAcceleratedWaitPatch
 {
-    private const float VeryFastWaitMultiplier = 0.1f;
-    private const float ExtremelyFastWaitMultiplier = 0.01f;
-
     [HarmonyPrefix]
     private static void Prefix(ref float seconds)
     {
         switch (CardEffectAnimationScope.CurrentSpeed)
         {
             case CardEffectAnimationScope.AnimationSpeed.VeryFast:
-                seconds *= VeryFastWaitMultiplier;
+                seconds *= CardEffectAnimationScope.VeryFastWaitMultiplier;
                 break;
             case CardEffectAnimationScope.AnimationSpeed.ExtremelyFast:
-                seconds *= ExtremelyFastWaitMultiplier;
+                seconds *= CardEffectAnimationScope.ExtremelyFastWaitMultiplier;
                 break;
         }
     }
