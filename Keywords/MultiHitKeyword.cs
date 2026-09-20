@@ -10,6 +10,7 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using HarmonyLib;
+using Loadout.Services.Compatibility;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Commands.Builders;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -67,8 +68,7 @@ public static class MultiHitKeywordPatches
     private static readonly MethodInfo DamageGetter = AccessTools.PropertyGetter(typeof(DynamicVarSet), nameof(DynamicVarSet.Damage));
     private static readonly MethodInfo BaseValueGetter = AccessTools.PropertyGetter(typeof(DynamicVar), nameof(DynamicVar.BaseValue));
     private static readonly MethodInfo AttackMethod = AccessTools.Method(typeof(DamageCmd), nameof(DamageCmd.Attack), [typeof(decimal)]);
-    private static readonly MethodInfo DamageMethod = AccessTools.Method(typeof(CreatureCmd), nameof(CreatureCmd.Damage),
-        [typeof(PlayerChoiceContext), typeof(Creature), typeof(decimal), typeof(ValueProp), typeof(CardModel), typeof(CardPlay)]);
+    private static readonly MethodInfo DamageMethod = Sts2Compatibility.SingleTargetDamageMethod;
     private static bool Installed;
 
     private sealed record HitCount(int Count);
@@ -94,12 +94,14 @@ public static class MultiHitKeywordPatches
                 postfix: new HarmonyMethod(typeof(MultiHitKeywordPatches), nameof(HighlightPostfix)));
             Harmony.Patch(AccessTools.Method(typeof(Hook), nameof(Hook.ModifyAttackHitCount)),
                 postfix: new HarmonyMethod(typeof(MultiHitKeywordPatches), nameof(HitCountPostfix)));
-            Harmony.Patch(AccessTools.Method(typeof(CreatureCmd), nameof(CreatureCmd.Damage),
-                    [typeof(PlayerChoiceContext), typeof(Creature), typeof(DamageVar), typeof(CardModel), typeof(CardPlay)]),
-                prefix: new HarmonyMethod(typeof(MultiHitKeywordPatches), nameof(DamagePrefix)));
-            Harmony.Patch(AccessTools.Method(typeof(CreatureCmd), nameof(CreatureCmd.Damage),
-                    [typeof(PlayerChoiceContext), typeof(IEnumerable<Creature>), typeof(DamageVar), typeof(Creature), typeof(CardModel), typeof(CardPlay)]),
-                prefix: new HarmonyMethod(typeof(MultiHitKeywordPatches), nameof(DamageTargetsPrefix)));
+            Harmony.Patch(Sts2Compatibility.SingleTargetDamageVarMethod,
+                prefix: new HarmonyMethod(typeof(MultiHitKeywordPatches),
+                    Sts2Compatibility.SingleTargetDamageVarMethod.GetParameters().Length == 5
+                        ? nameof(DamagePrefix) : nameof(LegacyDamagePrefix)));
+            Harmony.Patch(Sts2Compatibility.MultiTargetDamageVarMethod,
+                prefix: new HarmonyMethod(typeof(MultiHitKeywordPatches),
+                    Sts2Compatibility.MultiTargetDamageVarMethod.GetParameters().Length == 6
+                        ? nameof(DamageTargetsPrefix) : nameof(LegacyDamageTargetsPrefix)));
             Installed = true;
         }
 
@@ -160,6 +162,13 @@ public static class MultiHitKeywordPatches
                     instructions[i].opcode = OpCodes.Nop;
                     instructions[i].operand = null;
                     next.operand = AccessTools.Method(typeof(MultiHitKeywordPatches), nameof(Damage));
+                    if (DamageMethod.GetParameters().Length == 5)
+                    {
+                        CodeInstruction cardPlay = new(OpCodes.Ldnull);
+                        cardPlay.MoveLabelsFrom(next);
+                        cardPlay.MoveBlocksFrom(next);
+                        instructions.Insert(j, cardPlay);
+                    }
                     changed = true;
                     break;
                 }
@@ -220,13 +229,18 @@ public static class MultiHitKeywordPatches
         return false;
     }
 
+    public static bool LegacyDamagePrefix(
+        PlayerChoiceContext choiceContext, Creature target, DamageVar damageVar,
+        CardModel cardSource, ref Task<IEnumerable<DamageResult>> __result) =>
+        DamagePrefix(choiceContext, target, damageVar, cardSource, null, ref __result);
+
     public static Task<IEnumerable<DamageResult>> Damage(
         PlayerChoiceContext choiceContext, Creature target, DamageVar damage,
         ValueProp props, CardModel cardSource, CardPlay? cardPlay)
     {
         return IsOriginalDamage(damage, out _)
             ? DamageRepeated(choiceContext, [target], MultiHitKeyword.GetHitCount(damage.BaseValue), props, cardSource.Owner.Creature, cardSource, cardPlay)
-            : CreatureCmd.Damage(choiceContext, target, damage.BaseValue, props, cardSource, cardPlay);
+            : Sts2Compatibility.Damage(choiceContext, [target], damage.BaseValue, props, cardSource.Owner.Creature, cardSource, cardPlay);
     }
 
     public static bool DamageTargetsPrefix(
@@ -240,6 +254,11 @@ public static class MultiHitKeywordPatches
         return false;
     }
 
+    public static bool LegacyDamageTargetsPrefix(
+        PlayerChoiceContext choiceContext, IEnumerable<Creature> targets, DamageVar damageVar,
+        Creature? dealer, CardModel? cardSource, ref Task<IEnumerable<DamageResult>> __result) =>
+        DamageTargetsPrefix(choiceContext, targets, damageVar, dealer, cardSource, null, ref __result);
+
     private static async Task<IEnumerable<DamageResult>> DamageRepeated(
         PlayerChoiceContext choiceContext, IEnumerable<Creature> targets, int count,
         ValueProp props, Creature? dealer, CardModel cardSource, CardPlay? cardPlay)
@@ -252,7 +271,7 @@ public static class MultiHitKeywordPatches
             remainingTargets.RemoveAll(target => !target.IsAlive);
             if (remainingTargets.Count == 0)
                 break;
-            results.AddRange(await CreatureCmd.Damage(choiceContext, remainingTargets, 1m, props, dealer, cardSource, cardPlay));
+            results.AddRange(await Sts2Compatibility.Damage(choiceContext, remainingTargets, 1m, props, dealer, cardSource, cardPlay));
         }
         return results;
     }

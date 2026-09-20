@@ -26,6 +26,7 @@ using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Hooks;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -247,6 +248,38 @@ internal static class Sts2Compatibility
     internal static MethodInfo MultiTargetDamageMethod { get; } = ResolveMultiTargetDamageMethod();
     internal static bool UsesNewMultiTargetDamage { get; } =
         MultiTargetDamageMethod.GetParameters().Length == 7;
+
+    internal static MethodInfo SingleTargetDamageMethod { get; } = ResolveCardDamageMethod(
+        [typeof(PlayerChoiceContext), typeof(Creature), typeof(decimal), typeof(ValueProp), typeof(CardModel)]);
+    internal static MethodInfo SingleTargetDamageVarMethod { get; } = ResolveCardDamageMethod(
+        [typeof(PlayerChoiceContext), typeof(Creature), typeof(DamageVar), typeof(CardModel)]);
+    internal static MethodInfo MultiTargetDamageVarMethod { get; } = ResolveCardDamageMethod(
+        [typeof(PlayerChoiceContext), typeof(IEnumerable<Creature>), typeof(DamageVar), typeof(Creature), typeof(CardModel)]);
+
+    private static readonly Func<PlayerChoiceContext, IEnumerable<Creature>, decimal, ValueProp,
+        Creature?, CardModel?, CardPlay?, Task<IEnumerable<DamageResult>>> InvokeCardDamage = CreateCardDamageInvoker();
+
+    internal static Task<IEnumerable<DamageResult>> Damage(
+        PlayerChoiceContext choiceContext, IEnumerable<Creature> targets, decimal amount,
+        ValueProp props, Creature? dealer, CardModel? cardSource, CardPlay? cardPlay) =>
+        InvokeCardDamage(choiceContext, targets, amount, props, dealer, cardSource, cardPlay);
+
+    private static MethodInfo ResolveCardDamageMethod(Type[] legacyParameters) =>
+        AccessTools.Method(typeof(CreatureCmd), nameof(CreatureCmd.Damage), [.. legacyParameters, typeof(CardPlay)])
+        ?? AccessTools.Method(typeof(CreatureCmd), nameof(CreatureCmd.Damage), legacyParameters)
+        ?? throw new MissingMethodException(typeof(CreatureCmd).FullName, "Damage with or without CardPlay");
+
+    private static Func<PlayerChoiceContext, IEnumerable<Creature>, decimal, ValueProp,
+        Creature?, CardModel?, CardPlay?, Task<IEnumerable<DamageResult>>> CreateCardDamageInvoker()
+    {
+        Type[] types = [typeof(PlayerChoiceContext), typeof(IEnumerable<Creature>), typeof(decimal),
+            typeof(ValueProp), typeof(Creature), typeof(CardModel), typeof(CardPlay)];
+        ParameterExpression[] parameters = types.Select(type => Expression.Parameter(type)).ToArray();
+        return Expression.Lambda<Func<PlayerChoiceContext, IEnumerable<Creature>, decimal, ValueProp,
+            Creature?, CardModel?, CardPlay?, Task<IEnumerable<DamageResult>>>>(
+            Expression.Call(MultiTargetDamageMethod, parameters.Take(MultiTargetDamageMethod.GetParameters().Length)),
+            parameters).Compile();
+    }
 
     private static readonly MethodInfo? AttackCommandCardPlayGetter =
         AccessTools.PropertyGetter(typeof(AttackCommand), "CardPlay");
