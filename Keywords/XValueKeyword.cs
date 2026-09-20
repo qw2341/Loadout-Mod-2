@@ -11,7 +11,9 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
+using MegaCrit.Sts2.Core.Localization.Formatters;
 using MegaCrit.Sts2.Core.Models;
+using SmartFormat.Core.Extensions;
 
 public sealed class XValueKeyword : LoadoutKeywordModel
 {
@@ -147,6 +149,23 @@ public static class XValueHighlightPatch
     {
         if (XValueKeywordRuntime.HasXValue(__instance))
             __result = XValueKeywordRuntime.FormatValue(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(EnergyIconsFormatter), nameof(EnergyIconsFormatter.TryEvaluateFormat))]
+public static class XValueEnergyIconsPatch
+{
+    [HarmonyPrefix]
+    public static bool Prefix(IFormattingInfo formattingInfo, ref bool __result)
+    {
+        if (formattingInfo.CurrentValue is not DynamicVar variable
+            || !XValueKeywordRuntime.HasXValue(variable))
+            return true;
+        string prefix = XValueKeywordRuntime.GetEnergyPrefix(variable);
+        string value = LocManager.Instance?.Language is "zhs" or "zht" ? " X" : "X";
+        formattingInfo.Write($"{value} [img]res://images/packed/sprite_fonts/{prefix}_energy_icon.png[/img]");
+        __result = true;
+        return false;
     }
 }
 

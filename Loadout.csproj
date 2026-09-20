@@ -47,6 +47,10 @@
     <Reference Include="sts2">
       <HintPath>E:\SteamLibrary\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64\sts2.dll</HintPath>
     </Reference>
+    <Reference Include="SmartFormat">
+      <HintPath>$(Sts2DataDir)/SmartFormat.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
     <ItemGroup>
