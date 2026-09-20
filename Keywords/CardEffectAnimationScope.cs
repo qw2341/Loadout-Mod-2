@@ -17,7 +17,8 @@ using MegaCrit.Sts2.Core.Settings;
 internal static class CardEffectAnimationScope
 {
     public const int FastAnimationMinimumResult = 8;
-    public const int VeryFastAnimationMinimumResult = 10;
+    public const int VeryFastAnimationMinimumResult = 16;
+    public const int VeryVeryFastAnimationMinimumResult = 32;
     public const int ExtremelyFastAnimationMinimumResult = 50;
     public const int InstantAnimationMinimumResult = 1000;
     public const float FastWaitMultiplier = 0.8f;
@@ -30,6 +31,7 @@ internal static class CardEffectAnimationScope
         Normal,
         Faster,
         VeryFast,
+        VeryVeryFast,
         ExtremelyFast,
         Instant
     }
@@ -124,6 +126,7 @@ internal static class CardEffectAnimationScope
     {
         >= InstantAnimationMinimumResult => AnimationSpeed.Instant,
         >= ExtremelyFastAnimationMinimumResult => AnimationSpeed.ExtremelyFast,
+        >= VeryVeryFastAnimationMinimumResult => AnimationSpeed.VeryVeryFast,
         >= VeryFastAnimationMinimumResult => AnimationSpeed.VeryFast,
         >= FastAnimationMinimumResult => AnimationSpeed.Faster,
         _ => AnimationSpeed.Normal
@@ -209,6 +212,7 @@ internal static class CardEffectFastModePatch
         {
             case CardEffectAnimationScope.AnimationSpeed.Faster:
             case CardEffectAnimationScope.AnimationSpeed.VeryFast:
+            case CardEffectAnimationScope.AnimationSpeed.VeryVeryFast:
             case CardEffectAnimationScope.AnimationSpeed.ExtremelyFast:
                 if (__result < FastModeType.Fast)
                     __result = FastModeType.Fast;
@@ -233,8 +237,14 @@ internal static class CardEffectAcceleratedWaitPatch
     {
         switch (CardEffectAnimationScope.CurrentSpeed)
         {
+            case CardEffectAnimationScope.AnimationSpeed.Faster:
+                seconds *= CardEffectAnimationScope.FastWaitMultiplier;
+                break;
             case CardEffectAnimationScope.AnimationSpeed.VeryFast:
                 seconds *= CardEffectAnimationScope.VeryFastWaitMultiplier;
+                break;
+            case CardEffectAnimationScope.AnimationSpeed.VeryVeryFast:
+                seconds *= CardEffectAnimationScope.VeryVeryFastWaitMultiplier;
                 break;
             case CardEffectAnimationScope.AnimationSpeed.ExtremelyFast:
                 seconds *= CardEffectAnimationScope.ExtremelyFastWaitMultiplier;
