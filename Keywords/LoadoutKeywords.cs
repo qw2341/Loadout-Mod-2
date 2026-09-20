@@ -537,7 +537,8 @@ public static class LoadoutKeywords
     {
         return card is not null
                && keyword != CardKeyword.None
-               && card.GetKeywordsWithSources(KeywordSources.Local).Contains(keyword);
+               && (card.GetKeywordsWithSources(KeywordSources.Local).Contains(keyword)
+                   || (keyword == MultiHit && Powers.MultiHitPower.GrantsKeyword(card)));
     }
 
     public static string GetStorageKey(CardKeyword keyword)

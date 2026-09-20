@@ -7,5 +7,10 @@
   "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "Lorsque vous êtes touché par une Attaque, appliquez [blue]{Amount}[/blue] cumuls d'[gold]Hébété[/gold] à l'attaquant.\nÀ [blue]5[/blue] cumuls d'[gold]Hébété[/gold], étourdissez-le.",
   "LOADOUT-WITHER_POWER.title": "Flétrissure",
   "LOADOUT-WITHER_POWER.description": "À la fin du tour de cette créature, elle subit [blue]{Damage}[/blue] dégâts [blue]{Hits}[/blue] {Hits:plural:fois|fois}.",
-  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "Chaque fois que vous jouez [blue]6[/blue] cartes, appliquez [blue]1[/blue] [gold]Flétrissure[/gold] à TOUS les ennemis. Améliore la [gold]Flétrissure[/gold] existante sur les cibles."
+  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "Chaque fois que vous jouez [blue]6[/blue] cartes, appliquez [blue]1[/blue] [gold]Flétrissure[/gold] à TOUS les ennemis. Améliore la [gold]Flétrissure[/gold] existante sur les cibles.",
+  "LOADOUT-MULTI_HIT_POWER.title": "Multi-frappe",
+  "LOADOUT-MULTI_HIT_POWER.description": "Toutes les attaques de cette créature gagnent [gold]!?Multi-frappe?![/gold].",
+  "LOADOUT-MULTI_HIT_POWER.smartDescription": "Toutes les attaques de [gold]{OwnerName}[/gold] gagnent [gold]!?Multi-frappe?![/gold].",
+  "LOADOUT-MULTI_HIT_POWER.intentSingle": "{Damage}[font_size=18]x{Hits}[/font_size]",
+  "LOADOUT-MULTI_HIT_POWER.intentMulti": "{Damage}[font_size=18]x{Hits}x{Repeat}[/font_size]"
 }

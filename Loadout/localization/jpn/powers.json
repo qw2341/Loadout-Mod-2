@@ -7,5 +7,10 @@
   "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "アタックを受けるたび、攻撃者に[gold]めまい[/gold]を[blue]{Amount}[/blue]付与する。\n[gold]めまい[/gold]が[blue]5[/blue]になると、その敵をスタンさせる。",
   "LOADOUT-WITHER_POWER.title": "衰弱",
   "LOADOUT-WITHER_POWER.description": "このクリーチャーのターン終了時、[blue]{Damage}[/blue]ダメージを[blue]{Hits}[/blue]回受ける。",
-  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "カードを[blue]6[/blue]枚プレイするたび、すべての敵に[gold]衰弱[/gold]を[blue]1[/blue]付与する。対象にある既存の[gold]衰弱[/gold]を強化する。"
+  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "カードを[blue]6[/blue]枚プレイするたび、すべての敵に[gold]衰弱[/gold]を[blue]1[/blue]付与する。対象にある既存の[gold]衰弱[/gold]を強化する。",
+  "LOADOUT-MULTI_HIT_POWER.title": "多段攻撃",
+  "LOADOUT-MULTI_HIT_POWER.description": "このクリーチャーのすべての攻撃が[gold]!?多段ヒット?![/gold]を得る。",
+  "LOADOUT-MULTI_HIT_POWER.smartDescription": "[gold]{OwnerName}[/gold]のすべての攻撃が[gold]!?多段ヒット?![/gold]を得る。",
+  "LOADOUT-MULTI_HIT_POWER.intentSingle": "{Damage}[font_size=18]x{Hits}[/font_size]",
+  "LOADOUT-MULTI_HIT_POWER.intentMulti": "{Damage}[font_size=18]x{Hits}x{Repeat}[/font_size]"
 }

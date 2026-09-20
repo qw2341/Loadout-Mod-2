@@ -7,5 +7,10 @@
   "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "Cuando te golpea un Ataque, aplica [blue]{Amount}[/blue] de [gold]Desorientación[/gold] al atacante.\nA [blue]5[/blue] de [gold]Desorientación[/gold], atúrdelo.",
   "LOADOUT-WITHER_POWER.title": "Marchitamiento",
   "LOADOUT-WITHER_POWER.description": "Al final del turno de esta criatura, recibe [blue]{Damage}[/blue] de daño [blue]{Hits}[/blue] {Hits:plural:vez|veces}.",
-  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "Cada vez que juegas [blue]6[/blue] cartas, aplica [blue]1[/blue] de [gold]Marchitamiento[/gold] a TODOS los enemigos. Mejora el [gold]Marchitamiento[/gold] existente en los objetivos."
+  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "Cada vez que juegas [blue]6[/blue] cartas, aplica [blue]1[/blue] de [gold]Marchitamiento[/gold] a TODOS los enemigos. Mejora el [gold]Marchitamiento[/gold] existente en los objetivos.",
+  "LOADOUT-MULTI_HIT_POWER.title": "Multigolpe",
+  "LOADOUT-MULTI_HIT_POWER.description": "Todos los ataques de esta criatura obtienen [gold]!?Multigolpe?![/gold].",
+  "LOADOUT-MULTI_HIT_POWER.smartDescription": "Todos los ataques de [gold]{OwnerName}[/gold] obtienen [gold]!?Multigolpe?![/gold].",
+  "LOADOUT-MULTI_HIT_POWER.intentSingle": "{Damage}[font_size=18]x{Hits}[/font_size]",
+  "LOADOUT-MULTI_HIT_POWER.intentMulti": "{Damage}[font_size=18]x{Hits}x{Repeat}[/font_size]"
 }

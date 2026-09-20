@@ -7,5 +7,10 @@
   "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "Whenever you are hit by an Attack, apply [blue]{Amount}[/blue] [gold]Dazed[/gold] to the attacker.\nAt [blue]5[/blue] [gold]Dazed[/gold], stun them.",
   "LOADOUT-WITHER_POWER.title": "Wither",
   "LOADOUT-WITHER_POWER.description": "At the end of this creature's turn, take [blue]{Damage}[/blue] damage [blue]{Hits}[/blue] {Hits:plural:time|times}.",
-  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "Whenever you play [blue]6[/blue] cards, apply [blue]1[/blue] [gold]Wither[/gold] to ALL enemies. Upgrades existing [gold]Wither[/gold] on targets."
+  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "Whenever you play [blue]6[/blue] cards, apply [blue]1[/blue] [gold]Wither[/gold] to ALL enemies. Upgrades existing [gold]Wither[/gold] on targets.",
+  "LOADOUT-MULTI_HIT_POWER.title": "Multi-Hit",
+  "LOADOUT-MULTI_HIT_POWER.description": "All of this creature's Attacks gain [gold]!?Multi-Hit?![/gold].",
+  "LOADOUT-MULTI_HIT_POWER.smartDescription": "All Attacks by [gold]{OwnerName}[/gold] gain [gold]!?Multi-Hit?![/gold].",
+  "LOADOUT-MULTI_HIT_POWER.intentSingle": "{Damage}[font_size=18]x{Hits}[/font_size]",
+  "LOADOUT-MULTI_HIT_POWER.intentMulti": "{Damage}[font_size=18]x{Hits}x{Repeat}[/font_size]"
 }

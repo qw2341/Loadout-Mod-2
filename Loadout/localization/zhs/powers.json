@@ -7,5 +7,10 @@
   "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "每当你被攻击命中时，对攻击者施加[blue]{Amount}[/blue]层[gold]眩晕[/gold]。",
   "LOADOUT-WITHER_POWER.title": "凋萎",
   "LOADOUT-WITHER_POWER.description": "在该生物的回合结束时，使其受到[blue]{Hits}[/blue]次[blue]{Damage}[/blue]点伤害。",
-  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "每当你打出[blue]6[/blue]张牌，对所有敌人施加[blue]1[/blue]层[gold]凋萎[/gold]。升级目标已有的[gold]凋萎[/gold]。"
+  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "每当你打出[blue]6[/blue]张牌，对所有敌人施加[blue]1[/blue]层[gold]凋萎[/gold]。升级目标已有的[gold]凋萎[/gold]。",
+  "LOADOUT-MULTI_HIT_POWER.title": "多段攻击",
+  "LOADOUT-MULTI_HIT_POWER.description": "这个生物的所有攻击获得[gold]!?多段攻击?![/gold]。",
+  "LOADOUT-MULTI_HIT_POWER.smartDescription": "[gold]{OwnerName}[/gold]的所有攻击获得[gold]!?多段攻击?![/gold]。",
+  "LOADOUT-MULTI_HIT_POWER.intentSingle": "{Damage}[font_size=18]x{Hits}[/font_size]",
+  "LOADOUT-MULTI_HIT_POWER.intentMulti": "{Damage}[font_size=18]x{Hits}x{Repeat}[/font_size]"
 }

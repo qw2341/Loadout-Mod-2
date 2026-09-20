@@ -139,7 +139,7 @@ public abstract class LoadoutKeywordModel
         IReadOnlyDictionary<string, bool>? overrides = null)
     {
         return overrides?.TryGetValue(StorageKey, out bool enabled) == true
-            ? enabled
+            ? enabled || (Keyword == LoadoutKeywords.MultiHit && Powers.MultiHitPower.GrantsKeyword(card))
             : LoadoutKeywords.Has(card, Keyword);
     }
 

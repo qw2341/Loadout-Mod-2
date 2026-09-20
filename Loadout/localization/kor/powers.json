@@ -7,5 +7,10 @@
   "LOADOUT-PERSONAL_HIVE_POWER.playerDescription": "공격에 적중당할 때마다 공격자에게 [gold]어지러움[/gold]을 [blue]{Amount}[/blue] 부여합니다.\n[gold]어지러움[/gold]이 [blue]5[/blue]이 되면 그 적을 기절시킵니다.",
   "LOADOUT-WITHER_POWER.title": "쇠약",
   "LOADOUT-WITHER_POWER.description": "이 크리처의 턴 종료 시 [blue]{Damage}[/blue]의 피해를 [blue]{Hits}[/blue]회 받습니다.",
-  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "카드를 [blue]6[/blue]장 사용할 때마다 모든 적에게 [gold]쇠약[/gold]을 [blue]1[/blue] 부여합니다. 대상의 기존 [gold]쇠약[/gold]을 강화합니다."
+  "LOADOUT-WITHERING_PRESENCE_POWER.playerDescription": "카드를 [blue]6[/blue]장 사용할 때마다 모든 적에게 [gold]쇠약[/gold]을 [blue]1[/blue] 부여합니다. 대상의 기존 [gold]쇠약[/gold]을 강화합니다.",
+  "LOADOUT-MULTI_HIT_POWER.title": "다단 공격",
+  "LOADOUT-MULTI_HIT_POWER.description": "이 생물의 모든 공격이 [gold]!?다중 타격?![/gold]을 얻습니다.",
+  "LOADOUT-MULTI_HIT_POWER.smartDescription": "[gold]{OwnerName}[/gold]의 모든 공격이 [gold]!?다중 타격?![/gold]을 얻습니다.",
+  "LOADOUT-MULTI_HIT_POWER.intentSingle": "{Damage}[font_size=18]x{Hits}[/font_size]",
+  "LOADOUT-MULTI_HIT_POWER.intentMulti": "{Damage}[font_size=18]x{Hits}x{Repeat}[/font_size]"
 }
