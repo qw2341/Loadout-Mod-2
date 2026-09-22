@@ -33,6 +33,7 @@ public static class LoadoutKeywordRegistry
         XValueKeyword.Instance,
         InfiniteUpgradeKeyword.Instance,
         JokeInfiniteUpgradeKeyword.Instance,
+        KarmicKeyword.Instance,
         HeavenlyKeyword.Instance,
         AltHeavenlyKeyword.Instance,
         MultiHitKeyword.Instance,
@@ -504,6 +505,8 @@ public static class LoadoutKeywordRegistry
             XValueKeywordRuntime.Prepare(card);
         if (MultiHitKeyword.Instance.IsEnabled(card, overrides))
             MultiHitKeywordPatches.Prepare(card);
+        if (KarmicKeyword.Instance.IsEnabled(card, overrides))
+            KarmicKeywordPatches.Prepare();
         if (MultiBlockKeyword.Instance.IsEnabled(card, overrides))
             MultiBlockKeywordPatches.Prepare();
         Dictionary<string, DynamicVar> variables = GetMutableVariables(card.DynamicVars);
