@@ -27,6 +27,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
@@ -1178,6 +1179,28 @@ public struct PowerGiverSnapshotMessage : INetMessage, IPacketSerializable
     public void Deserialize(PacketReader reader)
     {
         SnapshotJson = reader.ReadString();
+    }
+}
+
+[HarmonyPatch]
+public static class PowerGiverPhaseTransitionPatch
+{
+    public static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(ToughEgg), "HatchMove");
+        yield return AccessTools.Method(typeof(TestSubject), "RespawnMove");
+        yield return AccessTools.Method(typeof(DecimillipedeSegment), "ReattachMove");
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(MonsterModel __instance, ref Task __result)
+        => __result = ApplyAfterMoveAsync(__result, __instance.Creature);
+
+    private static async Task ApplyAfterMoveAsync(Task moveTask, Creature creature)
+    {
+        await moveTask;
+        if (creature.IsAlive && creature.CombatState?.IsLiveCombat() == true)
+            await PowerGiverStateService.ApplyConfiguredSummonPowersAsync(creature);
     }
 }
 
