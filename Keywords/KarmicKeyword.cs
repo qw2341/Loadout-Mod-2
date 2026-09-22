@@ -42,6 +42,7 @@ public static class KarmicKeywordPatches
 {
     private static readonly Harmony Harmony = new("Loadout.Keyword.Karmic");
     private static readonly AsyncLocal<AttackScope?> Current = new();
+    private static readonly AsyncLocal<AttackScope?> Repeating = new();
     private static bool Installed;
 
     public static void Prepare()
@@ -59,7 +60,26 @@ public static class KarmicKeywordPatches
         Harmony.Patch(AccessTools.Method(typeof(VfxCmd), nameof(VfxCmd.PlayVfx)),
             prefix: new HarmonyMethod(typeof(KarmicKeywordPatches), nameof(VfxPrefix)),
             postfix: new HarmonyMethod(typeof(KarmicKeywordPatches), nameof(VfxPostfix)));
+        Harmony.Patch(Sts2Compatibility.MultiTargetDamageMethod,
+            prefix: new HarmonyMethod(typeof(KarmicKeywordPatches), nameof(DamagePrefix)),
+            finalizer: new HarmonyMethod(typeof(KarmicKeywordPatches), nameof(DamageFinalizer)));
         Installed = true;
+    }
+
+    private static void DamagePrefix(CardModel? __5, out CardEffectAnimationScope.Scope? __state)
+    {
+        AttackScope? scope = Current.Value ?? Repeating.Value;
+        __state = scope is not null && ReferenceEquals(scope.Card, __5)
+            ? CardEffectAnimationScope.EnterAttack(scope.Attack)
+            : null;
+        if (__state is not null)
+            __state.Speed = CardEffectAnimationScope.AnimationSpeed.Instant;
+    }
+
+    private static Exception? DamageFinalizer(Exception? __exception, CardEffectAnimationScope.Scope? __state)
+    {
+        CardEffectAnimationScope.Exit(__state);
+        return __exception;
     }
 
     private static void AttackPrefix(AttackCommand __instance, out (AttackScope? Previous, AttackScope? Active) __state)
@@ -183,23 +203,16 @@ public static class KarmicKeywordPatches
     {
         // Call each native damage pipeline once; only AttackCommand aggregates the results.
         Current.Value = null;
+        Repeating.Value = scope;
         using FrameWindow frames = scope.TakeWindow();
         ICombatState? combat = dealer?.CombatState;
         List<DamageResult> results = new(await original);
-        int consumed = 1;
-        while (CanContinue())
+        while (CanContinue() && await NextFrame(scope, frames))
         {
-            int batch = await NextBatch(scope, frames, consumed);
-            bool finished = batch < 0;
-            int count = finished ? -batch - 1 : batch;
-            for (int i = 0; i < count && CanContinue(); i++)
-            {
-                results.AddRange(await Sts2Compatibility.Damage(
-                    context, targets, amount, props, dealer, scope.Card, cardPlay));
-                consumed++;
-            }
-            if (finished)
+            if (!CanContinue())
                 break;
+            results.AddRange(await Sts2Compatibility.Damage(
+                context, targets, amount, props, dealer, scope.Card, cardPlay));
         }
         return results;
 
@@ -209,22 +222,17 @@ public static class KarmicKeywordPatches
                               && targets.Any(target => target.IsAlive && ReferenceEquals(target.CombatState, combat));
     }
 
-    private static async Task<int> NextBatch(
-        AttackScope scope, FrameWindow frames, int consumed)
+    private static async Task<bool> NextFrame(AttackScope scope, FrameWindow frames)
     {
         PlayerChoiceSynchronizer synchronizer = RunManager.Instance.PlayerChoiceSynchronizer;
         uint choiceId = synchronizer.ReserveChoiceId(scope.Card.Owner);
-        int batch;
         if (scope.CaptureFrames)
         {
-            batch = await frames.NextBatch(consumed);
-            synchronizer.SyncLocalChoice(scope.Card.Owner, choiceId, PlayerChoiceResult.FromIndex(batch));
+            bool hit = await frames.NextFrame();
+            synchronizer.SyncLocalChoice(scope.Card.Owner, choiceId, PlayerChoiceResult.FromIndex(hit ? 1 : 0));
+            return hit;
         }
-        else
-        {
-            batch = (await synchronizer.WaitForRemoteChoice(scope.Card.Owner, choiceId)).AsIndex();
-        }
-        return batch;
+        return (await synchronizer.WaitForRemoteChoice(scope.Card.Owner, choiceId)).AsIndex() == 1;
     }
 
     private sealed class AttackScope(AttackCommand attack, CardModel card) : IDisposable
@@ -270,14 +278,18 @@ public static class KarmicKeywordPatches
 
         private void OnFrame()
         {
+            bool visible = false;
             foreach (Node2D effect in _effects.Keys)
             {
                 if (!GodotObject.IsInstanceValid(effect) || !effect.IsInsideTree() || !effect.IsVisibleInTree())
                     continue;
-                _frames++;
-                Pulse();
+                visible = true;
                 break;
             }
+            if (!visible)
+                return;
+            _frames++;
+            Pulse();
         }
 
         private void Remove(Node2D effect)
@@ -291,16 +303,16 @@ public static class KarmicKeywordPatches
             }
         }
 
-        public async Task<int> NextBatch(int consumed)
+        public async Task<bool> NextFrame()
         {
-            while (_effects.Count > 0 && _frames <= consumed)
+            // The native hit covers the first frame. Never replay missed frames.
+            int frame = Math.Max(1, _frames);
+            while (_listening && _frames <= frame)
             {
-                _changed ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _changed ??= new TaskCompletionSource();
                 await _changed.Task;
             }
-            bool finished = _effects.Count == 0;
-            int count = Math.Max(0, (finished ? Math.Max(1, _frames) : _frames) - consumed);
-            return finished ? -count - 1 : count;
+            return _listening;
         }
 
         private void Pulse()
