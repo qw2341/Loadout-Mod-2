@@ -459,6 +459,8 @@ public static class LoadoutKeywordRegistry
             if (model.IsEnabled(card))
                 description = model.TransformBaseDescription(card, description);
         }
+
+        description = AddDescriptionLines(card, description);
     }
 
     public static async Task ApplyFatalEffects(
@@ -652,12 +654,6 @@ public static class LoadoutDescriptionKeywordPatch
     public static void Prefix(CardModel __instance)
     {
         LoadoutKeywordRegistry.PushBaseDescriptionContext(__instance);
-    }
-
-    [HarmonyPostfix]
-    public static void Postfix(CardModel __instance, ref string __result)
-    {
-        __result = LoadoutKeywordRegistry.AddDescriptionLines(__instance, __result);
     }
 
     [HarmonyFinalizer]

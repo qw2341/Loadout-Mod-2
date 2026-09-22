@@ -808,9 +808,6 @@ internal static class LoadoutKeywordRuntimePatches
                 prefix: new HarmonyMethod(
                     typeof(LoadoutDescriptionKeywordPatch),
                     nameof(LoadoutDescriptionKeywordPatch.Prefix)),
-                postfix: new HarmonyMethod(
-                    typeof(LoadoutDescriptionKeywordPatch),
-                    nameof(LoadoutDescriptionKeywordPatch.Postfix)),
                 finalizer: new HarmonyMethod(
                     typeof(LoadoutDescriptionKeywordPatch),
                     nameof(LoadoutDescriptionKeywordPatch.Finalizer)));
