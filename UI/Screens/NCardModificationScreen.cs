@@ -58,6 +58,7 @@ public partial class NCardModificationScreen : Control
     private const float EnchantmentContentWidth = 426f;
     private const float EnchantmentEntryHeight = 100f;
     private const int VisibleEnchantmentEntries = 2;
+    private static bool _showExtraCards = true;
 
     private LoadoutOwnedItem<CardModel>? _item;
     private List<LoadoutOwnedItem<CardModel>> _items = [];
@@ -212,6 +213,7 @@ public partial class NCardModificationScreen : Control
             RefreshNativeButtonState();
             if (Visible && IsInsideTree() && _item is not null && !_isClosing)
             {
+                GetNodeOrNull<NLoadoutToggle>("ShowExtraCardsToggle")?.SetChecked(_showExtraCards);
                 if (!_customRunAuthoringMode && !_cardPrinterMode)
                     BindRunContentEvents();
                 _hasBeenVisible = true;
@@ -453,7 +455,33 @@ public partial class NCardModificationScreen : Control
         _rightArrow = EnsureInspectArrowButton(_rightArrowMount, isLeft: false);
 
         EnsureBackButton();
+        EnsureExtraCardsToggle();
         BindSceneSignals();
+    }
+
+    private void EnsureExtraCardsToggle()
+    {
+        if (GetNodeOrNull<NLoadoutToggle>("ShowExtraCardsToggle") is not null)
+            return;
+
+        NLoadoutToggle toggle = new()
+        {
+            Name = "ShowExtraCardsToggle",
+            CustomMinimumSize = new Vector2(248f, 44f),
+            ZIndex = 30
+        };
+        toggle.Init("show_extra_cards", LocMan.Loc("CARD_MOD_SHOW_EXTRA_CARDS", "Show Extra Cards"), _showExtraCards);
+        toggle.SetAnchorsPreset(LayoutPreset.CenterBottom);
+        toggle.OffsetLeft = -560f;
+        toggle.OffsetRight = -312f;
+        toggle.OffsetTop = -64f;
+        toggle.OffsetBottom = -20f;
+        toggle.Toggled += state =>
+        {
+            _showExtraCards = state.IsChecked;
+            RefreshHoverTips();
+        };
+        AddChild(toggle);
     }
 
     private void EnsureVariableScroll()
@@ -2557,7 +2585,7 @@ public partial class NCardModificationScreen : Control
         try
         {
             tips = IHoverTip.RemoveDupes(hoverTipModel.HoverTips)
-                .Where(tip => tip is not null)
+                .Where(tip => tip is not null && (_showExtraCards || tip is not CardHoverTip))
                 .ToList();
         }
         catch (Exception exception)

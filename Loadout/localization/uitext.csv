@@ -900,3 +900,4 @@ CARD_MOD_CARD_KEYWORD_UPGRADE_AMOUNT,Upgrade Amount,升级增量,Quantité d’a
 CARD_MOD_CARD_KEYWORD_ADDED_ENTRIES,Added on Upgrade,升级时添加,Ajouté à l’amélioration,アップグレード時に追加,강화 시 추가,Añadido al mejorar
 CARD_MOD_CARD_PICKER_UNAVAILABLE,The shared card picker is unavailable or already in use.,共享卡牌选择器不可用或正在使用。,Le sélecteur de cartes est indisponible ou déjà utilisé.,カード選択画面は利用できないか、使用中です。,카드 선택 화면을 사용할 수 없거나 이미 사용 중입니다.,El selector de cartas no está disponible o ya está en uso.
 DYNAMIC_VAR_LOADOUT_ADD_CARD_LIST,Added Cards,添加的卡牌,Cartes ajoutées,追加するカード,추가 카드,Cartas añadidas
+CARD_MOD_SHOW_EXTRA_CARDS,Show Extra Cards,显示额外卡牌,Afficher les cartes liées,関連カードを表示,추가 카드 표시,Mostrar cartas extra
