@@ -54,6 +54,14 @@ public sealed class PowerGiverCombatStartHook : AbstractModel
 
 }
 
+public sealed class PowerGiverSummonHook : AbstractModel
+{
+    public override bool ShouldReceiveCombatHooks => true;
+
+    public override Task AfterCreatureAddedToCombat(Creature creature)
+        => PowerGiverStateService.ApplyConfiguredSummonPowersAsync(creature);
+}
+
 public static class PowerGiverStateService
 {
     private const int CurrentSchemaVersion = 3;
@@ -441,6 +449,27 @@ public static class PowerGiverStateService
             snapshot.MonsterCounters);
     }
 
+    public static async Task ApplyConfiguredSummonPowersAsync(Creature creature)
+    {
+        if (!creature.IsEnemy || creature.CombatState is not { } combatState)
+            return;
+
+        KeyValuePair<string, int>[] monsterCounters;
+        lock (SyncRoot)
+        {
+            if (_run.MonsterCounters.Count == 0)
+                return;
+
+            monsterCounters = _run.MonsterCounters
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        Creature? applier = combatState.Players.FirstOrDefault()?.Creature;
+        foreach ((string powerId, int amount) in monsterCounters)
+            await ApplyPowerToTargets(powerId, amount, [creature], applier);
+    }
+
     public static void CaptureCombatStartSnapshot()
     {
         EnsureLoaded();
@@ -474,6 +503,9 @@ public static class PowerGiverStateService
         PowerGiverCombatStartHook hook = ModelDb.GetById<PowerGiverCombatStartHook>(
             ModelDb.GetId<PowerGiverCombatStartHook>());
         ModHelper.SubscribeForRunStateHooks(CombatStartHookId, _ => [hook]);
+        PowerGiverSummonHook summonHook = ModelDb.GetById<PowerGiverSummonHook>(
+            ModelDb.GetId<PowerGiverSummonHook>());
+        ModHelper.SubscribeForCombatStateHooks("Loadout.PowerGiver.SummonPowers", _ => [summonHook]);
         _combatStartHookRegistered = true;
     }
 
