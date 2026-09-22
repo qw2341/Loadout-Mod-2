@@ -35,18 +35,13 @@ public partial class NCardUpgradeModificationScreen
     private void AddCardKeywordEntry(CardKeyword keyword)
     {
         if (!LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
-            || model is not LoadoutCardKeywordModel)
+            || model is not LoadoutCardKeywordModel cardModel)
             return;
 
         List<LoadoutCardKeywordEntry> entries =
             LoadoutCardKeywordEntry.CloneList(
                 _draft.AddedCardKeywordEntries) ?? [];
-        entries.Add(new LoadoutCardKeywordEntry
-        {
-            KeywordKey = model.StorageKey,
-            CardId = LoadoutCardKeywordState.GetDefaultCardId(),
-            Amount = 1
-        });
+        entries.Add(cardModel.CreateDefaultEntry());
         _draft.AddedCardKeywordEntries = entries;
         QueueRebuild();
     }
@@ -116,34 +111,58 @@ public partial class NCardUpgradeModificationScreen
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
-            NLoadoutCardSelector selector = new();
-            selector.Init(configured?.ReplacementCardId ?? baseEntry.CardId,
-                configured?.ReplacementUpgraded ?? baseEntry.Upgraded);
-            selector.SelectRequested += () =>
+            if (baseEntry.IsRandom)
             {
-                if (!CardPrinter.TryOpenKeywordCardPicker((selected, upgraded) =>
-                    {
-                        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
-                            return;
-                        SetCardEntryUpgradeReplacement(
-                            model.StorageKey,
-                            baseEntry.CardId,
-                            occurrence,
-                            selected.Id.ToString());
-                        UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence,
-                            entry => entry.ReplacementUpgraded = upgraded == baseEntry.Upgraded ? null : upgraded);
-                        QueueRebuild();
-                    },
-                    out string error))
+                NLoadoutCardFilterStepper pool = new();
+                pool.InitPool(configured?.ReplacementPoolId ?? baseEntry.PoolId, value =>
                 {
-                    GD.PushWarning(error);
-                }
-            };
-            _leftControls.AddChild(CreateRow(
-                LocMan.Loc(
-                    "CARD_MOD_CARD_KEYWORD_REPLACEMENT",
-                    "Replacement Card") + suffix,
-                selector));
+                    UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence,
+                        entry => entry.ReplacementPoolId = value == baseEntry.PoolId ? null : value);
+                    RefreshPreview();
+                });
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_RANDOM_CARD_POOL", "Card Pool") + suffix, pool));
+                NLoadoutCardFilterStepper rarity = new();
+                rarity.InitRarity(configured?.ReplacementRarity ?? baseEntry.Rarity, value =>
+                {
+                    UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence,
+                        entry => entry.ReplacementRarity = value == baseEntry.Rarity ? null : value);
+                    RefreshPreview();
+                });
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc("FILTER_GROUP_RARITY", "Rarity") + suffix, rarity));
+            }
+            else
+            {
+                NLoadoutCardSelector selector = new();
+                selector.Init(configured?.ReplacementCardId ?? baseEntry.CardId,
+                    configured?.ReplacementUpgraded ?? baseEntry.Upgraded);
+                selector.SelectRequested += () =>
+                {
+                    if (!CardPrinter.TryOpenKeywordCardPicker((selected, upgraded) =>
+                        {
+                            if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+                                return;
+                            SetCardEntryUpgradeReplacement(
+                                model.StorageKey,
+                                baseEntry.CardId,
+                                occurrence,
+                                selected.Id.ToString());
+                            UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence,
+                                entry => entry.ReplacementUpgraded = upgraded == baseEntry.Upgraded ? null : upgraded);
+                            QueueRebuild();
+                        },
+                        out string error))
+                    {
+                        GD.PushWarning(error);
+                    }
+                };
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc(
+                        "CARD_MOD_CARD_KEYWORD_REPLACEMENT",
+                        "Replacement Card") + suffix,
+                    selector));
+            }
 
             AddStepperRow(
                 _leftControls,
@@ -193,29 +212,51 @@ public partial class NCardUpgradeModificationScreen
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
-            NLoadoutCardSelector selector = new();
-            selector.Init(addedEntries[index].CardId, addedEntries[index].Upgraded);
-            selector.SelectRequested += () =>
+            if (addedEntries[index].IsRandom)
             {
-                if (!CardPrinter.TryOpenKeywordCardPicker((selected, upgraded) =>
-                    {
-                        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
-                            return;
-                        UpdateAddedCardKeywordEntry(
-                            capturedIndex,
-                            entry => { entry.CardId = selected.Id.ToString(); entry.Upgraded = upgraded; });
-                        QueueRebuild();
-                    },
-                    out string error))
+                NLoadoutCardFilterStepper pool = new();
+                pool.InitPool(addedEntries[index].PoolId, value =>
                 {
-                    GD.PushWarning(error);
-                }
-            };
-            _leftControls.AddChild(CreateRow(
-                LocMan.Loc(
-                    model.CardLabelLocKey,
-                    model.GetTitle()) + suffix,
-                selector));
+                    UpdateAddedCardKeywordEntry(capturedIndex, entry => entry.PoolId = value);
+                    RefreshPreview();
+                });
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_RANDOM_CARD_POOL", "Card Pool") + suffix, pool));
+                NLoadoutCardFilterStepper rarity = new();
+                rarity.InitRarity(addedEntries[index].Rarity, value =>
+                {
+                    UpdateAddedCardKeywordEntry(capturedIndex, entry => entry.Rarity = value);
+                    RefreshPreview();
+                });
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc("FILTER_GROUP_RARITY", "Rarity") + suffix, rarity));
+            }
+            else
+            {
+                NLoadoutCardSelector selector = new();
+                selector.Init(addedEntries[index].CardId, addedEntries[index].Upgraded);
+                selector.SelectRequested += () =>
+                {
+                    if (!CardPrinter.TryOpenKeywordCardPicker((selected, upgraded) =>
+                        {
+                            if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+                                return;
+                            UpdateAddedCardKeywordEntry(
+                                capturedIndex,
+                                entry => { entry.CardId = selected.Id.ToString(); entry.Upgraded = upgraded; });
+                            QueueRebuild();
+                        },
+                        out string error))
+                    {
+                        GD.PushWarning(error);
+                    }
+                };
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc(
+                        model.CardLabelLocKey,
+                        model.GetTitle()) + suffix,
+                    selector));
+            }
 
             AddStepperRow(
                 _leftControls,

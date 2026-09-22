@@ -99,7 +99,8 @@ public static class LoadoutCardKeywordState
     {
         if (card.IsCanonical)
         {
-            if (LoadoutKeywords.Has(card, LoadoutKeywords.AddCard))
+            if (LoadoutKeywords.Has(card, LoadoutKeywords.AddCard)
+                || LoadoutKeywords.Has(card, LoadoutKeywords.AddRandomCard))
                 LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
             return;
         }
@@ -254,6 +255,10 @@ public static class LoadoutCardKeywordState
                         effective.Upgraded = upgrade.ReplacementUpgraded.Value;
                     if (upgrade.ReplacementPile.HasValue)
                         effective.Pile = upgrade.ReplacementPile.Value;
+                    if (upgrade.ReplacementPoolId is not null)
+                        effective.PoolId = upgrade.ReplacementPoolId;
+                    if (upgrade.ReplacementRarity.HasValue)
+                        effective.Rarity = upgrade.ReplacementRarity.Value;
                     effective.Amount = Math.Max(0, effective.Amount);
                 }
 
@@ -398,6 +403,8 @@ public static class LoadoutCardKeywordState
         string amount = entry.Amount.ToString(CultureInfo.InvariantCulture);
         if (highlight && effective.AmountWasUpgraded)
             amount = StsTextUtilities.HighlightChangeText(amount, 1);
+        if (entry.IsRandom)
+            return AddRandomCardKeyword.FormatEntry(entry, amount);
         return LocMan.Loc("CARD_MOD_CARD_KEYWORD_ENTRY", "{0} {1}", amount,
             $"[gold]{GetCardTitle(entry.CardId, entry.Upgraded)}[/gold]");
     }

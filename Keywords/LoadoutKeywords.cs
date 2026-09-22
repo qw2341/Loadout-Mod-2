@@ -32,6 +32,7 @@ public static class LoadoutKeywords
     public const string MegaGatlingKey = "MegaGatling";
     public const string BolasKey = "Bolas";
     public const string ParticleKey = "Particle";
+    public const string AddRandomCardKey = "AddRandomCard";
     public const string AddCardKey = "AddCard";
     public const string AngerKey = "Anger";
     public const string BlankSlateKey = "BlankSlate";
@@ -221,6 +222,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("PARTICLE")]
     public static CardKeyword Particle;
+
+    [CustomEnum("ADD_RANDOM_CARD")]
+    public static CardKeyword AddRandomCard;
 
     [CustomEnum("ADD_CARD")]
     public static CardKeyword AddCard;

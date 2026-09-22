@@ -909,7 +909,7 @@ public partial class NCardUpgradeModificationScreen : Control
         text.Position = Vector2.Zero;
         text.Size = new Vector2(EditorLabelWidth, 44f);
         row.AddChild(text);
-        float inputWidth = input is NLoadoutPowerSelector or NLoadoutCardSelector or NLoadoutPileTypeStepper
+        float inputWidth = input is NLoadoutPowerSelector or NLoadoutCardSelector or NLoadoutDropdownStepper
             ? EditorRowWidth - EditorLabelWidth - 8f
             : StepperWidth;
         input.Position = new Vector2(

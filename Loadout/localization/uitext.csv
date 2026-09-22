@@ -1,4 +1,4 @@
-﻿keys,en,zh_CN,fr,ja,ko,es
+keys,en,zh_CN,fr,ja,ko,es
 ui.text_placeholder,Enter text here,请输入文本,Saisissez du texte ici,ここにテキストを入力,여기에 텍스트를 입력하세요,Introduce texto aquí
 TITLE_SELECT,Select,选择,Sélectionner,選択,선택,Seleccionar
 SEARCH,Search,搜索,Rechercher,検索,검색,Buscar
@@ -901,3 +901,10 @@ CARD_MOD_CARD_KEYWORD_ADDED_ENTRIES,Added on Upgrade,升级时添加,Ajouté à 
 CARD_MOD_CARD_PICKER_UNAVAILABLE,The shared card picker is unavailable or already in use.,共享卡牌选择器不可用或正在使用。,Le sélecteur de cartes est indisponible ou déjà utilisé.,カード選択画面は利用できないか、使用中です。,카드 선택 화면을 사용할 수 없거나 이미 사용 중입니다.,El selector de cartas no está disponible o ya está en uso.
 DYNAMIC_VAR_LOADOUT_ADD_CARD_LIST,Added Cards,添加的卡牌,Cartes ajoutées,追加するカード,추가 카드,Cartas añadidas
 CARD_MOD_SHOW_EXTRA_CARDS,Show Extra Cards,显示额外卡牌,Afficher les cartes liées,関連カードを表示,추가 카드 표시,Mostrar cartas extra
+CARD_MOD_RANDOM_CARD_POOL,Card Pool,牌池,Groupe de cartes,カードプール,카드 풀,Grupo de cartas
+DYNAMIC_VAR_LOADOUT_ADD_RANDOM_CARD_LIST,Added Random Cards,添加的随机牌,Cartes aléatoires ajoutées,追加するランダムカード,추가할 무작위 카드,Cartas aleatorias añadidas
+CARD_MOD_RANDOM_CARD_PLAIN_SINGLE,{0} random card,{0}张随机牌,{0} carte aléatoire,ランダムなカード{0}枚,무작위 카드 {0}장,{0} carta aleatoria
+CARD_MOD_RANDOM_CARD_PLAIN_PLURAL,{0} random cards,{0}张随机牌,{0} cartes aléatoires,ランダムなカード{0}枚,무작위 카드 {0}장,{0} cartas aleatorias
+CARD_MOD_RANDOM_CARD_SINGLE,{0} random {1} card,{0}张随机{1}牌,{0} carte aléatoire ({1}),ランダムな{1}カード{0}枚,무작위 {1} 카드 {0}장,{0} carta aleatoria ({1})
+CARD_MOD_RANDOM_CARD_PLURAL,{0} random {1} cards,{0}张随机{1}牌,{0} cartes aléatoires ({1}),ランダムな{1}カード{0}枚,무작위 {1} 카드 {0}장,{0} cartas aleatorias ({1})
+CARD_MOD_RANDOM_CARD_DESCRIPTORS,{0} {1},{0}{1},{0} {1},{0}・{1},{0} {1},{0} {1}

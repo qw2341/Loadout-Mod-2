@@ -1229,15 +1229,31 @@ public partial class NCardModificationScreen : Control
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
-            NLoadoutCardSelector selector = new();
-            selector.Init(entries[index].CardId, entries[index].Upgraded);
-            selector.SelectRequested += () => OpenCardKeywordPicker(
-                capturedIndex);
-            _variableControls.AddChild(CreateRow(
-                LocMan.Loc(
-                    model.CardLabelLocKey,
-                    model.GetTitle()) + suffix,
-                selector));
+            if (entries[index].IsRandom)
+            {
+                NLoadoutCardFilterStepper pool = new();
+                pool.InitPool(entries[index].PoolId, value => UpdateCardKeywordEntry(
+                    capturedIndex, entry => entry.PoolId = value, rebuildControls: false));
+                _variableControls.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_RANDOM_CARD_POOL", "Card Pool") + suffix, pool));
+                NLoadoutCardFilterStepper rarity = new();
+                rarity.InitRarity(entries[index].Rarity, value => UpdateCardKeywordEntry(
+                    capturedIndex, entry => entry.Rarity = value, rebuildControls: false));
+                _variableControls.AddChild(CreateRow(
+                    LocMan.Loc("FILTER_GROUP_RARITY", "Rarity") + suffix, rarity));
+            }
+            else
+            {
+                NLoadoutCardSelector selector = new();
+                selector.Init(entries[index].CardId, entries[index].Upgraded);
+                selector.SelectRequested += () => OpenCardKeywordPicker(
+                    capturedIndex);
+                _variableControls.AddChild(CreateRow(
+                    LocMan.Loc(
+                        model.CardLabelLocKey,
+                        model.GetTitle()) + suffix,
+                    selector));
+            }
 
             AddStepperRow(
                 _variableControls,
@@ -1868,18 +1884,13 @@ public partial class NCardModificationScreen : Control
     private void AddCardKeywordEntry(CardKeyword keyword)
     {
         if (!LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
-            || model is not LoadoutCardKeywordModel)
+            || model is not LoadoutCardKeywordModel cardModel)
             return;
 
         List<LoadoutCardKeywordEntry> entries =
             LoadoutCardKeywordEntry.CloneList(
                 _workingState.CardKeywordEntries) ?? [];
-        entries.Add(new LoadoutCardKeywordEntry
-        {
-            KeywordKey = model.StorageKey,
-            CardId = LoadoutCardKeywordState.GetDefaultCardId(),
-            Amount = 1
-        });
+        entries.Add(cardModel.CreateDefaultEntry());
         SetCardKeywordEntries(entries);
         ApplyWorkingState();
         Callable.From(RebuildControls).CallDeferred();

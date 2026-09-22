@@ -731,7 +731,9 @@ public static class PermanentModificationArchiveService
                 StringComparison.Ordinal)
             && pair.First.Amount == pair.Second.Amount
             && pair.First.Upgraded == pair.Second.Upgraded
-            && pair.First.Pile == pair.Second.Pile);
+            && pair.First.Pile == pair.Second.Pile
+            && pair.First.Rarity == pair.Second.Rarity
+            && string.Equals(pair.First.PoolId, pair.Second.PoolId, StringComparison.Ordinal));
 
     private static bool CardKeywordEntryUpgradeListsEqual(
         List<LoadoutCardKeywordEntryUpgrade> left,
@@ -750,6 +752,8 @@ public static class PermanentModificationArchiveService
             && pair.First.AmountDelta == pair.Second.AmountDelta
             && pair.First.ReplacementUpgraded == pair.Second.ReplacementUpgraded
             && pair.First.ReplacementPile == pair.Second.ReplacementPile
+            && pair.First.ReplacementRarity == pair.Second.ReplacementRarity
+            && string.Equals(pair.First.ReplacementPoolId, pair.Second.ReplacementPoolId, StringComparison.Ordinal)
             && string.Equals(
                 pair.First.ReplacementCardId,
                 pair.Second.ReplacementCardId,

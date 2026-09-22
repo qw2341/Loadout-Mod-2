@@ -364,5 +364,8 @@
   "LOADOUT-X_VALUE.description": "Costs X Energy. All values on this card are X. Overrides the X-Cost keyword’s extra replays.",
   "LOADOUT-ADD_CARD.title": "Add Card",
   "LOADOUT-ADD_CARD.description": "Add the selected cards to your chosen piles when played.",
-  "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}"
+  "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}",
+  "LOADOUT-ADD_RANDOM_CARD.title": "Add Random Card",
+  "LOADOUT-ADD_RANDOM_CARD.description": "Add random cards from the selected pool and rarity to your chosen piles when played.",
+  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}"
 }

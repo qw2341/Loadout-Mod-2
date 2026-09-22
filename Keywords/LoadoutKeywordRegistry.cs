@@ -102,6 +102,7 @@ public static class LoadoutKeywordRegistry
         IncreaseMonsterDamageThisCombatKeyword.Instance,
         IncreaseMonsterDamagePermanentlyKeyword.Instance,
         AddCardKeyword.Instance,
+        AddRandomCardKeyword.Instance,
         ApplyPowerKeyword.Instance,
         ApplySelfKeyword.Instance,
         ApplyToAllEnemiesKeyword.Instance,

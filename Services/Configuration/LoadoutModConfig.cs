@@ -368,12 +368,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
                             string.Equals(entry.KeywordKey, key, StringComparison.OrdinalIgnoreCase))))
                 {
                     delta.CardKeywordEntries ??= [];
-                    delta.CardKeywordEntries.Add(new LoadoutCardKeywordEntry
-                    {
-                        KeywordKey = key,
-                        CardId = LoadoutCardKeywordState.GetDefaultCardId(),
-                        Amount = 1
-                    });
+                    delta.CardKeywordEntries.Add(((LoadoutCardKeywordModel)definition).CreateDefaultEntry());
                 }
                 entries[card.Id] = delta;
             }

@@ -504,7 +504,9 @@ public static class CardModificationRuntime
                     StringComparison.Ordinal)
                 || left[i].Amount != right[i].Amount
                 || left[i].Upgraded != right[i].Upgraded
-                || left[i].Pile != right[i].Pile)
+                || left[i].Pile != right[i].Pile
+                || left[i].Rarity != right[i].Rarity
+                || !string.Equals(left[i].PoolId, right[i].PoolId, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -565,6 +567,8 @@ public static class CardModificationRuntime
                 || left[i].AmountDelta != right[i].AmountDelta
                 || left[i].ReplacementUpgraded != right[i].ReplacementUpgraded
                 || left[i].ReplacementPile != right[i].ReplacementPile
+                || left[i].ReplacementRarity != right[i].ReplacementRarity
+                || !string.Equals(left[i].ReplacementPoolId, right[i].ReplacementPoolId, StringComparison.Ordinal)
                 || !string.Equals(
                     left[i].ReplacementCardId,
                     right[i].ReplacementCardId,

@@ -5,6 +5,7 @@ namespace Loadout.Keywords;
 using System.Collections.Generic;
 using BaseLib.Cards.Variables;
 using MegaCrit.Sts2.Core.Models;
+using Loadout.Services.CardModification;
 
 public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
 {
@@ -12,7 +13,7 @@ public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
 
     private static class Models
     {
-        public static readonly IReadOnlyList<LoadoutCardKeywordModel> Value = [AddCardKeyword.Instance];
+        public static readonly IReadOnlyList<LoadoutCardKeywordModel> Value = [AddCardKeyword.Instance, AddRandomCardKeyword.Instance];
     }
 
     public override LoadoutKeywordPresentation Presentation => LoadoutKeywordPresentation.DescriptionOnly;
@@ -21,6 +22,12 @@ public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
     public override bool HasOnPlayEffect => true;
     public virtual string AmountLabelLocKey => "CARD_MOD_ADD_CARD_AMOUNT";
     public virtual string CardLabelLocKey => "CARD_MOD_ADD_CARD_CARD";
+
+    public virtual LoadoutCardKeywordEntry CreateDefaultEntry() => new()
+    {
+        KeywordKey = StorageKey,
+        CardId = LoadoutCardKeywordState.GetDefaultCardId()
+    };
 
     protected static IReadOnlyList<LoadoutKeywordDynamicVarDefinition> CreateDisplayVariables(
         string name, string label, string key) =>

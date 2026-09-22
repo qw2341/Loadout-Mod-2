@@ -364,5 +364,8 @@
   "LOADOUT-X_VALUE.description": "Cuesta X de Energía. Todos los valores de esta carta son X. Sustituye las repeticiones adicionales de la palabra clave Coste X.",
   "LOADOUT-ADD_CARD.title": "Añadir carta",
   "LOADOUT-ADD_CARD.description": "Al jugar, añade las cartas elegidas a las pilas indicadas.",
-  "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}"
+  "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}",
+  "LOADOUT-ADD_RANDOM_CARD.title": "Añadir carta aleatoria",
+  "LOADOUT-ADD_RANDOM_CARD.description": "Al jugarla, añade cartas aleatorias del grupo y la rareza seleccionados a las pilas elegidas.",
+  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}"
 }

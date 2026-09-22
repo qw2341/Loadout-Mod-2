@@ -364,5 +364,8 @@
   "LOADOUT-X_VALUE.description": "X 에너지를 소모합니다. 이 카드의 모든 수치는 X가 됩니다. X 비용 키워드의 추가 사용을 무효화합니다.",
   "LOADOUT-ADD_CARD.title": "카드 추가",
   "LOADOUT-ADD_CARD.description": "사용 시 선택한 카드를 지정한 카드 더미에 추가합니다.",
-  "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}"
+  "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}",
+  "LOADOUT-ADD_RANDOM_CARD.title": "무작위 카드 추가",
+  "LOADOUT-ADD_RANDOM_CARD.description": "사용 시 선택한 카드 풀과 희귀도의 무작위 카드를 지정한 카드 더미에 추가합니다.",
+  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}"
 }

@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
+using Loadout.Keywords;
+using MegaCrit.Sts2.Core.Entities.Cards;
 
 public sealed class LoadoutCardKeywordEntry
 {
@@ -21,13 +23,22 @@ public sealed class LoadoutCardKeywordEntry
     [JsonPropertyName("u")]
     public bool Upgraded { get; set; }
 
+    [JsonPropertyName("pool")]
+    public string PoolId { get; set; } = string.Empty;
+
+    [JsonPropertyName("rarity")]
+    public CardRarity Rarity { get; set; } = CardRarity.None;
+
+    [JsonIgnore]
+    public bool IsRandom => string.Equals(KeywordKey, LoadoutKeywords.AddRandomCardKey, StringComparison.OrdinalIgnoreCase);
+
     [JsonPropertyName("p")]
     public MegaCrit.Sts2.Core.Entities.Cards.PileType Pile { get; set; } = MegaCrit.Sts2.Core.Entities.Cards.PileType.Hand;
 
     [JsonIgnore]
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(KeywordKey)
-        || string.IsNullOrWhiteSpace(CardId);
+        || (!IsRandom && string.IsNullOrWhiteSpace(CardId));
 
     public LoadoutCardKeywordEntry Clone()
     {
@@ -37,6 +48,8 @@ public sealed class LoadoutCardKeywordEntry
             CardId = CardId,
             Amount = Amount,
             Upgraded = Upgraded,
+            PoolId = PoolId,
+            Rarity = Rarity,
             Pile = Pile
         };
     }
@@ -59,6 +72,7 @@ public sealed class LoadoutCardKeywordEntry
 
             entry.KeywordKey = entry.KeywordKey.Trim();
             entry.CardId = entry.CardId.Trim();
+            entry.PoolId = (entry.PoolId ?? string.Empty).Trim();
             entry.Amount = Math.Max(0, entry.Amount);
             if (!Loadout.Keywords.LoadoutCardKeywordState.IsSupportedPile(entry.Pile))
                 entry.Pile = MegaCrit.Sts2.Core.Entities.Cards.PileType.Hand;
@@ -92,17 +106,25 @@ public sealed class LoadoutCardKeywordEntryUpgrade
     [JsonPropertyName("t")]
     public MegaCrit.Sts2.Core.Entities.Cards.PileType? ReplacementPile { get; set; }
 
+    [JsonPropertyName("pool")]
+    public string? ReplacementPoolId { get; set; }
+
+    [JsonPropertyName("rarity")]
+    public CardRarity? ReplacementRarity { get; set; }
+
     [JsonIgnore]
     public bool HasIdentity =>
         !string.IsNullOrWhiteSpace(KeywordKey)
-        && !string.IsNullOrWhiteSpace(OriginalCardId)
+        && (!string.IsNullOrWhiteSpace(OriginalCardId)
+            || string.Equals(KeywordKey, LoadoutKeywords.AddRandomCardKey, StringComparison.OrdinalIgnoreCase))
         && OccurrenceIndex >= 0;
 
     [JsonIgnore]
     public bool IsEmpty =>
         !HasIdentity
         || (AmountDelta == 0 && string.IsNullOrWhiteSpace(ReplacementCardId)
-            && ReplacementUpgraded is null && ReplacementPile is null);
+            && ReplacementUpgraded is null && ReplacementPile is null
+            && ReplacementPoolId is null && ReplacementRarity is null);
 
     public LoadoutCardKeywordEntryUpgrade Clone()
     {
@@ -114,6 +136,8 @@ public sealed class LoadoutCardKeywordEntryUpgrade
             AmountDelta = AmountDelta,
             ReplacementCardId = ReplacementCardId,
             ReplacementUpgraded = ReplacementUpgraded,
+            ReplacementPoolId = ReplacementPoolId,
+            ReplacementRarity = ReplacementRarity,
             ReplacementPile = ReplacementPile
         };
     }
@@ -136,6 +160,7 @@ public sealed class LoadoutCardKeywordEntryUpgrade
 
             entry.KeywordKey = entry.KeywordKey.Trim();
             entry.OriginalCardId = entry.OriginalCardId.Trim();
+            entry.ReplacementPoolId = entry.ReplacementPoolId?.Trim();
             if (entry.ReplacementPile.HasValue && !Loadout.Keywords.LoadoutCardKeywordState.IsSupportedPile(entry.ReplacementPile.Value))
                 entry.ReplacementPile = null;
             entry.ReplacementCardId = string.IsNullOrWhiteSpace(entry.ReplacementCardId)
