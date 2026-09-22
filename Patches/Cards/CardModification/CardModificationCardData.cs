@@ -252,6 +252,9 @@ internal static class CardModificationCodec
         [JsonPropertyName("w")]
         public List<LoadoutPowerKeywordEntry>? PowerKeywordEntries { get; set; }
 
+        [JsonPropertyName("ck")]
+        public List<LoadoutCardKeywordEntry>? CardKeywordEntries { get; set; }
+
         [JsonPropertyName("q")]
         [JsonConverter(typeof(CompactAttachmentListJsonConverter))]
         public List<CompactAttachment>? Enchantments { get; set; }
@@ -285,6 +288,8 @@ internal static class CardModificationCodec
                     : new SortedDictionary<string, bool>(spec.KeywordOverrides, StringComparer.Ordinal),
                 PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
                     spec.PowerKeywordEntries),
+                CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(
+                    spec.CardKeywordEntries),
                 Enchantments = spec.Enchantments is null
                     ? null
                     : spec.Enchantments
@@ -322,6 +327,8 @@ internal static class CardModificationCodec
                     : new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
                 PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
                     PowerKeywordEntries),
+                CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(
+                    CardKeywordEntries),
                 Enchantments = Enchantments?
                     .Select(attachment => attachment.ToSpec())
                     .ToList(),

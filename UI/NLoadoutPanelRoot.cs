@@ -343,13 +343,13 @@ public partial class NLoadoutPanelRoot : Control
 		return true;
 	}
 
-	public void OpenScreen(Control screen)
+	public void OpenScreen(Control screen, bool preserveHistoryEntry = false)
 	{
 		if (screen == null)
 			return;
 
 		RegisterScreen(screen);
-		PushScreen(screen);
+		PushScreen(screen, preserveHistoryEntry);
 	}
 
 	public void CloseScreen(StringName screenName)
@@ -666,12 +666,13 @@ public partial class NLoadoutPanelRoot : Control
 			_screenMouseFilters[screen] = screen.MouseFilter;
 	}
 
-	private void PushScreen(Control screen)
+	private void PushScreen(Control screen, bool preserveHistoryEntry = false)
 	{
 		if (TryPeekScreen(out var activeScreen))
 			SetScreenActive(activeScreen, false);
 
-		RemoveFromHistory(screen);
+		if (!preserveHistoryEntry)
+			RemoveFromHistory(screen);
 		_screenHistory.Push(screen);
 		SetScreenActive(screen, true);
 		UpdateModalInputState();

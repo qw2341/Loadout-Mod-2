@@ -286,8 +286,14 @@ public sealed class CardUpgradeModificationSpec
     [JsonPropertyName("v")]
     public List<LoadoutPowerKeywordEntryUpgrade>? PowerKeywordEntryUpgrades { get; set; }
 
+    [JsonPropertyName("cu")]
+    public List<LoadoutCardKeywordEntryUpgrade>? CardKeywordEntryUpgrades { get; set; }
+
     [JsonPropertyName("w")]
     public List<LoadoutPowerKeywordEntry>? AddedPowerKeywordEntries { get; set; }
+
+    [JsonPropertyName("ca")]
+    public List<LoadoutCardKeywordEntry>? AddedCardKeywordEntries { get; set; }
 
     [JsonIgnore]
     public bool IsEmpty =>
@@ -297,7 +303,9 @@ public sealed class CardUpgradeModificationSpec
         && DynamicVarDeltas.Count == 0
         && KeywordOverrides.Count == 0
         && PowerKeywordEntryUpgrades is null
-        && AddedPowerKeywordEntries is null;
+        && CardKeywordEntryUpgrades is null
+        && AddedPowerKeywordEntries is null
+        && AddedCardKeywordEntries is null;
 
     public CardUpgradeModificationSpec Clone()
     {
@@ -310,8 +318,12 @@ public sealed class CardUpgradeModificationSpec
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             PowerKeywordEntryUpgrades = LoadoutPowerKeywordEntryUpgrade.CloneList(
                 PowerKeywordEntryUpgrades),
+            CardKeywordEntryUpgrades = LoadoutCardKeywordEntryUpgrade.CloneList(
+                CardKeywordEntryUpgrades),
             AddedPowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
-                AddedPowerKeywordEntries)
+                AddedPowerKeywordEntries),
+            AddedCardKeywordEntries = LoadoutCardKeywordEntry.CloneList(
+                AddedCardKeywordEntries)
         };
     }
 
@@ -335,10 +347,20 @@ public sealed class CardUpgradeModificationSpec
             PowerKeywordEntryUpgrades = LoadoutPowerKeywordEntryUpgrade.CloneList(
                 other.PowerKeywordEntryUpgrades);
         }
+        if (other.CardKeywordEntryUpgrades is not null)
+        {
+            CardKeywordEntryUpgrades = LoadoutCardKeywordEntryUpgrade.CloneList(
+                other.CardKeywordEntryUpgrades);
+        }
         if (other.AddedPowerKeywordEntries is not null)
         {
             AddedPowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
                 other.AddedPowerKeywordEntries);
+        }
+        if (other.AddedCardKeywordEntries is not null)
+        {
+            AddedCardKeywordEntries = LoadoutCardKeywordEntry.CloneList(
+                other.AddedCardKeywordEntries);
         }
     }
 
@@ -362,8 +384,12 @@ public sealed class CardUpgradeModificationSpec
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         PowerKeywordEntryUpgrades = LoadoutPowerKeywordEntryUpgrade.NormalizeList(
             PowerKeywordEntryUpgrades);
+        CardKeywordEntryUpgrades = LoadoutCardKeywordEntryUpgrade.NormalizeList(
+            CardKeywordEntryUpgrades);
         AddedPowerKeywordEntries = LoadoutPowerKeywordEntry.NormalizeList(
             AddedPowerKeywordEntries);
+        AddedCardKeywordEntries = LoadoutCardKeywordEntry.NormalizeList(
+            AddedCardKeywordEntries);
     }
 }
 
@@ -416,6 +442,9 @@ public sealed class CardModificationSpec
     [JsonPropertyName("powerKeywords")]
     public List<LoadoutPowerKeywordEntry>? PowerKeywordEntries { get; set; }
 
+    [JsonPropertyName("cardKeywords")]
+    public List<LoadoutCardKeywordEntry>? CardKeywordEntries { get; set; }
+
     [JsonPropertyName("enchantment")]
     [JsonConverter(typeof(CardAttachmentListJsonConverter))]
     public List<CardAttachmentSpec>? Enchantments { get; set; }
@@ -442,6 +471,7 @@ public sealed class CardModificationSpec
         && ForceAncientPortraitRendering is null
         && KeywordOverrides.Count == 0
         && PowerKeywordEntries is null
+        && CardKeywordEntries is null
         && Enchantments is null
         && (Affliction is null || Affliction.IsEmpty)
         && UpgradeModification.IsEmpty;
@@ -457,6 +487,7 @@ public sealed class CardModificationSpec
         || !string.IsNullOrWhiteSpace(Rarity)
         || KeywordOverrides.Count > 0
         || PowerKeywordEntries is not null
+        || CardKeywordEntries is not null
         || Enchantments is not null
         || Affliction is not null
         || !UpgradeModification.IsEmpty;
@@ -493,6 +524,7 @@ public sealed class CardModificationSpec
             ForceAncientPortraitRendering = ForceAncientPortraitRendering,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(PowerKeywordEntries),
+            CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(CardKeywordEntries),
             Enchantments = CardAttachmentSpec.CloneList(Enchantments),
             Affliction = Affliction?.Clone(),
             UpgradeModification = UpgradeModification.Clone()
@@ -532,6 +564,8 @@ public sealed class CardModificationSpec
             KeywordOverrides[key] = value;
         if (other.PowerKeywordEntries is not null)
             PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(other.PowerKeywordEntries);
+        if (other.CardKeywordEntries is not null)
+            CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(other.CardKeywordEntries);
         if (other.Enchantments is not null)
             Enchantments = CardAttachmentSpec.CloneList(other.Enchantments);
         if (other.Affliction is not null)
@@ -548,6 +582,7 @@ public sealed class CardModificationSpec
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         PowerKeywordEntries = LoadoutPowerKeywordEntry.NormalizeList(PowerKeywordEntries);
+        CardKeywordEntries = LoadoutCardKeywordEntry.NormalizeList(CardKeywordEntries);
         UpgradeModification ??= new CardUpgradeModificationSpec();
         UpgradeModification.Normalize();
 
@@ -640,6 +675,9 @@ public sealed class CardModificationDelta
     [JsonPropertyName("w")]
     public List<LoadoutPowerKeywordEntry>? PowerKeywordEntries { get; set; }
 
+    [JsonPropertyName("ck")]
+    public List<LoadoutCardKeywordEntry>? CardKeywordEntries { get; set; }
+
     [JsonPropertyName("q")]
     [JsonConverter(typeof(CardAttachmentListJsonConverter))]
     public List<CardAttachmentSpec>? Enchantments { get; set; }
@@ -667,6 +705,7 @@ public sealed class CardModificationDelta
         && ForceAncientPortraitRendering is null
         && KeywordOverrides.Count == 0
         && PowerKeywordEntries is null
+        && CardKeywordEntries is null
         && Enchantments is null
         && (Affliction is null || Affliction.IsEmpty)
         && UpgradeModification.IsEmpty;
@@ -683,6 +722,7 @@ public sealed class CardModificationDelta
         || !string.IsNullOrWhiteSpace(Rarity)
         || KeywordOverrides.Count > 0
         || PowerKeywordEntries is not null
+        || CardKeywordEntries is not null
         || Enchantments is not null
         || Affliction is not null
         || !UpgradeModification.IsEmpty;
@@ -720,6 +760,7 @@ public sealed class CardModificationDelta
             ForceAncientPortraitRendering = ForceAncientPortraitRendering,
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(PowerKeywordEntries),
+            CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(CardKeywordEntries),
             Enchantments = CardAttachmentSpec.CloneList(Enchantments),
             Affliction = Affliction?.Clone(),
             UpgradeModification = UpgradeModification.Clone()
@@ -738,6 +779,7 @@ public sealed class CardModificationDelta
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         PowerKeywordEntries = LoadoutPowerKeywordEntry.NormalizeList(PowerKeywordEntries);
+        CardKeywordEntries = LoadoutCardKeywordEntry.NormalizeList(CardKeywordEntries);
         UpgradeModification ??= new CardUpgradeModificationSpec();
         UpgradeModification.Normalize(removeZeroValues: true);
         PoolId = NormalizeText(PoolId);

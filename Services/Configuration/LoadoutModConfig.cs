@@ -339,6 +339,7 @@ public sealed class LoadoutModConfig : SimpleModConfig
             string key = LoadoutKeywords.GetStorageKey(keyword);
             bool isPowerKeyword = LoadoutKeywordRegistry.TryGet(keyword, out var definition)
                                   && definition is LoadoutPowerKeywordModel;
+            bool isCardKeyword = definition is LoadoutCardKeywordModel;
             IReadOnlyDictionary<ModelId, CardModificationDelta> existing =
                 PermanentCardModificationStore.GetProfileDeltasSnapshot();
             Dictionary<ModelId, CardModificationDelta> entries = new();
@@ -358,6 +359,19 @@ public sealed class LoadoutModConfig : SimpleModConfig
                     {
                         KeywordKey = key,
                         PowerId = LoadoutPowerKeywordState.GetDefaultStrengthPowerId(),
+                        Amount = 1
+                    });
+                }
+                if (isCardKeyword
+                    && (delta.CardKeywordEntries is null
+                        || !delta.CardKeywordEntries.Any(entry =>
+                            string.Equals(entry.KeywordKey, key, StringComparison.OrdinalIgnoreCase))))
+                {
+                    delta.CardKeywordEntries ??= [];
+                    delta.CardKeywordEntries.Add(new LoadoutCardKeywordEntry
+                    {
+                        KeywordKey = key,
+                        CardId = LoadoutCardKeywordState.GetDefaultCardId(),
                         Amount = 1
                     });
                 }

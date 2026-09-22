@@ -38,6 +38,56 @@ public class CardPrinter
 	private const string SingleplayerFilterId = "play_mode_singleplayer";
 	private static string _currentCardFilterId;
 	private static Action<IReadOnlyCollection<ModelId>> _refreshImportedPermanentCards;
+	private static NGenericSelectScreen _keywordPickerScreen;
+	private static IDisposable _keywordPickerLease;
+	private static bool _keywordPickerAcceptScheduled;
+
+	public static bool TryOpenKeywordCardPicker(Action<CardModel, bool> accepted, out string error)
+	{
+		error = string.Empty;
+		NGenericSelectScreen screen = _keywordPickerScreen;
+		NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance;
+		if (screen is null || !GodotObject.IsInstanceValid(screen)
+		    || root is null || !GodotObject.IsInstanceValid(root)
+		    || screen.Visible || screen.IsReusedSelectionActive)
+		{
+			error = LocMan.Loc("CARD_MOD_CARD_PICKER_UNAVAILABLE", "The shared card picker is unavailable or already in use.");
+			return false;
+		}
+
+		_keywordPickerAcceptScheduled = false;
+		IDisposable lease = null;
+		lease = screen.BeginReusedSelection(
+			new SelectScreenOptions { SelectionMode = SelectSelectionMode.None },
+			activationOverride: (_, item) =>
+			{
+				if (_keywordPickerAcceptScheduled || item.UntypedModel is not CardModel selected)
+					return;
+				_keywordPickerAcceptScheduled = true;
+				bool upgraded = screen.IsToggleEnabled(ViewUpgradesToggleId)
+				                && ResolvePrinterDisplay(selected).IsUpgradable;
+				Callable.From(() =>
+				{
+					if (!ReferenceEquals(_keywordPickerLease, lease) || !screen.IsScreenActive)
+						return;
+					NLoadoutPanelRoot.CloseTopLoadoutScreen();
+					accepted(selected, upgraded);
+				}).CallDeferred();
+			},
+			showSelectionChrome: false,
+			allowCancellation: true,
+			visibleCustomSidebarControlNames: []);
+		_keywordPickerLease = lease;
+		root.OpenScreen(screen, preserveHistoryEntry: true);
+		return true;
+	}
+
+	private static void CleanupKeywordCardPicker()
+	{
+		_keywordPickerLease?.Dispose();
+		_keywordPickerLease = null;
+		_keywordPickerAcceptScheduled = false;
+	}
 
 	public static void RefreshImportedPermanentCards(IEnumerable<ModelId> cardIds)
 	{
@@ -83,10 +133,15 @@ public class CardPrinter
 		    BindActivationWithCleanup = (card, view, activate) => BindCardActivationWithCleanup(
 			    view,
 			    activate,
-			    () => OpenCardPrinterEditor(
-				    cardPrinterScreen,
-				    card,
-				    () => observedRecipeRevision = CardPrinterRunRecipeStore.Revision))
+			    () =>
+			    {
+				    if (cardPrinterScreen?.IsReusedSelectionActive == true)
+					    return;
+				    OpenCardPrinterEditor(
+					    cardPrinterScreen,
+					    card,
+					    () => observedRecipeRevision = CardPrinterRunRecipeStore.Revision);
+			    })
 	    };
 
 	    void BuildCardPrinterScreen(SelectScreenBuilder<CardModel> builder)
@@ -239,12 +294,15 @@ public class CardPrinter
 			selectScreenScenePath: CommonHelpers.CardSelectScreenScenePath);
 
 		cardPrinterScreen = printerItem.BoundScreen;
+		_keywordPickerScreen = cardPrinterScreen;
 		observedPermanentDisplayRevision = CardModificationRuntime.PermanentDisplayRevision;
 		observedRecipeRevision = CardPrinterRunRecipeStore.Revision;
 		if (cardPrinterScreen is not null)
 		{
 			void OnScreenOpened()
 			{
+				if (cardPrinterScreen.IsReusedSelectionActive)
+					return;
 				cardPrinterScreen.SetExclusiveFilterSelection(
 					PlayModeFilterGroupId,
 					IsSingleplayerMode() ? SingleplayerFilterId : null,
@@ -270,12 +328,20 @@ public class CardPrinter
 
 			void OnScreenClosed()
 			{
+				CleanupKeywordCardPicker();
 				CardModificationRuntime.PermanentCardDisplayChanged -= RefreshCardPrinterCard;
 				CardPrinterRunRecipeStore.Changed -= RefreshCardPrinterCard;
 			}
 
 			cardPrinterScreen.ScreenOpened += OnScreenOpened;
 			cardPrinterScreen.ScreenClosed += OnScreenClosed;
+			cardPrinterScreen.TreeExiting += () =>
+			{
+				if (!ReferenceEquals(_keywordPickerScreen, cardPrinterScreen))
+					return;
+				CleanupKeywordCardPicker();
+				_keywordPickerScreen = null;
+			};
 		}
     }
 

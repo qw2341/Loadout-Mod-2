@@ -526,6 +526,11 @@ public static class PermanentModificationArchiveService
                 PowerKeywordListsEqual,
                 out List<LoadoutPowerKeywordEntry>? powerKeywords)
             || !TryMergeReference(
+                local.CardKeywordEntries,
+                incoming.CardKeywordEntries,
+                CardKeywordListsEqual,
+                out List<LoadoutCardKeywordEntry>? cardKeywords)
+            || !TryMergeReference(
                 local.Enchantments,
                 incoming.Enchantments,
                 AttachmentListsEqual,
@@ -556,6 +561,7 @@ public static class PermanentModificationArchiveService
         merged.ForceAncientPortraitRendering = ancientRendering;
         merged.KeywordOverrides = keywords;
         merged.PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(powerKeywords);
+        merged.CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(cardKeywords);
         merged.Enchantments = CardAttachmentSpec.CloneList(enchantments);
         merged.Affliction = affliction?.Clone();
         merged.UpgradeModification = upgrade;
@@ -580,10 +586,20 @@ public static class PermanentModificationArchiveService
                 PowerKeywordEntryUpgradeListsEqual,
                 out List<LoadoutPowerKeywordEntryUpgrade>? powerKeywordUpgrades)
             || !TryMergeReference(
+                local.CardKeywordEntryUpgrades,
+                incoming.CardKeywordEntryUpgrades,
+                CardKeywordEntryUpgradeListsEqual,
+                out List<LoadoutCardKeywordEntryUpgrade>? cardKeywordUpgrades)
+            || !TryMergeReference(
                 local.AddedPowerKeywordEntries,
                 incoming.AddedPowerKeywordEntries,
                 PowerKeywordListsEqual,
-                out List<LoadoutPowerKeywordEntry>? addedPowerKeywords))
+                out List<LoadoutPowerKeywordEntry>? addedPowerKeywords)
+            || !TryMergeReference(
+                local.AddedCardKeywordEntries,
+                incoming.AddedCardKeywordEntries,
+                CardKeywordListsEqual,
+                out List<LoadoutCardKeywordEntry>? addedCardKeywords))
         {
             return false;
         }
@@ -595,8 +611,12 @@ public static class PermanentModificationArchiveService
         merged.KeywordOverrides = keywords;
         merged.PowerKeywordEntryUpgrades =
             LoadoutPowerKeywordEntryUpgrade.CloneList(powerKeywordUpgrades);
+        merged.CardKeywordEntryUpgrades =
+            LoadoutCardKeywordEntryUpgrade.CloneList(cardKeywordUpgrades);
         merged.AddedPowerKeywordEntries =
             LoadoutPowerKeywordEntry.CloneList(addedPowerKeywords);
+        merged.AddedCardKeywordEntries =
+            LoadoutCardKeywordEntry.CloneList(addedCardKeywords);
         merged.Normalize(removeZeroValues: true);
         return true;
     }
@@ -694,6 +714,45 @@ public static class PermanentModificationArchiveService
             && string.Equals(
                 pair.First.ReplacementPowerId,
                 pair.Second.ReplacementPowerId,
+                StringComparison.Ordinal));
+
+    private static bool CardKeywordListsEqual(
+        List<LoadoutCardKeywordEntry> left,
+        List<LoadoutCardKeywordEntry> right) =>
+        left.Count == right.Count
+        && left.Zip(right).All(pair =>
+            string.Equals(
+                pair.First.KeywordKey,
+                pair.Second.KeywordKey,
+                StringComparison.Ordinal)
+            && string.Equals(
+                pair.First.CardId,
+                pair.Second.CardId,
+                StringComparison.Ordinal)
+            && pair.First.Amount == pair.Second.Amount
+            && pair.First.Upgraded == pair.Second.Upgraded
+            && pair.First.Pile == pair.Second.Pile);
+
+    private static bool CardKeywordEntryUpgradeListsEqual(
+        List<LoadoutCardKeywordEntryUpgrade> left,
+        List<LoadoutCardKeywordEntryUpgrade> right) =>
+        left.Count == right.Count
+        && left.Zip(right).All(pair =>
+            string.Equals(
+                pair.First.KeywordKey,
+                pair.Second.KeywordKey,
+                StringComparison.Ordinal)
+            && string.Equals(
+                pair.First.OriginalCardId,
+                pair.Second.OriginalCardId,
+                StringComparison.Ordinal)
+            && pair.First.OccurrenceIndex == pair.Second.OccurrenceIndex
+            && pair.First.AmountDelta == pair.Second.AmountDelta
+            && pair.First.ReplacementUpgraded == pair.Second.ReplacementUpgraded
+            && pair.First.ReplacementPile == pair.Second.ReplacementPile
+            && string.Equals(
+                pair.First.ReplacementCardId,
+                pair.Second.ReplacementCardId,
                 StringComparison.Ordinal));
 
     private static bool AttachmentsEqual(CardAttachmentSpec left, CardAttachmentSpec right) =>

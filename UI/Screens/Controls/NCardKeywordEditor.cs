@@ -325,6 +325,12 @@ public partial class NCardKeywordEditor : VBoxContainer
         AddLoadoutSection(
             blocks,
             catalog,
+            LoadoutKeywordEditorSection.Card,
+            "CARD_MOD_LOADOUT_CARD_KEYWORDS",
+            "Loadout Card Keywords");
+        AddLoadoutSection(
+            blocks,
+            catalog,
             LoadoutKeywordEditorSection.Restrictive,
             "CARD_MOD_LOADOUT_RESTRICTIVE_KEYWORDS",
             "Loadout Restrictive Keywords");
@@ -396,6 +402,12 @@ public partial class NCardKeywordEditor : VBoxContainer
             LoadoutKeywordEditorSection.Power,
             "CARD_MOD_LOADOUT_POWER_KEYWORDS",
             "Loadout Power Keywords");
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.Card,
+            "CARD_MOD_LOADOUT_CARD_KEYWORDS",
+            "Loadout Card Keywords");
         AddLoadoutSection(
             blocks,
             entries,
@@ -502,7 +514,7 @@ public partial class NCardKeywordEditor : VBoxContainer
             CardKeyword keyword = entry.Keyword;
             string key = LoadoutKeywords.GetStorageKey(keyword);
             if (entry.ControlKind
-                == LoadoutKeywordEditorControlKind.RepeatablePower)
+                is LoadoutKeywordEditorControlKind.RepeatablePower or LoadoutKeywordEditorControlKind.RepeatableCard)
             {
                 grid.AddChild(CreateRepeatableControl(entry, toggleWidth));
                 continue;
@@ -742,7 +754,7 @@ public partial class NCardKeywordEditor : VBoxContainer
     {
         return entries.Count > 0
                && entries.All(entry =>
-                   entry.EditorSection == LoadoutKeywordEditorSection.Power)
+                   entry.EditorSection is LoadoutKeywordEditorSection.Power or LoadoutKeywordEditorSection.Card)
             ? 1
             : Columns;
     }

@@ -361,5 +361,8 @@
   "LOADOUT-MULTI_BLOCK.title": "!?多段ブロック?!",
   "LOADOUT-MULTI_BLOCK.description": "基本ブロック値を、その回数の1ブロック獲得に分割する。",
   "LOADOUT-X_VALUE.title": "X値",
-  "LOADOUT-X_VALUE.description": "Xエナジーを消費する。このカードのすべての数値はXになる。Xコストキーワードによる追加プレイを無効にする。"
+  "LOADOUT-X_VALUE.description": "Xエナジーを消費する。このカードのすべての数値はXになる。Xコストキーワードによる追加プレイを無効にする。",
+  "LOADOUT-ADD_CARD.title": "カードを追加",
+  "LOADOUT-ADD_CARD.description": "プレイ時、選択したカードを指定した場所に加える。",
+  "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}"
 }

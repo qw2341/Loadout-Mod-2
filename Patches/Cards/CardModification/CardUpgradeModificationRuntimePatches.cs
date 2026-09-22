@@ -91,6 +91,10 @@ internal static class CardUpgradeModificationRuntimePatches
                 null,
                 value.PowerKeywordEntryUpgrades,
                 value.AddedPowerKeywordEntries);
+            LoadoutKeywordRuntimePatches.EnableFromCardKeywordEntries(
+                null,
+                value.CardKeywordEntryUpgrades,
+                value.AddedCardKeywordEntries);
         }
 
         _overrides ??= new Stack<CardUpgradeModificationSpec?>();
@@ -264,6 +268,7 @@ internal static class CardUpgradeModificationContextPatch
     public static void Postfix(CardModel __instance)
     {
         LoadoutPowerKeywordState.Synchronize(__instance);
+        LoadoutCardKeywordState.Synchronize(__instance);
     }
 }
 

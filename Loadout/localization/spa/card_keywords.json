@@ -361,5 +361,8 @@
   "LOADOUT-MULTI_BLOCK.title": "!?Multibloqueo?!",
   "LOADOUT-MULTI_BLOCK.description": "Divide el valor de Bloqueo base en esa cantidad de ganancias de 1 de Bloqueo.",
   "LOADOUT-X_VALUE.title": "Valor X",
-  "LOADOUT-X_VALUE.description": "Cuesta X de Energía. Todos los valores de esta carta son X. Sustituye las repeticiones adicionales de la palabra clave Coste X."
+  "LOADOUT-X_VALUE.description": "Cuesta X de Energía. Todos los valores de esta carta son X. Sustituye las repeticiones adicionales de la palabra clave Coste X.",
+  "LOADOUT-ADD_CARD.title": "Añadir carta",
+  "LOADOUT-ADD_CARD.description": "Al jugar, añade las cartas elegidas a las pilas indicadas.",
+  "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}"
 }

@@ -86,6 +86,10 @@ public partial class NCardUpgradeModificationScreen : Control
             LoadoutPowerKeywordState.PruneEntryUpgrades(
                 _baseState.PowerKeywordEntries,
                 _draft.PowerKeywordEntryUpgrades);
+        _draft.CardKeywordEntryUpgrades =
+            LoadoutCardKeywordState.PruneEntryUpgrades(
+                _baseState.CardKeywordEntries,
+                _draft.CardKeywordEntryUpgrades);
         _save = save;
         if (IsNodeReady())
             QueueRebuild();
@@ -219,7 +223,9 @@ public partial class NCardUpgradeModificationScreen : Control
 
         if (definitions.Count == 0
             && (_baseState.PowerKeywordEntries?.Count ?? 0) == 0
-            && (_draft.AddedPowerKeywordEntries?.Count ?? 0) == 0)
+            && (_draft.AddedPowerKeywordEntries?.Count ?? 0) == 0
+            && (_baseState.CardKeywordEntries?.Count ?? 0) == 0
+            && (_draft.AddedCardKeywordEntries?.Count ?? 0) == 0)
         {
             MegaLabel empty = CreateLabel(
                 LocMan.Loc(
@@ -251,6 +257,7 @@ public partial class NCardUpgradeModificationScreen : Control
         }
 
         AddPowerKeywordVariableControls();
+        AddCardKeywordVariableControls();
     }
 
     private void RebuildKeywordControls()
@@ -276,9 +283,9 @@ public partial class NCardUpgradeModificationScreen : Control
             OnKeywordChanged,
             _selectedKeywordModId,
             selected => _selectedKeywordModId = selected,
-            getRepeatCount: GetPowerKeywordEntryCount,
-            onRepeatAdded: AddPowerKeywordEntry,
-            onRepeatRemoved: RemovePowerKeywordEntry);
+            getRepeatCount: keyword => GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword),
+            onRepeatAdded: keyword => { AddPowerKeywordEntry(keyword); AddCardKeywordEntry(keyword); },
+            onRepeatRemoved: keyword => { RemovePowerKeywordEntry(keyword); RemoveCardKeywordEntry(keyword); });
         if (editor.GetParent() is null)
             _rightControls.AddChild(editor);
     }
@@ -287,9 +294,9 @@ public partial class NCardUpgradeModificationScreen : Control
     {
         string key = LoadoutKeywords.GetStorageKey(keyword);
         if (LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
-            && model is LoadoutPowerKeywordModel)
+            && model is LoadoutPowerKeywordModel or LoadoutCardKeywordModel)
         {
-            return GetPowerKeywordEntryCount(keyword) > 0;
+            return GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword) > 0;
         }
         return _draft.KeywordOverrides.TryGetValue(key, out bool enabled)
             ? enabled
@@ -368,6 +375,7 @@ public partial class NCardUpgradeModificationScreen : Control
                 upgraded.UpgradeInternal();
             }
             LoadoutPowerKeywordState.Synchronize(upgraded);
+            LoadoutCardKeywordState.Synchronize(upgraded);
             foreach (CardKeyword keyword in upgraded.GetKeywordsWithSources(
                          KeywordSources.Local))
             {
@@ -750,6 +758,7 @@ public partial class NCardUpgradeModificationScreen : Control
             using (CardUpgradeModificationRuntimePatches.BeginOverride(_draft))
                 upgraded.UpgradeInternal();
             LoadoutPowerKeywordState.Synchronize(upgraded);
+            LoadoutCardKeywordState.Synchronize(upgraded);
             upgraded.UpgradePreviewType = CardUpgradePreviewType.Deck;
 
             _upgradePreview.SetCards(source, upgraded);
@@ -790,6 +799,7 @@ public partial class NCardUpgradeModificationScreen : Control
     {
         CardModel clone = scope.CloneCard(source);
         LoadoutPowerKeywordState.CopyExplicitState(source, clone);
+        LoadoutCardKeywordState.CopyExplicitState(source, clone);
         return clone;
     }
 
@@ -879,6 +889,10 @@ public partial class NCardUpgradeModificationScreen : Control
             LoadoutPowerKeywordState.PruneEntryUpgrades(
                 _baseState.PowerKeywordEntries,
                 _draft.PowerKeywordEntryUpgrades);
+        _draft.CardKeywordEntryUpgrades =
+            LoadoutCardKeywordState.PruneEntryUpgrades(
+                _baseState.CardKeywordEntries,
+                _draft.CardKeywordEntryUpgrades);
         _draft.Normalize();
         _save?.Invoke(_draft.Clone());
     }
@@ -895,7 +909,7 @@ public partial class NCardUpgradeModificationScreen : Control
         text.Position = Vector2.Zero;
         text.Size = new Vector2(EditorLabelWidth, 44f);
         row.AddChild(text);
-        float inputWidth = input is NLoadoutPowerSelector
+        float inputWidth = input is NLoadoutPowerSelector or NLoadoutCardSelector or NLoadoutPileTypeStepper
             ? EditorRowWidth - EditorLabelWidth - 8f
             : StepperWidth;
         input.Position = new Vector2(

@@ -34,6 +34,7 @@ public enum LoadoutKeywordEditorSection
     BasicMultiplayer,
     BasicMultipliers,
     Power,
+    Card,
     Restrictive,
     Fatal,
     Improvement,
@@ -43,7 +44,8 @@ public enum LoadoutKeywordEditorSection
 public enum LoadoutKeywordEditorControlKind
 {
     Toggle,
-    RepeatablePower
+    RepeatablePower,
+    RepeatableCard
 }
 
 public sealed record LoadoutKeywordDynamicVarDefinition(

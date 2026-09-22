@@ -1065,6 +1065,7 @@ public partial class NCardModificationScreen : Control
         }
 
         AddPowerKeywordVariableControls();
+        AddCardKeywordVariableControls();
     }
 
     private void AddPowerKeywordVariableControls()
@@ -1169,6 +1170,117 @@ public partial class NCardModificationScreen : Control
             LoadoutPowerKeywordState.PruneEntryUpgrades(
                 _temporaryState.PowerKeywordEntries,
                 _temporaryState.UpgradeModification.PowerKeywordEntryUpgrades);
+    }
+
+    private void AddCardKeywordVariableControls()
+    {
+        if (_variableControls is null)
+            return;
+
+        List<LoadoutCardKeywordEntry> entries =
+            LoadoutCardKeywordEntry.CloneList(
+                _workingState.CardKeywordEntries) ?? [];
+        Dictionary<string, int> totals = entries
+            .GroupBy(entry => entry.KeywordKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Count(),
+                StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, int> numbers =
+            new(StringComparer.OrdinalIgnoreCase);
+        for (int index = 0; index < entries.Count; index++)
+        {
+            if (!LoadoutCardKeywordState.TryResolveKeywordModel(
+                    entries[index].KeywordKey,
+                    out LoadoutCardKeywordModel model))
+                continue;
+
+            int number = numbers.GetValueOrDefault(model.StorageKey) + 1;
+            numbers[model.StorageKey] = number;
+            int capturedIndex = index;
+            string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
+                ? $" {number}"
+                : string.Empty;
+            NLoadoutCardSelector selector = new();
+            selector.Init(entries[index].CardId, entries[index].Upgraded);
+            selector.SelectRequested += () => OpenCardKeywordPicker(
+                capturedIndex);
+            _variableControls.AddChild(CreateRow(
+                LocMan.Loc(
+                    model.CardLabelLocKey,
+                    model.GetTitle()) + suffix,
+                selector));
+
+            AddStepperRow(
+                _variableControls,
+                LocMan.Loc(
+                    model.AmountLabelLocKey,
+                    $"{model.GetTitle()} Amount") + suffix,
+                entries[index].Amount,
+                0,
+                int.MaxValue,
+                amount => UpdateCardKeywordEntry(
+                    capturedIndex,
+                    entry => entry.Amount = amount,
+                    rebuildControls: false));
+            NLoadoutPileTypeStepper pile = new();
+            pile.Init(entries[index].Pile, value => UpdateCardKeywordEntry(
+                capturedIndex, entry => entry.Pile = value, rebuildControls: false));
+            _variableControls.AddChild(CreateRow(
+                LocMan.Loc("CARD_MOD_ADD_CARD_PILE", "Destination Pile") + suffix, pile));
+        }
+    }
+
+    private void OpenCardKeywordPicker(int entryIndex)
+    {
+        if (!CardPrinter.TryOpenKeywordCardPicker((selected, upgraded) =>
+            {
+                if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+                    return;
+                UpdateCardKeywordEntry(
+                    entryIndex,
+                    entry => { entry.CardId = selected.Id.ToString(); entry.Upgraded = upgraded; },
+                    rebuildControls: true);
+            },
+            out string error))
+        {
+            GD.PushWarning(error);
+        }
+    }
+
+    private void UpdateCardKeywordEntry(
+        int entryIndex,
+        Action<LoadoutCardKeywordEntry> update,
+        bool rebuildControls)
+    {
+        List<LoadoutCardKeywordEntry> entries =
+            LoadoutCardKeywordEntry.CloneList(
+                _workingState.CardKeywordEntries) ?? [];
+        if (entryIndex < 0 || entryIndex >= entries.Count)
+            return;
+
+        update(entries[entryIndex]);
+        SetCardKeywordEntries(entries);
+        ApplyWorkingState();
+        if (rebuildControls)
+            Callable.From(RebuildLeftControls).CallDeferred();
+    }
+
+    private void SetCardKeywordEntries(
+        IReadOnlyList<LoadoutCardKeywordEntry> entries)
+    {
+        _workingState.CardKeywordEntries =
+            LoadoutCardKeywordEntry.CloneList(entries);
+        _temporaryState.CardKeywordEntries =
+            LoadoutCardKeywordEntry.CloneList(entries);
+        _workingState.UpgradeModification.CardKeywordEntryUpgrades =
+            LoadoutCardKeywordState.PruneEntryUpgrades(
+                _workingState.CardKeywordEntries,
+                _workingState.UpgradeModification.CardKeywordEntryUpgrades);
+        _temporaryState.UpgradeModification.CardKeywordEntryUpgrades =
+            LoadoutCardKeywordState.PruneEntryUpgrades(
+                _temporaryState.CardKeywordEntries,
+                _temporaryState.UpgradeModification.CardKeywordEntryUpgrades);
     }
 
     private void AddDropdownControls()
@@ -1659,9 +1771,9 @@ public partial class NCardModificationScreen : Control
         {
             _selectedKeywordModId = selectedId;
         },
-            getRepeatCount: GetPowerKeywordEntryCount,
-            onRepeatAdded: AddPowerKeywordEntry,
-            onRepeatRemoved: RemovePowerKeywordEntry);
+            getRepeatCount: keyword => GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword),
+            onRepeatAdded: keyword => { AddPowerKeywordEntry(keyword); AddCardKeywordEntry(keyword); },
+            onRepeatRemoved: keyword => { RemovePowerKeywordEntry(keyword); RemoveCardKeywordEntry(keyword); });
         if (editor.GetParent() is null)
             _rightControls.AddChild(editor);
     }
@@ -1711,6 +1823,55 @@ public partial class NCardModificationScreen : Control
 
         entries.RemoveAt(index);
         SetPowerKeywordEntries(entries);
+        ApplyWorkingState();
+        Callable.From(RebuildControls).CallDeferred();
+    }
+
+    private int GetCardKeywordEntryCount(CardKeyword keyword)
+    {
+        string key = LoadoutKeywords.GetStorageKey(keyword);
+        return _workingState.CardKeywordEntries?.Count(entry =>
+            string.Equals(
+                entry.KeywordKey,
+                key,
+                StringComparison.OrdinalIgnoreCase)) ?? 0;
+    }
+
+    private void AddCardKeywordEntry(CardKeyword keyword)
+    {
+        if (!LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
+            || model is not LoadoutCardKeywordModel)
+            return;
+
+        List<LoadoutCardKeywordEntry> entries =
+            LoadoutCardKeywordEntry.CloneList(
+                _workingState.CardKeywordEntries) ?? [];
+        entries.Add(new LoadoutCardKeywordEntry
+        {
+            KeywordKey = model.StorageKey,
+            CardId = LoadoutCardKeywordState.GetDefaultCardId(),
+            Amount = 1
+        });
+        SetCardKeywordEntries(entries);
+        ApplyWorkingState();
+        Callable.From(RebuildControls).CallDeferred();
+    }
+
+    private void RemoveCardKeywordEntry(CardKeyword keyword)
+    {
+        string key = LoadoutKeywords.GetStorageKey(keyword);
+        List<LoadoutCardKeywordEntry> entries =
+            LoadoutCardKeywordEntry.CloneList(
+                _workingState.CardKeywordEntries) ?? [];
+        int index = entries.FindLastIndex(entry => string.Equals(
+            entry.KeywordKey,
+            key,
+            StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+            return;
+
+        entries.RemoveAt(index);
+        SetCardKeywordEntries(entries);
         ApplyWorkingState();
         Callable.From(RebuildControls).CallDeferred();
     }

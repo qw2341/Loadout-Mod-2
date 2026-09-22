@@ -46,6 +46,7 @@ public static class CardModelMutableCloneCardModificationPatch
         {
             CardModificationFields.Copy(source, clone);
             LoadoutPowerKeywordState.CopyExplicitState(source, clone);
+            LoadoutCardKeywordState.CopyExplicitState(source, clone);
         }
     }
 }
@@ -86,6 +87,7 @@ public static class CardModelDowngradePermanentUpgradeModificationPatch
     {
         CardModificationRuntime.ReapplyPermanentUpgradeAfterDowngrade(__instance);
         LoadoutPowerKeywordState.Synchronize(__instance);
+        LoadoutCardKeywordState.Synchronize(__instance);
     }
 }
 
@@ -109,6 +111,7 @@ public static class CardCmdUpgradeCardModificationPatch
         {
             CardModificationRuntime.ReapplyTemporaryDelta(card);
             LoadoutPowerKeywordState.Synchronize(card);
+            LoadoutCardKeywordState.Synchronize(card);
         }
 
         HashSet<ulong> changedPlayers = [];
