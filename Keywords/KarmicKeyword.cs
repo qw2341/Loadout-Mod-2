@@ -22,6 +22,8 @@ using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.Nodes.Vfx.Utilities;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.ValueProps;
@@ -264,11 +266,32 @@ public static class KarmicKeywordPatches
 
         public void Track(Node2D effect)
         {
+            if (effect is NVfxParticleSystem or NHeavyBluntVfx && TrackParticles(effect))
+                return;
+            TrackEffect(effect);
+        }
+
+        private bool TrackParticles(Node node)
+        {
+            bool tracked = node is GpuParticles2D or CpuParticles2D;
+            if (tracked)
+                TrackEffect((Node2D)node);
+            foreach (Node child in node.GetChildren())
+                tracked |= TrackParticles(child);
+            return tracked;
+        }
+
+        private void TrackEffect(Node2D effect)
+        {
             if (_effects.ContainsKey(effect))
                 return;
             Action exited = () => Remove(effect);
             _effects.Add(effect, exited);
             effect.TreeExiting += exited;
+            if (effect is GpuParticles2D gpu)
+                gpu.Finished += exited;
+            else if (effect is CpuParticles2D cpu)
+                cpu.Finished += exited;
             if (!_listening)
             {
                 RenderingServer.FramePostDraw += OnFrame;
@@ -295,12 +318,23 @@ public static class KarmicKeywordPatches
         private void Remove(Node2D effect)
         {
             if (_effects.Remove(effect, out Action? exited))
-                effect.TreeExiting -= exited;
+                Disconnect(effect, exited);
             if (_effects.Count == 0)
             {
                 StopListening();
                 Pulse();
             }
+        }
+
+        private static void Disconnect(Node2D effect, Action exited)
+        {
+            if (!GodotObject.IsInstanceValid(effect))
+                return;
+            effect.TreeExiting -= exited;
+            if (effect is GpuParticles2D gpu)
+                gpu.Finished -= exited;
+            else if (effect is CpuParticles2D cpu)
+                cpu.Finished -= exited;
         }
 
         public async Task<bool> NextFrame()
@@ -333,8 +367,7 @@ public static class KarmicKeywordPatches
         {
             StopListening();
             foreach ((Node2D effect, Action exited) in _effects)
-                if (GodotObject.IsInstanceValid(effect))
-                    effect.TreeExiting -= exited;
+                Disconnect(effect, exited);
             _effects.Clear();
             Pulse();
         }
