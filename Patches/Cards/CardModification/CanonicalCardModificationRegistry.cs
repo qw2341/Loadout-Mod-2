@@ -42,6 +42,10 @@ internal static class CanonicalCardModificationRegistry
                                                           ?? throw new MissingFieldException(typeof(CardModel).FullName, "_starCostSet");
     private static readonly FieldInfo PoolField = AccessTools.Field(typeof(CardModel), "_pool")
                                                    ?? throw new MissingFieldException(typeof(CardModel).FullName, "_pool");
+    private static readonly FieldInfo PoolCardsField = AccessTools.Field(typeof(CardPoolModel), "_allCards")
+                                                        ?? throw new MissingFieldException(typeof(CardPoolModel).FullName, "_allCards");
+    private static readonly FieldInfo PoolCardIdsField = AccessTools.Field(typeof(CardPoolModel), "_allCardIds")
+                                                          ?? throw new MissingFieldException(typeof(CardPoolModel).FullName, "_allCardIds");
     private static readonly FieldInfo TypeField = AccessTools.Field(typeof(CardModel), "<Type>k__BackingField")
                                                    ?? throw new MissingFieldException(typeof(CardModel).FullName, "<Type>k__BackingField");
     private static readonly FieldInfo RarityField = AccessTools.Field(typeof(CardModel), "<Rarity>k__BackingField")
@@ -51,6 +55,8 @@ internal static class CanonicalCardModificationRegistry
 
     private static readonly Dictionary<ModelId, CanonicalCardBaseline> Baselines = new();
     private static readonly Dictionary<ModelId, int> CanonicalStarCosts = new();
+    private static readonly Dictionary<CardPoolModel, CardModel[]> PoolBaselines = new();
+    private static readonly Dictionary<ModelId, CardModel> ReassignedCards = new();
 
     public static CanonicalCardBaseline GetBaseline(CardModel canonical)
     {
@@ -108,6 +114,8 @@ internal static class CanonicalCardModificationRegistry
         Restore(canonical, baseline);
         if (delta is { IsEmpty: false })
             Apply(canonical, baseline, delta);
+        if (!string.IsNullOrWhiteSpace(delta?.PoolId) || ReassignedCards.ContainsKey(cardId))
+            ReconcilePoolMembership(canonical, baseline.Pool, delta?.PoolId);
         ConfigurePatches();
     }
 
@@ -131,8 +139,14 @@ internal static class CanonicalCardModificationRegistry
         {
             CardModel? canonical = ResolveCanonical(id);
             if (canonical is not null)
+            {
                 Restore(canonical, baseline);
+                if (ReassignedCards.ContainsKey(id))
+                    ReconcilePoolMembership(canonical, baseline.Pool, null);
+            }
         }
+        ReassignedCards.Clear();
+        PoolBaselines.Clear();
         CanonicalStarCosts.Clear();
         CardModificationPermanentPatches.Reset();
         Baselines.Clear();
@@ -199,8 +213,6 @@ internal static class CanonicalCardModificationRegistry
             CanonicalStarCosts[canonical.Id] = starCost;
         }
 
-        if (ResolvePool(delta.PoolId) is { } pool)
-            PoolField.SetValue(canonical, pool);
         if (Enum.TryParse(delta.Type, true, out CardType type))
             TypeField.SetValue(canonical, type);
         if (Enum.TryParse(delta.Rarity, true, out CardRarity rarity))
@@ -267,6 +279,47 @@ internal static class CanonicalCardModificationRegistry
             PermanentCardModificationStore.HasAnyCreationResidual,
             CanonicalStarCosts.Count > 0,
             PermanentCardModificationStore.HasAnyUpgradeModifications);
+    }
+
+    private static void ReconcilePoolMembership(CardModel card, CardPoolModel originalPool, string? poolId)
+    {
+        CardPoolModel previousPool = card.Pool;
+        if (string.Equals(previousPool.Id.ToString(), poolId, StringComparison.Ordinal)
+            || string.Equals(previousPool.Id.Entry, poolId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        CardPoolModel currentPool = ResolvePool(poolId) ?? originalPool;
+        if (previousPool == currentPool)
+            return;
+
+        if (!PoolBaselines.ContainsKey(previousPool))
+            PoolBaselines[previousPool] = previousPool.AllCards.ToArray();
+        if (!PoolBaselines.ContainsKey(currentPool))
+            PoolBaselines[currentPool] = currentPool.AllCards.ToArray();
+
+        PoolField.SetValue(card, currentPool);
+        if (currentPool == originalPool)
+            ReassignedCards.Remove(card.Id);
+        else
+            ReassignedCards[card.Id] = card;
+
+        RebuildPool(previousPool);
+        RebuildPool(currentPool);
+    }
+
+    private static void RebuildPool(CardPoolModel pool)
+    {
+        // Preserve native order; incoming cards must match across save/snapshot order.
+        CardModel[] cards = PoolBaselines[pool]
+            .Where(card => !ReassignedCards.ContainsKey(card.Id))
+            .Concat(ReassignedCards.Values
+                .Where(card => card.Pool == pool)
+                .OrderBy(card => card.Id.ToString(), StringComparer.Ordinal))
+            .ToArray();
+        PoolCardsField.SetValue(pool, cards);
+        PoolCardIdsField.SetValue(pool, null);
     }
 
     private static CardModel? ResolveCanonical(ModelId cardId) =>
