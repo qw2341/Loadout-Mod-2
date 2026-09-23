@@ -563,16 +563,8 @@ public static class LoadoutKeywords
     public static bool TryResolve(string? key, out CardKeyword keyword)
     {
         string? normalized = key?.Trim();
-        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.All)
+        if (normalized is not null && LoadoutKeywordRegistry.TryGet(normalized, out LoadoutKeywordModel model))
         {
-            if (!string.Equals(
-                    model.StorageKey,
-                    normalized,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
             keyword = model.Keyword;
             return keyword != CardKeyword.None;
         }

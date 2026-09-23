@@ -67,10 +67,9 @@ internal static class TurnEndInHandKeywordDispatcher
         await originalEffect;
 
         foreach (LoadoutKeywordModel model in
-                 LoadoutKeywordRegistry.WithTurnEndInHandEffect)
+                 LoadoutKeywordRegistry.EnumerateLiveModels(card, model => model.HasTurnEndInHandEffect))
         {
-            if (model.IsEnabled(card))
-                await model.AfterTurnEndInHand(card, choiceContext);
+            await model.AfterTurnEndInHand(card, choiceContext);
         }
     }
 }

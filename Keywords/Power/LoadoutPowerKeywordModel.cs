@@ -275,10 +275,28 @@ public static class LoadoutPowerKeywordState
             return;
         }
 
-        foreach (LoadoutPowerKeywordModel model in
-                 LoadoutKeywordRegistry.All.OfType<LoadoutPowerKeywordModel>())
+        ResolveLists(card, out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
+            out _, out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries);
+        HashSet<LoadoutKeywordModel>? configured = null;
+        AddConfiguredModels(baseEntries, ref configured);
+        if (card.CurrentUpgradeLevel > 0)
+            AddConfiguredModels(addedEntries, ref configured);
+
+        IReadOnlyList<LoadoutKeywordModel> active = LoadoutKeywordRegistry.ResolveActiveModels(
+            card, model => model is LoadoutPowerKeywordModel);
+        if (configured is null && active.Count == 0)
         {
-            bool enabled = HasEffectiveEntries(card, model.StorageKey);
+            LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
+            return;
+        }
+
+        HashSet<LoadoutKeywordModel> candidates = new(configured ?? []);
+        candidates.UnionWith(active);
+        List<LoadoutKeywordModel> ordered = candidates.ToList();
+        ordered.Sort(LoadoutKeywordRegistry.CompareRegistration);
+        foreach (LoadoutKeywordModel model in ordered)
+        {
+            bool enabled = configured?.Contains(model) == true;
             bool present = LoadoutKeywords.Has(card, model.Keyword);
             if (enabled && !present)
                 card.AddKeyword(model.Keyword);
@@ -289,28 +307,47 @@ public static class LoadoutPowerKeywordState
         LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
     }
 
+    private static void AddConfiguredModels(
+        IReadOnlyList<LoadoutPowerKeywordEntry>? entries,
+        ref HashSet<LoadoutKeywordModel>? models)
+    {
+        if (entries is null)
+            return;
+        foreach (LoadoutPowerKeywordEntry entry in entries)
+        {
+            if (LoadoutKeywordRegistry.TryGet(entry.KeywordKey, out LoadoutKeywordModel model)
+                && model is LoadoutPowerKeywordModel)
+                (models ??= []).Add(model);
+        }
+    }
+
     public static IEnumerable<LoadoutPowerKeywordEntry> GetEffectiveEntries(
         CardModel card,
         string keywordKey)
+    {
+        foreach (LoadoutPowerKeywordEntry entry in GetEffectiveEntries(card))
+        {
+            if (MatchesKeyword(entry, keywordKey))
+                yield return entry;
+        }
+    }
+
+    public static IEnumerable<LoadoutPowerKeywordEntry> GetEffectiveEntries(CardModel card)
     {
         ResolveLists(
             card,
             out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
             out IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
             out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries);
+        if ((baseEntries is null || baseEntries.Count == 0)
+            && (card.CurrentUpgradeLevel <= 0 || addedEntries is null || addedEntries.Count == 0))
+            return Array.Empty<LoadoutPowerKeywordEntry>();
+
         InfiniteUpgradeScalingMode scalingMode =
             InfiniteUpgradeValueScaling.Resolve(card);
 
-        foreach (LoadoutPowerKeywordEntry entry in GetEffectiveEntries(
-                     baseEntries,
-                     entryUpgrades,
-                     addedEntries,
-                     card.CurrentUpgradeLevel,
-                     scalingMode))
-        {
-            if (MatchesKeyword(entry, keywordKey))
-                yield return entry;
-        }
+        return GetEffectiveEntries(baseEntries, entryUpgrades, addedEntries,
+            card.CurrentUpgradeLevel, scalingMode);
     }
 
     public static IEnumerable<LoadoutPowerKeywordEntry> GetEffectiveEntries(

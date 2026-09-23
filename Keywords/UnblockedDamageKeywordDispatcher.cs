@@ -26,15 +26,9 @@ internal static class UnblockedDamageKeywordDispatcher
         if (source is null)
             return;
 
-        List<LoadoutKeywordModel>? effects = null;
-        foreach (LoadoutKeywordModel model in
-                 LoadoutKeywordRegistry.WithUnblockedDamageEffect)
-        {
-            if (model.IsEnabled(source))
-                (effects ??= []).Add(model);
-        }
-
-        if (effects is not null)
+        IReadOnlyList<LoadoutKeywordModel> effects = LoadoutKeywordRegistry.ResolveActiveModels(
+            source, model => model.HasUnblockedDamageEffect);
+        if (effects.Count > 0)
             __result = Apply(__result, source, effects);
     }
 

@@ -55,8 +55,9 @@ internal static class PostOnPlayKeywordDispatcher
         ref Task __result,
         out object? __state)
     {
-        bool suppressOriginal =
-            LoadoutKeywordRegistry.SuppressesOriginalOnPlay(__instance);
+        IReadOnlyList<LoadoutKeywordModel> active =
+            LoadoutKeywordRegistry.ResolveActiveModels(__instance);
+        bool suppressOriginal = active.Any(model => model.SuppressesOriginalOnPlay);
         if (XCostOnPlayPatch.IsRepeating(__instance, __1))
         {
             __state = null;
@@ -70,21 +71,16 @@ internal static class PostOnPlayKeywordDispatcher
         CardPlay cardPlay = __1;
         List<KeywordEffectState>? effects = null;
         int executionCount = suppressOriginal
-                             && !LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue)
-                             && LoadoutKeywords.Has(
-                                 __instance,
-                                 LoadoutKeywords.XCost)
+                             && !active.Contains(XValueKeyword.Instance)
+                             && active.Contains(XCostKeyword.Instance)
             ? XCostOnPlayPatch.ResolveExecutionCount(__instance)
             : 1;
 
         if (executionCount > 0)
         {
             foreach (LoadoutKeywordModel model in
-                     LoadoutKeywordRegistry.WithPostOnPlayEffect)
+                     LoadoutKeywordRegistry.ResolvePostOnPlayModels(active))
             {
-                if (!model.HasOnPlayEffect || !model.IsEnabled(__instance))
-                    continue;
-
                 (effects ??= []).Add(new KeywordEffectState(
                     model,
                     model.CaptureBeforeOnPlay(__instance, cardPlay)));

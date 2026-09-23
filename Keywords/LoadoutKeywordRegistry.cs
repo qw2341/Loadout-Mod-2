@@ -169,81 +169,31 @@ public static class LoadoutKeywordRegistry
             .OrderBy(model => model.OnPlayPriority)
             .ToArray();
 
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        BaseDescriptionModels =
-        Models
-            .Where(model => model.TransformsBaseDescription)
-            .OrderBy(model => model.BaseDescriptionPriority)
-            .ToArray();
+    private static readonly IReadOnlyList<LoadoutKeywordModel> UnblockedDamageModels =
+        Models.Where(model => model.HasUnblockedDamageEffect).ToArray();
 
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        OriginalOnPlaySuppressorModels =
-        Models
-            .Where(model => model.SuppressesOriginalOnPlay)
-            .ToArray();
+    private static readonly IReadOnlyList<LoadoutKeywordModel> FatalModels =
+        Models.Where(model => model.HasFatalEffect).ToArray();
 
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        OriginalIsPlayableSuppressorModels =
-        Models
-            .Where(model => model.SuppressesOriginalIsPlayable)
-            .ToArray();
+    private static readonly IReadOnlyList<LoadoutKeywordModel> TurnEndInHandModels =
+        Models.Where(model => model.HasTurnEndInHandEffect).ToArray();
 
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        OriginalShouldGlowGoldSuppressorModels =
-        Models
-            .Where(model => model.SuppressesOriginalShouldGlowGold)
-            .ToArray();
+    private static readonly Lazy<LoadoutKeywordIndex> ModelIndex = new(() => new(Models));
 
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        OriginalModelHookSuppressorModels =
-        Models
-            .Where(model => model.SuppressesOriginalModelHooks)
-            .ToArray();
+    private static readonly Dictionary<string, (LoadoutKeywordModel Model, LoadoutKeywordDynamicVarDefinition Definition)[]>
+        DynamicVarOwners = Models
+            .SelectMany(model => model.DynamicVars.Select(definition => (Model: model, Definition: definition)))
+            .GroupBy(entry => entry.Definition.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
 
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        UnblockedDamageModels =
-        Models
-            .Where(model => model.HasUnblockedDamageEffect)
-            .ToArray();
-
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        FatalModels =
-        Models
-            .Where(model => model.HasFatalEffect)
-            .ToArray();
-
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        FatalTargetSnapshotModels =
-        FatalModels
-            .Where(model => model.RequiresFatalTargetSnapshots)
-            .ToArray();
-
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        TurnEndInHandModels =
-        Models
-            .Where(model => model.HasTurnEndInHandEffect)
-            .ToArray();
-
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        TargetChangingModels =
-        Models
-            .Where(model => model.ChangesTargeting)
-            .ToArray();
-
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        AnotherPlayerTargetModels =
-        Models
-            .Where(model => model.RequiresAnotherPlayerTarget)
-            .ToArray();
-
-    private static readonly IReadOnlyList<LoadoutKeywordModel>
-        BlockGainModels =
-        Models
-            .Where(model => model.ReportsGainsBlock)
-            .ToArray();
+    private sealed class DescriptionContext(CardModel card)
+    {
+        public CardModel Card { get; } = card;
+        public IReadOnlyList<LoadoutKeywordModel>? Models { get; set; }
+    }
 
     [ThreadStatic]
-    private static Stack<CardModel>? _baseDescriptionContext;
+    private static Stack<DescriptionContext>? _baseDescriptionContext;
 
     public static IReadOnlyList<LoadoutKeywordModel> All => Models;
 
@@ -266,37 +216,84 @@ public static class LoadoutKeywordRegistry
         CardKeyword keyword,
         out LoadoutKeywordModel model)
     {
-        foreach (LoadoutKeywordModel candidate in Models)
-        {
-            if (candidate.Keyword.Equals(keyword))
-            {
-                model = candidate;
-                return true;
-            }
-        }
-
-        model = null!;
-        return false;
+        return ModelIndex.Value.TryGet(keyword, out model);
     }
+
+    public static bool TryGet(string storageKey, out LoadoutKeywordModel model) =>
+        ModelIndex.Value.TryGet(storageKey, out model);
+
+    public static int CompareRegistration(LoadoutKeywordModel left, LoadoutKeywordModel right) =>
+        ModelIndex.Value.CompareRegistration(left, right);
+
+    public static IReadOnlyList<LoadoutKeywordModel> ResolveActiveModels(
+        CardModel card,
+        Predicate<LoadoutKeywordModel>? predicate = null,
+        IReadOnlyDictionary<string, bool>? overrides = null) =>
+        ModelIndex.Value.Resolve(card, predicate, overrides);
+
+    public static IReadOnlyList<LoadoutKeywordModel> ResolvePostOnPlayModels(
+        IReadOnlyList<LoadoutKeywordModel> active)
+    {
+        List<LoadoutKeywordModel>? effects = null;
+        foreach (LoadoutKeywordModel model in active)
+        {
+            if (model.HasOnPlayEffect)
+                (effects ??= []).Add(model);
+        }
+        if (effects is null)
+            return Array.Empty<LoadoutKeywordModel>();
+        effects.Sort(static (left, right) => ModelIndex.Value.CompareOnPlay(left, right));
+        return effects;
+    }
+
+    public static IEnumerable<LoadoutKeywordModel> EnumerateLiveModels(
+        CardModel card, Predicate<LoadoutKeywordModel> predicate) =>
+        ModelIndex.Value.EnumerateLive(card, predicate);
+
+    public static IEnumerable<LoadoutKeywordModel> ResolveOverrideModels(
+        IReadOnlyDictionary<string, bool> overrides) =>
+        ModelIndex.Value.EnumerateOverrides(overrides);
 
     public static bool TryGetDynamicVar(
         string name,
         out LoadoutKeywordDynamicVarDefinition definition)
     {
-        foreach (LoadoutKeywordModel keyword in Models)
+        if (DynamicVarOwners.TryGetValue(name, out var owners))
         {
-            foreach (LoadoutKeywordDynamicVarDefinition candidate in keyword.DynamicVars)
-            {
-                if (string.Equals(candidate.Name, name, StringComparison.Ordinal))
-                {
-                    definition = candidate;
-                    return true;
-                }
-            }
+            definition = owners[0].Definition;
+            return true;
         }
 
         definition = null!;
         return false;
+    }
+
+    private static IReadOnlyList<LoadoutKeywordModel> GetPresentationModels(CardModel card)
+    {
+        if (_baseDescriptionContext is { Count: > 0 }
+            && _baseDescriptionContext.Peek() is var context
+            && ReferenceEquals(context.Card, card))
+        {
+            return context.Models ??= ResolveActiveModels(card);
+        }
+
+        return ResolveActiveModels(card);
+    }
+
+    private static bool AnyActive(CardModel card, Predicate<LoadoutKeywordModel> predicate)
+    {
+        if (_baseDescriptionContext is { Count: > 0 }
+            && ReferenceEquals(_baseDescriptionContext.Peek().Card, card))
+        {
+            foreach (LoadoutKeywordModel model in GetPresentationModels(card))
+            {
+                if (predicate(model))
+                    return true;
+            }
+            return false;
+        }
+
+        return ModelIndex.Value.Any(card, predicate);
     }
 
     public static bool IsDescriptionKeyword(CardKeyword keyword)
@@ -305,106 +302,32 @@ public static class LoadoutKeywordRegistry
                && model.Presentation == LoadoutKeywordPresentation.DescriptionOnly;
     }
 
-    public static bool ChangesTargeting(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in TargetChangingModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
+    public static bool ChangesTargeting(CardModel card) =>
+        AnyActive(card, model => model.ChangesTargeting);
 
-        return false;
-    }
+    public static bool RequiresAnotherPlayerTarget(CardModel card) =>
+        AnyActive(card, model => model.RequiresAnotherPlayerTarget);
 
-    public static bool RequiresAnotherPlayerTarget(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in AnotherPlayerTargetModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
+    public static bool ReportsGainsBlock(CardModel card) =>
+        AnyActive(card, model => model.ReportsGainsBlock);
 
-        return false;
-    }
+    public static bool HasFatalEffect(CardModel card) =>
+        AnyActive(card, model => model.HasFatalEffect);
 
-    public static bool ReportsGainsBlock(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in BlockGainModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
+    public static bool RequiresFatalTargetSnapshots(CardModel card) =>
+        AnyActive(card, model => model.HasFatalEffect && model.RequiresFatalTargetSnapshots);
 
-        return false;
-    }
+    public static bool HasTurnEndInHandEffect(CardModel card) =>
+        AnyActive(card, model => model.HasTurnEndInHandEffect);
 
-    public static bool HasFatalEffect(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in FatalModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
+    public static bool SuppressesOriginalOnPlay(CardModel card) =>
+        AnyActive(card, model => model.SuppressesOriginalOnPlay);
 
-        return false;
-    }
+    public static bool SuppressesOriginalIsPlayable(CardModel card) =>
+        AnyActive(card, model => model.SuppressesOriginalIsPlayable);
 
-    public static bool RequiresFatalTargetSnapshots(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in FatalTargetSnapshotModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
-
-        return false;
-    }
-
-    public static bool HasTurnEndInHandEffect(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in TurnEndInHandModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
-
-        return false;
-    }
-
-    public static bool SuppressesOriginalOnPlay(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in OriginalOnPlaySuppressorModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
-
-        return false;
-    }
-
-    public static bool SuppressesOriginalIsPlayable(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in
-                 OriginalIsPlayableSuppressorModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
-
-        return false;
-    }
-
-    public static bool SuppressesOriginalShouldGlowGold(CardModel card)
-    {
-        foreach (LoadoutKeywordModel model in
-                 OriginalShouldGlowGoldSuppressorModels)
-        {
-            if (model.IsEnabled(card))
-                return true;
-        }
-
-        return false;
-    }
+    public static bool SuppressesOriginalShouldGlowGold(CardModel card) =>
+        AnyActive(card, model => model.SuppressesOriginalShouldGlowGold);
 
     public static bool SuppressesOriginalModelHooks(CardModel card)
     {
@@ -413,23 +336,14 @@ public static class LoadoutKeywordRegistry
 
     public static void SynchronizeOriginalModelHookSuppression(CardModel card)
     {
-        foreach (LoadoutKeywordModel model in
-                 OriginalModelHookSuppressorModels)
-        {
-            if (model.IsEnabled(card))
-            {
-                BlankSlateModelHookState.Set(card, suppresses: true);
-                return;
-            }
-        }
-
-        BlankSlateModelHookState.Set(card, suppresses: false);
+        BlankSlateModelHookState.Set(card,
+            ModelIndex.Value.Any(card, model => model.SuppressesOriginalModelHooks));
     }
 
     public static void PushBaseDescriptionContext(CardModel card)
     {
-        _baseDescriptionContext ??= new Stack<CardModel>();
-        _baseDescriptionContext.Push(card);
+        _baseDescriptionContext ??= new Stack<DescriptionContext>();
+        _baseDescriptionContext.Push(new DescriptionContext(card));
     }
 
     public static void PopBaseDescriptionContext()
@@ -445,7 +359,7 @@ public static class LoadoutKeywordRegistry
         if (_baseDescriptionContext is not { Count: > 0 })
             return;
 
-        CardModel card = _baseDescriptionContext.Peek();
+        CardModel card = _baseDescriptionContext.Peek().Card;
         if (!string.Equals(locString.LocTable, "cards", StringComparison.Ordinal)
             || !string.Equals(
                 locString.LocEntryKey,
@@ -455,13 +369,21 @@ public static class LoadoutKeywordRegistry
             return;
         }
 
-        foreach (LoadoutKeywordModel model in BaseDescriptionModels)
+        IReadOnlyList<LoadoutKeywordModel> active = GetPresentationModels(card);
+        List<LoadoutKeywordModel>? transformers = null;
+        foreach (LoadoutKeywordModel model in active)
         {
-            if (model.IsEnabled(card))
+            if (model.TransformsBaseDescription)
+                (transformers ??= []).Add(model);
+        }
+        if (transformers is not null)
+        {
+            transformers.Sort(static (left, right) => ModelIndex.Value.CompareBaseDescription(left, right));
+            foreach (LoadoutKeywordModel model in transformers)
                 description = model.TransformBaseDescription(card, description);
         }
 
-        description = AddDescriptionLines(card, description);
+        description = AddDescriptionLines(card, description, active);
     }
 
     public static async Task ApplyFatalEffects(
@@ -472,16 +394,8 @@ public static class LoadoutKeywordRegistry
         if (fatalContext.FatalCount <= 0)
             return;
 
-        foreach (LoadoutKeywordModel model in FatalModels)
-        {
-            if (model.IsEnabled(card))
-            {
-                await model.AfterFatalTargets(
-                    card,
-                    choiceContext,
-                    fatalContext);
-            }
-        }
+        foreach (LoadoutKeywordModel model in EnumerateLiveModels(card, model => model.HasFatalEffect))
+            await model.AfterFatalTargets(card, choiceContext, fatalContext);
     }
 
     public static string GetTitle(LoadoutKeywordModel model)
@@ -501,32 +415,54 @@ public static class LoadoutKeywordRegistry
         CardModel card,
         IReadOnlyDictionary<string, bool>? overrides = null)
     {
-        if (XValueKeyword.Instance.IsEnabled(card, overrides))
+        IReadOnlyList<LoadoutKeywordModel> active = ResolveActiveModels(card, overrides: overrides);
+        if (active.Contains(XValueKeyword.Instance))
             XValueKeywordRuntime.Prepare(card);
-        if (MultiHitKeyword.Instance.IsEnabled(card, overrides))
+        if (active.Contains(MultiHitKeyword.Instance))
             MultiHitKeywordPatches.Prepare(card);
-        if (KarmicKeyword.Instance.IsEnabled(card, overrides))
+        if (active.Contains(KarmicKeyword.Instance))
             KarmicKeywordPatches.Prepare();
-        if (MultiBlockKeyword.Instance.IsEnabled(card, overrides))
+        if (active.Contains(MultiBlockKeyword.Instance))
             MultiBlockKeywordPatches.Prepare();
-        Dictionary<string, DynamicVar> variables = GetMutableVariables(card.DynamicVars);
-        foreach (LoadoutKeywordModel model in Models)
-        {
-            bool enabled = model.IsEnabled(card, overrides);
-            foreach (LoadoutKeywordDynamicVarDefinition dynamicVar in model.DynamicVars)
-            {
-                if (enabled)
-                {
-                    if (variables.ContainsKey(dynamicVar.Name))
-                        continue;
 
-                    DynamicVar value = dynamicVar.Create();
-                    value.SetOwner(card);
-                    variables.Add(dynamicVar.Name, value);
-                }
-                else
+        Dictionary<string, DynamicVar> variables = GetMutableVariables(card.DynamicVars);
+        HashSet<LoadoutKeywordModel>? owners = null;
+        foreach (string name in variables.Keys)
+        {
+            if (DynamicVarOwners.TryGetValue(name, out var definitions))
+            {
+                foreach (var definition in definitions)
+                    (owners ??= []).Add(definition.Model);
+            }
+        }
+        foreach (LoadoutKeywordModel model in active)
+        {
+            foreach (LoadoutKeywordDynamicVarDefinition definition in model.DynamicVars)
+            {
+                foreach (var owner in DynamicVarOwners[definition.Name])
+                    (owners ??= []).Add(owner.Model);
+            }
+        }
+        if (owners is null)
+            return;
+
+        List<LoadoutKeywordModel> orderedOwners = owners.ToList();
+        orderedOwners.Sort(CompareRegistration);
+        foreach (LoadoutKeywordModel model in orderedOwners)
+        {
+            // Retain registration-order add/remove behavior for shared variable names.
+            bool enabled = active.Contains(model);
+            foreach (LoadoutKeywordDynamicVarDefinition definition in model.DynamicVars)
+            {
+                if (!enabled)
                 {
-                    variables.Remove(dynamicVar.Name);
+                    variables.Remove(definition.Name);
+                }
+                else if (!variables.ContainsKey(definition.Name))
+                {
+                    DynamicVar value = definition.Create();
+                    value.SetOwner(card);
+                    variables.Add(definition.Name, value);
                 }
             }
         }
@@ -548,14 +484,18 @@ public static class LoadoutKeywordRegistry
         return false;
     }
 
-    public static string AddDescriptionLines(CardModel card, string description)
+    public static string AddDescriptionLines(CardModel card, string description) =>
+        AddDescriptionLines(card, description, GetPresentationModels(card));
+
+    private static string AddDescriptionLines(
+        CardModel card, string description, IReadOnlyList<LoadoutKeywordModel> active)
     {
         List<string>? before = null;
         List<string>? after = null;
 
-        foreach (LoadoutKeywordModel model in DescriptionModels)
+        foreach (LoadoutKeywordModel model in active)
         {
-            if (!model.IsEnabled(card))
+            if (model.Presentation != LoadoutKeywordPresentation.DescriptionOnly)
             {
                 continue;
             }
@@ -584,11 +524,12 @@ public static class LoadoutKeywordRegistry
         CardModel card,
         IEnumerable<IHoverTip> hoverTips)
     {
+        IReadOnlyList<LoadoutKeywordModel> active = GetPresentationModels(card);
         HashSet<string>? excludedIds = null;
         List<IHoverTip>? additionalHoverTips = null;
-        foreach (LoadoutKeywordModel model in DescriptionModels)
+        foreach (LoadoutKeywordModel model in active)
         {
-            if (!model.IsEnabled(card))
+            if (model.Presentation != LoadoutKeywordPresentation.DescriptionOnly)
                 continue;
 
             if (!model.ShowKeywordHoverTip)
@@ -618,14 +559,28 @@ public static class LoadoutKeywordRegistry
             }
         }
 
-        HashSet<string> addedPowerIds = new(StringComparer.Ordinal);
-        foreach (LoadoutPowerKeywordModel model in
-                 Models.OfType<LoadoutPowerKeywordModel>())
+        Dictionary<LoadoutKeywordModel, List<LoadoutPowerKeywordEntry>>? powerEntries = null;
+        foreach (LoadoutPowerKeywordEntry entry in LoadoutPowerKeywordState.GetEffectiveEntries(card))
         {
-            foreach (LoadoutPowerKeywordEntry entry in
-                     LoadoutPowerKeywordState.GetEffectiveEntries(
-                         card,
-                         model.StorageKey))
+            if (!TryGet(entry.KeywordKey, out LoadoutKeywordModel model)
+                || model is not LoadoutPowerKeywordModel)
+                continue;
+
+            powerEntries ??= [];
+            if (!powerEntries.TryGetValue(model, out List<LoadoutPowerKeywordEntry>? entries))
+                powerEntries.Add(model, entries = []);
+            entries.Add(entry);
+        }
+
+        if (powerEntries is null)
+            return result;
+
+        List<LoadoutKeywordModel> powerModels = powerEntries.Keys.ToList();
+        powerModels.Sort(CompareRegistration);
+        HashSet<string> addedPowerIds = new(StringComparer.Ordinal);
+        foreach (LoadoutKeywordModel model in powerModels)
+        {
+            foreach (LoadoutPowerKeywordEntry entry in powerEntries[model])
             {
                 if (!addedPowerIds.Add(entry.PowerId)
                     || !LoadoutPowerKeywordState.TryResolvePower(

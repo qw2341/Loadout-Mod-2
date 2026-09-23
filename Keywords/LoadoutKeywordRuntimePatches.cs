@@ -531,9 +531,9 @@ internal static class LoadoutKeywordRuntimePatches
             state.Particle |= LoadoutKeywords.Has(card, LoadoutKeywords.Particle);
             state.Inevitable |= LoadoutKeywords.Has(card, LoadoutKeywords.Inevitable);
             state.Livid |= LoadoutKeywords.Has(card, LoadoutKeywords.Livid);
-            foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.DescriptionOnly)
+            foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.ResolveActiveModels(card))
             {
-                if (!model.IsEnabled(card))
+                if (model.Presentation != LoadoutKeywordPresentation.DescriptionOnly)
                     continue;
 
                 state.DescriptionKeywords = true;
@@ -553,9 +553,9 @@ internal static class LoadoutKeywordRuntimePatches
         IReadOnlyDictionary<string, bool> overrides,
         ref KeywordFeatureState state)
     {
-        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.DescriptionOnly)
+        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.ResolveOverrideModels(overrides))
         {
-            if (!IsEnabled(overrides, model.StorageKey))
+            if (model.Presentation != LoadoutKeywordPresentation.DescriptionOnly)
                 continue;
 
             state.DescriptionKeywords = true;
@@ -575,9 +575,9 @@ internal static class LoadoutKeywordRuntimePatches
         bool anyTurnEndInHandEnabled = false;
         bool anyPlayRestrictionEnabled = false;
         bool anyBlankSlateHooksEnabled = false;
-        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.DescriptionOnly)
+        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.ResolveOverrideModels(overrides))
         {
-            if (!IsEnabled(overrides, model.StorageKey))
+            if (model.Presentation != LoadoutKeywordPresentation.DescriptionOnly)
                 continue;
 
             anyEnabled = true;
