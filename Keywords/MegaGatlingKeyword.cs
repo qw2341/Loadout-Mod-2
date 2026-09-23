@@ -25,9 +25,9 @@ public sealed class MegaGatlingKeyword : LoadoutKeywordModel
         "LoadoutMegaGatlingTotalPlayCount";
     public const string CurrentChancePercentageTextVar =
         "LoadoutMegaGatlingCurrentChancePercentage";
-    public const int DefaultStartingChancePercentage = 2;
-    public const int DefaultChanceIncreasePercentage = 1;
-    public const int DefaultTriggerChanceCapPercentage = 10;
+    public const int DefaultStartingChancePercentage = 20;
+    public const int DefaultChanceIncreasePercentage = 10;
+    public const int DefaultTriggerChanceCapPercentage = 100;
 
     private static readonly ConditionalWeakTable<CardModel, ChanceState>
         ChanceStates = new();
