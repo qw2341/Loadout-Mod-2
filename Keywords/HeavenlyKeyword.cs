@@ -52,12 +52,13 @@ internal static class HeavenlyResolveEnergyXValuePatch
     {
         if (XValueKeywordRuntime.TryGetValue(__instance, out _))
             return;
+        bool hasXValue = LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue);
         if (LoadoutKeywords.Has(__instance, LoadoutKeywords.AltHeavenly)
-            && LoadoutKeywordRegistry.TryGetValue(
+            && (hasXValue || LoadoutKeywordRegistry.TryGetValue(
                 __instance,
                 AltHeavenlyKeyword.EnergyVar,
                 out DynamicVar altEnergyVar)
-            && __result >= altEnergyVar.IntValue)
+            && __result >= altEnergyVar.IntValue))
         {
             __result = AltHeavenlyKeyword.Factorialize(__result);
             CardEffectAnimationScope.MarkAltHeavenlyResult(
@@ -67,11 +68,11 @@ internal static class HeavenlyResolveEnergyXValuePatch
         }
 
         if (LoadoutKeywords.Has(__instance, LoadoutKeywords.Heavenly)
-            && LoadoutKeywordRegistry.TryGetValue(
+            && (hasXValue || LoadoutKeywordRegistry.TryGetValue(
                 __instance,
                 HeavenlyKeyword.EnergyVar,
                 out DynamicVar energyVar)
-            && __result >= energyVar.IntValue)
+            && __result >= energyVar.IntValue))
         {
             __result *= 2;
         }
