@@ -375,7 +375,7 @@ public static class LoadoutCardKeywordState
             .Where(effective => MatchesKeyword(effective.Entry, keywordKey));
         string separator = LocMan.Loc("CARD_MOD_CARD_KEYWORD_SEPARATOR", ", ");
         return string.Join(" ", entries.GroupBy(effective => effective.Entry.Pile).Select(group =>
-            LocMan.Loc("CARD_MOD_CARD_KEYWORD_SENTENCE", "Add {0} into your {1}.",
+            LocMan.Loc("CARD_MOD_CARD_KEYWORD_SENTENCE", "Add {0} into your [gold]{1}[/gold].",
                 string.Join(separator, group.Select(effective => FormatEntry(effective, card.UpgradePreviewType.IsPreview()))),
                 GetPileLabel(group.Key))));
     }

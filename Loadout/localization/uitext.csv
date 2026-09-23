@@ -886,7 +886,7 @@ CARD_MOD_SELECT_CARD,Select Card,选择卡牌,Choisir une carte,カードを選�
 CARD_MOD_ADD_CARD_CARD,Card,卡牌,Carte,カード,카드,Carta
 CARD_MOD_ADD_CARD_AMOUNT,Card Amount,卡牌数量,Nombre de cartes,カード枚数,카드 수,Cantidad de cartas
 CARD_MOD_ADD_CARD_PILE,Destination Pile,目标牌堆,Pile de destination,追加先,추가할 카드 더미,Pila de destino
-CARD_MOD_CARD_KEYWORD_SENTENCE,Add {0} into your {1}.,将{0}加入{1}。,Ajoutez {0} à votre {1}.,{0}を{1}に加える。,{0}을(를) {1}에 추가합니다.,Añade {0} a tu {1}.
+CARD_MOD_CARD_KEYWORD_SENTENCE,Add {0} into your [gold]{1}[/gold].,将{0}加入[gold]{1}[/gold]。,Ajoutez {0} à votre [gold]{1}[/gold].,{0}を[gold]{1}[/gold]に加える。,{0}을(를) [gold]{1}[/gold]에 추가합니다.,Añade {0} a tu [gold]{1}[/gold].
 CARD_MOD_CARD_KEYWORD_SEPARATOR,", ",、,", ",、,", ",", "
 CARD_MOD_CARD_KEYWORD_ENTRY,{0} {1},{0}张{1},{0} {1},{1}を{0}枚,{1} {0}장,{0} {1}
 CARD_MOD_CARD_PILE_HAND,Hand,手牌,main,手札,손,mano
