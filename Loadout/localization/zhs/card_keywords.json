@@ -362,6 +362,8 @@
   "LOADOUT-MULTI_HIT.description": "基础伤害数值改为等量次数的1点伤害。",
   "LOADOUT-MULTI_BLOCK.title": "!?多段格挡?!",
   "LOADOUT-MULTI_BLOCK.description": "将基础格挡值拆分为等量次数的1点格挡。",
+  "LOADOUT-ALT_ALT_ALT_X_VALUE.title": "!?X ↑↑ X?!",
+  "LOADOUT-ALT_ALT_ALT_X_VALUE.description": "消耗X点能量。这张牌的所有数值均变为X ↑↑ X。覆盖X费用关键词的额外打出效果。",
   "LOADOUT-ALT_ALT_X_VALUE.title": "!?XX?!",
   "LOADOUT-ALT_ALT_X_VALUE.description": "消耗X点能量。这张牌的所有数值均变为X ^ X。覆盖X费用关键词的额外打出效果。",
   "LOADOUT-ALT_X_VALUE.title": "!?X数值?!",

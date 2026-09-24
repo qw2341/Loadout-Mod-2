@@ -34,6 +34,7 @@ public static class LoadoutKeywordRegistry
         XValueKeyword.Instance,
         AltXValueKeyword.Instance,
         AltAltXValueKeyword.Instance,
+        AltAltAltXValueKeyword.Instance,
         InfiniteUpgradeKeyword.Instance,
         JokeInfiniteUpgradeKeyword.Instance,
         KarmicKeyword.Instance,

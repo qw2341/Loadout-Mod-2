@@ -52,7 +52,8 @@ internal static class HeavenlyResolveEnergyXValuePatch
     {
         if (XValueKeywordRuntime.TryGetValue(__instance, out _)
             || LoadoutKeywords.Has(__instance, LoadoutKeywords.AltXValue)
-            || LoadoutKeywords.Has(__instance, LoadoutKeywords.AltAltXValue))
+            || LoadoutKeywords.Has(__instance, LoadoutKeywords.AltAltXValue)
+            || LoadoutKeywords.Has(__instance, LoadoutKeywords.AltAltAltXValue))
             return;
         bool hasXValue = LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue);
         if (LoadoutKeywords.Has(__instance, LoadoutKeywords.AltHeavenly)
