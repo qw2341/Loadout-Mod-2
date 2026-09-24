@@ -237,6 +237,10 @@ internal static class CardModificationCodec
         [JsonPropertyName("x")]
         public string? CustomDescription { get; set; }
 
+        [JsonPropertyName("descriptionIncludesKeywords")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool CustomDescriptionIncludesKeywords { get; set; }
+
         [JsonPropertyName("o")]
         public string? PortraitPath { get; set; }
 
@@ -280,6 +284,7 @@ internal static class CardModificationCodec
                 Rarity = spec.Rarity,
                 CustomTitle = spec.CustomTitle,
                 CustomDescription = spec.CustomDescription,
+                CustomDescriptionIncludesKeywords = spec.CustomDescriptionIncludesKeywords,
                 PortraitPath = spec.PortraitPath,
                 BetaPortraitPath = spec.BetaPortraitPath,
                 ForceAncientPortraitRendering = spec.ForceAncientPortraitRendering,
@@ -319,6 +324,7 @@ internal static class CardModificationCodec
                 Rarity = Rarity,
                 CustomTitle = CustomTitle,
                 CustomDescription = CustomDescription,
+                CustomDescriptionIncludesKeywords = CustomDescriptionIncludesKeywords,
                 PortraitPath = PortraitPath,
                 BetaPortraitPath = BetaPortraitPath,
                 ForceAncientPortraitRendering = ForceAncientPortraitRendering,

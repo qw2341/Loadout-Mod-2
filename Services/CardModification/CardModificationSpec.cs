@@ -427,6 +427,10 @@ public sealed class CardModificationSpec
     [JsonPropertyName("customDescription")]
     public string? CustomDescription { get; set; }
 
+    [JsonPropertyName("descriptionIncludesKeywords")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CustomDescriptionIncludesKeywords { get; set; }
+
     [JsonPropertyName("portraitPath")]
     public string? PortraitPath { get; set; }
 
@@ -519,6 +523,7 @@ public sealed class CardModificationSpec
             Rarity = Rarity,
             CustomTitle = CustomTitle,
             CustomDescription = CustomDescription,
+            CustomDescriptionIncludesKeywords = CustomDescriptionIncludesKeywords,
             PortraitPath = PortraitPath,
             BetaPortraitPath = BetaPortraitPath,
             ForceAncientPortraitRendering = ForceAncientPortraitRendering,
@@ -553,7 +558,10 @@ public sealed class CardModificationSpec
         if (other.CustomTitle is not null)
             CustomTitle = other.CustomTitle;
         if (other.CustomDescription is not null)
+        {
             CustomDescription = other.CustomDescription;
+            CustomDescriptionIncludesKeywords = other.CustomDescriptionIncludesKeywords;
+        }
         if (!string.IsNullOrWhiteSpace(other.PortraitPath))
             PortraitPath = other.PortraitPath;
         if (!string.IsNullOrWhiteSpace(other.BetaPortraitPath))
@@ -595,6 +603,7 @@ public sealed class CardModificationSpec
         Rarity = NormalizeText(Rarity);
         CustomTitle = NormalizeText(CustomTitle);
         CustomDescription = NormalizeText(CustomDescription);
+        if (CustomDescription is null) CustomDescriptionIncludesKeywords = false;
         PortraitPath = NormalizeText(PortraitPath);
         BetaPortraitPath = NormalizeText(BetaPortraitPath);
     }
@@ -659,6 +668,10 @@ public sealed class CardModificationDelta
 
     [JsonPropertyName("x")]
     public string? CustomDescription { get; set; }
+
+    [JsonPropertyName("descriptionIncludesKeywords")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CustomDescriptionIncludesKeywords { get; set; }
 
     [JsonPropertyName("o")]
     public string? PortraitPath { get; set; }
@@ -755,6 +768,7 @@ public sealed class CardModificationDelta
             Rarity = Rarity,
             CustomTitle = CustomTitle,
             CustomDescription = CustomDescription,
+            CustomDescriptionIncludesKeywords = CustomDescriptionIncludesKeywords,
             PortraitPath = PortraitPath,
             BetaPortraitPath = BetaPortraitPath,
             ForceAncientPortraitRendering = ForceAncientPortraitRendering,
@@ -787,6 +801,7 @@ public sealed class CardModificationDelta
         Rarity = NormalizeText(Rarity);
         CustomTitle = NormalizeText(CustomTitle);
         CustomDescription = NormalizeText(CustomDescription);
+        if (CustomDescription is null) CustomDescriptionIncludesKeywords = false;
         PortraitPath = NormalizeText(PortraitPath);
         BetaPortraitPath = NormalizeText(BetaPortraitPath);
         Enchantments = CardAttachmentSpec.NormalizeList(Enchantments);

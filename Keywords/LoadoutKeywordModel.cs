@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -166,6 +167,35 @@ public abstract class LoadoutKeywordModel
 
     protected virtual void AddCardTextVariables(CardModel card, LocString cardText)
     {
+    }
+
+    public string GetCardTextForEditor(CardModel card)
+    {
+        if (Presentation != LoadoutKeywordPresentation.DescriptionOnly
+            || string.IsNullOrWhiteSpace(CardTextLocKey))
+            return string.Empty;
+
+        LocString cardText = new("card_keywords", CardTextLocKey);
+        AddCardTextVariables(card, cardText);
+        string rawText = cardText.GetRawText();
+        foreach (string name in cardText.Variables.Keys)
+        {
+            rawText = Regex.Replace(rawText, @"\{" + Regex.Escape(name) + @"(?=[:.}\[])",
+                "{" + StorageKey + "_" + name);
+        }
+        return rawText;
+    }
+
+    public void AddCustomDescriptionVariables(CardModel card, LocString description)
+    {
+        if (Presentation != LoadoutKeywordPresentation.DescriptionOnly
+            || string.IsNullOrWhiteSpace(CardTextLocKey))
+            return;
+
+        LocString cardText = new("card_keywords", CardTextLocKey);
+        AddCardTextVariables(card, cardText);
+        foreach ((string name, object value) in cardText.Variables)
+            description.AddObj(StorageKey + "_" + name, value);
     }
 
     /// <summary>

@@ -2501,6 +2501,8 @@ public partial class NCardModificationScreen : Control
 
         _workingState.CustomDescription = normalized;
         _temporaryState.CustomDescription = normalized;
+        _workingState.CustomDescriptionIncludesKeywords = normalized is not null;
+        _temporaryState.CustomDescriptionIncludesKeywords = normalized is not null;
     }
 
     private string GetRawCardTextForEditor(TextEditTarget target)
@@ -2513,7 +2515,11 @@ public partial class NCardModificationScreen : Control
             if (target == TextEditTarget.Name)
                 return _workingState.CustomTitle ?? _item.Model.TitleLocString.GetRawText();
 
-            return _workingState.CustomDescription ?? _item.Model.Description.GetRawText();
+            string description = _workingState.CustomDescription ?? _item.Model.Description.GetRawText();
+            return _workingState.CustomDescriptionIncludesKeywords
+                ? description
+                : LoadoutKeywordRegistry.GetDescriptionText(
+                    _previewDisplayModel ?? _item.Model, description, rawText: true);
         }
         catch
         {

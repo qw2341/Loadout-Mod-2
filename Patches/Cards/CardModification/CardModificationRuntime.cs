@@ -247,14 +247,24 @@ public static class CardModificationRuntime
         string titleKey = $"{card.Id.Entry}.title";
         string descriptionKey = $"{card.Id.Entry}.description";
         if (string.Equals(locString.LocEntryKey, titleKey, StringComparison.Ordinal)
-            && TryGetEffectiveValue(card, static spec => spec.CustomTitle, out rawText))
+            && TryGetEffectiveValue(card, static spec => spec.CustomTitle, out rawText, out _))
         {
             return true;
         }
 
-        return string.Equals(locString.LocEntryKey, descriptionKey, StringComparison.Ordinal)
-               && TryGetEffectiveValue(card, static spec => spec.CustomDescription, out rawText);
+        if (!string.Equals(locString.LocEntryKey, descriptionKey, StringComparison.Ordinal)
+            || !TryGetEffectiveValue(card, static spec => spec.CustomDescription, out rawText, out CardModificationDelta? textSpec))
+            return false;
+
+        if (textSpec!.CustomDescriptionIncludesKeywords)
+            LoadoutKeywordRegistry.AddCustomDescriptionVariables(card, locString);
+        return true;
     }
+
+    public static bool UsesCombinedCustomDescription(CardModel card) =>
+        _customTextOverridesMayExist
+        && TryGetEffectiveValue(card, static spec => spec.CustomDescription, out _, out CardModificationDelta? textSpec)
+        && textSpec!.CustomDescriptionIncludesKeywords;
 
     public static bool TryGetPortraitPath(
         CardModel card,
@@ -414,6 +424,7 @@ public static class CardModificationRuntime
                && string.Equals(a.Rarity, b.Rarity, StringComparison.Ordinal)
                && string.Equals(a.CustomTitle, b.CustomTitle, StringComparison.Ordinal)
                && string.Equals(a.CustomDescription, b.CustomDescription, StringComparison.Ordinal)
+               && a.CustomDescriptionIncludesKeywords == b.CustomDescriptionIncludesKeywords
                && string.Equals(a.PortraitPath, b.PortraitPath, StringComparison.Ordinal)
                && string.Equals(a.BetaPortraitPath, b.BetaPortraitPath, StringComparison.Ordinal)
                && a.ForceAncientPortraitRendering == b.ForceAncientPortraitRendering
@@ -1015,7 +1026,12 @@ public static class CardModificationRuntime
             && !string.Equals(desired.Rarity, baseline.Rarity.ToString(), StringComparison.OrdinalIgnoreCase))
             delta.Rarity = desired.Rarity;
         if (!SameStructuralValue(desired.CustomTitle, structuralBaseline?.CustomTitle)) delta.CustomTitle = desired.CustomTitle;
-        if (!SameStructuralValue(desired.CustomDescription, structuralBaseline?.CustomDescription)) delta.CustomDescription = desired.CustomDescription;
+        if (!SameStructuralValue(desired.CustomDescription, structuralBaseline?.CustomDescription)
+            || desired.CustomDescriptionIncludesKeywords != (structuralBaseline?.CustomDescriptionIncludesKeywords ?? false))
+        {
+            delta.CustomDescription = desired.CustomDescription;
+            delta.CustomDescriptionIncludesKeywords = desired.CustomDescriptionIncludesKeywords;
+        }
         if (!SameStructuralValue(desired.PortraitPath, structuralBaseline?.PortraitPath)) delta.PortraitPath = desired.PortraitPath;
         if (!SameStructuralValue(desired.BetaPortraitPath, structuralBaseline?.BetaPortraitPath)) delta.BetaPortraitPath = desired.BetaPortraitPath;
         bool baselineAncientRendering = structuralBaseline?.ForceAncientPortraitRendering ?? false;
@@ -1189,6 +1205,7 @@ public static class CardModificationRuntime
             delta.Rarity = desired.Rarity;
         delta.CustomTitle = desired.CustomTitle;
         delta.CustomDescription = desired.CustomDescription;
+        delta.CustomDescriptionIncludesKeywords = desired.CustomDescriptionIncludesKeywords;
         delta.PortraitPath = desired.PortraitPath;
         delta.BetaPortraitPath = desired.BetaPortraitPath;
         delta.ForceAncientPortraitRendering = desired.ForceAncientPortraitRendering == true ? true : null;
@@ -1252,6 +1269,7 @@ public static class CardModificationRuntime
             Rarity = delta.Rarity,
             CustomTitle = delta.CustomTitle,
             CustomDescription = delta.CustomDescription,
+            CustomDescriptionIncludesKeywords = delta.CustomDescriptionIncludesKeywords,
             PortraitPath = delta.PortraitPath,
             BetaPortraitPath = delta.BetaPortraitPath,
             ForceAncientPortraitRendering = delta.ForceAncientPortraitRendering,
@@ -1303,6 +1321,7 @@ public static class CardModificationRuntime
             Rarity = delta.Rarity,
             CustomTitle = delta.CustomTitle,
             CustomDescription = delta.CustomDescription,
+            CustomDescriptionIncludesKeywords = delta.CustomDescriptionIncludesKeywords,
             PortraitPath = delta.PortraitPath,
             BetaPortraitPath = delta.BetaPortraitPath,
             ForceAncientPortraitRendering = delta.ForceAncientPortraitRendering,
@@ -2872,13 +2891,15 @@ public static class CardModificationRuntime
     private static bool TryGetEffectiveValue(
         CardModel card,
         Func<CardModificationDelta, string?> selector,
-        out string value)
+        out string value,
+        out CardModificationDelta? source)
     {
         if (PreviewDeltas.TryGetValue(card, out CardModificationDelta? preview))
         {
             string? previewValue = selector(preview);
             if (!string.IsNullOrWhiteSpace(previewValue))
             {
+                source = preview;
                 value = previewValue;
                 return true;
             }
@@ -2889,6 +2910,7 @@ public static class CardModificationRuntime
             string? attached = selector(data.Delta);
             if (!string.IsNullOrWhiteSpace(attached))
             {
+                source = data.Delta;
                 value = attached;
                 return true;
             }
@@ -2899,11 +2921,13 @@ public static class CardModificationRuntime
             string? stored = selector(permanent);
             if (!string.IsNullOrWhiteSpace(stored))
             {
+                source = permanent;
                 value = stored;
                 return true;
             }
         }
 
+        source = null;
         value = string.Empty;
         return false;
     }

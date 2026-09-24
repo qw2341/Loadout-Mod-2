@@ -15,6 +15,7 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using Loadout.PanelItems;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.CardModification;
 
 public static class LoadoutKeywordRegistry
@@ -369,6 +370,14 @@ public static class LoadoutKeywordRegistry
             return;
         }
 
+        if (CardModificationRuntime.UsesCombinedCustomDescription(card))
+            return;
+
+        description = GetDescriptionText(card, description, rawText: false);
+    }
+
+    public static string GetDescriptionText(CardModel card, string description, bool rawText)
+    {
         IReadOnlyList<LoadoutKeywordModel> active = GetPresentationModels(card);
         List<LoadoutKeywordModel>? transformers = null;
         foreach (LoadoutKeywordModel model in active)
@@ -383,7 +392,17 @@ public static class LoadoutKeywordRegistry
                 description = model.TransformBaseDescription(card, description);
         }
 
-        description = AddDescriptionLines(card, description, active);
+        return AddDescriptionLines(card, description, active, rawText);
+    }
+
+    public static void AddCustomDescriptionVariables(CardModel card, LocString description)
+    {
+        foreach (LoadoutKeywordModel model in GetPresentationModels(card))
+        {
+            if (model.Presentation == LoadoutKeywordPresentation.DescriptionOnly
+                && !string.IsNullOrWhiteSpace(model.CardTextLocKey))
+                model.AddCustomDescriptionVariables(card, description);
+        }
     }
 
     public static async Task ApplyFatalEffects(
@@ -488,7 +507,8 @@ public static class LoadoutKeywordRegistry
         AddDescriptionLines(card, description, GetPresentationModels(card));
 
     private static string AddDescriptionLines(
-        CardModel card, string description, IReadOnlyList<LoadoutKeywordModel> active)
+        CardModel card, string description, IReadOnlyList<LoadoutKeywordModel> active,
+        bool rawText = false)
     {
         List<string>? before = null;
         List<string>? after = null;
@@ -500,7 +520,7 @@ public static class LoadoutKeywordRegistry
                 continue;
             }
 
-            string formatted = model.GetCardText(card);
+            string formatted = rawText ? model.GetCardTextForEditor(card) : model.GetCardText(card);
             if (string.IsNullOrWhiteSpace(formatted))
                 continue;
 
