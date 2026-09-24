@@ -50,7 +50,8 @@ internal static class HeavenlyResolveEnergyXValuePatch
     [HarmonyPostfix]
     private static void Postfix(CardModel __instance, ref int __result)
     {
-        if (XValueKeywordRuntime.TryGetValue(__instance, out _))
+        if (XValueKeywordRuntime.TryGetValue(__instance, out _)
+            || LoadoutKeywords.Has(__instance, LoadoutKeywords.AltXValue))
             return;
         bool hasXValue = LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue);
         if (LoadoutKeywords.Has(__instance, LoadoutKeywords.AltHeavenly)

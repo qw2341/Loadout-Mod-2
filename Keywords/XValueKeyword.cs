@@ -58,7 +58,7 @@ public static class XValueKeywordRuntime
     public static void EnterPrefix(CardModel __instance, out Scope? __state)
     {
         __state = null;
-        if (!LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue))
+        if (!HasXValue(__instance))
             return;
         // Resolve modifiers before their own dynamic variables become X.
         int value = Math.Max(0, __instance.ResolveEnergyXValue());
@@ -90,16 +90,25 @@ public static class XValueKeywordRuntime
     {
         value = 0;
         return variable.Name != XValueKeyword.AdditionalAmountVar
+               && variable.Name != AltXValueKeyword.AdditionalAmountVar
                && Current.Value is not null && Owner(variable) is CardModel card
                && TryGetValue(card, out value);
     }
 
     public static bool HasXValue(DynamicVar variable) =>
         variable.Name != XValueKeyword.AdditionalAmountVar
-        && Owner(variable) is CardModel card && LoadoutKeywords.Has(card, LoadoutKeywords.XValue);
+        && variable.Name != AltXValueKeyword.AdditionalAmountVar
+        && Owner(variable) is CardModel card && HasXValue(card);
+
+    public static bool HasXValue(CardModel card) =>
+        LoadoutKeywords.Has(card, LoadoutKeywords.XValue)
+        || LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue);
 
     public static int GetAdditionalAmount(CardModel card) =>
-        LoadoutKeywordRegistry.TryGetValue(card, XValueKeyword.AdditionalAmountVar, out DynamicVar amount)
+        LoadoutKeywordRegistry.TryGetValue(card,
+            LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue)
+                ? AltXValueKeyword.AdditionalAmountVar : XValueKeyword.AdditionalAmountVar,
+            out DynamicVar amount)
             ? amount.IntValue : 0;
 
     public static decimal GetInstanceValue(CardModel card) => TryGetValue(card, out int value) ? value : 1m;
@@ -112,11 +121,14 @@ public static class XValueKeywordRuntime
             int additional = GetAdditionalAmount(card);
             if (additional != 0)
                 text = $"X + {additional}";
+            if (LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue))
+                text = additional == 0 ? "X!" : $"({text})!";
             if ((variable is DamageVar && variable.Name == DamageVar.defaultName
                  && LoadoutKeywords.Has(card, LoadoutKeywords.MultiHit))
                 || (variable is BlockVar && variable.Name == BlockVar.defaultName
                     && LoadoutKeywords.Has(card, LoadoutKeywords.MultiBlock)))
-                text = additional == 0 ? "X x X" : $"({text}) x ({text})";
+                text = additional == 0 || LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue)
+                    ? $"{text} x {text}" : $"({text}) x ({text})";
         }
         return LocManager.Instance?.Language is "zhs" or "zht" ? $" {text} " : text;
     }
@@ -204,7 +216,14 @@ public static class XValueResolvedXPatch
     {
         if (XValueKeywordRuntime.TryGetValue(__instance, out int value))
             __result = value;
-        else if (LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue))
+        else if (XValueKeywordRuntime.HasXValue(__instance))
+        {
             __result = (int)Math.Clamp((long)__result + XValueKeywordRuntime.GetAdditionalAmount(__instance), 0, int.MaxValue);
+            if (LoadoutKeywords.Has(__instance, LoadoutKeywords.AltXValue))
+            {
+                __result = AltHeavenlyKeyword.Factorialize(__result);
+                CardEffectAnimationScope.MarkAltHeavenlyResult(__instance, __result);
+            }
+        }
     }
 }

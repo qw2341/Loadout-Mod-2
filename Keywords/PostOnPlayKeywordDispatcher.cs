@@ -72,6 +72,7 @@ internal static class PostOnPlayKeywordDispatcher
         List<KeywordEffectState>? effects = null;
         int executionCount = suppressOriginal
                              && !active.Contains(XValueKeyword.Instance)
+                             && !active.Contains(AltXValueKeyword.Instance)
                              && active.Contains(XCostKeyword.Instance)
             ? XCostOnPlayPatch.ResolveExecutionCount(__instance)
             : 1;

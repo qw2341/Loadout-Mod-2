@@ -80,6 +80,7 @@ internal static class CardEffectAnimationScope
     public static Scope? Enter(CardModel card)
     {
         if (!LoadoutKeywords.Has(card, LoadoutKeywords.AltHeavenly)
+            && !LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.MultiHit)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.MultiBlock)
             && !LoadoutKeywords.Has(card, LoadoutKeywords.Gatling)
