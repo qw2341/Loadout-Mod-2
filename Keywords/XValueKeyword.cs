@@ -17,12 +17,19 @@ using SmartFormat.Core.Extensions;
 
 public sealed class XValueKeyword : LoadoutKeywordModel
 {
+    public const string AdditionalAmountVar = "LoadoutXValueAdditionalAmount";
+    private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition> VariableDefinitions =
+    [
+        new(AdditionalAmountVar, 0m, 0, int.MaxValue, "DYNAMIC_VAR_LOADOUT_X_VALUE_ADDITIONAL_AMOUNT")
+    ];
+
     public static XValueKeyword Instance { get; } = new();
     private XValueKeyword() { }
     public override CardKeyword Keyword => LoadoutKeywords.XValue;
     public override string StorageKey => LoadoutKeywords.XValueKey;
     public override string TitleLocKey => "LOADOUT-X_VALUE.title";
     public override LoadoutKeywordPresentation Presentation => LoadoutKeywordPresentation.DescriptionOnly;
+    public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars => VariableDefinitions;
 }
 
 public static class XValueKeywordRuntime
@@ -82,24 +89,35 @@ public static class XValueKeywordRuntime
     public static bool TryGetValue(DynamicVar variable, out int value)
     {
         value = 0;
-        return Current.Value is not null && Owner(variable) is CardModel card
+        return variable.Name != XValueKeyword.AdditionalAmountVar
+               && Current.Value is not null && Owner(variable) is CardModel card
                && TryGetValue(card, out value);
     }
 
     public static bool HasXValue(DynamicVar variable) =>
-        Owner(variable) is CardModel card && LoadoutKeywords.Has(card, LoadoutKeywords.XValue);
+        variable.Name != XValueKeyword.AdditionalAmountVar
+        && Owner(variable) is CardModel card && LoadoutKeywords.Has(card, LoadoutKeywords.XValue);
+
+    public static int GetAdditionalAmount(CardModel card) =>
+        LoadoutKeywordRegistry.TryGetValue(card, XValueKeyword.AdditionalAmountVar, out DynamicVar amount)
+            ? amount.IntValue : 0;
 
     public static decimal GetInstanceValue(CardModel card) => TryGetValue(card, out int value) ? value : 1m;
 
     public static string FormatValue(DynamicVar variable)
     {
         string text = "X";
-        if (Owner(variable) is CardModel card
-            && ((variable is DamageVar && variable.Name == DamageVar.defaultName
+        if (Owner(variable) is CardModel card)
+        {
+            int additional = GetAdditionalAmount(card);
+            if (additional != 0)
+                text = $"X + {additional}";
+            if ((variable is DamageVar && variable.Name == DamageVar.defaultName
                  && LoadoutKeywords.Has(card, LoadoutKeywords.MultiHit))
                 || (variable is BlockVar && variable.Name == BlockVar.defaultName
-                    && LoadoutKeywords.Has(card, LoadoutKeywords.MultiBlock))))
-            text = "X x X";
+                    && LoadoutKeywords.Has(card, LoadoutKeywords.MultiBlock)))
+                text = additional == 0 ? "X x X" : $"({text}) x ({text})";
+        }
         return LocManager.Instance?.Language is "zhs" or "zht" ? $" {text} " : text;
     }
 
@@ -162,7 +180,7 @@ public static class XValueEnergyIconsPatch
             || !XValueKeywordRuntime.HasXValue(variable))
             return true;
         string prefix = XValueKeywordRuntime.GetEnergyPrefix(variable);
-        string value = LocManager.Instance?.Language is "zhs" or "zht" ? " X" : "X";
+        string value = XValueKeywordRuntime.FormatValue(variable).TrimEnd();
         formattingInfo.Write($"{value} [img]res://images/packed/sprite_fonts/{prefix}_energy_icon.png[/img]");
         __result = true;
         return false;
@@ -186,5 +204,7 @@ public static class XValueResolvedXPatch
     {
         if (XValueKeywordRuntime.TryGetValue(__instance, out int value))
             __result = value;
+        else if (LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue))
+            __result = (int)Math.Clamp((long)__result + XValueKeywordRuntime.GetAdditionalAmount(__instance), 0, int.MaxValue);
     }
 }
