@@ -1241,6 +1241,11 @@ public partial class NCardModificationScreen : Control
                     capturedIndex, entry => entry.Rarity = value, rebuildControls: false));
                 _variableControls.AddChild(CreateRow(
                     LocMan.Loc("FILTER_GROUP_RARITY", "Rarity") + suffix, rarity));
+                NLoadoutCardFilterStepper upgraded = new();
+                upgraded.InitUpgraded(entries[index].Upgraded, value => UpdateCardKeywordEntry(
+                    capturedIndex, entry => entry.Upgraded = value, rebuildControls: false));
+                _variableControls.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_RANDOM_CARD_UPGRADED", "Upgraded") + suffix, upgraded));
             }
             else
             {

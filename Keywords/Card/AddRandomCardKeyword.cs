@@ -71,6 +71,8 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
             {
                 if (!generated.MoveNext())
                     break;
+                if (entry.Upgraded && generated.Current.IsUpgradable)
+                    CardCmd.Upgrade(generated.Current);
                 LoadoutCardKeywordState.ApplyGeneratedCardCost(generated.Current, entry);
                 if (entry.Pile == PileType.Hand)
                     await CardPileCmd.AddGeneratedCardToCombat(generated.Current, entry.Pile, card.Owner);
@@ -84,9 +86,13 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
 
     public static string FormatEntry(LoadoutCardKeywordEntry entry, string amount)
     {
+        bool singular = entry.Amount == 1;
         List<string> descriptors = [];
         if (entry.Rarity != CardRarity.None)
             descriptors.Add(CardPrinter.GetCardRarityLabel(entry.Rarity));
+        if (entry.Upgraded)
+            descriptors.Add(LocMan.Loc(singular ? "CARD_MOD_RANDOM_CARD_UPGRADED_SINGLE" : "CARD_MOD_RANDOM_CARD_UPGRADED_PLURAL",
+                "[gold]Upgraded[/gold]"));
         if (!string.IsNullOrEmpty(entry.PoolId))
         {
             var pool = ModelDb.AllCardPools.FirstOrDefault(candidate =>
@@ -96,13 +102,12 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
                 label = label[4..];
             descriptors.Add(label);
         }
-        bool singular = entry.Amount == 1;
         return descriptors.Count == 0
             ? LocMan.Loc(singular ? "CARD_MOD_RANDOM_CARD_PLAIN_SINGLE" : "CARD_MOD_RANDOM_CARD_PLAIN_PLURAL",
                 singular ? "{0} random card" : "{0} random cards", amount)
             : LocMan.Loc(singular ? "CARD_MOD_RANDOM_CARD_SINGLE" : "CARD_MOD_RANDOM_CARD_PLURAL",
                 singular ? "{0} random {1} card" : "{0} random {1} cards", amount,
-                descriptors.Count == 1 ? descriptors[0]
-                    : LocMan.Loc("CARD_MOD_RANDOM_CARD_DESCRIPTORS", "{0} {1}", descriptors[0], descriptors[1]));
+                descriptors.Aggregate((left, right) =>
+                    LocMan.Loc("CARD_MOD_RANDOM_CARD_DESCRIPTORS", "{0} {1}", left, right)));
     }
 }

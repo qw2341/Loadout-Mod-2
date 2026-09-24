@@ -131,6 +131,15 @@ public partial class NCardUpgradeModificationScreen
                 });
                 _leftControls.AddChild(CreateRow(
                     LocMan.Loc("FILTER_GROUP_RARITY", "Rarity") + suffix, rarity));
+                NLoadoutCardFilterStepper upgraded = new();
+                upgraded.InitUpgraded(configured?.ReplacementUpgraded ?? baseEntry.Upgraded, value =>
+                {
+                    UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence,
+                        entry => entry.ReplacementUpgraded = value == baseEntry.Upgraded ? null : value);
+                    RefreshPreview();
+                });
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_RANDOM_CARD_UPGRADED", "Upgraded") + suffix, upgraded));
             }
             else
             {
@@ -238,6 +247,14 @@ public partial class NCardUpgradeModificationScreen
                 });
                 _leftControls.AddChild(CreateRow(
                     LocMan.Loc("FILTER_GROUP_RARITY", "Rarity") + suffix, rarity));
+                NLoadoutCardFilterStepper upgraded = new();
+                upgraded.InitUpgraded(addedEntries[index].Upgraded, value =>
+                {
+                    UpdateAddedCardKeywordEntry(capturedIndex, entry => entry.Upgraded = value);
+                    RefreshPreview();
+                });
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_RANDOM_CARD_UPGRADED", "Upgraded") + suffix, upgraded));
             }
             else
             {
