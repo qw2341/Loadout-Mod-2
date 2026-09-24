@@ -1272,6 +1272,11 @@ public partial class NCardModificationScreen : Control
                 capturedIndex, entry => entry.Pile = value, rebuildControls: false));
             _variableControls.AddChild(CreateRow(
                 LocMan.Loc("CARD_MOD_ADD_CARD_PILE", "Destination Pile") + suffix, pile));
+            NLoadoutCardCostStepper cost = new();
+            cost.Init(entries[index].FreeToPlay, value => UpdateCardKeywordEntry(
+                capturedIndex, entry => entry.FreeToPlay = value, rebuildControls: false));
+            _variableControls.AddChild(CreateRow(
+                LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play") + suffix, cost));
         }
     }
 

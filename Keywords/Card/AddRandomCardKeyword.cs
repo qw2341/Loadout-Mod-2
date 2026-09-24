@@ -71,6 +71,7 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
             {
                 if (!generated.MoveNext())
                     break;
+                LoadoutCardKeywordState.ApplyGeneratedCardCost(generated.Current, entry);
                 if (entry.Pile == PileType.Hand)
                     await CardPileCmd.AddGeneratedCardToCombat(generated.Current, entry.Pile, card.Owner);
                 else

@@ -189,6 +189,14 @@ public partial class NCardUpgradeModificationScreen
                 RefreshPreview();
             });
             _leftControls.AddChild(CreateRow(LocMan.Loc("CARD_MOD_ADD_CARD_PILE", "Destination Pile") + suffix, pile));
+            NLoadoutCardCostStepper cost = new();
+            cost.Init(configured?.ReplacementFreeToPlay ?? baseEntry.FreeToPlay, value =>
+            {
+                UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence,
+                    entry => entry.ReplacementFreeToPlay = value == baseEntry.FreeToPlay ? null : value);
+                RefreshPreview();
+            });
+            _leftControls.AddChild(CreateRow(LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play") + suffix, cost));
         }
 
         if (addedEntries.Count > 0)
@@ -280,6 +288,13 @@ public partial class NCardUpgradeModificationScreen
                 RefreshPreview();
             });
             _leftControls.AddChild(CreateRow(LocMan.Loc("CARD_MOD_ADD_CARD_PILE", "Destination Pile") + suffix, pile));
+            NLoadoutCardCostStepper cost = new();
+            cost.Init(addedEntries[index].FreeToPlay, value =>
+            {
+                UpdateAddedCardKeywordEntry(capturedIndex, entry => entry.FreeToPlay = value);
+                RefreshPreview();
+            });
+            _leftControls.AddChild(CreateRow(LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play") + suffix, cost));
         }
     }
 

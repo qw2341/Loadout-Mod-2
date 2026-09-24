@@ -9,6 +9,13 @@ using System.Text.Json.Serialization;
 using Loadout.Keywords;
 using MegaCrit.Sts2.Core.Entities.Cards;
 
+public enum LoadoutGeneratedCardCost
+{
+    None,
+    FreeThisTurn,
+    FreeThisCombat
+}
+
 public sealed class LoadoutCardKeywordEntry
 {
     [JsonPropertyName("k")]
@@ -28,6 +35,13 @@ public sealed class LoadoutCardKeywordEntry
 
     [JsonPropertyName("rarity")]
     public CardRarity Rarity { get; set; } = CardRarity.None;
+
+    [JsonPropertyName("free")]
+    public LoadoutGeneratedCardCost FreeToPlay { get; set; }
+
+    [JsonIgnore]
+    public LoadoutGeneratedCardCost EffectiveFreeToPlay =>
+        Pile == PileType.Deck ? LoadoutGeneratedCardCost.None : FreeToPlay;
 
     [JsonIgnore]
     public bool IsRandom => string.Equals(KeywordKey, LoadoutKeywords.AddRandomCardKey, StringComparison.OrdinalIgnoreCase);
@@ -50,6 +64,7 @@ public sealed class LoadoutCardKeywordEntry
             Upgraded = Upgraded,
             PoolId = PoolId,
             Rarity = Rarity,
+            FreeToPlay = FreeToPlay,
             Pile = Pile
         };
     }
@@ -74,6 +89,8 @@ public sealed class LoadoutCardKeywordEntry
             entry.CardId = entry.CardId.Trim();
             entry.PoolId = (entry.PoolId ?? string.Empty).Trim();
             entry.Amount = Math.Max(0, entry.Amount);
+            if (!Enum.IsDefined(entry.FreeToPlay))
+                entry.FreeToPlay = LoadoutGeneratedCardCost.None;
             if (!Loadout.Keywords.LoadoutCardKeywordState.IsSupportedPile(entry.Pile))
                 entry.Pile = MegaCrit.Sts2.Core.Entities.Cards.PileType.Hand;
             if (!entry.IsEmpty)
@@ -112,6 +129,9 @@ public sealed class LoadoutCardKeywordEntryUpgrade
     [JsonPropertyName("rarity")]
     public CardRarity? ReplacementRarity { get; set; }
 
+    [JsonPropertyName("free")]
+    public LoadoutGeneratedCardCost? ReplacementFreeToPlay { get; set; }
+
     [JsonIgnore]
     public bool HasIdentity =>
         !string.IsNullOrWhiteSpace(KeywordKey)
@@ -124,7 +144,7 @@ public sealed class LoadoutCardKeywordEntryUpgrade
         !HasIdentity
         || (AmountDelta == 0 && string.IsNullOrWhiteSpace(ReplacementCardId)
             && ReplacementUpgraded is null && ReplacementPile is null
-            && ReplacementPoolId is null && ReplacementRarity is null);
+            && ReplacementPoolId is null && ReplacementRarity is null && ReplacementFreeToPlay is null);
 
     public LoadoutCardKeywordEntryUpgrade Clone()
     {
@@ -138,6 +158,7 @@ public sealed class LoadoutCardKeywordEntryUpgrade
             ReplacementUpgraded = ReplacementUpgraded,
             ReplacementPoolId = ReplacementPoolId,
             ReplacementRarity = ReplacementRarity,
+            ReplacementFreeToPlay = ReplacementFreeToPlay,
             ReplacementPile = ReplacementPile
         };
     }
@@ -161,6 +182,8 @@ public sealed class LoadoutCardKeywordEntryUpgrade
             entry.KeywordKey = entry.KeywordKey.Trim();
             entry.OriginalCardId = entry.OriginalCardId.Trim();
             entry.ReplacementPoolId = entry.ReplacementPoolId?.Trim();
+            if (entry.ReplacementFreeToPlay.HasValue && !Enum.IsDefined(entry.ReplacementFreeToPlay.Value))
+                entry.ReplacementFreeToPlay = null;
             if (entry.ReplacementPile.HasValue && !Loadout.Keywords.LoadoutCardKeywordState.IsSupportedPile(entry.ReplacementPile.Value))
                 entry.ReplacementPile = null;
             entry.ReplacementCardId = string.IsNullOrWhiteSpace(entry.ReplacementCardId)

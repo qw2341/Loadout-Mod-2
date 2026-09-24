@@ -909,3 +909,11 @@ CARD_MOD_RANDOM_CARD_PLAIN_PLURAL,{0} random cards,{0}张随机牌,{0} cartes al
 CARD_MOD_RANDOM_CARD_SINGLE,{0} random {1} card,{0}张随机{1}牌,{0} carte aléatoire ({1}),ランダムな{1}カード{0}枚,무작위 {1} 카드 {0}장,{0} carta aleatoria ({1})
 CARD_MOD_RANDOM_CARD_PLURAL,{0} random {1} cards,{0}张随机{1}牌,{0} cartes aléatoires ({1}),ランダムな{1}カード{0}枚,무작위 {1} 카드 {0}장,{0} cartas aleatorias ({1})
 CARD_MOD_RANDOM_CARD_DESCRIPTORS,{0} {1},{0}{1},{0} {1},{0}・{1},{0} {1},{0} {1}
+CARD_MOD_CARD_FREE,Free to Play,免费打出,Jouer gratuitement,無料でプレイ,무료 사용,Jugar gratis
+CARD_MOD_CARD_FREE_NO,No,否,Non,いいえ,아니요,No
+CARD_MOD_CARD_FREE_TURN,Free This Turn,本回合免费,Gratuit ce tour,このターン無料,이번 턴 무료,Gratis este turno
+CARD_MOD_CARD_FREE_COMBAT,Free This Combat,本场战斗免费,Gratuit ce combat,この戦闘中無料,이번 전투 무료,Gratis este combate
+CARD_MOD_CARD_FREE_TURN_SINGLE,It's free to play this turn.,本回合可以免费打出。,Elle peut être jouée gratuitement ce tour.,このターン、無料でプレイできる。,이번 턴에 무료로 사용할 수 있습니다.,Se puede jugar gratis este turno.
+CARD_MOD_CARD_FREE_TURN_PLURAL,They are free to play this turn.,它们在本回合可以免费打出。,Elles peuvent être jouées gratuitement ce tour.,このターン、無料でプレイできる。,이번 턴에 무료로 사용할 수 있습니다.,Se pueden jugar gratis este turno.
+CARD_MOD_CARD_FREE_COMBAT_SINGLE,It's free to play this combat.,本场战斗可以免费打出。,Elle peut être jouée gratuitement ce combat.,この戦闘中、無料でプレイできる。,이번 전투에서 무료로 사용할 수 있습니다.,Se puede jugar gratis este combate.
+CARD_MOD_CARD_FREE_COMBAT_PLURAL,They are free to play this combat.,它们在本场战斗可以免费打出。,Elles peuvent être jouées gratuitement ce combat.,この戦闘中、無料でプレイできる。,이번 전투에서 무료로 사용할 수 있습니다.,Se pueden jugar gratis este combate.

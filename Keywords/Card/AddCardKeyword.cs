@@ -50,6 +50,7 @@ public sealed class AddCardKeyword : LoadoutCardKeywordModel
                     : card.CombatState!.CreateCard(canonical, card.Owner);
                 if (entry.Upgraded && generated.IsUpgradable)
                     CardCmd.Upgrade(generated);
+                LoadoutCardKeywordState.ApplyGeneratedCardCost(generated, entry);
                 if (entry.Pile == PileType.Hand)
                 {
                     await CardPileCmd.AddGeneratedCardToCombat(generated, entry.Pile, card.Owner);

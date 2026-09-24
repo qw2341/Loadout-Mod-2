@@ -259,6 +259,8 @@ public static class LoadoutCardKeywordState
                         effective.PoolId = upgrade.ReplacementPoolId;
                     if (upgrade.ReplacementRarity.HasValue)
                         effective.Rarity = upgrade.ReplacementRarity.Value;
+                    if (upgrade.ReplacementFreeToPlay.HasValue)
+                        effective.FreeToPlay = upgrade.ReplacementFreeToPlay.Value;
                     effective.Amount = Math.Max(0, effective.Amount);
                 }
 
@@ -374,10 +376,39 @@ public static class LoadoutCardKeywordState
             card.CurrentUpgradeLevel, InfiniteUpgradeValueScaling.Resolve(card))
             .Where(effective => MatchesKeyword(effective.Entry, keywordKey));
         string separator = LocMan.Loc("CARD_MOD_CARD_KEYWORD_SEPARATOR", ", ");
-        return string.Join(" ", entries.GroupBy(effective => effective.Entry.Pile).Select(group =>
-            LocMan.Loc("CARD_MOD_CARD_KEYWORD_SENTENCE", "Add {0} into your [gold]{1}[/gold].",
+        return string.Join(" ", entries.GroupBy(effective =>
+            (effective.Entry.Pile, FreeToPlay: effective.Entry.EffectiveFreeToPlay)).Select(group =>
+        {
+            string sentence = LocMan.Loc("CARD_MOD_CARD_KEYWORD_SENTENCE", "Add {0} into your [gold]{1}[/gold].",
                 string.Join(separator, group.Select(effective => FormatEntry(effective, card.UpgradePreviewType.IsPreview()))),
-                GetPileLabel(group.Key))));
+                GetPileLabel(group.Key.Pile));
+            string costText = GetFreeToPlayDescription(group.Key.FreeToPlay, group.Sum(effective => (long)effective.Entry.Amount) == 1);
+            return string.IsNullOrEmpty(costText) ? sentence : sentence + " " + costText;
+        }));
+    }
+
+    public static string GetFreeToPlayDescription(LoadoutGeneratedCardCost cost, bool singular) => cost switch
+    {
+        LoadoutGeneratedCardCost.FreeThisTurn => singular
+            ? LocMan.Loc("CARD_MOD_CARD_FREE_TURN_SINGLE", "It's free to play this turn.")
+            : LocMan.Loc("CARD_MOD_CARD_FREE_TURN_PLURAL", "They are free to play this turn."),
+        LoadoutGeneratedCardCost.FreeThisCombat => singular
+            ? LocMan.Loc("CARD_MOD_CARD_FREE_COMBAT_SINGLE", "It's free to play this combat.")
+            : LocMan.Loc("CARD_MOD_CARD_FREE_COMBAT_PLURAL", "They are free to play this combat."),
+        _ => string.Empty
+    };
+
+    public static void ApplyGeneratedCardCost(CardModel generated, LoadoutCardKeywordEntry entry)
+    {
+        switch (entry.EffectiveFreeToPlay)
+        {
+            case LoadoutGeneratedCardCost.FreeThisTurn:
+                generated.SetToFreeThisTurn();
+                break;
+            case LoadoutGeneratedCardCost.FreeThisCombat:
+                generated.SetToFreeThisCombat();
+                break;
+        }
     }
 
     public static string GetPileLabel(PileType pile) => pile switch

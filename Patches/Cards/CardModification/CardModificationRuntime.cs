@@ -517,6 +517,7 @@ public static class CardModificationRuntime
                 || left[i].Upgraded != right[i].Upgraded
                 || left[i].Pile != right[i].Pile
                 || left[i].Rarity != right[i].Rarity
+                || left[i].FreeToPlay != right[i].FreeToPlay
                 || !string.Equals(left[i].PoolId, right[i].PoolId, StringComparison.Ordinal))
             {
                 return false;
@@ -579,6 +580,7 @@ public static class CardModificationRuntime
                 || left[i].ReplacementUpgraded != right[i].ReplacementUpgraded
                 || left[i].ReplacementPile != right[i].ReplacementPile
                 || left[i].ReplacementRarity != right[i].ReplacementRarity
+                || left[i].ReplacementFreeToPlay != right[i].ReplacementFreeToPlay
                 || !string.Equals(left[i].ReplacementPoolId, right[i].ReplacementPoolId, StringComparison.Ordinal)
                 || !string.Equals(
                     left[i].ReplacementCardId,
