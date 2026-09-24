@@ -180,19 +180,19 @@ public static class LoadoutKeywords
     [CustomEnum("X_COST")]
     public static CardKeyword XCost;
 
-    [CustomEnum("X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
+    [CustomEnum("X_VALUE")]
     public static CardKeyword XValue;
 
-    [CustomEnum("ARITHMETIC_X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
+    [CustomEnum("ARITHMETIC_X_VALUE")]
     public static CardKeyword ArithmeticXValue;
 
-    [CustomEnum("ALT_X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
+    [CustomEnum("ALT_X_VALUE")]
     public static CardKeyword AltXValue;
 
-    [CustomEnum("ALT_ALT_X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
+    [CustomEnum("ALT_ALT_X_VALUE")]
     public static CardKeyword AltAltXValue;
 
-    [CustomEnum("ALT_ALT_ALT_X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
+    [CustomEnum("ALT_ALT_ALT_X_VALUE")]
     public static CardKeyword AltAltAltXValue;
 
     [CustomEnum("INFINITE_UPGRADE"), KeywordProperties(AutoKeywordPosition.Before)]
