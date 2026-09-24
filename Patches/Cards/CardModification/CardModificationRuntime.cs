@@ -987,10 +987,8 @@ public static class CardModificationRuntime
         if (desired.EnergyCost.HasValue)
         {
             int difference = desired.EnergyCost.Value - baseline.EnergyCost.Canonical;
-            if (baseline.EnergyCost.CostsX || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.XCostKey)
-                || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.XValueKey)
-                || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.AltXValueKey)
-                || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.AltAltXValueKey))
+            if (baseline.EnergyCost.CostsX || (LoadoutCardModificationFlagState.GetOverrideFlags(desired.KeywordOverrides.Keys)
+                & LoadoutCardModificationFlags.OverrideXCost) != 0)
                 delta.EnergyOverride = desired.EnergyCost.Value;
             else if (difference != 0) delta.EnergyDelta = difference;
         }
@@ -1166,10 +1164,8 @@ public static class CardModificationRuntime
         if (desired.EnergyCost.HasValue)
         {
             int difference = desired.EnergyCost.Value - baseline.EnergyCost;
-            if (baseline.CostsX || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.XCostKey)
-                || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.XValueKey)
-                || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.AltXValueKey)
-                || desired.KeywordOverrides.ContainsKey(LoadoutKeywords.AltAltXValueKey))
+            if (baseline.CostsX || (LoadoutCardModificationFlagState.GetOverrideFlags(desired.KeywordOverrides.Keys)
+                & LoadoutCardModificationFlags.OverrideXCost) != 0)
                 delta.EnergyOverride = desired.EnergyCost.Value;
             else if (difference != 0)
                 delta.EnergyDelta = difference;
@@ -2498,6 +2494,8 @@ public static class CardModificationRuntime
         keywordKeys.UnionWith(next.KeywordOverrides.Keys);
         keywordKeys.UnionWith(previous.UpgradeModification.KeywordOverrides.Keys);
         keywordKeys.UnionWith(next.UpgradeModification.KeywordOverrides.Keys);
+        bool changesXCost = (LoadoutCardModificationFlagState.GetOverrideFlags(keywordKeys)
+                             & LoadoutCardModificationFlags.OverrideXCost) != 0;
         bool hasUpgradeEnergyDefinition =
             previous.UpgradeModification.EnergyCostDelta.HasValue
             || next.UpgradeModification.EnergyCostDelta.HasValue;
@@ -2527,10 +2525,7 @@ public static class CardModificationRuntime
             && (previous.EnergyCost.HasValue
              || next.EnergyCost.HasValue
              || hasUpgradeEnergyDefinition
-             || keywordKeys.Contains(LoadoutKeywords.XCostKey)
-             || keywordKeys.Contains(LoadoutKeywords.XValueKey)
-             || keywordKeys.Contains(LoadoutKeywords.AltXValueKey)
-             || keywordKeys.Contains(LoadoutKeywords.AltAltXValueKey))
+             || changesXCost)
             && !destination.EnergyCost.CostsX)
         {
             SetEnergyCost(destination, source.EnergyCost.Canonical);
@@ -2601,23 +2596,15 @@ public static class CardModificationRuntime
             }
         }
 
-        if (keywordKeys.Contains(LoadoutKeywords.XCostKey)
-            || keywordKeys.Contains(LoadoutKeywords.XValueKey)
-             || keywordKeys.Contains(LoadoutKeywords.AltXValueKey)
-             || keywordKeys.Contains(LoadoutKeywords.AltAltXValueKey))
+        if (changesXCost)
         {
-            Dictionary<string, bool> xCostOverrides =
-                new(next.KeywordOverrides, StringComparer.Ordinal)
-                {
-                    [LoadoutKeywords.XValueKey] =
-                        LoadoutKeywords.Has(source, LoadoutKeywords.XValue),
-                    [LoadoutKeywords.AltXValueKey] =
-                        LoadoutKeywords.Has(source, LoadoutKeywords.AltXValue),
-                    [LoadoutKeywords.AltAltXValueKey] =
-                        LoadoutKeywords.Has(source, LoadoutKeywords.AltAltXValue)
-                };
-            if (keywordKeys.Contains(LoadoutKeywords.XCostKey))
-                xCostOverrides[LoadoutKeywords.XCostKey] = LoadoutKeywords.Has(source, LoadoutKeywords.XCost);
+            Dictionary<string, bool> xCostOverrides = new(next.KeywordOverrides, StringComparer.Ordinal);
+            IReadOnlySet<CardKeyword> sourceKeywords = source.GetKeywordsWithSources(KeywordSources.Local);
+            foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.WithXCostOverride)
+            {
+                if (model.Keyword != LoadoutKeywords.XCost || keywordKeys.Contains(model.StorageKey))
+                    xCostOverrides[model.StorageKey] = sourceKeywords.Contains(model.Keyword);
+            }
             XCostKeywordMechanics.SynchronizeEnergyCost(
                 destination,
                 xCostOverrides,
@@ -2627,10 +2614,7 @@ public static class CardModificationRuntime
             && (previous.EnergyCost.HasValue
              || next.EnergyCost.HasValue
              || hasUpgradeEnergyDefinition
-             || keywordKeys.Contains(LoadoutKeywords.XCostKey)
-             || keywordKeys.Contains(LoadoutKeywords.XValueKey)
-             || keywordKeys.Contains(LoadoutKeywords.AltXValueKey)
-             || keywordKeys.Contains(LoadoutKeywords.AltAltXValueKey))
+             || changesXCost)
             && !source.EnergyCost.CostsX
             && !destination.EnergyCost.CostsX)
         {

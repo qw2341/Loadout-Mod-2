@@ -35,9 +35,12 @@ public sealed class MultiHitKeyword : LoadoutKeywordModel
     private MultiHitKeyword() { }
 
     public override CardKeyword Keyword => LoadoutKeywords.MultiHit;
+
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.FastAnimation;
     public override string StorageKey => LoadoutKeywords.MultiHitKey;
     public override string TitleLocKey => "LOADOUT-MULTI_HIT.title";
-    
+
     public override LoadoutKeywordEditorSection EditorSection => LoadoutKeywordEditorSection.Joke;
     public override LoadoutKeywordPresentation Presentation => LoadoutKeywordPresentation.Normal;
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars => Variables;

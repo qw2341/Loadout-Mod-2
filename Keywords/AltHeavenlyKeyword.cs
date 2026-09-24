@@ -32,6 +32,9 @@ public sealed class AltHeavenlyKeyword : LoadoutKeywordModel
 
     public override CardKeyword Keyword => LoadoutKeywords.AltHeavenly;
 
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.FastAnimation;
+
     public override string StorageKey => LoadoutKeywords.AltHeavenlyKey;
 
     public override string TitleLocKey => "LOADOUT-ALT_HEAVENLY.title";

@@ -181,6 +181,9 @@ public static class LoadoutKeywordRegistry
     private static readonly IReadOnlyList<LoadoutKeywordModel> TurnEndInHandModels =
         Models.Where(model => model.HasTurnEndInHandEffect).ToArray();
 
+    public static IReadOnlyList<LoadoutKeywordModel> WithXCostOverride { get; } =
+        Models.Where(model => (model.ModificationFlags & LoadoutCardModificationFlags.OverrideXCost) != 0).ToArray();
+
     private static readonly Lazy<LoadoutKeywordIndex> ModelIndex = new(() => new(Models));
 
     private static readonly Dictionary<string, (LoadoutKeywordModel Model, LoadoutKeywordDynamicVarDefinition Definition)[]>
@@ -188,6 +191,12 @@ public static class LoadoutKeywordRegistry
             .SelectMany(model => model.DynamicVars.Select(definition => (Model: model, Definition: definition)))
             .GroupBy(entry => entry.Definition.Name, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+
+    private static readonly HashSet<string> XValueExemptDynamicVars = Models
+        .SelectMany(model => model.DynamicVars)
+        .Where(definition => !definition.AffectedByXValue)
+        .Select(definition => definition.Name)
+        .ToHashSet(StringComparer.Ordinal);
 
     private sealed class DescriptionContext(CardModel card)
     {
@@ -256,6 +265,8 @@ public static class LoadoutKeywordRegistry
     public static IEnumerable<LoadoutKeywordModel> ResolveOverrideModels(
         IReadOnlyDictionary<string, bool> overrides) =>
         ModelIndex.Value.EnumerateOverrides(overrides);
+
+    public static bool IsAffectedByXValue(string name) => !XValueExemptDynamicVars.Contains(name);
 
     public static bool TryGetDynamicVar(
         string name,
@@ -437,8 +448,7 @@ public static class LoadoutKeywordRegistry
         IReadOnlyDictionary<string, bool>? overrides = null)
     {
         IReadOnlyList<LoadoutKeywordModel> active = ResolveActiveModels(card, overrides: overrides);
-        if (active.Contains(XValueKeyword.Instance) || active.Contains(AltXValueKeyword.Instance)
-            || active.Contains(AltAltXValueKeyword.Instance))
+        if ((LoadoutCardModificationFlagState.GetFlags(active) & LoadoutCardModificationFlags.OverrideXValue) != 0)
             XValueKeywordRuntime.Prepare(card);
         if (active.Contains(MultiHitKeyword.Instance))
             MultiHitKeywordPatches.Prepare(card);

@@ -73,6 +73,9 @@ public sealed class MegaGatlingKeyword : LoadoutKeywordModel
 
     public override CardKeyword Keyword => LoadoutKeywords.MegaGatling;
 
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.FastAnimation;
+
     public override string StorageKey => LoadoutKeywords.MegaGatlingKey;
 
     public override string TitleLocKey => "LOADOUT-MEGA_GATLING.title";

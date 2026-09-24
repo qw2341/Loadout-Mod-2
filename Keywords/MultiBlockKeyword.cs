@@ -27,6 +27,9 @@ public sealed class MultiBlockKeyword : LoadoutKeywordModel
     private MultiBlockKeyword() { }
 
     public override CardKeyword Keyword => LoadoutKeywords.MultiBlock;
+
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.FastAnimation;
     public override string StorageKey => LoadoutKeywords.MultiBlockKey;
     public override string TitleLocKey => "LOADOUT-MULTI_BLOCK.title";
     public override LoadoutKeywordEditorSection EditorSection => LoadoutKeywordEditorSection.Joke;

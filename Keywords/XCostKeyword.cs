@@ -23,6 +23,9 @@ public sealed class XCostKeyword : LoadoutKeywordModel
 
     public override CardKeyword Keyword => LoadoutKeywords.XCost;
 
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.OverrideXCost;
+
     public override string StorageKey => LoadoutKeywords.XCostKey;
 
     public override string TitleLocKey => "LOADOUT-X_COST.title";
@@ -38,19 +41,15 @@ public static class XCostKeywordMechanics
         IReadOnlyDictionary<string, bool> overrides,
         int? modifiedCost)
     {
-        bool enabled = overrides.TryGetValue(LoadoutKeywords.XCostKey, out bool requested)
-            ? requested
-            : LoadoutKeywords.Has(card, LoadoutKeywords.XCost);
-
         CardModel? canonical =
             ModelDb.AllCards.FirstOrDefault(candidate => candidate.Id.Equals(card.Id));
         bool canonicalCostsX = canonical?.EnergyCost.CostsX ?? false;
         bool explicitlyDisabled =
-            overrides.TryGetValue(LoadoutKeywords.XCostKey, out requested) && !requested;
-        bool shouldCostX = XValueKeyword.Instance.IsEnabled(card, overrides)
-                           || AltXValueKeyword.Instance.IsEnabled(card, overrides)
-                           || AltAltXValueKeyword.Instance.IsEnabled(card, overrides)
-                           || enabled || (canonicalCostsX && !explicitlyDisabled);
+            overrides.TryGetValue(LoadoutKeywords.XCostKey, out bool requested) && !requested;
+        LoadoutCardModificationFlags flags = LoadoutCardModificationFlagState.GetFlags(
+            card.GetKeywordsWithSources(KeywordSources.Local), overrides);
+        bool shouldCostX = (flags & LoadoutCardModificationFlags.OverrideXCost) != 0
+                           || (canonicalCostsX && !explicitlyDisabled);
 
         if (card.EnergyCost.CostsX == shouldCostX)
         {

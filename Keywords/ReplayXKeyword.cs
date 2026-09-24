@@ -18,6 +18,9 @@ public sealed class ReplayXKeyword : LoadoutKeywordModel
 
     public override CardKeyword Keyword => LoadoutKeywords.ReplayX;
 
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.FastAnimation;
+
     public override string StorageKey => LoadoutKeywords.ReplayXKey;
 
     public override string TitleLocKey => "LOADOUT-REPLAY_X.title";

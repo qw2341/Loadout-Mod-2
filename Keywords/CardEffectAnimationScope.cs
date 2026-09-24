@@ -79,14 +79,7 @@ internal static class CardEffectAnimationScope
 
     public static Scope? Enter(CardModel card)
     {
-        if (!LoadoutKeywords.Has(card, LoadoutKeywords.AltHeavenly)
-            && !LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue)
-            && !LoadoutKeywords.Has(card, LoadoutKeywords.AltAltXValue)
-            && !LoadoutKeywords.Has(card, LoadoutKeywords.MultiHit)
-            && !LoadoutKeywords.Has(card, LoadoutKeywords.MultiBlock)
-            && !LoadoutKeywords.Has(card, LoadoutKeywords.Gatling)
-            && !LoadoutKeywords.Has(card, LoadoutKeywords.MegaGatling)
-            && !LoadoutKeywords.Has(card, LoadoutKeywords.ReplayX))
+        if (!LoadoutCardModificationFlagState.HasFlag(card, LoadoutCardModificationFlags.FastAnimation))
         {
             return null;
         }

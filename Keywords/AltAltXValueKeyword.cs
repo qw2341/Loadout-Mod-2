@@ -10,12 +10,15 @@ public sealed class AltAltXValueKeyword : LoadoutKeywordModel
     public const string AdditionalAmountVar = "LoadoutAltAltXValueAdditionalAmount";
     private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition> VariableDefinitions =
     [
-        new(AdditionalAmountVar, 0m, 0, int.MaxValue, "DYNAMIC_VAR_LOADOUT_X_VALUE_ADDITIONAL_AMOUNT")
+        new(AdditionalAmountVar, 0m, 0, int.MaxValue, "DYNAMIC_VAR_LOADOUT_X_VALUE_ADDITIONAL_AMOUNT", AffectedByXValue: false)
     ];
 
     public static AltAltXValueKeyword Instance { get; } = new();
     private AltAltXValueKeyword() { }
     public override CardKeyword Keyword => LoadoutKeywords.AltAltXValue;
+
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.OverrideXCost | LoadoutCardModificationFlags.OverrideXValue | LoadoutCardModificationFlags.FastAnimation;
     public override string StorageKey => LoadoutKeywords.AltAltXValueKey;
     public override string TitleLocKey => "LOADOUT-ALT_ALT_X_VALUE.title";
     public override LoadoutKeywordEditorSection EditorSection => LoadoutKeywordEditorSection.Joke;

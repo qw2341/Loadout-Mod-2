@@ -194,17 +194,8 @@ internal static class CanonicalCardModificationRegistry
         bool costsX = baseline.CostsX;
         if (delta.KeywordOverrides.TryGetValue(LoadoutKeywords.XCostKey, out bool xCostOverride))
             costsX = xCostOverride;
-        if (delta.KeywordOverrides.TryGetValue(LoadoutKeywords.XValueKey, out bool xValueOverride)
-                ? xValueOverride
-                : baseline.Keywords.Contains(LoadoutKeywords.XValue))
-            costsX = true;
-        if (delta.KeywordOverrides.TryGetValue(LoadoutKeywords.AltXValueKey, out bool altXValueOverride)
-                ? altXValueOverride
-                : baseline.Keywords.Contains(LoadoutKeywords.AltXValue))
-            costsX = true;
-        if (delta.KeywordOverrides.TryGetValue(LoadoutKeywords.AltAltXValueKey, out bool altAltXValueOverride)
-                ? altAltXValueOverride
-                : baseline.Keywords.Contains(LoadoutKeywords.AltAltXValue))
+        if ((LoadoutCardModificationFlagState.GetFlags(baseline.Keywords, delta.KeywordOverrides)
+             & LoadoutCardModificationFlags.OverrideXCost) != 0)
             costsX = true;
         int energy = delta.EnergyOverride
                      ?? (delta.EnergyDelta.HasValue ? baseline.EnergyCost + delta.EnergyDelta.Value : baseline.EnergyCost);

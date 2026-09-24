@@ -44,6 +44,9 @@ public sealed class GatlingKeyword : LoadoutKeywordModel
 
     public override CardKeyword Keyword => LoadoutKeywords.Gatling;
 
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.FastAnimation;
+
     public override string StorageKey => LoadoutKeywords.GatlingKey;
 
     public override string TitleLocKey => "LOADOUT-GATLING.title";

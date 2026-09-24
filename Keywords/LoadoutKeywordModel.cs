@@ -56,7 +56,8 @@ public sealed record LoadoutKeywordDynamicVarDefinition(
     int Maximum,
     string LabelLocKey,
     Func<string, decimal, DynamicVar>? Factory = null,
-    bool EditorVisible = true)
+    bool EditorVisible = true,
+    bool AffectedByXValue = true)
 {
     public DynamicVar Create() =>
         Factory?.Invoke(Name, DefaultValue)
@@ -75,6 +76,8 @@ public abstract class LoadoutKeywordModel
     public abstract string StorageKey { get; }
 
     public abstract string TitleLocKey { get; }
+
+    public virtual LoadoutCardModificationFlags ModificationFlags => LoadoutCardModificationFlags.None;
 
     public virtual LoadoutKeywordPresentation Presentation =>
         LoadoutKeywordPresentation.Normal;

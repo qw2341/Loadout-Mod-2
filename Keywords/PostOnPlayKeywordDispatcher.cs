@@ -71,9 +71,7 @@ internal static class PostOnPlayKeywordDispatcher
         CardPlay cardPlay = __1;
         List<KeywordEffectState>? effects = null;
         int executionCount = suppressOriginal
-                             && !active.Contains(XValueKeyword.Instance)
-                             && !active.Contains(AltXValueKeyword.Instance)
-                             && !active.Contains(AltAltXValueKeyword.Instance)
+                             && (LoadoutCardModificationFlagState.GetFlags(active) & LoadoutCardModificationFlags.OverrideXValue) == 0
                              && active.Contains(XCostKeyword.Instance)
             ? XCostOnPlayPatch.ResolveExecutionCount(__instance)
             : 1;

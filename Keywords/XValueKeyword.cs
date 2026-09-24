@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 
 namespace Loadout.Keywords;
 
@@ -20,12 +20,15 @@ public sealed class XValueKeyword : LoadoutKeywordModel
     public const string AdditionalAmountVar = "LoadoutXValueAdditionalAmount";
     private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition> VariableDefinitions =
     [
-        new(AdditionalAmountVar, 0m, 0, int.MaxValue, "DYNAMIC_VAR_LOADOUT_X_VALUE_ADDITIONAL_AMOUNT")
+        new(AdditionalAmountVar, 0m, 0, int.MaxValue, "DYNAMIC_VAR_LOADOUT_X_VALUE_ADDITIONAL_AMOUNT", AffectedByXValue: false)
     ];
 
     public static XValueKeyword Instance { get; } = new();
     private XValueKeyword() { }
     public override CardKeyword Keyword => LoadoutKeywords.XValue;
+
+    public override LoadoutCardModificationFlags ModificationFlags =>
+        LoadoutCardModificationFlags.OverrideXCost | LoadoutCardModificationFlags.OverrideXValue;
     public override string StorageKey => LoadoutKeywords.XValueKey;
     public override string TitleLocKey => "LOADOUT-X_VALUE.title";
     public override LoadoutKeywordPresentation Presentation => LoadoutKeywordPresentation.DescriptionOnly;
@@ -89,23 +92,18 @@ public static class XValueKeywordRuntime
     public static bool TryGetValue(DynamicVar variable, out int value)
     {
         value = 0;
-        return variable.Name != XValueKeyword.AdditionalAmountVar
-               && variable.Name != AltXValueKeyword.AdditionalAmountVar
-               && variable.Name != AltAltXValueKeyword.AdditionalAmountVar
-               && Current.Value is not null && Owner(variable) is CardModel card
+        return Current.Value is not null
+               && LoadoutKeywordRegistry.IsAffectedByXValue(variable.Name)
+               && Owner(variable) is CardModel card
                && TryGetValue(card, out value);
     }
 
     public static bool HasXValue(DynamicVar variable) =>
-        variable.Name != XValueKeyword.AdditionalAmountVar
-        && variable.Name != AltXValueKeyword.AdditionalAmountVar
-        && variable.Name != AltAltXValueKeyword.AdditionalAmountVar
+        LoadoutKeywordRegistry.IsAffectedByXValue(variable.Name)
         && Owner(variable) is CardModel card && HasXValue(card);
 
     public static bool HasXValue(CardModel card) =>
-        LoadoutKeywords.Has(card, LoadoutKeywords.XValue)
-        || LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue)
-        || LoadoutKeywords.Has(card, LoadoutKeywords.AltAltXValue);
+        LoadoutCardModificationFlagState.HasFlag(card, LoadoutCardModificationFlags.OverrideXValue);
 
     public static int GetAdditionalAmount(CardModel card) =>
         LoadoutKeywordRegistry.TryGetValue(card,
