@@ -362,6 +362,8 @@
   "LOADOUT-MULTI_HIT.description": "원래 피해 수치만큼 피해 1의 타격을 가합니다. 강화와 피해 수치의 직접 변경은 타격 횟수를 변경합니다. 힘과 기타 피해 보정은 각 타격에 적용됩니다. 기존 반복 횟수는 유지됩니다.",
   "LOADOUT-MULTI_BLOCK.title": "!?다중 방어도?!",
   "LOADOUT-MULTI_BLOCK.description": "기본 방어도 수치만큼 방어도를 1씩 얻습니다.",
+  "LOADOUT-ALT_ALT_X_VALUE.title": "!?XX?!",
+  "LOADOUT-ALT_ALT_X_VALUE.description": "X 에너지를 소모합니다. 이 카드의 모든 수치는 X ^ X가 됩니다. X 비용 키워드의 추가 사용을 무효화합니다.",
   "LOADOUT-ALT_X_VALUE.title": "!?X 수치?!",
   "LOADOUT-ALT_X_VALUE.description": "X 에너지를 소모합니다. 이 카드의 모든 수치는 X!가 됩니다. X 비용 키워드의 추가 사용을 무효화합니다.",
   "LOADOUT-X_VALUE.title": "X 수치",

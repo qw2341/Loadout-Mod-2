@@ -362,6 +362,8 @@
   "LOADOUT-MULTI_HIT.description": "元のダメージ値を、その回数の1ダメージ攻撃に分割する。アップグレードやダメージ値への直接変更はヒット回数を変える。筋力などのダメージ補正は各ヒットに適用される。既存の繰り返し回数は変わらない。",
   "LOADOUT-MULTI_BLOCK.title": "!?多段ブロック?!",
   "LOADOUT-MULTI_BLOCK.description": "基本ブロック値を、その回数の1ブロック獲得に分割する。",
+  "LOADOUT-ALT_ALT_X_VALUE.title": "!?XX?!",
+  "LOADOUT-ALT_ALT_X_VALUE.description": "Xエナジーを消費する。このカードのすべての数値はX ^ Xになる。Xコストキーワードによる追加プレイを無効にする。",
   "LOADOUT-ALT_X_VALUE.title": "!?X値?!",
   "LOADOUT-ALT_X_VALUE.description": "Xエナジーを消費する。このカードのすべての数値はX!になる。Xコストキーワードによる追加プレイを無効にする。",
   "LOADOUT-X_VALUE.title": "X値",

@@ -18,6 +18,7 @@ public static class LoadoutKeywords
     public const string XCostKey = "XCost";
     public const string XValueKey = "XValue";
     public const string AltXValueKey = "AltXValue";
+    public const string AltAltXValueKey = "AltAltXValue";
     public const string InfiniteUpgradeKey = "InfiniteUpgrade";
     public const string JokeInfiniteUpgradeKey = "JokeInfiniteUpgrade";
     public const string KarmicKey = "Karmic";
@@ -182,6 +183,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("ALT_X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword AltXValue;
+
+    [CustomEnum("ALT_ALT_X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
+    public static CardKeyword AltAltXValue;
 
     [CustomEnum("INFINITE_UPGRADE"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword InfiniteUpgrade;

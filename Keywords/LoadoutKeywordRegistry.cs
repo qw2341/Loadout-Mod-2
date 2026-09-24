@@ -33,6 +33,7 @@ public static class LoadoutKeywordRegistry
         XCostKeyword.Instance,
         XValueKeyword.Instance,
         AltXValueKeyword.Instance,
+        AltAltXValueKeyword.Instance,
         InfiniteUpgradeKeyword.Instance,
         JokeInfiniteUpgradeKeyword.Instance,
         KarmicKeyword.Instance,
@@ -436,7 +437,8 @@ public static class LoadoutKeywordRegistry
         IReadOnlyDictionary<string, bool>? overrides = null)
     {
         IReadOnlyList<LoadoutKeywordModel> active = ResolveActiveModels(card, overrides: overrides);
-        if (active.Contains(XValueKeyword.Instance) || active.Contains(AltXValueKeyword.Instance))
+        if (active.Contains(XValueKeyword.Instance) || active.Contains(AltXValueKeyword.Instance)
+            || active.Contains(AltAltXValueKeyword.Instance))
             XValueKeywordRuntime.Prepare(card);
         if (active.Contains(MultiHitKeyword.Instance))
             MultiHitKeywordPatches.Prepare(card);

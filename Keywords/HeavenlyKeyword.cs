@@ -51,7 +51,8 @@ internal static class HeavenlyResolveEnergyXValuePatch
     private static void Postfix(CardModel __instance, ref int __result)
     {
         if (XValueKeywordRuntime.TryGetValue(__instance, out _)
-            || LoadoutKeywords.Has(__instance, LoadoutKeywords.AltXValue))
+            || LoadoutKeywords.Has(__instance, LoadoutKeywords.AltXValue)
+            || LoadoutKeywords.Has(__instance, LoadoutKeywords.AltAltXValue))
             return;
         bool hasXValue = LoadoutKeywords.Has(__instance, LoadoutKeywords.XValue);
         if (LoadoutKeywords.Has(__instance, LoadoutKeywords.AltHeavenly)

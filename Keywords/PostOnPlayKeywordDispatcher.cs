@@ -73,6 +73,7 @@ internal static class PostOnPlayKeywordDispatcher
         int executionCount = suppressOriginal
                              && !active.Contains(XValueKeyword.Instance)
                              && !active.Contains(AltXValueKeyword.Instance)
+                             && !active.Contains(AltAltXValueKeyword.Instance)
                              && active.Contains(XCostKeyword.Instance)
             ? XCostOnPlayPatch.ResolveExecutionCount(__instance)
             : 1;

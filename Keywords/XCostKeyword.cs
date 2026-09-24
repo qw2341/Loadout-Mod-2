@@ -49,6 +49,7 @@ public static class XCostKeywordMechanics
             overrides.TryGetValue(LoadoutKeywords.XCostKey, out requested) && !requested;
         bool shouldCostX = XValueKeyword.Instance.IsEnabled(card, overrides)
                            || AltXValueKeyword.Instance.IsEnabled(card, overrides)
+                           || AltAltXValueKeyword.Instance.IsEnabled(card, overrides)
                            || enabled || (canonicalCostsX && !explicitlyDisabled);
 
         if (card.EnergyCost.CostsX == shouldCostX)
