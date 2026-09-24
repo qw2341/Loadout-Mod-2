@@ -843,6 +843,7 @@ public class EventfulCompass
 		    };
 
 		    Control backgroundScene = model.CreateBackgroundScene().Instantiate<Control>(PackedScene.GenEditState.Disabled);
+		    MuteAncientPreviewAudio(backgroundScene);
 		    backgroundScene.MouseFilter = Control.MouseFilterEnum.Ignore;
 		    backgroundScene.Position = Vector2.Zero;
 		    backgroundScene.Size = new Vector2(1920f, 1080f);
@@ -857,6 +858,26 @@ public class EventfulCompass
 		    GD.PushWarning($"LoadoutPanel: could not create ancient background preview for '{model.Id}'. {exception.Message}");
 		    return null;
 	    }
+    }
+
+    private static void MuteAncientPreviewAudio(Node node)
+    {
+	    // Mute before tree entry: scene scripts can play audio in _Ready.
+	    switch (node)
+	    {
+		    case AudioStreamPlayer audio:
+			    audio.VolumeLinear = 0f;
+			    break;
+		    case AudioStreamPlayer2D audio2D:
+			    audio2D.VolumeLinear = 0f;
+			    break;
+		    case AudioStreamPlayer3D audio3D:
+			    audio3D.VolumeLinear = 0f;
+			    break;
+	    }
+
+	    foreach (Node child in node.GetChildren(includeInternal: true))
+		    MuteAncientPreviewAudio(child);
     }
 
     public static void AttachEventTileHoverAnimation(Control tile, TextureRect background, ColorRect shade, float restingShadeAlpha)
