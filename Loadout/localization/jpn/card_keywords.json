@@ -368,6 +368,8 @@
   "LOADOUT-ALT_ALT_X_VALUE.description": "Xエナジーを消費する。このカードのすべての数値はX ^ Xになる。Xコストキーワードによる追加プレイを無効にする。",
   "LOADOUT-ALT_X_VALUE.title": "!?X値?!",
   "LOADOUT-ALT_X_VALUE.description": "Xエナジーを消費する。このカードのすべての数値はX!になる。Xコストキーワードによる追加プレイを無効にする。",
+  "LOADOUT-ARITHMETIC_X_VALUE.title": "算術X値",
+  "LOADOUT-ARITHMETIC_X_VALUE.description": "Xエナジーを消費する。このカードのすべての数値はaX + bになる。Xコストキーワードによる追加プレイを無効にする。",
   "LOADOUT-X_VALUE.title": "X値",
   "LOADOUT-X_VALUE.description": "Xエナジーを消費する。このカードのすべての数値はXになる。Xコストキーワードによる追加プレイを無効にする。",
   "LOADOUT-ADD_CARD.title": "カードを追加",

@@ -368,6 +368,8 @@
   "LOADOUT-ALT_ALT_X_VALUE.description": "Coûte X Énergie. Toutes les valeurs de cette carte valent X ^ X. Remplace les répétitions supplémentaires du mot-clé Coût X.",
   "LOADOUT-ALT_X_VALUE.title": "!?Valeur X?!",
   "LOADOUT-ALT_X_VALUE.description": "Coûte X Énergie. Toutes les valeurs de cette carte valent X!. Remplace les répétitions supplémentaires du mot-clé Coût X.",
+  "LOADOUT-ARITHMETIC_X_VALUE.title": "Valeur X arithmétique",
+  "LOADOUT-ARITHMETIC_X_VALUE.description": "Coûte X Énergie. Toutes les valeurs de cette carte valent aX + b. Remplace les répétitions supplémentaires du mot-clé Coût X.",
   "LOADOUT-X_VALUE.title": "Valeur X",
   "LOADOUT-X_VALUE.description": "Coûte X Énergie. Toutes les valeurs de cette carte valent X. Remplace les répétitions supplémentaires du mot-clé Coût X.",
   "LOADOUT-ADD_CARD.title": "Ajouter une carte",

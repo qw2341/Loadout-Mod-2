@@ -32,6 +32,7 @@ public static class LoadoutKeywordRegistry
         LividKeyword.Instance,
         XCostKeyword.Instance,
         XValueKeyword.Instance,
+        ArithmeticXValueKeyword.Instance,
         AltXValueKeyword.Instance,
         AltAltXValueKeyword.Instance,
         AltAltAltXValueKeyword.Instance,

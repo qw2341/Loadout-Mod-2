@@ -105,6 +105,12 @@ public static class XValueKeywordRuntime
     public static bool HasXValue(CardModel card) =>
         LoadoutCardModificationFlagState.HasFlag(card, LoadoutCardModificationFlags.OverrideXValue);
 
+    public static bool UsesArithmetic(CardModel card) =>
+        LoadoutKeywords.Has(card, LoadoutKeywords.ArithmeticXValue)
+        && !LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue)
+        && !LoadoutKeywords.Has(card, LoadoutKeywords.AltAltXValue)
+        && !LoadoutKeywords.Has(card, LoadoutKeywords.AltAltAltXValue);
+
     public static int GetAdditionalAmount(CardModel card) =>
         LoadoutKeywordRegistry.TryGetValue(card,
             LoadoutKeywords.Has(card, LoadoutKeywords.AltAltAltXValue)
@@ -112,7 +118,9 @@ public static class XValueKeywordRuntime
                 : LoadoutKeywords.Has(card, LoadoutKeywords.AltAltXValue)
                 ? AltAltXValueKeyword.AdditionalAmountVar
                 : LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue)
-                ? AltXValueKeyword.AdditionalAmountVar : XValueKeyword.AdditionalAmountVar,
+                ? AltXValueKeyword.AdditionalAmountVar
+                : LoadoutKeywords.Has(card, LoadoutKeywords.ArithmeticXValue)
+                ? ArithmeticXValueKeyword.ConstantVar : XValueKeyword.AdditionalAmountVar,
             out DynamicVar amount)
             ? amount.IntValue : 0;
 
@@ -129,17 +137,23 @@ public static class XValueKeywordRuntime
             bool isTetration = LoadoutKeywords.Has(card, LoadoutKeywords.AltAltAltXValue);
             bool isPower = !isTetration && LoadoutKeywords.Has(card, LoadoutKeywords.AltAltXValue);
             bool isFactorial = !isTetration && !isPower && LoadoutKeywords.Has(card, LoadoutKeywords.AltXValue);
+            bool isArithmetic = !isTetration && !isPower && !isFactorial
+                                && LoadoutKeywords.Has(card, LoadoutKeywords.ArithmeticXValue);
             if (isTetration)
                 text = additional == 0 ? "X ↑↑ X" : $"({text}) ↑↑ ({text})";
             else if (isPower)
                 text = additional == 0 ? "X ^ X" : $"({text}) ^ ({text})";
             else if (isFactorial)
                 text = additional == 0 ? "X!" : $"({text})!";
+            else if (isArithmetic)
+                text = ArithmeticXValueKeyword.FormatExpression(
+                    ArithmeticXValueKeyword.GetCoefficient(card), additional);
             if ((variable is DamageVar && variable.Name == DamageVar.defaultName
                  && LoadoutKeywords.Has(card, LoadoutKeywords.MultiHit))
                 || (variable is BlockVar && variable.Name == BlockVar.defaultName
                     && LoadoutKeywords.Has(card, LoadoutKeywords.MultiBlock)))
-                text = !isTetration && !isPower && (additional == 0 || isFactorial)
+                text = !isTetration && !isPower
+                       && (isArithmetic ? !text.Contains(' ') : additional == 0 || isFactorial)
                     ? $"{text} x {text}" : $"({text}) x ({text})";
         }
         return LocManager.Instance?.Language is "zhs" or "zht" ? $" {text} " : text;
@@ -230,7 +244,9 @@ public static class XValueResolvedXPatch
             __result = value;
         else if (XValueKeywordRuntime.HasXValue(__instance))
         {
-            __result = (int)Math.Clamp((long)__result + XValueKeywordRuntime.GetAdditionalAmount(__instance), 0, int.MaxValue);
+            int coefficient = XValueKeywordRuntime.UsesArithmetic(__instance)
+                ? ArithmeticXValueKeyword.GetCoefficient(__instance) : 1;
+            __result = (int)Math.Clamp((long)coefficient * __result + XValueKeywordRuntime.GetAdditionalAmount(__instance), 0, int.MaxValue);
             if (LoadoutKeywords.Has(__instance, LoadoutKeywords.AltAltAltXValue))
             {
                 __result = AltAltAltXValueKeyword.TetrateSelf(__result);

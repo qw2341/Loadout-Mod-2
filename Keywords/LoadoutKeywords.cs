@@ -17,6 +17,7 @@ public static class LoadoutKeywords
     public const string LividKey = "Livid";
     public const string XCostKey = "XCost";
     public const string XValueKey = "XValue";
+    public const string ArithmeticXValueKey = "ArithmeticXValue";
     public const string AltXValueKey = "AltXValue";
     public const string AltAltXValueKey = "AltAltXValue";
     public const string AltAltAltXValueKey = "AltAltAltXValue";
@@ -181,6 +182,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword XValue;
+
+    [CustomEnum("ARITHMETIC_X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
+    public static CardKeyword ArithmeticXValue;
 
     [CustomEnum("ALT_X_VALUE"), KeywordProperties(AutoKeywordPosition.Before)]
     public static CardKeyword AltXValue;

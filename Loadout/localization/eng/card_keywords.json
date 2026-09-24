@@ -368,6 +368,8 @@
   "LOADOUT-ALT_ALT_X_VALUE.description": "Costs X Energy. All values on this card are X ^ X. Overrides the X-Cost keyword’s extra replays.",
   "LOADOUT-ALT_X_VALUE.title": "!?X Value?!",
   "LOADOUT-ALT_X_VALUE.description": "Costs X Energy. All values on this card are X!. Overrides the X-Cost keyword’s extra replays.",
+  "LOADOUT-ARITHMETIC_X_VALUE.title": "Arithmetic X Value",
+  "LOADOUT-ARITHMETIC_X_VALUE.description": "Costs X Energy. All values on this card are aX + b. Overrides the X-Cost keyword’s extra replays.",
   "LOADOUT-X_VALUE.title": "X Value",
   "LOADOUT-X_VALUE.description": "Costs X Energy. All values on this card are X. Overrides the X-Cost keyword’s extra replays.",
   "LOADOUT-ADD_CARD.title": "Add Card",

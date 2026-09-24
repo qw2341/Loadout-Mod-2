@@ -368,6 +368,8 @@
   "LOADOUT-ALT_ALT_X_VALUE.description": "Cuesta X de Energía. Todos los valores de esta carta son X ^ X. Sustituye las repeticiones adicionales de la palabra clave Coste X.",
   "LOADOUT-ALT_X_VALUE.title": "!?Valor X?!",
   "LOADOUT-ALT_X_VALUE.description": "Cuesta X de Energía. Todos los valores de esta carta son X!. Sustituye las repeticiones adicionales de la palabra clave Coste X.",
+  "LOADOUT-ARITHMETIC_X_VALUE.title": "Valor X aritmético",
+  "LOADOUT-ARITHMETIC_X_VALUE.description": "Cuesta X de Energía. Todos los valores de esta carta son aX + b. Sustituye las repeticiones adicionales de la palabra clave Coste X.",
   "LOADOUT-X_VALUE.title": "Valor X",
   "LOADOUT-X_VALUE.description": "Cuesta X de Energía. Todos los valores de esta carta son X. Sustituye las repeticiones adicionales de la palabra clave Coste X.",
   "LOADOUT-ADD_CARD.title": "Añadir carta",
