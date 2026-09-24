@@ -79,7 +79,7 @@
   "LOADOUT-GATLING.description": "A 25 % de chances de jouer cette carte 3 fois supplémentaires.",
   "LOADOUT-GATLING.cardText": "A {LoadoutGatlingChancePercentage:diff()} % de chances de jouer cette carte {LoadoutGatlingAdditionalPlayCount:diff()} {LoadoutGatlingAdditionalPlayCount:plural:fois supplémentaire|fois supplémentaires}.",
   "LOADOUT-MEGA_GATLING.title": "!?Méga Gatling?!",
-  "LOADOUT-MEGA_GATLING.description": "A 2 % de chances de jouer cette carte 150 fois. Gagne 1 % de chance en cas d'échec, jusqu'à 10 %. Revient à sa chance initiale en cas de déclenchement.",
+  "LOADOUT-MEGA_GATLING.description": "A 20 % de chances de jouer cette carte 150 fois. Gagne 10 % de chance en cas d'échec, jusqu'à 100 %. Revient à sa chance initiale en cas de déclenchement.",
   "LOADOUT-MEGA_GATLING.cardText": "A {LoadoutMegaGatlingCurrentChancePercentage:diff()} % de chances de jouer cette carte {LoadoutMegaGatlingTotalPlayCount:diff()} fois. Gagne {LoadoutMegaGatlingChanceIncreasePercentage:diff()} % de chance en cas d'échec, jusqu'à {LoadoutMegaGatlingTriggerChanceCapPercentage:diff()} %. Revient à {LoadoutMegaGatlingChancePercentage:diff()} % en cas de déclenchement.",
   "LOADOUT-BOLAS.title": "Bolas",
   "LOADOUT-BOLAS.description": "Au début de votre prochain tour, cette carte retourne dans votre [gold]Main[/gold].",

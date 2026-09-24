@@ -79,7 +79,7 @@
   "LOADOUT-GATLING.description": "25%の確率でこのカードを追加で3回プレイする。",
   "LOADOUT-GATLING.cardText": "{LoadoutGatlingChancePercentage:diff()}%の確率でこのカードを追加で{LoadoutGatlingAdditionalPlayCount:diff()}回プレイする。",
   "LOADOUT-MEGA_GATLING.title": "!?メガガトリング?!",
-  "LOADOUT-MEGA_GATLING.description": "2%の確率でこのカードを150回プレイする。不発時、発動率が1%増加する（最大10%）。発動時、初期発動率に戻る。",
+  "LOADOUT-MEGA_GATLING.description": "20%の確率でこのカードを150回プレイする。不発時、発動率が10%増加する（最大100%）。発動時、初期発動率に戻る。",
   "LOADOUT-MEGA_GATLING.cardText": "{LoadoutMegaGatlingCurrentChancePercentage:diff()}%の確率でこのカードを{LoadoutMegaGatlingTotalPlayCount:diff()}回プレイする。不発時、発動率が{LoadoutMegaGatlingChanceIncreasePercentage:diff()}%増加する（最大{LoadoutMegaGatlingTriggerChanceCapPercentage:diff()}%）。発動時、{LoadoutMegaGatlingChancePercentage:diff()}%に戻る。",
   "LOADOUT-BOLAS.title": "ボーラ",
   "LOADOUT-BOLAS.description": "次のターン開始時、これを[gold]手札[/gold]に戻す。",

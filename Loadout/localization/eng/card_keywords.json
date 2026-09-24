@@ -79,7 +79,7 @@
   "LOADOUT-GATLING.description": "Has a 25% chance to play this card 3 additional times.",
   "LOADOUT-GATLING.cardText": "{LoadoutGatlingChancePercentage:diff()}% chance to play this card {LoadoutGatlingAdditionalPlayCount:diff()} additional {LoadoutGatlingAdditionalPlayCount:plural:time|times}.",
   "LOADOUT-MEGA_GATLING.title": "!?Mega Gatling?!",
-  "LOADOUT-MEGA_GATLING.description": "Has a 2% chance to play this card 150 times. Gains 1% chance when it does not trigger, up to 10%. Resets to its starting chance when it triggers.",
+  "LOADOUT-MEGA_GATLING.description": "Has a 20% chance to play this card 150 times. Gains 10% chance when it does not trigger, up to 100%. Resets to its starting chance when it triggers.",
   "LOADOUT-MEGA_GATLING.cardText": "{LoadoutMegaGatlingCurrentChancePercentage:diff()}% chance to play this card {LoadoutMegaGatlingTotalPlayCount:diff()} times. Gains {LoadoutMegaGatlingChanceIncreasePercentage:diff()}% chance when it does not trigger, up to {LoadoutMegaGatlingTriggerChanceCapPercentage:diff()}%. Resets to {LoadoutMegaGatlingChancePercentage:diff()}% when it triggers.",
   "LOADOUT-BOLAS.title": "Bolas",
   "LOADOUT-BOLAS.description": "At the start of your next turn, return this to your [gold]Hand[/gold].",

@@ -79,7 +79,7 @@
   "LOADOUT-GATLING.description": "25% 확률로 이 카드를 3번 추가로 사용합니다.",
   "LOADOUT-GATLING.cardText": "{LoadoutGatlingChancePercentage:diff()}% 확률로 이 카드를 {LoadoutGatlingAdditionalPlayCount:diff()}번 추가로 사용합니다.",
   "LOADOUT-MEGA_GATLING.title": "!?메가 개틀링?!",
-  "LOADOUT-MEGA_GATLING.description": "2% 확률로 이 카드를 150번 사용합니다. 발동하지 않으면 확률이 1% 증가하며 최대 10%까지 증가합니다. 발동하면 시작 확률로 초기화됩니다.",
+  "LOADOUT-MEGA_GATLING.description": "20% 확률로 이 카드를 150번 사용합니다. 발동하지 않으면 확률이 10% 증가하며 최대 100%까지 증가합니다. 발동하면 시작 확률로 초기화됩니다.",
   "LOADOUT-MEGA_GATLING.cardText": "{LoadoutMegaGatlingCurrentChancePercentage:diff()}% 확률로 이 카드를 {LoadoutMegaGatlingTotalPlayCount:diff()}번 사용합니다. 발동하지 않으면 확률이 {LoadoutMegaGatlingChanceIncreasePercentage:diff()}% 증가하며 최대 {LoadoutMegaGatlingTriggerChanceCapPercentage:diff()}%까지 증가합니다. 발동하면 {LoadoutMegaGatlingChancePercentage:diff()}%로 초기화됩니다.",
   "LOADOUT-BOLAS.title": "사냥돌",
   "LOADOUT-BOLAS.description": "다음 턴 시작 시, 이 카드를 다시 [gold]손[/gold]으로 가져옵니다.",
