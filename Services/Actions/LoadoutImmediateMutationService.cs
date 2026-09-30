@@ -173,7 +173,8 @@ public static class LoadoutImmediateMutationService
         int cardUpgradeCount = 0,
         LoadoutCardPileTarget pileTarget = LoadoutCardPileTarget.Unspecified,
         CardModificationDelta? printerDelta = null,
-        string? printerPortraitReference = null)
+        string? printerPortraitReference = null,
+        bool showPreview = true)
     {
         printerDelta = printerDelta?.Clone();
         printerDelta?.Normalize();
@@ -203,7 +204,8 @@ public static class LoadoutImmediateMutationService
             CardUpgradeCount = Math.Max(0, cardUpgradeCount),
             CardPileTarget = pileTarget.NormalizeForCreation(),
             CardModificationStateJson = printerDeltaJson,
-            CardPrinterPortraitReference = printerPortraitReference ?? string.Empty
+            CardPrinterPortraitReference = printerPortraitReference ?? string.Empty,
+            SkipCardPreview = !showPreview
         });
     }
 
@@ -892,7 +894,8 @@ public static class LoadoutImmediateMutationService
             requester.NetId,
             runStartTime.Value,
             payload.CardModificationStateJson,
-            payload.CardPrinterPortraitReference);
+            payload.CardPrinterPortraitReference,
+            payload.SkipCardPreview);
         try
         {
             RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
@@ -960,12 +963,14 @@ public static class LoadoutImmediateMutationService
 
             string[] args = command[addCardsPrefix.Length..]
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            bool hasPrinterRecipe = args.Length == 9;
+            bool hasPrinterRecipe = args.Length is 9 or 10;
+            bool skipCardPreview = args.Length == 10;
             ulong parsedRequesterNetId = 0;
             long parsedRunStartTime = 0;
             string parsedDeltaJson = string.Empty;
             string parsedPortraitReference = string.Empty;
-            if (args.Length is not 5 and not 9
+            if (args.Length is not 5 and not 9 and not 10
+                || skipCardPreview && args[9] != "no-preview"
                 || !TryDecodeModelIdToken(args[0], out ModelId modelId)
                 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int amount)
                 || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int upgradeCount)
@@ -1000,7 +1005,8 @@ public static class LoadoutImmediateMutationService
                 requesterNetId,
                 runStartTime,
                 deltaJson,
-                portraitReference);
+                portraitReference,
+                skipCardPreview);
             return true;
         }
 
@@ -1069,7 +1075,8 @@ public static class LoadoutImmediateMutationService
         ulong requesterNetId,
         long runStartTime,
         string printerDeltaJson,
-        string printerPortraitReference)
+        string printerPortraitReference,
+        bool skipCardPreview)
     {
         if (amount <= 0
             || amount > MaxSynchronizedCardCopies
@@ -1125,7 +1132,8 @@ public static class LoadoutImmediateMutationService
                     upgradeCount,
                     printerDelta,
                     requesterNetId,
-                    printerPortraitReference);
+                    printerPortraitReference,
+                    skipCardPreview);
             }
 
             if ((pileTarget == LoadoutCardPileTarget.HandAndDeck && CombatManager.Instance.IsInProgress)
@@ -1218,7 +1226,8 @@ public static class LoadoutImmediateMutationService
         ulong requesterNetId,
         long runStartTime,
         string printerDeltaJson,
-        string printerPortraitReference)
+        string printerPortraitReference,
+        bool skipCardPreview)
     {
         string targets = string.Join(",", targetNetIds
             .Where(netId => netId != 0)
@@ -1226,7 +1235,7 @@ public static class LoadoutImmediateMutationService
             .OrderBy(netId => netId)
             .Select(netId => netId.ToString(CultureInfo.InvariantCulture)));
 
-        return string.Join(" ",
+        string command = string.Join(" ",
             SynchronizedAddCardsCommandPrefix,
             EncodeModelIdToken(LoadoutModelIdSafety.ToWireString(modelId)),
             amount.ToString(CultureInfo.InvariantCulture),
@@ -1237,6 +1246,7 @@ public static class LoadoutImmediateMutationService
             runStartTime.ToString(CultureInfo.InvariantCulture),
             EncodeTextToken(printerDeltaJson),
             EncodeTextToken(printerPortraitReference));
+        return skipCardPreview ? command + " no-preview" : command;
     }
 
     private static string BuildSynchronizedDeckCardCopiesCommand(
@@ -1521,7 +1531,8 @@ public static class LoadoutImmediateMutationService
                     payload.CardUpgradeCount,
                     printerDelta,
                     requester.NetId,
-                    payload.CardPrinterPortraitReference);
+                    payload.CardPrinterPortraitReference,
+                    payload.SkipCardPreview);
             }
 
             if ((pileTarget == LoadoutCardPileTarget.HandAndDeck && CombatManager.Instance.IsInProgress)
@@ -1607,7 +1618,8 @@ public static class LoadoutImmediateMutationService
         int upgradeCount,
         CardModificationDelta? printerDelta = null,
         ulong requesterNetId = 0,
-        string? printerPortraitReference = null)
+        string? printerPortraitReference = null,
+        bool skipCardPreview = false)
     {
         List<CardModel> cards = new(amount);
         for (int i = 0; i < amount; i++)
@@ -1644,7 +1656,7 @@ public static class LoadoutImmediateMutationService
             return [];
         }
 
-        if (IsLocalPlayer(targetPlayer))
+        if (!skipCardPreview && IsLocalPlayer(targetPlayer))
             PreviewAddedCards(addedCards);
         return addedCards
             .Where(result => result.success)
@@ -2546,6 +2558,7 @@ public struct LoadoutImmediateMutationPayload
     public string RelicModificationStateJson;
     public LoadoutCardPileTarget CardPileTarget;
     public uint CombatCardIndex;
+    public bool SkipCardPreview;
 
     public void Serialize(PacketWriter writer)
     {
@@ -2573,6 +2586,7 @@ public struct LoadoutImmediateMutationPayload
         writer.WriteString(RelicModificationStateJson ?? string.Empty);
         writer.WriteInt((int)CardPileTarget, 4);
         writer.WriteUInt(CombatCardIndex);
+        writer.WriteBool(SkipCardPreview);
     }
 
     public void Deserialize(PacketReader reader)
@@ -2598,6 +2612,7 @@ public struct LoadoutImmediateMutationPayload
         RelicModificationStateJson = reader.ReadString();
         CardPileTarget = (LoadoutCardPileTarget)reader.ReadInt(4);
         CombatCardIndex = reader.ReadUInt();
+        SkipCardPreview = reader.ReadBool();
         NormalizeDefaults();
     }
 

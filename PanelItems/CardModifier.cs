@@ -78,7 +78,8 @@ public class CardModifier
             pendingCreatedCardId = CreatedCardRegistry.CreateId(creator.NetId);
             pendingCreatedCardOwner = owner;
             if (!LoadoutImmediateMutationService.RequestAddCard(
-                    pendingCreatedCardId, 1, LoadoutTargetSelection.ForPlayer(owner.NetId), pileTarget: LoadoutCardPileTarget.Deck))
+                    pendingCreatedCardId, 1, LoadoutTargetSelection.ForPlayer(owner.NetId),
+                    pileTarget: LoadoutCardPileTarget.Deck, showPreview: false))
             {
                 pendingCreatedCardId = null;
                 pendingCreatedCardOwner = null;
