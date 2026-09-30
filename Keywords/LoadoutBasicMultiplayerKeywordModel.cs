@@ -37,7 +37,8 @@ public enum LoadoutBasicMultiplayerEffect
     LoseHealth,
     Energy,
     Stars,
-    Forge
+    Forge,
+    Summon
 }
 
 public abstract class LoadoutBasicMultiplayerKeywordModel
@@ -65,10 +66,13 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
         Effect == LoadoutBasicMultiplayerEffect.Block;
 
     public override IEnumerable<IHoverTip> GetAdditionalCardHoverTips(
-        CardModel card) =>
-        Effect == LoadoutBasicMultiplayerEffect.Forge
-            ? HoverTipFactory.FromForge()
-            : [];
+        CardModel card) => Effect switch
+        {
+            LoadoutBasicMultiplayerEffect.Forge => HoverTipFactory.FromForge(),
+            LoadoutBasicMultiplayerEffect.Summon =>
+                [HoverTipFactory.Static(StaticHoverTip.SummonStatic)],
+            _ => []
+        };
 
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         _dynamicVars ??=
@@ -88,7 +92,16 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
         CardPlay cardPlay,
         object? capturedState)
     {
-        foreach (Creature target in ResolveTargets(card, cardPlay))
+        IReadOnlyList<Creature> targets = ResolveTargets(card, cardPlay);
+        if (Effect == LoadoutBasicMultiplayerEffect.Summon)
+        {
+            if (targets.Count == 0 || GetAmount(card, AmountVarName).BaseValue <= 0m)
+                return;
+
+            await BasicSummonKeyword.TriggerSummonAnimation(card);
+        }
+
+        foreach (Creature target in targets)
             await ApplyToTarget(card, choiceContext, cardPlay, target);
     }
 
@@ -112,6 +125,7 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
                 new StarsVar(name, decimal.ToInt32(value)),
             LoadoutBasicMultiplayerEffect.Forge =>
                 new ForgeVar(name, decimal.ToInt32(value)),
+            LoadoutBasicMultiplayerEffect.Summon => new SummonVar(name, value),
             _ => new DynamicVar(name, value)
         };
     }
@@ -225,6 +239,9 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
                 break;
             case LoadoutBasicMultiplayerEffect.Forge:
                 await ForgeCmd.Forge(amountVar.BaseValue, targetPlayer, sourceCard);
+                break;
+            case LoadoutBasicMultiplayerEffect.Summon:
+                await OstyCmd.Summon(choiceContext, targetPlayer, amount, sourceCard);
                 break;
         }
     }
