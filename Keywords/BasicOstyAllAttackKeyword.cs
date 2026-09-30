@@ -45,6 +45,10 @@ public sealed class BasicOstyAllAttackKeyword : LoadoutBasicKeywordModel
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         VariableDefinitions;
 
+    public override void OnAdded(CardModel card) => BasicOstyAttackKeyword.Instance.OnAdded(card);
+
+    public override void OnRemoved(CardModel card) => BasicOstyAttackKeyword.Instance.OnRemoved(card);
+
     public override async Task AfterOnPlay(
         CardModel card,
         PlayerChoiceContext choiceContext,

@@ -40,7 +40,6 @@ public static class CardModificationRuntime
     private static readonly FieldInfo? CardRarityField = AccessTools.Field(typeof(CardModel), "<Rarity>k__BackingField");
     private static readonly FieldInfo? CardPoolField = AccessTools.Field(typeof(CardModel), "_pool");
     private static readonly FieldInfo? CardEnergyCostField = AccessTools.Field(typeof(CardModel), "_energyCost");
-    private static readonly FieldInfo? CardKeywordsField = AccessTools.Field(typeof(CardModel), "_keywords");
     private static readonly FieldInfo? CardCurrentUpgradeLevelField =
         AccessTools.Field(typeof(CardModel), "_currentUpgradeLevel");
     private static readonly FieldInfo? DynamicVarDictionaryField =
@@ -2644,7 +2643,7 @@ public static class CardModificationRuntime
             CardPoolField?.SetValue(destination, source.Pool);
             CardTypeField?.SetValue(destination, source.Type);
             CardRarityField?.SetValue(destination, source.Rarity);
-            CardKeywordsField?.SetValue(
+            LoadoutKeywords.SetLocalKeywords(
                 destination,
                 source.GetKeywordsWithSources(KeywordSources.Local).ToHashSet());
         }
@@ -2679,16 +2678,12 @@ public static class CardModificationRuntime
         if (!forceAllOwnedFields)
         {
             IReadOnlySet<CardKeyword> desiredKeywords = source.GetKeywordsWithSources(KeywordSources.Local);
-            IReadOnlySet<CardKeyword> currentKeywords = destination.GetKeywordsWithSources(KeywordSources.Local);
             foreach (string rawKeyword in keywordKeys)
             {
                 if (!LoadoutKeywords.TryResolve(rawKeyword, out CardKeyword keyword))
                     continue;
 
-                if (desiredKeywords.Contains(keyword) && !currentKeywords.Contains(keyword))
-                    destination.AddKeyword(keyword);
-                else if (!desiredKeywords.Contains(keyword) && currentKeywords.Contains(keyword))
-                    destination.RemoveKeyword(keyword);
+                LoadoutKeywords.Set(destination, keyword, desiredKeywords.Contains(keyword));
             }
         }
 
@@ -3098,11 +3093,7 @@ public static class CardModificationRuntime
         {
             if (!LoadoutKeywords.TryResolve(rawKeyword, out CardKeyword keyword) || keyword == CardKeyword.None)
                 continue;
-            bool present = card.GetKeywordsWithSources(KeywordSources.Local).Contains(keyword);
-            if (enabled && !present)
-                card.AddKeyword(keyword);
-            else if (!enabled && present)
-                card.RemoveKeyword(keyword);
+            LoadoutKeywords.Set(card, keyword, enabled);
         }
 
         LoadoutKeywordRegistry.SynchronizeOriginalModelHookSuppression(card);

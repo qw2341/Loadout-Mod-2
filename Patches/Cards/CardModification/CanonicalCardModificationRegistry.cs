@@ -51,8 +51,6 @@ internal static class CanonicalCardModificationRegistry
                                                    ?? throw new MissingFieldException(typeof(CardModel).FullName, "<Type>k__BackingField");
     private static readonly FieldInfo RarityField = AccessTools.Field(typeof(CardModel), "<Rarity>k__BackingField")
                                                      ?? throw new MissingFieldException(typeof(CardModel).FullName, "<Rarity>k__BackingField");
-    private static readonly FieldInfo KeywordsField = AccessTools.Field(typeof(CardModel), "_keywords")
-                                                       ?? throw new MissingFieldException(typeof(CardModel).FullName, "_keywords");
 
     private static readonly Dictionary<ModelId, CanonicalCardBaseline> Baselines = new();
     private static readonly Dictionary<ModelId, int> CanonicalStarCosts = new();
@@ -199,7 +197,7 @@ internal static class CanonicalCardModificationRegistry
         PoolField.SetValue(card, baseline.Pool);
         TypeField.SetValue(card, baseline.Type);
         RarityField.SetValue(card, baseline.Rarity);
-        KeywordsField.SetValue(card, new HashSet<CardKeyword>(baseline.Keywords));
+        LoadoutKeywords.SetLocalKeywords(card, new HashSet<CardKeyword>(baseline.Keywords));
         LoadoutPowerKeywordState.ClearExplicitState(card);
         LoadoutCardKeywordState.ClearExplicitState(card);
         LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
@@ -268,7 +266,7 @@ internal static class CanonicalCardModificationRegistry
             else
                 keywords.Remove(model.Keyword);
         }
-        KeywordsField.SetValue(canonical, keywords);
+        LoadoutKeywords.SetLocalKeywords(canonical, keywords);
         LoadoutKeywordRegistry.SynchronizeDynamicVars(canonical);
 
         foreach ((string name, decimal difference) in delta.DynamicVarDeltas)

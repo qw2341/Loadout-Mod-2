@@ -5,12 +5,16 @@ namespace Loadout.Keywords;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using BaseLib.Patches.Content;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 
 public static class LoadoutKeywords
 {
+    private static readonly FieldInfo KeywordsField = AccessTools.Field(typeof(CardModel), "_keywords");
+
     public const string InevitableKey = "Inevitable";
     public const string StickyKey = "Sticky";
     public const string PassingKey = "Passing";
@@ -584,6 +588,43 @@ public static class LoadoutKeywords
 
     public static IEnumerable<CardKeyword> All =>
         LoadoutKeywordRegistry.All.Select(model => model.Keyword);
+
+    public static void Set(CardModel card, CardKeyword keyword, bool enabled)
+    {
+        if (card.GetKeywordsWithSources(KeywordSources.Local).Contains(keyword) == enabled)
+            return;
+
+        if (enabled)
+            card.AddKeyword(keyword);
+        else
+            card.RemoveKeyword(keyword);
+
+        if (LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model))
+        {
+            if (enabled)
+                model.OnAdded(card);
+            else
+                model.OnRemoved(card);
+        }
+    }
+
+    public static void SetLocalKeywords(CardModel card, HashSet<CardKeyword> keywords)
+    {
+        IReadOnlySet<CardKeyword> previous = card.GetKeywordsWithSources(KeywordSources.Local);
+        KeywordsField.SetValue(card, keywords);
+        foreach (CardKeyword keyword in previous)
+        {
+            if (!keywords.Contains(keyword)
+                && LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model))
+                model.OnRemoved(card);
+        }
+        foreach (CardKeyword keyword in keywords)
+        {
+            if (!previous.Contains(keyword)
+                && LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model))
+                model.OnAdded(card);
+        }
+    }
 
     public static bool Has(CardModel? card, CardKeyword keyword)
     {

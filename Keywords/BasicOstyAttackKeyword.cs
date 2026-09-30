@@ -3,7 +3,10 @@
 namespace Loadout.Keywords;
 
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -16,6 +19,13 @@ using MegaCrit.Sts2.Core.ValueProps;
 public sealed class BasicOstyAttackKeyword : LoadoutBasicKeywordModel
 {
     public const string AmountVar = "LoadoutBasicOstyAttack";
+
+    private static readonly FieldInfo TagsField = AccessTools.Field(typeof(CardModel), "_tags");
+
+    // Native clones share this set; replace it when adding or removing our tag.
+    private sealed class AddedOstyAttackTags(IEnumerable<CardTag> tags) : HashSet<CardTag>(tags)
+    {
+    }
 
     private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition>
         VariableDefinitions =
@@ -47,6 +57,26 @@ public sealed class BasicOstyAttackKeyword : LoadoutBasicKeywordModel
         VariableDefinitions;
 
     public override bool ChangesTargeting => true;
+
+    public override void OnAdded(CardModel card)
+    {
+        IEnumerable<CardTag> tags = card.Tags;
+        if (!tags.Contains(CardTag.OstyAttack))
+            TagsField.SetValue(card, new AddedOstyAttackTags(tags) { CardTag.OstyAttack });
+    }
+
+    public override void OnRemoved(CardModel card)
+    {
+        IReadOnlySet<CardKeyword> keywords = card.GetKeywordsWithSources(KeywordSources.Local);
+        if (keywords.Contains(LoadoutKeywords.BasicOstyAttack)
+            || keywords.Contains(LoadoutKeywords.BasicOstyAllAttack)
+            || TagsField.GetValue(card) is not AddedOstyAttackTags tags)
+            return;
+
+        HashSet<CardTag> remaining = new(tags);
+        remaining.Remove(CardTag.OstyAttack);
+        TagsField.SetValue(card, remaining);
+    }
 
     public override async Task AfterOnPlay(
         CardModel card,

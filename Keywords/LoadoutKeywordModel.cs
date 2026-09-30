@@ -137,6 +137,14 @@ public abstract class LoadoutKeywordModel
 
     public virtual bool ReportsGainsBlock => false;
 
+    public virtual void OnAdded(CardModel card)
+    {
+    }
+
+    public virtual void OnRemoved(CardModel card)
+    {
+    }
+
     public virtual IEnumerable<IHoverTip> GetAdditionalCardHoverTips(
         CardModel card) => [];
 

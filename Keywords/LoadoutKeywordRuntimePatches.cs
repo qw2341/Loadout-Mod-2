@@ -842,6 +842,7 @@ internal static class LoadoutKeywordRuntimePatches
                     target,
                     postfix: gainsBlockPostfix);
             }
+
         }, () => DescriptionKeywordsEnabled = true);
     }
 
