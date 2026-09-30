@@ -1,4 +1,6 @@
 keys,en,zh_CN,fr,ja,ko,es
+CREATE_NEW_CARD,Create a new card,创建新卡牌,Créer une carte,新しいカードを作成,새 카드 만들기,Crear una carta nueva
+NEW_CARD,New Card,新卡牌,Nouvelle carte,新しいカード,새 카드,Carta nueva
 ui.text_placeholder,Enter text here,请输入文本,Saisissez du texte ici,ここにテキストを入力,여기에 텍스트를 입력하세요,Introduce texto aquí
 TITLE_SELECT,Select,选择,Sélectionner,選択,선택,Seleccionar
 SEARCH,Search,搜索,Rechercher,検索,검색,Buscar

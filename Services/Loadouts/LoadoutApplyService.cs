@@ -131,7 +131,8 @@ public static class LoadoutApplyService
                     canonical,
                     entry.UpgradeLevel,
                     entry.ModificationState,
-                    isStartingDeck);
+                    isStartingDeck,
+                    entry.UseCreatedCardDefaults);
                 if (card is null)
                     continue;
 
@@ -200,11 +201,17 @@ public static class LoadoutApplyService
         CardModel canonical,
         int upgradeLevel,
         CardModificationSpec? modificationState,
-        bool isStartingDeck)
+        bool isStartingDeck,
+        bool useCreatedDefaults)
     {
         try
         {
             CardModel card = targetPlayer.RunState.CreateCard(canonical, targetPlayer);
+            if (useCreatedDefaults && CreatedCardRegistry.IsCreatedId(card.Id))
+            {
+                CardModificationFields.SetDelta(card, new CardModificationDelta { UseCreatedCardDefaults = true });
+                CardModificationRuntime.ReapplyTemporaryDelta(card);
+            }
             if (isStartingDeck)
                 card.FloorAddedToDeck = 1;
 

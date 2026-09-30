@@ -81,6 +81,10 @@ public sealed class SavedLoadout
 
 public sealed class SavedCardLoadoutEntry
 {
+    [JsonPropertyName("createdCardDefaults")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool UseCreatedCardDefaults { get; set; }
+
     [JsonPropertyName("modelId")]
     public string ModelId { get; set; } = string.Empty;
 
@@ -101,6 +105,7 @@ public sealed class SavedCardLoadoutEntry
         return new SavedCardLoadoutEntry
         {
             ModelId = ModelId,
+            UseCreatedCardDefaults = UseCreatedCardDefaults,
             UpgradeLevel = UpgradeLevel,
             Count = Count,
             ModificationState = ModificationState?.Clone()

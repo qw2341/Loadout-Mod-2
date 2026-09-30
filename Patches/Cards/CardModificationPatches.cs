@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
+using Loadout.Cards;
 using HarmonyLib;
 using Loadout.Keywords;
 using Loadout.Services.Actions;
@@ -269,7 +270,8 @@ public static class CardModelFromSerializableCardModificationPatch
     public static void Prefix(SerializableCard save, out CardDeserializationState __state)
     {
         CardModificationLoadData? loaded = CardModificationPersistence.Read(save);
-        CardModificationSpec? permanent = save.Id is { } cardId
+        bool useCreatedDefaults = CreatedCardRegistry.IsCreatedId(save.Id) && loaded?.Delta?.UseCreatedCardDefaults == true;
+        CardModificationSpec? permanent = !useCreatedDefaults && save.Id is { } cardId
             && PermanentCardModificationStore.TryGet(cardId, out CardModificationSpec? savedPermanent)
                 ? savedPermanent
                 : null;
@@ -601,6 +603,8 @@ public static class NCardLibraryGridFilterCardModificationPatch
             return true;
 
         List<CardModel> cards = allCards
+            .Where(card => card is not CreatedCard)
+            .Concat(CreatedCardRegistry.CollectionCards)
             .Select(CardModificationRuntime.GetPermanentCardForDisplay)
             .Where(filter)
             .ToList();
@@ -618,6 +622,11 @@ public static class NCardLibraryGridVisibilityCardModificationPatch
     [HarmonyPrefix]
     public static bool Prefix(NCardLibraryGrid __instance, CardModel card, ref ModelVisibility __result)
     {
+        if (card is CreatedCard && PermanentCardModificationStore.HasCollectionDefinition(card.Id))
+        {
+            __result = ModelVisibility.Visible;
+            return false;
+        }
         if (SeenCardsField?.GetValue(__instance) is not HashSet<ModelId> seenCards
             || UnlockedCardsField?.GetValue(__instance) is not HashSet<CardModel> unlockedCards)
         {
@@ -732,6 +741,7 @@ public static class RunManagerCleanUpCardModificationPatch
         LoadoutImmediateMutationService.OnRunCleaningUp();
         CardPrinterRunRecipeStore.OnRunCleaningUp();
         CardModificationNetProtocol.OnRunCleaningUp();
+        CreatedCardRegistry.ClearRunState();
         RelicModificationMultiplayerSyncService.OnRunCleaningUp();
         ContentBanService.OnRunCleaningUp();
     }

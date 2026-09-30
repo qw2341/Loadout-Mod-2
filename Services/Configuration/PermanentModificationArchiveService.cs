@@ -388,11 +388,10 @@ public static class PermanentModificationArchiveService
         IReadOnlyDictionary<ModelId, PermanentCardPortraitSnapshot> portraits = includePortraits
             ? CardPortraitStore.GetPermanentSnapshot()
             : new Dictionary<ModelId, PermanentCardPortraitSnapshot>();
-        Dictionary<ModelId, CardModel> cards = ModelDb.AllCards.ToDictionary(card => card.Id);
         List<CardModificationExportEntry> entries = [];
         foreach (ModelId id in deltas.Keys.Union(portraits.Keys).Distinct())
         {
-            if (!cards.TryGetValue(id, out CardModel? canonical))
+            if (ModelDb.GetByIdOrNull<CardModel>(id) is not { } canonical)
                 continue;
             deltas.TryGetValue(id, out CardModificationDelta? delta);
             portraits.TryGetValue(id, out PermanentCardPortraitSnapshot? portrait);
@@ -492,7 +491,10 @@ public static class PermanentModificationArchiveService
         CardModificationDelta incoming = incomingSource.Clone();
         local.Normalize();
         incoming.Normalize();
-        merged = new CardModificationDelta();
+        merged = new CardModificationDelta
+        {
+            CreatedCardDefinition = local.CreatedCardDefinition || incoming.CreatedCardDefinition
+        };
 
         bool localEnergy = local.EnergyDelta.HasValue || local.EnergyOverride.HasValue;
         bool incomingEnergy = incoming.EnergyDelta.HasValue || incoming.EnergyOverride.HasValue;
@@ -785,11 +787,10 @@ public static class PermanentModificationArchiveService
             : new Dictionary<ModelId, ImportedCardPortrait>();
         IReadOnlyDictionary<ModelId, CardModificationDelta> localDeltas = PermanentCardModificationStore.GetProfileDeltasSnapshot();
         IReadOnlyDictionary<ModelId, PermanentCardPortraitSnapshot> localPortraits = CardPortraitStore.GetPermanentSnapshot();
-        Dictionary<ModelId, CardModel> cards = ModelDb.AllCards.ToDictionary(card => card.Id);
         List<CardModificationImportEntry> entries = [];
         foreach (ModelId id in incomingDeltas.Keys.Union(incomingPortraits.Keys).Distinct())
         {
-            if (!cards.TryGetValue(id, out CardModel? canonical))
+            if (ModelDb.GetByIdOrNull<CardModel>(id) is not { } canonical)
                 throw new InvalidDataException(LocMan.Loc(
                     "MOD_ARCHIVE_CARD_NOT_INSTALLED",
                     "Card '{0}' is not installed.",
@@ -898,7 +899,10 @@ public static class PermanentModificationArchiveService
                 throw new InvalidDataException(LocMan.Loc(
                     "MOD_ARCHIVE_INVALID_PORTRAIT_INDEX",
                     "The portrait index is invalid."));
-            if (!cards.TryGetValue(record.CardId, out CardModel? card))
+            if (!cards.TryGetValue(record.CardId, out CardModel? card)
+                && CreatedCardRegistry.TryParseId(record.CardId, out ModelId createdId))
+                card = CreatedCardRegistry.GetOrCreate(createdId);
+            if (card is null)
                 throw new InvalidDataException(LocMan.Loc(
                     "MOD_ARCHIVE_CARD_NOT_INSTALLED",
                     "Card '{0}' is not installed.",

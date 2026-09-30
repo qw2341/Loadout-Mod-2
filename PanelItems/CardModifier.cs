@@ -12,6 +12,8 @@ using Loadout.UI;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -27,6 +29,62 @@ public class CardModifier
     public static void Initialize()
     {
         NGenericSelectScreen modifierScreen = null;
+        ModelId pendingCreatedCardId = null;
+        Player pendingCreatedCardOwner = null;
+
+        void OpenCreatedCardWhenAdded(LoadoutRunContentChangedEventArgs change)
+        {
+            if (pendingCreatedCardId is null
+                || pendingCreatedCardOwner is null
+                || change.Kind != LoadoutRunContentKind.Cards
+                || !change.AffectsPlayer(pendingCreatedCardOwner.NetId)
+                || modifierScreen?.IsScreenActive != true)
+                return;
+            IReadOnlyList<CardModel> deck = pendingCreatedCardOwner.Deck.Cards;
+            for (int index = 0; index < deck.Count; index++)
+            {
+                if (deck[index].Id != pendingCreatedCardId)
+                    continue;
+                NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance;
+                if (root is null)
+                    return;
+                LoadoutOwnedItem<CardModel> item = new(pendingCreatedCardOwner, index, deck[index], PileType.Deck, null);
+                pendingCreatedCardId = null;
+                pendingCreatedCardOwner = null;
+                SelectScrollOffsetState scroll = modifierScreen.CaptureScrollOffset();
+                NCardModificationScreen editor = NCardModificationScreen.Create();
+                editor.InitForCreatedCard(item, () =>
+                {
+                    if (GodotObject.IsInstanceValid(modifierScreen))
+                        modifierScreen.RestoreScrollOffset(scroll);
+                });
+                root.OpenScreen(editor);
+                return;
+            }
+        }
+
+        void CreateNewCard(NGenericSelectScreen screen)
+        {
+            if (pendingCreatedCardId is not null || !screen.IsScreenActive)
+                return;
+            RunState run = RunManager.Instance.DebugOnlyGetState();
+            Player creator = run is null ? null : LocalContext.GetMe(run);
+            if (creator is null)
+                return;
+            LoadoutTargetSelection selection = LoadoutTargetService.GetSelected(CardModifierTargetKey, LoadoutTargetMode.PlayersOnly);
+            Player owner = LoadoutTargetService.ResolvePlayers(selection, run).FirstOrDefault();
+            if (owner is null)
+                return;
+            pendingCreatedCardId = CreatedCardRegistry.CreateId(creator.NetId);
+            pendingCreatedCardOwner = owner;
+            if (!LoadoutImmediateMutationService.RequestAddCard(
+                    pendingCreatedCardId, 1, LoadoutTargetSelection.ForPlayer(owner.NetId), pileTarget: LoadoutCardPileTarget.Deck))
+            {
+                pendingCreatedCardId = null;
+                pendingCreatedCardOwner = null;
+            }
+        }
+
         SelectItemAdapter<LoadoutOwnedItem<CardModel>> cardModifierAdapter = new()
         {
             GetId = item => CommonHelpers.OwnedSlotItemId(item),
@@ -84,6 +142,10 @@ public class CardModifier
                 "upgrade_all", LocMan.Loc("UPGRADE_ALL", "Upgrade All"),
                 HandleUpgradeAllDeckCards,
                 CommonHelpers.LoadActionButtonIcon("CardModifier.png"));
+            builder.ActionButton(
+                "create_card", LocMan.Loc("CREATE_NEW_CARD", "Create a new card"),
+                CreateNewCard,
+                CommonHelpers.LoadActionButtonIcon("CardPrinter.png"));
             if (IsMultiplayerClient())
             {
                 builder.ActionButton(
@@ -141,9 +203,19 @@ public class CardModifier
 			{
 				CardModificationRuntime.OwnedCardChanged -= RefreshModifiedOwnedCard;
 				CardModificationRuntime.OwnedCardChanged += RefreshModifiedOwnedCard;
+				LoadoutRunContentChangeService.Changed -= OpenCreatedCardWhenAdded;
+				LoadoutRunContentChangeService.Changed += OpenCreatedCardWhenAdded;
 			};
 			modifierScreen.ScreenClosed += () =>
 			{
+				CardModificationRuntime.OwnedCardChanged -= RefreshModifiedOwnedCard;
+				LoadoutRunContentChangeService.Changed -= OpenCreatedCardWhenAdded;
+				pendingCreatedCardId = null;
+				pendingCreatedCardOwner = null;
+			};
+			modifierScreen.TreeExiting += () =>
+			{
+				LoadoutRunContentChangeService.Changed -= OpenCreatedCardWhenAdded;
 				CardModificationRuntime.OwnedCardChanged -= RefreshModifiedOwnedCard;
 			};
 		}

@@ -124,7 +124,7 @@ internal static class CardUpgradeModificationRuntimePatches
                    ?? new CardUpgradeModificationSpec();
 
         CardModificationSpec permanent =
-            PermanentCardModificationStore.Get(card.Id);
+            CardModificationRuntime.GetPermanentSpecForCard(card);
         CardModificationDelta? temporary =
             CardModificationFields.TryGet(card, out CardModificationCardData data)
                 ? data.Delta

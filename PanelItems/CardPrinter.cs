@@ -106,6 +106,7 @@ public class CardPrinter
     {
 	    CardPrinterRunRecipeStore.Register();
 	    IReadOnlyList<CardModel> allCards = ModelDb.AllCards.ToList();
+	    long observedCollectionRevision = CreatedCardRegistry.CollectionRevision;
 	    NGenericSelectScreen cardPrinterScreen = null;
 	    long observedPermanentDisplayRevision = CardModificationRuntime.PermanentDisplayRevision;
 	    long observedRecipeRevision = CardPrinterRunRecipeStore.Revision;
@@ -215,10 +216,25 @@ public class CardPrinter
 
 		    if (cardPrinterScreen is null || !cardPrinterScreen.IsScreenActive)
 			    return;
+		    if (RefreshCreatedCardCollection(cardPrinterScreen))
+			    return;
 
 		    long targetRevision = CardModificationRuntime.PermanentDisplayRevision;
 		    observedRecipeRevision = CardPrinterRunRecipeStore.Revision;
 		    RefreshVisibleCardPrinterCards(cardPrinterScreen, new[] { cardKey }, targetRevision);
+	    }
+
+	    bool RefreshCreatedCardCollection(NGenericSelectScreen screen)
+	    {
+		    if (observedCollectionRevision == CreatedCardRegistry.CollectionRevision)
+			    return false;
+		    allCards = ModelDb.AllCards.ToList();
+		    observedCollectionRevision = CreatedCardRegistry.CollectionRevision;
+		    SelectScreenUiState state = screen.CaptureUiState();
+		    screen.ConfigurePreservingViews(allCards, cardPrinterAdapter, BuildCardPrinterScreen);
+		    BindCardPrinterSidebar(screen, applyDefaultClassFilter: false);
+		    screen.RestoreUiState(state);
+		    return true;
 	    }
 
 	    void RefreshVisibleCardPrinterCards(
@@ -272,6 +288,8 @@ public class CardPrinter
 	    {
 		    if (cardPrinterScreen is null)
 			    return;
+		    if (RefreshCreatedCardCollection(cardPrinterScreen))
+			    return;
 		    string[] keys = cardIds.Select(id => id.ToString()).ToArray();
 		    RefreshVisibleCardPrinterCards(
 			    cardPrinterScreen,
@@ -303,6 +321,7 @@ public class CardPrinter
 			{
 				if (cardPrinterScreen.IsReusedSelectionActive)
 					return;
+				RefreshCreatedCardCollection(cardPrinterScreen);
 				cardPrinterScreen.SetExclusiveFilterSelection(
 					PlayModeFilterGroupId,
 					IsSingleplayerMode() ? SingleplayerFilterId : null,

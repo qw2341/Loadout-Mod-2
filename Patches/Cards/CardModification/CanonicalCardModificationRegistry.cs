@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Loadout.Keywords;
+using Loadout.Cards;
 using Loadout.Services.CardModification;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
@@ -111,11 +112,12 @@ internal static class CanonicalCardModificationRegistry
             return;
 
         CanonicalCardBaseline baseline = GetBaseline(canonical);
+        CardPoolModel previousPool = canonical.Pool;
         Restore(canonical, baseline);
         if (delta is { IsEmpty: false })
             Apply(canonical, baseline, delta);
-        if (!string.IsNullOrWhiteSpace(delta?.PoolId) || ReassignedCards.ContainsKey(cardId))
-            ReconcilePoolMembership(canonical, baseline.Pool, delta?.PoolId);
+        if (canonical is CreatedCard || !string.IsNullOrWhiteSpace(delta?.PoolId) || ReassignedCards.ContainsKey(cardId))
+            ReconcilePoolMembership(canonical, baseline.Pool, delta?.PoolId, previousPool);
         ConfigurePatches();
     }
 
@@ -135,14 +137,17 @@ internal static class CanonicalCardModificationRegistry
 
     public static void RestoreAll()
     {
-        foreach ((ModelId id, CanonicalCardBaseline baseline) in Baselines)
+        foreach ((ModelId id, CanonicalCardBaseline baseline) in Baselines.ToArray())
         {
             CardModel? canonical = ResolveCanonical(id);
             if (canonical is not null)
             {
+                CardPoolModel previousPool = canonical.Pool;
+                if (canonical is CreatedCard)
+                    RemoveCreatedCard(id);
                 Restore(canonical, baseline);
                 if (ReassignedCards.ContainsKey(id))
-                    ReconcilePoolMembership(canonical, baseline.Pool, null);
+                    ReconcilePoolMembership(canonical, baseline.Pool, null, previousPool);
             }
         }
         ReassignedCards.Clear();
@@ -150,6 +155,17 @@ internal static class CanonicalCardModificationRegistry
         CanonicalStarCosts.Clear();
         CardModificationPermanentPatches.Reset();
         Baselines.Clear();
+    }
+
+    public static void RemoveCreatedCard(ModelId id)
+    {
+        if (ReassignedCards.Remove(id, out CardModel? card))
+        {
+            RebuildPool(card.Pool);
+            CreatedCardRegistry.NotifyCollectionChanged();
+        }
+        Baselines.Remove(id);
+        CanonicalStarCosts.Remove(id);
     }
 
     public static bool TryGetCanonicalStarCost(CardModel card, out int value)
@@ -280,32 +296,32 @@ internal static class CanonicalCardModificationRegistry
             PermanentCardModificationStore.HasAnyUpgradeModifications);
     }
 
-    private static void ReconcilePoolMembership(CardModel card, CardPoolModel originalPool, string? poolId)
+    private static void ReconcilePoolMembership(CardModel card, CardPoolModel originalPool, string? poolId, CardPoolModel? previous = null)
     {
-        CardPoolModel previousPool = card.Pool;
-        if (string.Equals(previousPool.Id.ToString(), poolId, StringComparison.Ordinal)
-            || string.Equals(previousPool.Id.Entry, poolId, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
+        CardPoolModel previousPool = previous ?? card.Pool;
         CardPoolModel currentPool = ResolvePool(poolId) ?? originalPool;
-        if (previousPool == currentPool)
+        bool created = card is CreatedCard;
+        bool includeCreated = created && PermanentCardModificationStore.HasCollectionDefinition(card.Id);
+        bool wasIncluded = ReassignedCards.ContainsKey(card.Id);
+        PoolField.SetValue(card, currentPool);
+        if (previousPool == currentPool && (!created || wasIncluded == includeCreated))
             return;
 
         if (!PoolBaselines.ContainsKey(previousPool))
-            PoolBaselines[previousPool] = previousPool.AllCards.ToArray();
+            PoolBaselines[previousPool] = previousPool.AllCards.Where(model => model is not CreatedCard).ToArray();
         if (!PoolBaselines.ContainsKey(currentPool))
-            PoolBaselines[currentPool] = currentPool.AllCards.ToArray();
+            PoolBaselines[currentPool] = currentPool.AllCards.Where(model => model is not CreatedCard).ToArray();
 
-        PoolField.SetValue(card, currentPool);
-        if (currentPool == originalPool)
+        if (created ? !includeCreated : currentPool == originalPool)
             ReassignedCards.Remove(card.Id);
         else
             ReassignedCards[card.Id] = card;
 
         RebuildPool(previousPool);
-        RebuildPool(currentPool);
+        if (currentPool != previousPool)
+            RebuildPool(currentPool);
+        if (created && (wasIncluded != includeCreated || previousPool != currentPool))
+            CreatedCardRegistry.NotifyCollectionChanged();
     }
 
     private static void RebuildPool(CardPoolModel pool)
@@ -322,8 +338,8 @@ internal static class CanonicalCardModificationRegistry
     }
 
     private static CardModel? ResolveCanonical(ModelId cardId) =>
-        ModelDb.AllCards.FirstOrDefault(card => card.Id == cardId
-                                                || string.Equals(card.Id.ToString(), cardId.ToString(), StringComparison.Ordinal));
+        ModelDb.GetByIdOrNull<CardModel>(cardId)
+        ?? (CreatedCardRegistry.IsCreatedId(cardId) ? CreatedCardRegistry.GetOrCreate(cardId) : null);
 
     private static CardPoolModel? ResolvePool(string? id)
     {

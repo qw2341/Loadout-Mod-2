@@ -100,6 +100,7 @@ public partial class NCardModificationScreen : Control
     private bool _awaitingResetConfirmation;
     private bool _customRunAuthoringMode;
     private bool _cardPrinterMode;
+    private bool _singleCardOnly;
     private NCardKeywordEditor? _keywordEditor;
     private Action? _cardPrinterRecipeChanged;
     private Func<LoadoutOwnedItem<CardModel>, CardModificationSpec>? _customRunStateProvider;
@@ -133,6 +134,12 @@ public partial class NCardModificationScreen : Control
 
         if (IsNodeReady())
             RebuildScreen();
+    }
+
+    public void InitForCreatedCard(LoadoutOwnedItem<CardModel> item, Action? parentScrollRestore = null)
+    {
+        _singleCardOnly = true;
+        Init(item, parentScrollRestore: parentScrollRestore);
     }
 
     public void InitForCustomRun(
@@ -369,6 +376,23 @@ public partial class NCardModificationScreen : Control
         if (_isClosing || _item is null || !IsInsideTree())
             return;
 
+        if (_singleCardOnly)
+        {
+            if (!_item.Owner.Deck.Cards.Any(card => ReferenceEquals(card, _item.Model))
+                || !TryResolveCurrentLocation(_item, out LoadoutOwnedItem<CardModel>? current) || current is null)
+            {
+                _hasPendingTemporaryCommit = false;
+                NLoadoutPanelRoot.CloseTopLoadoutScreen();
+                return;
+            }
+            _items = [current];
+            _itemIndex = 0;
+            LoadItem(current);
+            RebuildControls();
+            RefreshPreview(forceReload: true);
+            return;
+        }
+
         List<Player> owners = _items
             .Select(item => item.Owner)
             .Where(player => player is not null)
@@ -407,7 +431,7 @@ public partial class NCardModificationScreen : Control
 
     private void RefreshItemsAfterAdd()
     {
-        if (_isClosing || _item is null || !IsInsideTree())
+        if (_singleCardOnly || _isClosing || _item is null || !IsInsideTree())
             return;
 
         List<Player> owners = _items
@@ -730,7 +754,7 @@ public partial class NCardModificationScreen : Control
 
     private void SwitchCard(int direction)
     {
-        if (_items.Count == 0)
+        if (_singleCardOnly || _items.Count == 0)
             return;
 
         int nextIndex = Mathf.Clamp(_itemIndex + direction, 0, _items.Count - 1);
@@ -750,8 +774,8 @@ public partial class NCardModificationScreen : Control
         if (_leftArrow is null || _rightArrow is null)
             return;
 
-        bool hasPrevious = _itemIndex > 0;
-        bool hasNext = _itemIndex < _items.Count - 1;
+        bool hasPrevious = !_singleCardOnly && _itemIndex > 0;
+        bool hasNext = !_singleCardOnly && _itemIndex < _items.Count - 1;
         if (_leftArrowMount is not null)
         {
             _leftArrowMount.Visible = hasPrevious;
@@ -2211,7 +2235,9 @@ public partial class NCardModificationScreen : Control
             return;
 
         _hasPendingTemporaryCommit = false;
-        if (_customRunAuthoringMode)
+        if (_customRunAuthoringMode
+            || (CreatedCardRegistry.IsCreatedId(_item.Model.Id)
+                && !PermanentCardModificationStore.HasCollectionDefinition(_item.Model.Id)))
         {
             ResetTemporary();
             return;

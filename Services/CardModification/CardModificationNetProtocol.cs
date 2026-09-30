@@ -395,9 +395,7 @@ public static class CardModificationNetProtocol
         if (!LoadoutModelRegistry.TryResolveWireId(message.CardId, out ModelId cardId))
             return;
 
-        CardModificationSpec previous = PermanentCardModificationStore.Get(cardId);
-        if (PermanentCardModificationStore.ApplyHostDelta(cardId, delta))
-            CardModificationRuntime.RetrofitLiveDeckCopies(cardId, previous);
+        CardModificationRuntime.ApplyCatalogPermanentDelta(cardId, delta, authoritativeRemote: true);
     }
 
     public static void BroadcastPermanentDelta(ModelId cardId, CardModificationSpec? state)
@@ -609,7 +607,7 @@ public static class CardModificationNetProtocol
         LoadoutOwnedItem<CardModel> item,
         CardModificationSpec? state)
     {
-        if (state is null || state.IsEmpty)
+        if (state is null)
             return string.Empty;
 
         CardModificationDelta delta = operation switch
@@ -623,7 +621,7 @@ public static class CardModificationNetProtocol
 
     private static string SerializePermanentDelta(ModelId cardId, CardModificationSpec? state)
     {
-        if (state is null || state.IsEmpty)
+        if (state is null)
             return string.Empty;
         CardModificationDelta delta = CardModificationRuntime.CreatePermanentDelta(cardId, state);
         return delta.IsEmpty ? string.Empty : CardModificationCodec.SerializeDelta(delta);

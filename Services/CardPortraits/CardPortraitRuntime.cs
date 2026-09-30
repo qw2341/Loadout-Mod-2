@@ -178,7 +178,7 @@ internal static class CardPortraitRuntime
     {
         Register();
         return CardPortraitFields.TryGet(GetTemporaryOwner(card), out _)
-            || CardPortraitStore.HasPermanent(card.Id);
+            || !CardModificationRuntime.UsesCreatedCardDefaults(card) && CardPortraitStore.HasPermanent(card.Id);
     }
 
     public static bool TryResolve(CardModel card, out CardPortraitTextureSequence sequence)
@@ -222,7 +222,8 @@ internal static class CardPortraitRuntime
             return true;
         }
 
-        if (CardPortraitStore.TryGetPermanent(card.Id, out CardPortraitAsset permanent)
+        if (!CardModificationRuntime.UsesCreatedCardDefaults(card)
+            && CardPortraitStore.TryGetPermanent(card.Id, out CardPortraitAsset permanent)
             && TryLoadSequence(permanent, card, out sequence))
         {
             return true;

@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Loadout.Services.Compatibility;
+using Loadout.Services.CardModification;
+using Loadout.Cards;
 using MegaCrit.Sts2.Core.Models;
 
 /// <summary>
@@ -30,6 +32,9 @@ internal static class LoadoutModelRegistry
 
     public static bool TryResolveWireId(string rawId, out ModelId id)
     {
+        if (CreatedCardRegistry.TryParseId(rawId, out id))
+            return true;
+
         if (string.IsNullOrWhiteSpace(rawId))
         {
             id = ModelId.none;
@@ -51,6 +56,8 @@ internal static class LoadoutModelRegistry
     {
         if (LoadoutModelIdSafety.IsNoneOrEmpty(id))
             return null;
+        if (CreatedCardRegistry.IsCreatedId(id))
+            return CreatedCardRegistry.GetOrCreate(id);
 
         EnsureBuilt();
         return _cards!.GetValueOrDefault(id.ToString());
@@ -90,7 +97,8 @@ internal static class LoadoutModelRegistry
             Dictionary<string, RelicModel> relics = new(StringComparer.Ordinal);
             Dictionary<string, PotionModel> potions = new(StringComparer.Ordinal);
             foreach (CardModel model in ModelDb.AllCards)
-                cards.TryAdd(model.Id.ToString(), model);
+                if (model is not CreatedCard)
+                    cards.TryAdd(model.Id.ToString(), model);
             foreach (RelicModel model in ModelDb.AllRelics)
                 relics.TryAdd(model.Id.ToString(), model);
             foreach (PotionModel model in ModelDb.AllPotions)
@@ -98,6 +106,8 @@ internal static class LoadoutModelRegistry
 
             foreach (AbstractModel model in EnumerateKnownModels())
             {
+                if (model is CreatedCard)
+                    continue;
                 string wireId = model.Id.ToString();
                 if (!string.IsNullOrWhiteSpace(wireId))
                     wireIds.TryAdd(wireId, model.Id);

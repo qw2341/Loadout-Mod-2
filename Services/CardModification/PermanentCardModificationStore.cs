@@ -97,8 +97,19 @@ public static class PermanentCardModificationStore
     {
         EnsureLoaded();
         Dictionary<ModelId, CardModificationDelta> snapshot = _useHostCards ? _hostLookup : _profileLookup;
-        return snapshot.TryGetValue(cardId, out delta!);
+        return snapshot.TryGetValue(cardId, out delta!)
+               || CreatedCardRegistry.TryGetRunDefinition(cardId, out delta!);
     }
+
+    public static bool HasCollectionDefinition(ModelId cardId)
+    {
+        EnsureLoaded();
+        return (_useHostCards ? _hostLookup : _profileLookup).ContainsKey(cardId);
+    }
+
+    private static IEnumerable<CardModificationDelta> EffectiveDeltas =>
+        (_useHostCards ? _hostLookup : _profileLookup).Values
+            .Concat(CreatedCardRegistry.GetRunDefinitions().Select(pair => pair.Value));
 
     public static CardModificationSpec Get(ModelId cardId)
     {
@@ -121,7 +132,7 @@ public static class PermanentCardModificationStore
         get
         {
             EnsureLoaded();
-            return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta => delta.HasCustomText);
+            return EffectiveDeltas.Any(delta => delta.HasCustomText);
         }
     }
 
@@ -130,7 +141,7 @@ public static class PermanentCardModificationStore
         get
         {
             EnsureLoaded();
-            return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta => delta.HasPortraitOverride);
+            return EffectiveDeltas.Any(delta => delta.HasPortraitOverride);
         }
     }
 
@@ -139,7 +150,7 @@ public static class PermanentCardModificationStore
         get
         {
             EnsureLoaded();
-            return (_useHostCards ? _hostCards : _profileCards).Values.Any(
+            return EffectiveDeltas.Any(
                 delta => delta.HasAncientRenderingOverride);
         }
     }
@@ -149,7 +160,7 @@ public static class PermanentCardModificationStore
         get
         {
             EnsureLoaded();
-            return (_useHostCards ? _hostCards : _profileCards).Values.Any(delta =>
+            return EffectiveDeltas.Any(delta =>
                 delta.Enchantments is not null || delta.Affliction is not null);
         }
     }
@@ -159,7 +170,7 @@ public static class PermanentCardModificationStore
         get
         {
             EnsureLoaded();
-            return (_useHostCards ? _hostCards : _profileCards).Values.Any(
+            return EffectiveDeltas.Any(
                 delta => !delta.UpgradeModification.IsEmpty);
         }
     }
@@ -168,7 +179,11 @@ public static class PermanentCardModificationStore
     {
         EnsureLoaded();
         Dictionary<ModelId, CardModificationDelta> source = _useHostCards ? _hostLookup : _profileLookup;
-        return source.ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
+        Dictionary<ModelId, CardModificationDelta> result = CreatedCardRegistry.GetRunDefinitions()
+            .ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
+        foreach ((ModelId id, CardModificationDelta delta) in source)
+            result[id] = delta.Clone();
+        return result;
     }
 
     public static IReadOnlyDictionary<ModelId, CardModificationDelta> GetProfileDeltasSnapshot()
@@ -204,6 +219,7 @@ public static class PermanentCardModificationStore
         {
             Dictionary<string, CardModificationDelta> next = CloneDictionary(_profileCards);
             changed = SetInDictionary(next, key, normalized);
+            changed |= CreatedCardRegistry.ClearRunDefinition(cardId);
             if (!changed)
                 return false;
 
@@ -233,7 +249,10 @@ public static class PermanentCardModificationStore
         }
 
         foreach (ModelId id in changed)
+        {
+            CreatedCardRegistry.ClearRunDefinition(id);
             CardChanged?.Invoke(id);
+        }
         return changed;
     }
 
@@ -342,6 +361,10 @@ public static class PermanentCardModificationStore
 
         Dictionary<string, CardModificationDelta> previous = _useHostCards ? _hostCards : _profileCards;
         List<ModelId> changed = GetChangedIds(previous, next);
+        if (_useHostCards)
+            foreach (ModelId id in changed)
+                if (!next.ContainsKey(id.ToString()))
+                    CreatedCardRegistry.ClearRunDefinition(id);
         _hostCards = next;
         _hostLookup = BuildLookup(next);
         _useHostCards = true;
@@ -362,6 +385,7 @@ public static class PermanentCardModificationStore
         normalized.Normalize();
         Dictionary<string, CardModificationDelta> next = CloneDictionary(_useHostCards ? _hostCards : _profileCards);
         bool changed = SetInDictionary(next, cardId.ToString(), normalized);
+        changed |= CreatedCardRegistry.ClearRunDefinition(cardId);
         _hostCards = next;
         _hostLookup = BuildLookup(next);
         _useHostCards = true;
@@ -625,11 +649,11 @@ public static class PermanentCardModificationStore
 
     private static List<ModelId> ResolveIds(IEnumerable<string> keys)
     {
-        HashSet<string> wanted = new(keys, StringComparer.Ordinal);
-        return ModelDb.AllCards
-            .Where(card => wanted.Contains(card.Id.ToString()))
-            .Select(card => card.Id)
-            .ToList();
+        List<ModelId> ids = [];
+        foreach (string key in keys)
+            if (TryResolveId(key, out ModelId id))
+                ids.Add(id);
+        return ids;
     }
 
     private static Dictionary<ModelId, CardModificationDelta> BuildLookup(
@@ -639,10 +663,10 @@ public static class PermanentCardModificationStore
         if (source.Count == 0)
             return result;
 
-        foreach (CardModel card in ModelDb.AllCards)
+        foreach ((string key, CardModificationDelta spec) in source)
         {
-            if (source.TryGetValue(card.Id.ToString(), out CardModificationDelta? spec))
-                result[card.Id] = spec;
+            if (TryResolveId(key, out ModelId id))
+                result[id] = spec;
         }
         return result;
     }
@@ -692,6 +716,24 @@ public static class PermanentCardModificationStore
 
     private static bool TryResolveId(string key, out ModelId id)
     {
+        if (CreatedCardRegistry.TryParseId(key, out id))
+        {
+            CreatedCardRegistry.GetOrCreate(id);
+            return true;
+        }
+        if (key.Contains('.'))
+        {
+            try
+            {
+                id = ModelId.Deserialize(key);
+                return ModelDb.GetByIdOrNull<AbstractModel>(id) is CardModel;
+            }
+            catch (JsonException)
+            {
+                id = ModelId.none;
+                return false;
+            }
+        }
         foreach (CardModel card in ModelDb.AllCards)
         {
             if (string.Equals(card.Id.ToString(), key, StringComparison.Ordinal)

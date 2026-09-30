@@ -162,6 +162,8 @@ public static class LoadoutSerializationService
 
     public static CardModel? ResolveCard(string modelId)
     {
+        if (CreatedCardRegistry.TryParseId(modelId, out ModelId createdId))
+            return CreatedCardRegistry.GetOrCreate(createdId);
         return ModelDb.AllCards.FirstOrDefault(card => ModelIdMatches(card, modelId));
     }
 
@@ -178,14 +180,16 @@ public static class LoadoutSerializationService
         foreach (CardModel card in player.Deck.Cards)
         {
             CardModificationSpec state = CardModificationRuntime.GetEffectiveSpec(card);
-            if (!state.IsEmpty)
+            bool useCreatedDefaults = CardModificationRuntime.UsesCreatedCardDefaults(card);
+            if (useCreatedDefaults || !state.IsEmpty)
             {
                 cards.Add(new SavedCardLoadoutEntry
                 {
                     ModelId = card.Id.ToString(),
                     UpgradeLevel = Math.Max(0, card.CurrentUpgradeLevel),
                     Count = 1,
-                    ModificationState = state.Clone()
+                    ModificationState = state.Clone(),
+                    UseCreatedCardDefaults = useCreatedDefaults
                 });
                 continue;
             }

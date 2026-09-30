@@ -639,6 +639,14 @@ public sealed class CardModificationSpec
 /// </summary>
 public sealed class CardModificationDelta
 {
+    [JsonPropertyName("createdCard")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CreatedCardDefinition { get; set; }
+
+    [JsonPropertyName("createdCardDefaults")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool UseCreatedCardDefaults { get; set; }
+
     [JsonPropertyName("e")]
     public int? EnergyDelta { get; set; }
 
@@ -703,7 +711,9 @@ public sealed class CardModificationDelta
 
     [JsonIgnore]
     public bool IsEmpty =>
-        EnergyDelta is null
+        !CreatedCardDefinition
+        && !UseCreatedCardDefaults
+        && EnergyDelta is null
         && EnergyOverride is null
         && BaseReplayCountDelta is null
         && BaseStarCostDelta is null
@@ -758,6 +768,8 @@ public sealed class CardModificationDelta
     {
         return new CardModificationDelta
         {
+            CreatedCardDefinition = CreatedCardDefinition,
+            UseCreatedCardDefaults = UseCreatedCardDefaults,
             EnergyDelta = EnergyDelta,
             EnergyOverride = EnergyOverride,
             BaseReplayCountDelta = BaseReplayCountDelta,

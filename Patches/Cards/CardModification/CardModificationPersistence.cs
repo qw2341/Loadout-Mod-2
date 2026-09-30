@@ -26,6 +26,7 @@ internal static class CardModificationPersistence
         Type? patchType = AccessTools.TypeByName("BaseLib.Patches.Utils.SavedSpireFieldPatch");
         if (patchType is null) return;
         AccessTools.Method(patchType, "InjectNameIntoBaseGameCache")?.Invoke(null, [V4FieldName]);
+        AccessTools.Method(patchType, "InjectNameIntoBaseGameCache")?.Invoke(null, [CreatedCardRegistry.SavedDefinitionField]);
     }
 
     public static IDisposable BeginChecksumSerialization()
@@ -47,6 +48,7 @@ internal static class CardModificationPersistence
 
     public static CardModificationLoadData? Read(SerializableCard save)
     {
+        CreatedCardRegistry.RestoreDefinition(save);
         string? v4Payload = FindString(save.Props, V4FieldName);
         if (!string.IsNullOrWhiteSpace(v4Payload))
         {

@@ -5,6 +5,8 @@ namespace Loadout.Patches;
 using System;
 using HarmonyLib;
 using Loadout.Keywords;
+using Loadout.Services.CardModification;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.Patches.Cards;
 using Loadout.Patches.Relics;
 using MegaCrit.Sts2.Core.Localization;
@@ -24,6 +26,7 @@ internal static class LocStringModificationDispatcher
         Harmony.Patch(
             AccessTools.Method(typeof(LocString), nameof(LocString.GetRawText))
             ?? throw new MissingMethodException(typeof(LocString).FullName, nameof(LocString.GetRawText)),
+            prefix: new HarmonyMethod(typeof(LocStringModificationDispatcher), nameof(Prefix)),
             postfix: new HarmonyMethod(typeof(LocStringModificationDispatcher), nameof(Postfix)));
         Harmony.Patch(
             AccessTools.Method(
@@ -35,6 +38,14 @@ internal static class LocStringModificationDispatcher
             postfix: new HarmonyMethod(
                 typeof(LocStringModificationDispatcher),
                 nameof(FormattedPostfix)));
+    }
+
+    private static bool Prefix(LocString __instance, ref string __result)
+    {
+        if (!CreatedCardRegistry.TryGetDefaultText(__instance, out string text))
+            return true;
+        __result = CardModificationRuntime.TryGetCustomRawLocString(__instance, out string custom) ? custom : text;
+        return false;
     }
 
     private static void Postfix(LocString __instance, ref string __result)
