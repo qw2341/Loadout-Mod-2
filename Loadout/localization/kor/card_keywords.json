@@ -1,4 +1,12 @@
 {
+  "LOADOUT-EXECUTE.title": "처형",
+  "LOADOUT-EXECUTE.description": "10% 확률로 대상을 즉시 처치합니다.",
+  "LOADOUT-EXECUTE.chanceText": "{LoadoutExecuteChance:diff()}% 확률로 대상을 즉시 처치합니다.",
+  "LOADOUT-EXECUTE.guaranteedText": "대상을 즉시 처치합니다.",
+  "LOADOUT-ALT_EXECUTE.title": "!?실행?!",
+  "LOADOUT-ALT_EXECUTE.description": "카드를 사용하면 콘솔 명령어를 실행합니다.",
+  "LOADOUT-ALT_EXECUTE.cardText": "실행 {Commands}",
+  "LOADOUT-EXECUTE.cardText": "{ExecuteText}",
   "LOADOUT-KARMIC.title": "!?업보?!",
   "LOADOUT-KARMIC.description": "이 카드가 타격하는 동안 매 프레임마다 피해를 줍니다.",
   "LOADOUT-INEVITABLE.title": "필연",

@@ -48,6 +48,7 @@ public static class CardModelMutableCloneCardModificationPatch
             CardModificationFields.Copy(source, clone);
             LoadoutPowerKeywordState.CopyExplicitState(source, clone);
             LoadoutCardKeywordState.CopyExplicitState(source, clone);
+            AltExecuteKeyword.CopyExplicitState(source, clone);
         }
     }
 }

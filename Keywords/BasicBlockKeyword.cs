@@ -76,6 +76,7 @@ internal static class LoadoutBasicKeywordGainsBlockPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref bool __result)
     {
-        __result |= LoadoutKeywordRegistry.ReportsGainsBlock(__instance);
+        if (!__result)
+            __result = LoadoutKeywordRegistry.ReportsGainsBlock(__instance);
     }
 }

@@ -39,6 +39,8 @@ internal static class LoadoutKeywordRuntimePatches
     private const string InevitableHarmonyId = "Loadout.Keyword.Inevitable";
     private const string DescriptionKeywordHarmonyId =
         "Loadout.Keyword.Description";
+    private const string TargetingHarmonyId = "Loadout.Keyword.Targeting";
+    private const string GainsBlockHarmonyId = "Loadout.Keyword.GainsBlock";
     private const string PostOnPlayHarmonyId = "Loadout.Keyword.PostOnPlay";
     private const string TurnEndInHandHarmonyId =
         "Loadout.Keyword.TurnEndInHand";
@@ -54,6 +56,8 @@ internal static class LoadoutKeywordRuntimePatches
     private static readonly Harmony InevitableHarmony = new(InevitableHarmonyId);
     private static readonly Harmony DescriptionKeywordHarmony =
         new(DescriptionKeywordHarmonyId);
+    private static readonly Harmony TargetingHarmony = new(TargetingHarmonyId);
+    private static readonly Harmony GainsBlockHarmony = new(GainsBlockHarmonyId);
     private static readonly Harmony PostOnPlayHarmony = new(PostOnPlayHarmonyId);
     private static readonly Harmony TurnEndInHandHarmony =
         new(TurnEndInHandHarmonyId);
@@ -70,6 +74,8 @@ internal static class LoadoutKeywordRuntimePatches
     public static bool InevitableEnabled { get; private set; }
     public static bool LividEnabled { get; private set; }
     public static bool DescriptionKeywordsEnabled { get; private set; }
+    private static bool TargetingEnabled { get; set; }
+    private static bool GainsBlockEnabled { get; set; }
     private static bool DescriptionKeywordOnPlayEnabled { get; set; }
     private static bool CardResultLocationEnabled { get; set; }
     private static bool PostOnPlayEnabled { get; set; }
@@ -120,6 +126,10 @@ internal static class LoadoutKeywordRuntimePatches
             CardUpgradeModificationRuntimePatches.Enable();
         if (state.DescriptionKeywords)
             SetDescriptionKeywordsEnabled(true);
+        if (state.Targeting)
+            SetTargetingEnabled(true);
+        if (state.GainsBlock)
+            SetGainsBlockEnabled(true);
         if (state.DescriptionKeywordOnPlay)
             SetDescriptionKeywordOnPlayEnabled(true);
         if (state.TurnEndInHand)
@@ -143,6 +153,10 @@ internal static class LoadoutKeywordRuntimePatches
             CardUpgradeModificationRuntimePatches.Enable();
         if (state.DescriptionKeywords)
             SetDescriptionKeywordsEnabled(true);
+        if (state.Targeting)
+            SetTargetingEnabled(true);
+        if (state.GainsBlock)
+            SetGainsBlockEnabled(true);
         if (state.DescriptionKeywordOnPlay)
             SetDescriptionKeywordOnPlayEnabled(true);
         if (state.TurnEndInHand)
@@ -289,6 +303,8 @@ internal static class LoadoutKeywordRuntimePatches
         SetLividEnabled(required.Livid);
         SetDescriptionKeywordsEnabled(
             RunKeywordPatchesPrepared || required.DescriptionKeywords);
+        SetTargetingEnabled(required.Targeting);
+        SetGainsBlockEnabled(required.GainsBlock);
         SetDescriptionKeywordOnPlayEnabled(
             required.DescriptionKeywordOnPlay);
         SetTurnEndInHandEnabled(required.TurnEndInHand);
@@ -307,6 +323,8 @@ internal static class LoadoutKeywordRuntimePatches
         SetLividEnabled(false);
         RunKeywordPatchesPrepared = false;
         SetDescriptionKeywordsEnabled(false);
+        SetTargetingEnabled(false);
+        SetGainsBlockEnabled(false);
         SetDescriptionKeywordOnPlayEnabled(false);
         SetTurnEndInHandEnabled(false);
         SetPlayRestrictionEnabled(false);
@@ -424,6 +442,8 @@ internal static class LoadoutKeywordRuntimePatches
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
             state.PlayRestriction |= RequiresCardLogicPatch(model);
             state.BlankSlateHooks |= model.SuppressesOriginalModelHooks;
+            state.Targeting |= model.ChangesTargeting;
+            state.GainsBlock |= model.ReportsGainsBlock;
         }
     }
 
@@ -450,6 +470,8 @@ internal static class LoadoutKeywordRuntimePatches
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
             state.PlayRestriction |= RequiresCardLogicPatch(model);
             state.BlankSlateHooks |= model.SuppressesOriginalModelHooks;
+            state.Targeting |= model.ChangesTargeting;
+            state.GainsBlock |= model.ReportsGainsBlock;
         }
     }
 
@@ -493,6 +515,8 @@ internal static class LoadoutKeywordRuntimePatches
         state.TurnEndInHand |= powerModel.HasTurnEndInHandEffect;
         state.PlayRestriction |= RequiresCardLogicPatch(powerModel);
         state.BlankSlateHooks |= powerModel.SuppressesOriginalModelHooks;
+        state.Targeting |= powerModel.ChangesTargeting;
+        state.GainsBlock |= powerModel.ReportsGainsBlock;
     }
 
     private static void AddCardKeywordFeature(
@@ -513,6 +537,8 @@ internal static class LoadoutKeywordRuntimePatches
         state.TurnEndInHand |= cardModel.HasTurnEndInHandEffect;
         state.PlayRestriction |= RequiresCardLogicPatch(cardModel);
         state.BlankSlateHooks |= cardModel.SuppressesOriginalModelHooks;
+        state.Targeting |= cardModel.ChangesTargeting;
+        state.GainsBlock |= cardModel.ReportsGainsBlock;
     }
 
     private static void AddCardFeatures(IEnumerable<CardModel> cards, ref KeywordFeatureState state)
@@ -543,6 +569,8 @@ internal static class LoadoutKeywordRuntimePatches
                 state.TurnEndInHand |= model.HasTurnEndInHandEffect;
                 state.PlayRestriction |= RequiresCardLogicPatch(model);
                 state.BlankSlateHooks |= model.SuppressesOriginalModelHooks;
+                state.Targeting |= model.ChangesTargeting;
+                state.GainsBlock |= model.ReportsGainsBlock;
             }
             if (state.All)
                 return;
@@ -564,6 +592,8 @@ internal static class LoadoutKeywordRuntimePatches
             state.TurnEndInHand |= model.HasTurnEndInHandEffect;
             state.PlayRestriction |= RequiresCardLogicPatch(model);
             state.BlankSlateHooks |= model.SuppressesOriginalModelHooks;
+            state.Targeting |= model.ChangesTargeting;
+            state.GainsBlock |= model.ReportsGainsBlock;
         }
     }
 
@@ -575,6 +605,8 @@ internal static class LoadoutKeywordRuntimePatches
         bool anyTurnEndInHandEnabled = false;
         bool anyPlayRestrictionEnabled = false;
         bool anyBlankSlateHooksEnabled = false;
+        bool anyTargetingEnabled = false;
+        bool anyGainsBlockEnabled = false;
         foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.ResolveOverrideModels(overrides))
         {
             if (model.Presentation != LoadoutKeywordPresentation.DescriptionOnly)
@@ -586,10 +618,16 @@ internal static class LoadoutKeywordRuntimePatches
             anyTurnEndInHandEnabled |= model.HasTurnEndInHandEffect;
             anyPlayRestrictionEnabled |= RequiresCardLogicPatch(model);
             anyBlankSlateHooksEnabled |= model.SuppressesOriginalModelHooks;
+            anyTargetingEnabled |= model.ChangesTargeting;
+            anyGainsBlockEnabled |= model.ReportsGainsBlock;
         }
 
         if (anyEnabled)
             SetDescriptionKeywordsEnabled(true);
+        if (anyTargetingEnabled)
+            SetTargetingEnabled(true);
+        if (anyGainsBlockEnabled)
+            SetGainsBlockEnabled(true);
         if (anyOnPlayEnabled)
             SetDescriptionKeywordOnPlayEnabled(true);
         if (anyTurnEndInHandEnabled)
@@ -821,29 +859,61 @@ internal static class LoadoutKeywordRuntimePatches
                 postfix: new HarmonyMethod(
                     typeof(LoadoutDescriptionKeywordHoverTipsPatch),
                     nameof(LoadoutDescriptionKeywordHoverTipsPatch.Postfix)));
+
+        }, () => DescriptionKeywordsEnabled = true);
+    }
+
+    private static void SetTargetingEnabled(bool enabled)
+    {
+        if (enabled == TargetingEnabled)
+            return;
+        if (!enabled)
+        {
+            TargetingHarmony.UnpatchAll(TargetingHarmonyId);
+            TargetingEnabled = false;
+            return;
+        }
+
+        TryEnable(TargetingHarmony, TargetingHarmonyId, () =>
+        {
             HarmonyMethod targetTypePostfix = new(
                 typeof(LoadoutBasicKeywordTargetTypePatch),
                 nameof(LoadoutBasicKeywordTargetTypePatch.Postfix));
             foreach (MethodBase target in
                      LoadoutBasicKeywordTargetTypePatch.TargetMethods())
             {
-                DescriptionKeywordHarmony.Patch(
+                TargetingHarmony.Patch(
                     target,
                     postfix: targetTypePostfix);
             }
+        }, () => TargetingEnabled = true);
+    }
 
+    private static void SetGainsBlockEnabled(bool enabled)
+    {
+        if (enabled == GainsBlockEnabled)
+            return;
+        if (!enabled)
+        {
+            GainsBlockHarmony.UnpatchAll(GainsBlockHarmonyId);
+            GainsBlockEnabled = false;
+            return;
+        }
+
+        TryEnable(GainsBlockHarmony, GainsBlockHarmonyId, () =>
+        {
             HarmonyMethod gainsBlockPostfix = new(
                 typeof(LoadoutBasicKeywordGainsBlockPatch),
                 nameof(LoadoutBasicKeywordGainsBlockPatch.Postfix));
             foreach (MethodBase target in
                      LoadoutBasicKeywordGainsBlockPatch.TargetMethods())
             {
-                DescriptionKeywordHarmony.Patch(
+                GainsBlockHarmony.Patch(
                     target,
                     postfix: gainsBlockPostfix);
             }
 
-        }, () => DescriptionKeywordsEnabled = true);
+        }, () => GainsBlockEnabled = true);
     }
 
     private static void SetDescriptionKeywordOnPlayEnabled(bool enabled)
@@ -1103,6 +1173,8 @@ internal static class LoadoutKeywordRuntimePatches
         public bool Livid;
         public bool RepeatableKeywords;
         public bool DescriptionKeywords;
+        public bool Targeting;
+        public bool GainsBlock;
         public bool DescriptionKeywordOnPlay;
         public bool TurnEndInHand;
         public bool PlayRestriction;
@@ -1117,6 +1189,8 @@ internal static class LoadoutKeywordRuntimePatches
             && Livid
             && RepeatableKeywords
             && DescriptionKeywords
+            && Targeting
+            && GainsBlock
             && DescriptionKeywordOnPlay
             && TurnEndInHand
             && PlayRestriction

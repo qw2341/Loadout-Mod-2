@@ -1,4 +1,12 @@
 {
+  "LOADOUT-EXECUTE.title": "Ejecución",
+  "LOADOUT-EXECUTE.description": "10% de probabilidad de matar al objetivo al instante.",
+  "LOADOUT-EXECUTE.chanceText": "{LoadoutExecuteChance:diff()}% de probabilidad de matar al objetivo al instante.",
+  "LOADOUT-EXECUTE.guaranteedText": "Mata al objetivo al instante.",
+  "LOADOUT-ALT_EXECUTE.title": "!?Ejecutar?!",
+  "LOADOUT-ALT_EXECUTE.description": "Ejecuta comandos de consola al jugar la carta.",
+  "LOADOUT-ALT_EXECUTE.cardText": "Ejecutar {Commands}",
+  "LOADOUT-EXECUTE.cardText": "{ExecuteText}",
   "LOADOUT-KARMIC.title": "!?Kármico?!",
   "LOADOUT-KARMIC.description": "Inflige daño en cada fotograma en que esta carta golpea.",
   "LOADOUT-INEVITABLE.title": "Inevitable",

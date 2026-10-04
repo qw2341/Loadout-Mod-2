@@ -258,6 +258,50 @@ public partial class NCardUpgradeModificationScreen : Control
 
         AddPowerKeywordVariableControls();
         AddCardKeywordVariableControls();
+        AddExecuteCommandControls();
+    }
+
+    private IReadOnlyList<string> GetExecuteCommands() =>
+        _draft.ExecuteCommands ?? _baseState.ExecuteCommands ?? [];
+
+    private int GetExecuteCommandCount(CardKeyword keyword) =>
+        keyword == LoadoutKeywords.AltExecute ? GetExecuteCommands().Count : 0;
+
+    private void ChangeExecuteCommandCount(CardKeyword keyword, bool add)
+    {
+        if (keyword != LoadoutKeywords.AltExecute)
+            return;
+        List<string> commands = AltExecuteKeyword.CloneCommands(GetExecuteCommands()) ?? [];
+        if (add)
+            commands.Add(string.Empty);
+        else if (commands.Count > 0)
+            commands.RemoveAt(commands.Count - 1);
+        else
+            return;
+        _draft.ExecuteCommands = commands;
+        _draft.KeywordOverrides[LoadoutKeywords.AltExecuteKey] = commands.Count > 0;
+        QueueRebuild();
+    }
+
+    private void AddExecuteCommandControls()
+    {
+        if (_leftControls is null)
+            return;
+        IReadOnlyList<string> commands = GetExecuteCommands();
+        for (int index = 0; index < commands.Count; index++)
+        {
+            int entryIndex = index;
+            NLoadoutTextStepper stepper = new();
+            stepper.Init(commands[index], value =>
+            {
+                List<string> updated = AltExecuteKeyword.CloneCommands(GetExecuteCommands()) ?? [];
+                updated[entryIndex] = value;
+                _draft.ExecuteCommands = updated;
+                RefreshPreview();
+            });
+            string label = LocMan.Loc("CARD_MOD_EXECUTE_COMMAND", "Console Command");
+            _leftControls.AddChild(CreateRow(commands.Count > 1 ? $"{label} {index + 1}" : label, stepper));
+        }
     }
 
     private void RebuildKeywordControls()
@@ -283,9 +327,9 @@ public partial class NCardUpgradeModificationScreen : Control
             OnKeywordChanged,
             _selectedKeywordModId,
             selected => _selectedKeywordModId = selected,
-            getRepeatCount: keyword => GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword),
-            onRepeatAdded: keyword => { AddPowerKeywordEntry(keyword); AddCardKeywordEntry(keyword); },
-            onRepeatRemoved: keyword => { RemovePowerKeywordEntry(keyword); RemoveCardKeywordEntry(keyword); });
+            getRepeatCount: keyword => GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword) + GetExecuteCommandCount(keyword),
+            onRepeatAdded: keyword => { AddPowerKeywordEntry(keyword); AddCardKeywordEntry(keyword); ChangeExecuteCommandCount(keyword, true); },
+            onRepeatRemoved: keyword => { RemovePowerKeywordEntry(keyword); RemoveCardKeywordEntry(keyword); ChangeExecuteCommandCount(keyword, false); });
         if (editor.GetParent() is null)
             _rightControls.AddChild(editor);
     }
@@ -294,9 +338,9 @@ public partial class NCardUpgradeModificationScreen : Control
     {
         string key = LoadoutKeywords.GetStorageKey(keyword);
         if (LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model)
-            && model is LoadoutPowerKeywordModel or LoadoutCardKeywordModel)
+            && model.EditorControlKind != LoadoutKeywordEditorControlKind.Toggle)
         {
-            return GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword) > 0;
+            return GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword) + GetExecuteCommandCount(keyword) > 0;
         }
         return _draft.KeywordOverrides.TryGetValue(key, out bool enabled)
             ? enabled
@@ -800,6 +844,7 @@ public partial class NCardUpgradeModificationScreen : Control
         CardModel clone = scope.CloneCard(source);
         LoadoutPowerKeywordState.CopyExplicitState(source, clone);
         LoadoutCardKeywordState.CopyExplicitState(source, clone);
+        AltExecuteKeyword.CopyExplicitState(source, clone);
         return clone;
     }
 

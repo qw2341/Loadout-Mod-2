@@ -44,6 +44,12 @@ public sealed class BlankSlateKeyword : LoadoutKeywordModel
 
     public override bool SuppressesOriginalModelHooks => true;
 
+    public override void OnAdded(CardModel card) =>
+        BlankSlateModelHookState.Set(card, true);
+
+    public override void OnRemoved(CardModel card) =>
+        BlankSlateModelHookState.Set(card, false);
+
     public override string TransformBaseDescription(
         CardModel card,
         string description)
@@ -64,9 +70,10 @@ internal static class BlankSlateModelHookState
 
     public static void Set(CardModel card, bool suppresses)
     {
-        Cards.Remove(card);
         if (suppresses)
-            Cards.Add(card, Marker);
+            Cards.GetValue(card, static _ => Marker);
+        else
+            Cards.Remove(card);
     }
 
     public static void Reset()

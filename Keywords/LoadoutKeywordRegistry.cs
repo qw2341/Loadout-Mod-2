@@ -40,6 +40,8 @@ public static class LoadoutKeywordRegistry
         JokeInfiniteUpgradeKeyword.Instance,
         KarmicKeyword.Instance,
         HeavenlyKeyword.Instance,
+        ExecuteKeyword.Instance,
+        AltExecuteKeyword.Instance,
         AltHeavenlyKeyword.Instance,
         MultiHitKeyword.Instance,
         MultiBlockKeyword.Instance,
@@ -302,22 +304,6 @@ public static class LoadoutKeywordRegistry
         return ResolveActiveModels(card);
     }
 
-    private static bool AnyActive(CardModel card, Predicate<LoadoutKeywordModel> predicate)
-    {
-        if (_baseDescriptionContext is { Count: > 0 }
-            && ReferenceEquals(_baseDescriptionContext.Peek().Card, card))
-        {
-            foreach (LoadoutKeywordModel model in GetPresentationModels(card))
-            {
-                if (predicate(model))
-                    return true;
-            }
-            return false;
-        }
-
-        return ModelIndex.Value.Any(card, predicate);
-    }
-
     public static bool IsDescriptionKeyword(CardKeyword keyword)
     {
         return TryGet(keyword, out LoadoutKeywordModel model)
@@ -325,31 +311,31 @@ public static class LoadoutKeywordRegistry
     }
 
     public static bool ChangesTargeting(CardModel card) =>
-        AnyActive(card, model => model.ChangesTargeting);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.ChangesTargeting);
 
     public static bool RequiresAnotherPlayerTarget(CardModel card) =>
-        AnyActive(card, model => model.RequiresAnotherPlayerTarget);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.RequiresAnotherPlayerTarget);
 
     public static bool ReportsGainsBlock(CardModel card) =>
-        AnyActive(card, model => model.ReportsGainsBlock);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.ReportsGainsBlock);
 
     public static bool HasFatalEffect(CardModel card) =>
-        AnyActive(card, model => model.HasFatalEffect);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.HasFatalEffect);
 
     public static bool RequiresFatalTargetSnapshots(CardModel card) =>
-        AnyActive(card, model => model.HasFatalEffect && model.RequiresFatalTargetSnapshots);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.RequiresFatalTargetSnapshots);
 
     public static bool HasTurnEndInHandEffect(CardModel card) =>
-        AnyActive(card, model => model.HasTurnEndInHandEffect);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.HasTurnEndInHandEffect);
 
     public static bool SuppressesOriginalOnPlay(CardModel card) =>
-        AnyActive(card, model => model.SuppressesOriginalOnPlay);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.SuppressesOriginalOnPlay);
 
     public static bool SuppressesOriginalIsPlayable(CardModel card) =>
-        AnyActive(card, model => model.SuppressesOriginalIsPlayable);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.SuppressesOriginalIsPlayable);
 
     public static bool SuppressesOriginalShouldGlowGold(CardModel card) =>
-        AnyActive(card, model => model.SuppressesOriginalShouldGlowGold);
+        LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.SuppressesOriginalShouldGlowGold);
 
     public static bool SuppressesOriginalModelHooks(CardModel card)
     {
@@ -359,7 +345,7 @@ public static class LoadoutKeywordRegistry
     public static void SynchronizeOriginalModelHookSuppression(CardModel card)
     {
         BlankSlateModelHookState.Set(card,
-            ModelIndex.Value.Any(card, model => model.SuppressesOriginalModelHooks));
+            LoadoutCardModificationFlagState.HasCapability(card, LoadoutKeywordCapabilities.SuppressesOriginalModelHooks));
     }
 
     public static void PushBaseDescriptionContext(CardModel card)

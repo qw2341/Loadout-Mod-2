@@ -30,6 +30,8 @@ public static class LoadoutKeywords
     public const string KarmicKey = "Karmic";
     public const string LessonLearnedKey = "LessonLearned";
     public const string HeavenlyKey = "Heavenly";
+    public const string ExecuteKey = "Execute";
+    public const string AltExecuteKey = "AltExecute";
     public const string AltHeavenlyKey = "AltHeavenly";
     public const string MultiHitKey = "MultiHit";
     public const string MultiBlockKey = "MultiBlock";
@@ -216,6 +218,12 @@ public static class LoadoutKeywords
 
     [CustomEnum("LESSON_LEARNED")]
     public static CardKeyword LessonLearned;
+
+    [CustomEnum("EXECUTE")]
+    public static CardKeyword Execute;
+
+    [CustomEnum("ALT_EXECUTE")]
+    public static CardKeyword AltExecute;
 
     [CustomEnum("HEAVENLY")]
     public static CardKeyword Heavenly;

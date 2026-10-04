@@ -85,7 +85,8 @@ internal static class RestrictiveHasTurnEndInHandEffectPatch
     [HarmonyPostfix]
     public static void Postfix(CardModel __instance, ref bool __result)
     {
-        __result |= LoadoutKeywordRegistry.HasTurnEndInHandEffect(__instance);
+        if (!__result)
+            __result = LoadoutKeywordRegistry.HasTurnEndInHandEffect(__instance);
     }
 }
 
@@ -220,8 +221,7 @@ internal static class RestrictiveKeywordGlowPatch
         CardModel __instance,
         ref bool __result)
     {
-        __result |= LoadoutKeywords.Has(
-            __instance,
-            LoadoutKeywords.Enthralled);
+        if (!__result)
+            __result = LoadoutKeywords.Has(__instance, LoadoutKeywords.Enthralled);
     }
 }

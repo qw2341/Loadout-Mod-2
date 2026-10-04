@@ -46,7 +46,8 @@ public enum LoadoutKeywordEditorControlKind
 {
     Toggle,
     RepeatablePower,
-    RepeatableCard
+    RepeatableCard,
+    RepeatableText
 }
 
 public sealed record LoadoutKeywordDynamicVarDefinition(

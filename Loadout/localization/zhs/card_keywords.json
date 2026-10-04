@@ -1,4 +1,12 @@
 {
+  "LOADOUT-EXECUTE.title": "处决",
+  "LOADOUT-EXECUTE.description": "10%概率立即击杀目标。",
+  "LOADOUT-EXECUTE.chanceText": "{LoadoutExecuteChance:diff()}%概率立即击杀目标。",
+  "LOADOUT-EXECUTE.guaranteedText": "立即击杀目标。",
+  "LOADOUT-ALT_EXECUTE.title": "!?执行?!",
+  "LOADOUT-ALT_EXECUTE.description": "打出时执行控制台命令。",
+  "LOADOUT-ALT_EXECUTE.cardText": "执行 {Commands}",
+  "LOADOUT-EXECUTE.cardText": "{ExecuteText}",
   "LOADOUT-KARMIC.title": "!?因果?!",
   "LOADOUT-KARMIC.description": "此牌命中期间，每帧造成一次伤害。",
   "LOADOUT-INEVITABLE.title": "无法逃脱",

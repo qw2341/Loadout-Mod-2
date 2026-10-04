@@ -186,6 +186,7 @@ public partial class NCardModificationScreen : Control
         if (!IsVisibleInTree()
             || _isClosing
             || _textEditorOverlay is not null
+            || GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit
             || inputEvent is not InputEventKey { Pressed: true, Echo: false } keyEvent
             || keyEvent.CtrlPressed
             || keyEvent.AltPressed
@@ -1118,6 +1119,54 @@ public partial class NCardModificationScreen : Control
 
         AddPowerKeywordVariableControls();
         AddCardKeywordVariableControls();
+        AddExecuteCommandControls();
+    }
+
+    private void AddExecuteCommandControls()
+    {
+        if (_variableControls is null || _workingState.ExecuteCommands is not { } commands)
+            return;
+        for (int index = 0; index < commands.Count; index++)
+        {
+            int entryIndex = index;
+            NLoadoutTextStepper stepper = new();
+            stepper.Init(commands[index], value =>
+            {
+                List<string> updated = AltExecuteKeyword.CloneCommands(_workingState.ExecuteCommands) ?? [];
+                updated[entryIndex] = value;
+                SetExecuteCommands(updated);
+                ApplyWorkingState();
+            });
+            string label = LocMan.Loc("CARD_MOD_EXECUTE_COMMAND", "Console Command");
+            _variableControls.AddChild(CreateRow(commands.Count > 1 ? $"{label} {index + 1}" : label, stepper));
+        }
+    }
+
+    private int GetExecuteCommandCount(CardKeyword keyword) =>
+        keyword == LoadoutKeywords.AltExecute ? _workingState.ExecuteCommands?.Count ?? 0 : 0;
+
+    private void ChangeExecuteCommandCount(CardKeyword keyword, bool add)
+    {
+        if (keyword != LoadoutKeywords.AltExecute)
+            return;
+        List<string> commands = AltExecuteKeyword.CloneCommands(_workingState.ExecuteCommands) ?? [];
+        if (add)
+            commands.Add(string.Empty);
+        else if (commands.Count > 0)
+            commands.RemoveAt(commands.Count - 1);
+        else
+            return;
+        SetExecuteCommands(commands);
+        ApplyWorkingState();
+        Callable.From(RebuildControls).CallDeferred();
+    }
+
+    private void SetExecuteCommands(List<string> commands)
+    {
+        _workingState.ExecuteCommands = AltExecuteKeyword.CloneCommands(commands);
+        _temporaryState.ExecuteCommands = AltExecuteKeyword.CloneCommands(commands);
+        _workingState.KeywordOverrides[LoadoutKeywords.AltExecuteKey] = commands.Count > 0;
+        _temporaryState.KeywordOverrides[LoadoutKeywords.AltExecuteKey] = commands.Count > 0;
     }
 
     private void AddPowerKeywordVariableControls()
@@ -1849,9 +1898,9 @@ public partial class NCardModificationScreen : Control
         {
             _selectedKeywordModId = selectedId;
         },
-            getRepeatCount: keyword => GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword),
-            onRepeatAdded: keyword => { AddPowerKeywordEntry(keyword); AddCardKeywordEntry(keyword); },
-            onRepeatRemoved: keyword => { RemovePowerKeywordEntry(keyword); RemoveCardKeywordEntry(keyword); });
+            getRepeatCount: keyword => GetPowerKeywordEntryCount(keyword) + GetCardKeywordEntryCount(keyword) + GetExecuteCommandCount(keyword),
+            onRepeatAdded: keyword => { AddPowerKeywordEntry(keyword); AddCardKeywordEntry(keyword); ChangeExecuteCommandCount(keyword, true); },
+            onRepeatRemoved: keyword => { RemovePowerKeywordEntry(keyword); RemoveCardKeywordEntry(keyword); ChangeExecuteCommandCount(keyword, false); });
         if (editor.GetParent() is null)
             _rightControls.AddChild(editor);
     }

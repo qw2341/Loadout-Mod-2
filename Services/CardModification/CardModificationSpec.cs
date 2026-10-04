@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Loadout.Keywords;
 
 public enum CardModificationOperation
 {
@@ -295,6 +296,9 @@ public sealed class CardUpgradeModificationSpec
     [JsonPropertyName("ca")]
     public List<LoadoutCardKeywordEntry>? AddedCardKeywordEntries { get; set; }
 
+    [JsonPropertyName("executeCommands")]
+    public List<string>? ExecuteCommands { get; set; }
+
     [JsonIgnore]
     public bool IsEmpty =>
         EnergyCostDelta is null
@@ -305,13 +309,15 @@ public sealed class CardUpgradeModificationSpec
         && PowerKeywordEntryUpgrades is null
         && CardKeywordEntryUpgrades is null
         && AddedPowerKeywordEntries is null
-        && AddedCardKeywordEntries is null;
+        && AddedCardKeywordEntries is null
+        && ExecuteCommands is null;
 
     public CardUpgradeModificationSpec Clone()
     {
         return new CardUpgradeModificationSpec
         {
             EnergyCostDelta = EnergyCostDelta,
+            ExecuteCommands = AltExecuteKeyword.CloneCommands(ExecuteCommands),
             BaseReplayCountDelta = BaseReplayCountDelta,
             BaseStarCostDelta = BaseStarCostDelta,
             DynamicVarDeltas = new Dictionary<string, decimal>(DynamicVarDeltas, StringComparer.Ordinal),
@@ -352,6 +358,8 @@ public sealed class CardUpgradeModificationSpec
             CardKeywordEntryUpgrades = LoadoutCardKeywordEntryUpgrade.CloneList(
                 other.CardKeywordEntryUpgrades);
         }
+        if (other.ExecuteCommands is not null)
+            ExecuteCommands = AltExecuteKeyword.CloneCommands(other.ExecuteCommands);
         if (other.AddedPowerKeywordEntries is not null)
         {
             AddedPowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(
@@ -366,6 +374,7 @@ public sealed class CardUpgradeModificationSpec
 
     public void Normalize(bool removeZeroValues = false)
     {
+        ExecuteCommands = AltExecuteKeyword.NormalizeCommands(ExecuteCommands);
         if (removeZeroValues)
         {
             if (EnergyCostDelta == 0)
@@ -449,6 +458,9 @@ public sealed class CardModificationSpec
     [JsonPropertyName("cardKeywords")]
     public List<LoadoutCardKeywordEntry>? CardKeywordEntries { get; set; }
 
+    [JsonPropertyName("executeCommands")]
+    public List<string>? ExecuteCommands { get; set; }
+
     [JsonPropertyName("enchantment")]
     [JsonConverter(typeof(CardAttachmentListJsonConverter))]
     public List<CardAttachmentSpec>? Enchantments { get; set; }
@@ -476,6 +488,7 @@ public sealed class CardModificationSpec
         && KeywordOverrides.Count == 0
         && PowerKeywordEntries is null
         && CardKeywordEntries is null
+        && ExecuteCommands is null
         && Enchantments is null
         && (Affliction is null || Affliction.IsEmpty)
         && UpgradeModification.IsEmpty;
@@ -492,6 +505,7 @@ public sealed class CardModificationSpec
         || KeywordOverrides.Count > 0
         || PowerKeywordEntries is not null
         || CardKeywordEntries is not null
+        || ExecuteCommands is not null
         || Enchantments is not null
         || Affliction is not null
         || !UpgradeModification.IsEmpty;
@@ -530,6 +544,7 @@ public sealed class CardModificationSpec
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(PowerKeywordEntries),
             CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(CardKeywordEntries),
+            ExecuteCommands = AltExecuteKeyword.CloneCommands(ExecuteCommands),
             Enchantments = CardAttachmentSpec.CloneList(Enchantments),
             Affliction = Affliction?.Clone(),
             UpgradeModification = UpgradeModification.Clone()
@@ -570,6 +585,8 @@ public sealed class CardModificationSpec
             ForceAncientPortraitRendering = other.ForceAncientPortraitRendering;
         foreach ((string key, bool value) in other.KeywordOverrides)
             KeywordOverrides[key] = value;
+        if (other.ExecuteCommands is not null)
+            ExecuteCommands = AltExecuteKeyword.CloneCommands(other.ExecuteCommands);
         if (other.PowerKeywordEntries is not null)
             PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(other.PowerKeywordEntries);
         if (other.CardKeywordEntries is not null)
@@ -583,6 +600,7 @@ public sealed class CardModificationSpec
 
     public void Normalize()
     {
+        ExecuteCommands = AltExecuteKeyword.NormalizeCommands(ExecuteCommands);
         DynamicVars = DynamicVars
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
@@ -699,6 +717,9 @@ public sealed class CardModificationDelta
     [JsonPropertyName("ck")]
     public List<LoadoutCardKeywordEntry>? CardKeywordEntries { get; set; }
 
+    [JsonPropertyName("executeCommands")]
+    public List<string>? ExecuteCommands { get; set; }
+
     [JsonPropertyName("q")]
     [JsonConverter(typeof(CardAttachmentListJsonConverter))]
     public List<CardAttachmentSpec>? Enchantments { get; set; }
@@ -729,6 +750,7 @@ public sealed class CardModificationDelta
         && KeywordOverrides.Count == 0
         && PowerKeywordEntries is null
         && CardKeywordEntries is null
+        && ExecuteCommands is null
         && Enchantments is null
         && (Affliction is null || Affliction.IsEmpty)
         && UpgradeModification.IsEmpty;
@@ -746,6 +768,7 @@ public sealed class CardModificationDelta
         || KeywordOverrides.Count > 0
         || PowerKeywordEntries is not null
         || CardKeywordEntries is not null
+        || ExecuteCommands is not null
         || Enchantments is not null
         || Affliction is not null
         || !UpgradeModification.IsEmpty;
@@ -787,6 +810,7 @@ public sealed class CardModificationDelta
             KeywordOverrides = new Dictionary<string, bool>(KeywordOverrides, StringComparer.Ordinal),
             PowerKeywordEntries = LoadoutPowerKeywordEntry.CloneList(PowerKeywordEntries),
             CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(CardKeywordEntries),
+            ExecuteCommands = AltExecuteKeyword.CloneCommands(ExecuteCommands),
             Enchantments = CardAttachmentSpec.CloneList(Enchantments),
             Affliction = Affliction?.Clone(),
             UpgradeModification = UpgradeModification.Clone()
@@ -795,6 +819,7 @@ public sealed class CardModificationDelta
 
     public void Normalize()
     {
+        ExecuteCommands = AltExecuteKeyword.NormalizeCommands(ExecuteCommands);
         if (EnergyDelta == 0) EnergyDelta = null;
         if (BaseReplayCountDelta == 0) BaseReplayCountDelta = null;
         if (BaseStarCostDelta == 0) BaseStarCostDelta = null;

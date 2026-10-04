@@ -929,3 +929,6 @@ CARD_MOD_RANDOM_CARD_UPGRADE_NO,No,否,Non,いいえ,아니요,No
 CARD_MOD_RANDOM_CARD_UPGRADE_YES,Yes,是,Oui,はい,예,Sí
 CARD_MOD_RANDOM_CARD_UPGRADED_SINGLE,[gold]Upgraded[/gold],[gold]升级过[/gold]的,[gold]Améliorée[/gold],[gold]アップグレード[/gold]済み,[gold]강화[/gold]된,[gold]Mejorada[/gold]
 CARD_MOD_RANDOM_CARD_UPGRADED_PLURAL,[gold]Upgraded[/gold],[gold]升级过[/gold]的,[gold]Améliorées[/gold],[gold]アップグレード[/gold]済み,[gold]강화[/gold]된,[gold]Mejoradas[/gold]
+DYNAMIC_VAR_LOADOUT_EXECUTE_CHANCE,Execute Chance (%),处决概率（%）,Chance d’exécution (%),処刑確率（%）,처형 확률 (%),Probabilidad de ejecución (%)
+CARD_MOD_EXECUTE_COMMAND,Console Command,控制台命令,Commande de console,コンソールコマンド,콘솔 명령어,Comando de consola
+CARD_MOD_EDIT_COMMAND,Edit Command,编辑命令,Modifier la commande,コマンドを編集,명령어 편집,Editar comando

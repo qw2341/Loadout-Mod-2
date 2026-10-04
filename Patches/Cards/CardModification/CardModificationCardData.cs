@@ -259,6 +259,9 @@ internal static class CardModificationCodec
         [JsonPropertyName("ck")]
         public List<LoadoutCardKeywordEntry>? CardKeywordEntries { get; set; }
 
+        [JsonPropertyName("executeCommands")]
+        public List<string>? ExecuteCommands { get; set; }
+
         [JsonPropertyName("q")]
         [JsonConverter(typeof(CompactAttachmentListJsonConverter))]
         public List<CompactAttachment>? Enchantments { get; set; }
@@ -295,6 +298,7 @@ internal static class CardModificationCodec
                     spec.PowerKeywordEntries),
                 CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(
                     spec.CardKeywordEntries),
+                ExecuteCommands = AltExecuteKeyword.CloneCommands(spec.ExecuteCommands),
                 Enchantments = spec.Enchantments is null
                     ? null
                     : spec.Enchantments
@@ -335,6 +339,7 @@ internal static class CardModificationCodec
                     PowerKeywordEntries),
                 CardKeywordEntries = LoadoutCardKeywordEntry.CloneList(
                     CardKeywordEntries),
+                ExecuteCommands = AltExecuteKeyword.CloneCommands(ExecuteCommands),
                 Enchantments = Enchantments?
                     .Select(attachment => attachment.ToSpec())
                     .ToList(),

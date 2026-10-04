@@ -1,4 +1,12 @@
 {
+  "LOADOUT-EXECUTE.title": "処刑",
+  "LOADOUT-EXECUTE.description": "10%の確率で対象を即死させる。",
+  "LOADOUT-EXECUTE.chanceText": "{LoadoutExecuteChance:diff()}%の確率で対象を即死させる。",
+  "LOADOUT-EXECUTE.guaranteedText": "対象を即死させる。",
+  "LOADOUT-ALT_EXECUTE.title": "!?実行?!",
+  "LOADOUT-ALT_EXECUTE.description": "プレイ時にコンソールコマンドを実行する。",
+  "LOADOUT-ALT_EXECUTE.cardText": "実行 {Commands}",
+  "LOADOUT-EXECUTE.cardText": "{ExecuteText}",
   "LOADOUT-KARMIC.title": "!?因果?!",
   "LOADOUT-KARMIC.description": "このカードが命中する間、毎フレームダメージを与える。",
   "LOADOUT-INEVITABLE.title": "不可避",

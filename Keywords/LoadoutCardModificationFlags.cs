@@ -19,9 +19,30 @@ public enum LoadoutCardModificationFlags
     OverrideXValue = 1 << 2
 }
 
+[Flags]
+internal enum LoadoutKeywordCapabilities
+{
+    None = 0,
+    ChangesTargeting = 1 << 0,
+    RequiresAnotherPlayerTarget = 1 << 1,
+    ReportsGainsBlock = 1 << 2,
+    HasFatalEffect = 1 << 3,
+    RequiresFatalTargetSnapshots = 1 << 4,
+    HasTurnEndInHandEffect = 1 << 5,
+    SuppressesOriginalOnPlay = 1 << 6,
+    SuppressesOriginalIsPlayable = 1 << 7,
+    SuppressesOriginalShouldGlowGold = 1 << 8,
+    SuppressesOriginalModelHooks = 1 << 9
+}
+
 public static class LoadoutCardModificationFlagState
 {
-    private sealed record CachedFlags(LoadoutCardModificationFlags Value);
+    private sealed record CachedFlags(
+        LoadoutCardModificationFlags Value,
+        LoadoutKeywordCapabilities Capabilities);
+
+    private static readonly LoadoutKeywordCapabilities MultiHitCapabilities =
+        GetCapabilities(MultiHitKeyword.Instance);
 
     // Native clones and full rebuilds replace the local keyword set.
     private static readonly ConditionalWeakTable<IReadOnlySet<CardKeyword>, CachedFlags> Cache = new();
@@ -44,9 +65,53 @@ public static class LoadoutCardModificationFlagState
                && Powers.MultiHitPower.GrantsKeyword(card);
     }
 
-    private static LoadoutCardModificationFlags GetLocalFlags(CardModel card) =>
+    private static CachedFlags GetLocalState(CardModel card) =>
         Cache.GetValue(card.GetKeywordsWithSources(KeywordSources.Local),
-            static local => new CachedFlags(GetFlags(local))).Value;
+            CreateLocalState);
+
+    private static LoadoutCardModificationFlags GetLocalFlags(CardModel card) =>
+        GetLocalState(card).Value;
+
+    internal static bool HasCapability(CardModel card, LoadoutKeywordCapabilities capability)
+    {
+        LoadoutKeywordCapabilities capabilities = GetLocalState(card).Capabilities;
+        if ((capabilities & capability) == capability)
+            return true;
+        return ((capabilities | MultiHitCapabilities) & capability) == capability
+               && Powers.MultiHitPower.GrantsKeyword(card);
+    }
+
+    private static CachedFlags CreateLocalState(IReadOnlySet<CardKeyword> keywords)
+    {
+        LoadoutCardModificationFlags flags = LoadoutCardModificationFlags.None;
+        LoadoutKeywordCapabilities capabilities = LoadoutKeywordCapabilities.None;
+        foreach (CardKeyword keyword in keywords)
+        {
+            if (keyword == CardKeyword.None
+                || !LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model))
+                continue;
+
+            flags |= model.ModificationFlags;
+            capabilities |= GetCapabilities(model);
+        }
+        return new CachedFlags(flags, capabilities);
+    }
+
+    private static LoadoutKeywordCapabilities GetCapabilities(LoadoutKeywordModel model)
+    {
+        LoadoutKeywordCapabilities capabilities = LoadoutKeywordCapabilities.None;
+        if (model.ChangesTargeting) capabilities |= LoadoutKeywordCapabilities.ChangesTargeting;
+        if (model.RequiresAnotherPlayerTarget) capabilities |= LoadoutKeywordCapabilities.RequiresAnotherPlayerTarget;
+        if (model.ReportsGainsBlock) capabilities |= LoadoutKeywordCapabilities.ReportsGainsBlock;
+        if (model.HasFatalEffect) capabilities |= LoadoutKeywordCapabilities.HasFatalEffect;
+        if (model.HasFatalEffect && model.RequiresFatalTargetSnapshots) capabilities |= LoadoutKeywordCapabilities.RequiresFatalTargetSnapshots;
+        if (model.HasTurnEndInHandEffect) capabilities |= LoadoutKeywordCapabilities.HasTurnEndInHandEffect;
+        if (model.SuppressesOriginalOnPlay) capabilities |= LoadoutKeywordCapabilities.SuppressesOriginalOnPlay;
+        if (model.SuppressesOriginalIsPlayable) capabilities |= LoadoutKeywordCapabilities.SuppressesOriginalIsPlayable;
+        if (model.SuppressesOriginalShouldGlowGold) capabilities |= LoadoutKeywordCapabilities.SuppressesOriginalShouldGlowGold;
+        if (model.SuppressesOriginalModelHooks) capabilities |= LoadoutKeywordCapabilities.SuppressesOriginalModelHooks;
+        return capabilities;
+    }
 
     public static LoadoutCardModificationFlags GetFlags(
         IReadOnlySet<CardKeyword> keywords,

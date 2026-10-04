@@ -1,4 +1,12 @@
 {
+  "LOADOUT-EXECUTE.title": "Execute",
+  "LOADOUT-EXECUTE.description": "10% chance to instantly kill the target.",
+  "LOADOUT-EXECUTE.chanceText": "{LoadoutExecuteChance:diff()}% chance to instantly kill the target.",
+  "LOADOUT-EXECUTE.guaranteedText": "instantly kill the target.",
+  "LOADOUT-ALT_EXECUTE.title": "!?Execute?!",
+  "LOADOUT-ALT_EXECUTE.description": "Execute console commands when played.",
+  "LOADOUT-ALT_EXECUTE.cardText": "Execute {Commands}",
+  "LOADOUT-EXECUTE.cardText": "{ExecuteText}",
   "LOADOUT-KARMIC.title": "!?Karmic?!",
   "LOADOUT-KARMIC.description": "Deals damage on every frame this card hits.",
   "LOADOUT-INEVITABLE.title": "Inevitable",

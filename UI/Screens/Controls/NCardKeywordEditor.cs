@@ -514,7 +514,7 @@ public partial class NCardKeywordEditor : VBoxContainer
             CardKeyword keyword = entry.Keyword;
             string key = LoadoutKeywords.GetStorageKey(keyword);
             if (entry.ControlKind
-                is LoadoutKeywordEditorControlKind.RepeatablePower or LoadoutKeywordEditorControlKind.RepeatableCard)
+                is LoadoutKeywordEditorControlKind.RepeatablePower or LoadoutKeywordEditorControlKind.RepeatableCard or LoadoutKeywordEditorControlKind.RepeatableText)
             {
                 grid.AddChild(CreateRepeatableControl(entry, toggleWidth));
                 continue;
