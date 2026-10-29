@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 using Loadout.UI.Managers;
 
@@ -951,7 +951,7 @@ public partial class NGenericSelectScreen : Control
         return _hiddenPrewarmTask;
     }
 
-    private async Task PrewarmForFirstOpenCoreAsync()
+    private async Task PrewarmForFirstOpenCoreAsync(StartupPrewarmPlan? startupPlan = null, CancellationToken token = default)
     {
         bool ownsGlobalGate = false;
         CancellationTokenSource? hiddenPreloadCts = null;
@@ -981,23 +981,27 @@ public partial class NGenericSelectScreen : Control
                     return;
             }
 
-            PrepareHiddenPrewarmLayout();
+            if (startupPlan is not null && startupPlan.Generation != _layoutGeneration)
+                return;
+
+            token.ThrowIfCancellationRequested();
+            if (startupPlan is null)
+                PrepareHiddenPrewarmLayout();
             ulong generation = _layoutGeneration;
-            IReadOnlyList<IGenericSelectItem> warmItems = BuildHiddenPrewarmItemList();
+            IReadOnlyList<IGenericSelectItem> warmItems = startupPlan?.Items ?? BuildHiddenPrewarmItemList();
             IGenericSelectItem[] preloadItems = warmItems
                 .Where(HasPreloadWork)
                 .ToArray();
 
             if (preloadItems.Length > 0)
             {
-                hiddenPreloadCts = new CancellationTokenSource();
+                hiddenPreloadCts = CancellationTokenSource.CreateLinkedTokenSource(token);
                 _preloadCts = hiddenPreloadCts;
 
-                Task<bool> preloadTask = RunPreloadPipelineAsync(
-                    Name,
-                    preloadItems,
-                    MaxHiddenPreloadConcurrency,
-                    hiddenPreloadCts.Token);
+                Task<bool> preloadTask = startupPlan is null
+                    ? RunPreloadPipelineAsync(Name, preloadItems, MaxHiddenPreloadConcurrency, hiddenPreloadCts.Token)
+                    : RunThreadedPreloadAsync(Name, preloadItems.Where(item => item.HasPreloadResources).ToArray(),
+                        MaxHiddenPreloadConcurrency, hiddenPreloadCts.Token);
                 
                 while (!preloadTask.IsCompleted)
                 {
@@ -1040,13 +1044,16 @@ public partial class NGenericSelectScreen : Control
                 return;
             }
             
-            int maxItemsPerFrame = Math.Max(1, GetHiddenPrewarmBatchSize());
-            double frameBudgetMsec = Math.Max(0.1d, GetHiddenPrewarmFrameBudgetMsec());
+            int maxItemsPerFrame = startupPlan is null ? Math.Max(1, GetHiddenPrewarmBatchSize()) : 64;
+            double frameBudgetMsec = startupPlan is null ? Math.Max(0.1d, GetHiddenPrewarmFrameBudgetMsec()) : StartupFrameBudgetMsec;
             int materializedThisFrame = 0;
             long frameStartTimestamp = Stopwatch.GetTimestamp();
+            double viewWorkMsec = 0;
+            double frameWaitMsec = 0;
 
             foreach (IGenericSelectItem item in warmItems)
             {
+                token.ThrowIfCancellationRequested();
                 if (generation != _layoutGeneration
                     || !IsInsideTree()
                     || IsVisibleInTree())
@@ -1066,7 +1073,9 @@ public partial class NGenericSelectScreen : Control
                 if (!_itemLayouts.TryGetValue(item, out SelectItemLayout layout))
                     continue;
 
+                long itemStart = Stopwatch.GetTimestamp();
                 MaterializeItemView(item, layout, updateExistingView: false);
+                viewWorkMsec += Stopwatch.GetElapsedTime(itemStart).TotalMilliseconds;
                 materializedThisFrame++;
 
                 bool itemLimitReached = materializedThisFrame >= maxItemsPerFrame;
@@ -1075,8 +1084,10 @@ public partial class NGenericSelectScreen : Control
                     continue;
 
                 materializedThisFrame = 0;
+                long waitStart = Stopwatch.GetTimestamp();
                 if (!await WaitForHiddenPrewarmFrameAsync(generation))
                     return;
+                frameWaitMsec += Stopwatch.GetElapsedTime(waitStart).TotalMilliseconds;
 
                 frameStartTimestamp = Stopwatch.GetTimestamp();
             }
@@ -1086,7 +1097,8 @@ public partial class NGenericSelectScreen : Control
 
             UpdateViewportCulling(force: true);
             _hiddenPrewarmCompleted = true;
-            Log.Info($"[Loadout] Select screen '{Name}' main-thread prewarm complete: items={warmItems.Count}.");
+            Log.Info($"[Loadout] Select screen '{Name}' main-thread prewarm complete: items={warmItems.Count}, " +
+                     $"viewWork={viewWorkMsec:N1}ms, frameWait={frameWaitMsec:N1}ms, startup={startupPlan is not null}.");
         }
         catch (OperationCanceledException)
         {
@@ -1124,7 +1136,7 @@ public partial class NGenericSelectScreen : Control
             _hiddenPrewarmOwner = null;
     }
 
-    private void PrepareHiddenPrewarmLayout()
+    private void PrepareHiddenPrewarmLayout(IReadOnlyList<IGenericSelectItem>? sortedItems = null)
     {
         CancelPendingMaterialization();
         CancelPendingSearchRefresh();
@@ -1132,8 +1144,15 @@ public partial class NGenericSelectScreen : Control
         RebuildActiveFilterPlan();
 
         _visibleItems.Clear();
-        _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
-        _visibleItems.Sort(CompareItems);
+        if (sortedItems is null)
+        {
+            _visibleItems.AddRange(_items.Where(PassesSearchAndFilters));
+            _visibleItems.Sort(CompareItems);
+        }
+        else
+        {
+            _visibleItems.AddRange(sortedItems);
+        }
         ClearLayoutTracking();
 
         foreach (IGenericSelectItem item in _items)
@@ -1479,6 +1498,11 @@ public partial class NGenericSelectScreen : Control
 
         RebuildActiveFilterPlan();
         RebuildFilterButtons();
+    }
+
+    public void SetStartupSortSnapshot(string sorterId, Func<IReadOnlyList<IGenericSelectItem>, Comparison<int>> capture)
+    {
+        _sortersById[sorterId].CaptureStartupComparison = capture;
     }
 
     public void AddSorter(SelectSorterDefinition sorter)
@@ -3615,11 +3639,22 @@ public partial class NGenericSelectScreen : Control
         CancellationToken token)
     {
         HashSet<string> resourcePaths = new(StringComparer.Ordinal);
+        CollectNativeResourcePaths(screenName, preloadItems, new HashSet<string>(StringComparer.Ordinal), resourcePaths, token);
+        return await LoadNativeResourcePathsAsync(screenName, resourcePaths, token);
+    }
+
+    private void CollectNativeResourcePaths(
+        string screenName,
+        IReadOnlyList<IGenericSelectItem> preloadItems,
+        ISet<string> checkedPaths,
+        ISet<string> resourcePaths,
+        CancellationToken token)
+    {
 
         foreach (IGenericSelectItem item in preloadItems)
         {
             if (token.IsCancellationRequested)
-                return false;
+                return;
 
             if (item is not ISelectItemResourcePreloadDescriptor
                 {
@@ -3633,7 +3668,7 @@ public partial class NGenericSelectScreen : Control
             {
                 foreach (string path in descriptor.CapturePreloadResourcePaths())
                 {
-                    if (string.IsNullOrWhiteSpace(path) || PreloadManager.Cache.ContainsKey(path))
+                    if (string.IsNullOrWhiteSpace(path) || !checkedPaths.Add(path) || PreloadManager.Cache.ContainsKey(path))
                         continue;
 
                     if (!ResourceLoader.Exists(path))
@@ -3652,7 +3687,14 @@ public partial class NGenericSelectScreen : Control
                     $"Loadout select screen '{screenName}' failed to capture preload resources for item '{item.Id}' ({item.Name}): {exception}");
             }
         }
+    }
 
+    private async Task<bool> LoadNativeResourcePathsAsync(
+        string screenName,
+        IReadOnlyCollection<string> resourcePaths,
+        CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
         if (resourcePaths.Count == 0)
         {
             Log.Info(
@@ -4017,7 +4059,7 @@ public partial class NGenericSelectScreen : Control
 
         MegaRichTextLabel label = new()
         {
-            Text = header.Text,
+            AutoSizeEnabled = false,
             BbcodeEnabled = true,
             FitContent = true,
             ScrollActive = false,
@@ -4026,6 +4068,8 @@ public partial class NGenericSelectScreen : Control
             MouseFilter = MouseFilterEnum.Ignore
         };
         ApplyGameRichTextTheme(label);
+        label.RefreshFont();
+        label.Text = header.Text;
         headerRow.AddChild(label);
 
         return container;
@@ -5641,6 +5685,20 @@ public sealed class SelectScreenBuilder<TModel>
         return this;
     }
 
+    // Capture runs on the main thread; comparison uses only immutable snapshot values.
+    public SelectScreenBuilder<TModel> StartupSortSnapshot<TSnapshot>(
+        string sorterId,
+        Func<TModel, TSnapshot> capture,
+        Comparison<TSnapshot> compare)
+    {
+        _screen.SetStartupSortSnapshot(sorterId, items =>
+        {
+            TSnapshot[] snapshots = items.Select(item => capture(((GenericSelectItem<TModel>)item).Model)).ToArray();
+            return (left, right) => compare(snapshots[left], snapshots[right]);
+        });
+        return this;
+    }
+
     public SelectScreenBuilder<TModel> GroupBySorter(
         string sorterId,
         Func<TModel, string> keySelector,
@@ -6228,6 +6286,7 @@ public sealed class SelectSorterDefinition
     public bool ActiveByDefault { get; }
     public bool DescendingByDefault { get; }
     public bool IsDescending { get; set; }
+    public Func<IReadOnlyList<IGenericSelectItem>, Comparison<int>>? CaptureStartupComparison { get; set; }
 
     public int Compare(IGenericSelectItem left, IGenericSelectItem right)
     {

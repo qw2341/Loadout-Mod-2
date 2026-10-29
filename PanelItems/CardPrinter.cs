@@ -176,6 +176,7 @@ public class CardPrinter
 			    section: SelectSidebarSection.Bottom);
 		    IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedPrinterCardPools();
 		    builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
+		    builder.StartupSortSnapshot("library", card => CaptureLibrarySortKey(card, librarySortPools), CompareLibrarySortKeys);
 		    builder.KeySorter("name", LocMan.GameLoc("gameplay_ui", "SORT_ALPHABET", LocMan.Loc("SORT_NAME", "Name")), card => FormatCardTitle(ResolvePrinterDisplay(card)), comparer: StringComparer.Ordinal);
 		    builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
 		    builder.Sorter("cost", LocMan.GameLoc("gameplay_ui", "SORT_COST", LocMan.Loc("SORT_COST", "Cost")), CompareEffectiveCardCost);
@@ -969,6 +970,36 @@ public class CardPrinter
 		    return cost;
 
 	    return string.Compare(left.Id.Entry, right.Id.Entry, StringComparison.Ordinal);
+    }
+
+    private readonly record struct LibrarySortKey(int Pool, int Rarity, CardType Type, int Cost, string Id);
+
+    private static LibrarySortKey CaptureLibrarySortKey(CardModel card, IReadOnlyList<CardPoolModel> orderedPools)
+    {
+	    card = ResolvePrinterDisplay(card);
+	    return new LibrarySortKey(GetCardPoolSortIndex(card.Pool, orderedPools), GetCardRaritySortValue(card.Rarity),
+	        card.Type, card.EnergyCost.GetResolved(), card.Id.Entry);
+    }
+
+    private static int CompareLibrarySortKeys(LibrarySortKey left, LibrarySortKey right)
+    {
+	    int pool = left.Pool.CompareTo(right.Pool);
+	    if (pool != 0)
+		    return pool;
+
+	    int rarity = left.Rarity.CompareTo(right.Rarity);
+	    if (rarity != 0)
+		    return rarity;
+
+	    int type = left.Type.CompareTo(right.Type);
+	    if (type != 0)
+		    return type;
+
+	    int cost = left.Cost.CompareTo(right.Cost);
+	    if (cost != 0)
+		    return cost;
+
+	    return string.Compare(left.Id, right.Id, StringComparison.Ordinal);
     }
 
     private static int CompareEffectiveCardCost(CardModel left, CardModel right)

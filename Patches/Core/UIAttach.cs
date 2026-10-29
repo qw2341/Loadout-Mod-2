@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -13,6 +15,7 @@ using Loadout.Services.Loadouts;
 using Loadout.Services.PowerGiver;
 using Loadout.Services.TildeKey;
 using Loadout.UI;
+using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Logging;
 
@@ -50,6 +53,8 @@ public static class UIAttach
     {
         NLoadoutPanelRoot root = null;
         bool completed = false;
+        long startupStart = Stopwatch.GetTimestamp();
+        using CancellationTokenSource startupCts = new();
 
         try
         {
@@ -71,6 +76,7 @@ public static class UIAttach
                 Log.Error("[Loadout] Failed to initialize startup UI: root was null or invalid.");
                 return;
             }
+            root.TreeExiting += startupCts.Cancel;
 
             NLoadoutPanel panel = root.GetNodeOrNull<NLoadoutPanel>("LoadoutPanel");
             if (!IsValid(panel))
@@ -81,8 +87,10 @@ public static class UIAttach
             if (!await WaitForNextFrame(root))
                 return;
 
+            long panelStart = Stopwatch.GetTimestamp();
             if (!panel.TryInitializeLoadoutItems())
                 return;
+            Log.Info($"[Loadout] Startup panel configuration: {Stopwatch.GetElapsedTime(panelStart).TotalMilliseconds:N1}ms.");
 
             // Give the panel-item nodes their own frame before materializing the
             // first catalog screen, avoiding a combined initialization spike.
@@ -95,7 +103,9 @@ public static class UIAttach
                 .ThenBy(entry => entry.Name.ToString(), StringComparer.Ordinal)
                 .ToList();
             int attachedScreens = 0;
-            int prewarmedScreens = 0;
+            List<NGenericSelectScreen> attached = new();
+            long attachStart = Stopwatch.GetTimestamp();
+            long frameStart = attachStart;
 
             foreach (NLoadoutPanel.SelectScreenPreloadEntry entry in prioritizedScreens)
             {
@@ -107,25 +117,26 @@ public static class UIAttach
                     entry.Screen.Name = entry.Name;
                     root.RegisterScreen(entry.Screen);
                     attachedScreens++;
-
-                    if (!await WaitForNextFrame(root))
-                        return;
-
-                    await entry.Screen.PrewarmForFirstOpenAsync();
-                    if (!IsValid(root))
-                        return;
-
-                    if (entry.Screen.IsFirstOpenPrewarmed)
-                        prewarmedScreens++;
+                    attached.Add(entry.Screen);
                 }
                 catch (Exception e)
                 {
-                    Log.Error($"[Loadout] Failed to register or prewarm select screen '{entry.Name}': {e}");
+                    Log.Error($"[Loadout] Failed to register select screen '{entry.Name}': {e}");
                 }
 
-                if (!await WaitForNextFrame(root))
-                    return;
+                if (Stopwatch.GetElapsedTime(frameStart).TotalMilliseconds >= NGenericSelectScreen.StartupFrameBudgetMsec)
+                {
+                    if (!await WaitForNextFrame(root))
+                        return;
+                    frameStart = Stopwatch.GetTimestamp();
+                }
             }
+            Log.Info($"[Loadout] Startup screen attachment: {Stopwatch.GetElapsedTime(attachStart).TotalMilliseconds:N1}ms.");
+
+            if (!await WaitForNextFrame(root))
+                return;
+
+            int prewarmedScreens = await NGenericSelectScreen.PrewarmStartupScreensAsync(attached, startupCts.Token);
 
             if (!IsValid(root))
                 return;
@@ -133,6 +144,9 @@ public static class UIAttach
             Log.Info(
                 $"[Loadout] Registered {attachedScreens} and prewarmed {prewarmedScreens} generic select screens before first use.");
             completed = true;
+        }
+        catch (OperationCanceledException) when (startupCts.IsCancellationRequested)
+        {
         }
         catch (Exception e)
         {
@@ -142,6 +156,7 @@ public static class UIAttach
         {
             if (IsValid(root))
             {
+                root.TreeExiting -= startupCts.Cancel;
                 try
                 {
                     root.CloseAllScreens();
@@ -155,7 +170,7 @@ public static class UIAttach
         }
 
         if (completed)
-            Log.Info("[Loadout] Startup UI initialization and select-screen prewarm complete.");
+            Log.Info($"[Loadout] Startup UI initialization and select-screen prewarm complete: {Stopwatch.GetElapsedTime(startupStart).TotalMilliseconds:N1}ms.");
     }
 
     private static int GetSelectScreenPreloadPriority(NLoadoutPanel.SelectScreenPreloadEntry entry)

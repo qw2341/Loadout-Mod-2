@@ -74,6 +74,11 @@ public class EventfulCompass
 					(left, right) => CompareEventsByAct(left, right, catalog, grouping),
 					(left, right) => CompareEventsByAct(right, left, catalog, grouping),
 					activeByDefault: true);
+				builder.StartupSortSnapshot("act",
+					model => (Order: catalog.TryGetPlacement(model, out EventPlacement placement)
+						? grouping.GetLeafOrder(placement.GroupKey) : int.MaxValue, Id: model.Id.Entry),
+					static (left, right) => left.Order != right.Order
+						? left.Order.CompareTo(right.Order) : string.CompareOrdinal(left.Id, right.Id));
 				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), FormatEventTitle, comparer: StringComparer.Ordinal);
 				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
 				builder.GroupBySorter(
@@ -723,7 +728,10 @@ public class EventfulCompass
 		    HorizontalAlignment.Center,
 		    isAncient ? new Color(0.937255f, 0.784314f, 0.317647f, 1f) : StsColors.cream);
 	    if (isAncient)
+	    {
 		    titleLabel.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/spectral_bold_shared.tres"));
+		    titleLabel.RefreshFont();
+	    }
 	    else
 		    ConfigureWrappingEventTitle(titleLabel);
 	    button.AddChild(titleLabel);
@@ -738,6 +746,7 @@ public class EventfulCompass
 			    HorizontalAlignment.Center,
 			    new Color(0.529412f, 0.807843f, 0.921569f, 0.88f));
 		    epithetLabel.AddThemeFontOverride("font", CommonHelpers.LoadGameFont("res://themes/bitter_medium_italic_glyph_space_one.tres"));
+		    epithetLabel.RefreshFont();
 		    button.AddChild(epithetLabel);
 	    }
 

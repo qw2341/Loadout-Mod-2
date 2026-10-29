@@ -427,6 +427,8 @@ public partial class NLoadoutPanel : Panel
 				GetName = potion => CommonHelpers.FormatPotionTitle(potion),
 				GetSearchText = potion => $"{potion.Id} {CommonHelpers.FormatPotionTitle(potion)} {potion.DynamicDescription.GetFormattedText()}",
 				GetBanTarget = potion => ContentBanTarget.Potion(potion),
+				CapturePreloadResourcePaths = potion =>
+					[potion.ImagePath, NLabPotionHolder.scenePath, SceneHelper.GetScenePath("potions/potion")],
 				CreateView = (potion, _) => CreatePotionGridItem(potion),
 				BindActivationWithCleanup = (_, view, activate) => CommonHelpers.BindGuiReleaseActivationWithCleanup(view, activate)
 			}, builder =>
@@ -447,6 +449,7 @@ public partial class NLoadoutPanel : Panel
 				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), CommonHelpers.FormatPotionTitle, comparer: StringComparer.Ordinal);
 				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
 				builder.Sorter("rarity", LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.Loc("SORT_RARITY", "Rarity")), ComparePotionRarity, activeByDefault: true);
+				builder.StartupSortSnapshot("rarity", CapturePotionSortKey, ComparePotionSortKeys);
 				builder.GroupBySorter(
 					"rarity",
 					GetPotionGroupKey,
@@ -785,6 +788,15 @@ public partial class NLoadoutPanel : Panel
 	{
 		int rarity = GetPotionRaritySortValue(left.Rarity).CompareTo(GetPotionRaritySortValue(right.Rarity));
 		return rarity != 0 ? rarity : string.Compare(CommonHelpers.FormatPotionTitle(left), CommonHelpers.FormatPotionTitle(right), StringComparison.Ordinal);
+	}
+
+	private static (int Rarity, string Title) CapturePotionSortKey(PotionModel potion)
+		=> (GetPotionRaritySortValue(potion.Rarity), CommonHelpers.FormatPotionTitle(potion));
+
+	private static int ComparePotionSortKeys((int Rarity, string Title) left, (int Rarity, string Title) right)
+	{
+		int rarity = left.Rarity.CompareTo(right.Rarity);
+		return rarity != 0 ? rarity : string.Compare(left.Title, right.Title, StringComparison.Ordinal);
 	}
 
 	private static int GetPotionRaritySortValue(PotionRarity rarity)

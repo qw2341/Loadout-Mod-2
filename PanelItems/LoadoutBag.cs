@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,6 +15,7 @@ using Loadout.UI.Managers;
 using Loadout.UI.Screens;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Entities.UI;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -36,7 +37,8 @@ public class LoadoutBag
 				GetName = relic => CommonHelpers.FormatRelicTitle(relic),
 				GetSearchText = relic => $"{relic.Id} {CommonHelpers.FormatRelicTitle(relic)} {relic.DynamicDescription.GetFormattedText()}",
 				GetBanTarget = relic => ContentBanTarget.Relic(relic),
-				CapturePreloadResourcePaths = relic => [relic.IconPath, NOneRelicSelectionVisual.RareGlowScenePath],
+				CapturePreloadResourcePaths = relic =>
+					[relic.IconPath, SceneHelper.GetScenePath("relics/relic_basic_holder"), NOneRelicSelectionVisual.RareGlowScenePath],
 				CreateView = (relic, state) => CreateRelicGridItem(relic, state),
 				ViewReady = (relic, view) =>
 				{
@@ -73,6 +75,7 @@ public class LoadoutBag
 					LocMan.GameLoc("gameplay_ui", "SORT_RARITY", LocMan.Loc("SORT_RARITY", "Rarity")),
 					(left, right) => CompareRelicRarity(left, right, relicGroupingData),
 					activeByDefault: true);
+				builder.StartupSortSnapshot("rarity", relic => CaptureRelicSortKey(relic, relicGroupingData), CompareRelicSortKeys);
 				builder.GroupBySorter(
 					"rarity",
 					relic => GetRelicGroupKey(relic, relicGroupingData),
@@ -416,6 +419,41 @@ public class LoadoutBag
 
 	    int rarity = GetRelicRaritySortValue(left.Rarity).CompareTo(GetRelicRaritySortValue(right.Rarity));
 	    return rarity != 0 ? rarity : string.Compare(CommonHelpers.FormatRelicTitle(left), CommonHelpers.FormatRelicTitle(right), StringComparison.Ordinal);
+    }
+
+    private readonly record struct RelicSortKey(string Group, int? CompatibilityRarity, int? CompatibilityOrder, int Rarity, string Title);
+
+    private static RelicSortKey CaptureRelicSortKey(RelicModel relic, RelicGroupingData groupingData)
+    {
+	    string id = relic.Id.ToString();
+	    return new RelicSortKey(GetRelicGroupKey(relic, groupingData),
+	        groupingData.CompatibilityRarityOrderByRelicId.TryGetValue(id, out int rarity) ? rarity : null,
+	        groupingData.CompatibilityCatalogOrderByRelicId.TryGetValue(id, out int order) ? order : null,
+	        GetRelicRaritySortValue(relic.Rarity), CommonHelpers.FormatRelicTitle(relic));
+    }
+
+    private static int CompareRelicSortKeys(RelicSortKey left, RelicSortKey right)
+    {
+	    int groupOrder = string.Compare(left.Group, right.Group, StringComparison.Ordinal);
+	    if (groupOrder != 0)
+		    return groupOrder;
+
+	    if (left.CompatibilityRarity is int leftRarityOrder && right.CompatibilityRarity is int rightRarityOrder)
+	    {
+		    int rarityOrder = leftRarityOrder.CompareTo(rightRarityOrder);
+		    if (rarityOrder != 0)
+			    return rarityOrder;
+
+		    if (left.CompatibilityOrder is int leftCatalogOrder && right.CompatibilityOrder is int rightCatalogOrder)
+		    {
+			    int catalogOrder = leftCatalogOrder.CompareTo(rightCatalogOrder);
+			    if (catalogOrder != 0)
+				    return catalogOrder;
+		    }
+	    }
+
+	    int rarity = left.Rarity.CompareTo(right.Rarity);
+	    return rarity != 0 ? rarity : string.Compare(left.Title, right.Title, StringComparison.Ordinal);
     }
 
     public static int GetRelicRaritySortValue(RelicRarity rarity)

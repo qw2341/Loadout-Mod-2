@@ -144,6 +144,7 @@ public class PowerGiver
 				builder.Filter("single", LocMan.Loc("POWER_STACK_SINGLE", "Single"), power => GetPowerStackType(power) == PowerStackType.Single, "stack");
 				CommonHelpers.AddModFilters(builder, allPowers);
 				builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), GetPowerTitle, activeByDefault: true, comparer: StringComparer.Ordinal);
+				builder.StartupSortSnapshot("name", GetPowerTitle, StringComparer.Ordinal.Compare);
 				builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.Entry, comparer: StringComparer.Ordinal);
 				builder.Sorter("type", LocMan.GameLoc("gameplay_ui", "SORT_TYPE", LocMan.Loc("SORT_TYPE", "Type")), (a, b) => GetPowerType(a).CompareTo(GetPowerType(b)));
 			});

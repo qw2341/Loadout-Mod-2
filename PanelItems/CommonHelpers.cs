@@ -1155,6 +1155,8 @@ public class CommonHelpers
         label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
         label.AddThemeConstantOverride("shadow_offset_x", 3);
         label.AddThemeConstantOverride("shadow_offset_y", 2);
+        // Select the locale font before tree entry triggers text shaping.
+        label.RefreshFont();
         return label;
     }
 

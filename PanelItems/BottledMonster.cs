@@ -80,6 +80,10 @@ public static class BottledMonster
                     (left, right) => CompareMonstersByCategory(left, right, catalog, grouping),
                     (left, right) => CompareMonstersByCategory(right, left, catalog, grouping),
                     activeByDefault: true);
+                builder.StartupSortSnapshot(CategorySorterId,
+                    model => (Order: grouping.GetLeafOrder(GetMonsterGroupKey(model, catalog)), Id: model.Id.ToString()),
+                    static (left, right) => left.Order != right.Order
+                        ? left.Order.CompareTo(right.Order) : string.CompareOrdinal(left.Id, right.Id));
                 builder.KeySorter("name", LocMan.Loc("SORT_NAME", "Name"), FormatMonsterTitle, comparer: StringComparer.Ordinal);
                 builder.KeySorter("id", LocMan.Loc("SORT_ID", "ID"), model => model.Id.ToString(), comparer: StringComparer.Ordinal);
                 builder.Sorter("mod", LocMan.Loc("FILTER_GROUP_MODS", "Mods"), CompareMonsterMod);
@@ -212,6 +216,10 @@ public static class BottledMonster
             (left, right) => CompareMorphOptionsByCategory(left, right, catalog, grouping),
             (left, right) => CompareMorphOptionsByCategory(right, left, catalog, grouping),
             activeByDefault: true);
+        builder.StartupSortSnapshot(CategorySorterId,
+            option => (Order: grouping.GetLeafOrder(GetMorphGroupKey(option, catalog)), option.Id),
+            static (left, right) => left.Order != right.Order
+                ? left.Order.CompareTo(right.Order) : string.CompareOrdinal(left.Id, right.Id));
         builder.Sorter("name", LocMan.Loc("SORT_NAME", "Name"), CompareMorphOptionName);
         builder.Sorter("id", LocMan.Loc("SORT_ID", "ID"), (left, right) => CompareMorphOptions(left, right, option => option.Model?.Id.ToString() ?? string.Empty));
         builder.Sorter("mod", LocMan.Loc("FILTER_GROUP_MODS", "Mods"), (left, right) => CompareMorphOptions(left, right, option => option.Model is null ? string.Empty : CommonHelpers.GetModName(CommonHelpers.GetModelModId(option.Model))));
@@ -323,7 +331,7 @@ public static class BottledMonster
             CharacterModel character => character.AssetPaths.FirstOrDefault(),
             _ => null
         };
-        return string.IsNullOrWhiteSpace(path) ? Array.Empty<string>() : [path];
+        return string.IsNullOrWhiteSpace(path) ? Array.Empty<string>() : [path, .. NCreature.AssetPaths];
     }
 
     private static Control CreateMorphGridItem(MorphOption option)

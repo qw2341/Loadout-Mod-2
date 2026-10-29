@@ -1026,6 +1026,7 @@ public static partial class TildeKey
             label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
             label.AddThemeConstantOverride("shadow_offset_x", 3);
             label.AddThemeConstantOverride("shadow_offset_y", 2);
+            label.RefreshFont();
             return label;
         }
     }
