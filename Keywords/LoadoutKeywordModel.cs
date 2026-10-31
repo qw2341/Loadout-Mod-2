@@ -36,6 +36,7 @@ public enum LoadoutKeywordEditorSection
     BasicMultipliers,
     Power,
     Card,
+    Keyword,
     Restrictive,
     Fatal,
     Improvement,

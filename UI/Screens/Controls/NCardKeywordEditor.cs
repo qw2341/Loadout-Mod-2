@@ -331,6 +331,12 @@ public partial class NCardKeywordEditor : VBoxContainer
         AddLoadoutSection(
             blocks,
             catalog,
+            LoadoutKeywordEditorSection.Keyword,
+            "CARD_MOD_LOADOUT_KEYWORD_KEYWORDS",
+            "Loadout Keyword Keyword");
+        AddLoadoutSection(
+            blocks,
+            catalog,
             LoadoutKeywordEditorSection.Restrictive,
             "CARD_MOD_LOADOUT_RESTRICTIVE_KEYWORDS",
             "Loadout Restrictive Keywords");
@@ -408,6 +414,12 @@ public partial class NCardKeywordEditor : VBoxContainer
             LoadoutKeywordEditorSection.Card,
             "CARD_MOD_LOADOUT_CARD_KEYWORDS",
             "Loadout Card Keywords");
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.Keyword,
+            "CARD_MOD_LOADOUT_KEYWORD_KEYWORDS",
+            "Loadout Keyword Keyword");
         AddLoadoutSection(
             blocks,
             entries,
@@ -754,7 +766,7 @@ public partial class NCardKeywordEditor : VBoxContainer
     {
         return entries.Count > 0
                && entries.All(entry =>
-                   entry.EditorSection is LoadoutKeywordEditorSection.Power or LoadoutKeywordEditorSection.Card)
+                   entry.EditorSection is LoadoutKeywordEditorSection.Power or LoadoutKeywordEditorSection.Card or LoadoutKeywordEditorSection.Keyword)
             ? 1
             : Columns;
     }
@@ -812,6 +824,16 @@ public partial class NCardKeywordEditor : VBoxContainer
             return keyword.ToString();
         }
     }
+
+    public static IReadOnlyList<CardKeyword> GetSelectableKeywords() =>
+        Enum.GetValues<CardKeyword>().Concat(LoadoutKeywords.All)
+            .Concat(CustomKeywords.KeywordIDs.Keys.Select(value => (CardKeyword)value))
+            .Concat(ModelDb.AllCards.SelectMany(GetKeywordsSafely))
+            .Where(keyword => keyword != CardKeyword.None)
+            .Distinct()
+            .OrderBy(GetKeywordLabel, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(keyword => (int)keyword)
+            .ToArray();
 
     private static IEnumerable<CardKeyword> GetKeywordsSafely(CardModel card)
     {

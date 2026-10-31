@@ -403,5 +403,13 @@
   "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}",
   "LOADOUT-ADD_RANDOM_CARD.title": "ランダムカード追加",
   "LOADOUT-ADD_RANDOM_CARD.description": "プレイ時、選択したプールとレア度のランダムなカードを指定した場所に加える。",
-  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}"
+  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}",
+  "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.title": "ランダムなカードにキーワードを付与",
+  "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.description": "この戦闘中、選択した山のランダムなカードに設定したキーワードを付与する。",
+  "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.title": "選んだカードにキーワードを付与",
+  "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.description": "この戦闘中、選択した山から選んだカードに設定したキーワードを付与する。",
+  "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "全カードにキーワードを付与",
+  "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "この戦闘中、選択した山の他の全カードに設定したキーワードを付与する。",
+  "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
+  "LOADOUT-ADD_KEYWORD.selectionPrompt": "{Keyword}を付与するカードを選択。"
 }

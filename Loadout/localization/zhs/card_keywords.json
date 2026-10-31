@@ -403,5 +403,13 @@
   "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}",
   "LOADOUT-ADD_RANDOM_CARD.title": "添加随机牌",
   "LOADOUT-ADD_RANDOM_CARD.description": "打出时，将符合所选牌池和稀有度的随机牌加入指定牌堆。",
-  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}"
+  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}",
+  "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.title": "为随机卡牌添加关键词",
+  "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.description": "本场战斗中，为所选牌堆的随机卡牌添加已配置的关键词。",
+  "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.title": "为指定卡牌添加关键词",
+  "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.description": "本场战斗中，为你从所选牌堆中选择的卡牌添加已配置的关键词。",
+  "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "为所有卡牌添加关键词",
+  "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "本场战斗中，为所选牌堆中的所有其他卡牌添加已配置的关键词。",
+  "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
+  "LOADOUT-ADD_KEYWORD.selectionPrompt": "选择一张卡牌，添加{Keyword}。"
 }

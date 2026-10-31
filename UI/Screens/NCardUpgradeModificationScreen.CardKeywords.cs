@@ -111,6 +111,33 @@ public partial class NCardUpgradeModificationScreen
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            if (baseEntry.IsKeywordGrant)
+            {
+                _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
+                LoadoutCardKeywordEntry effective = baseEntry.Clone();
+                effective.Pile = configured?.ReplacementPile ?? baseEntry.Pile;
+                effective.GrantedKeyword = (configured?.ReplacementGrantedKeyword ?? baseEntry.GrantedKeyword)?.Clone();
+                NLoadoutKeywordEntryEditor nestedEditor = new();
+                nestedEditor.Init(effective, updated =>
+                {
+                    UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence, entry =>
+                    {
+                        entry.ReplacementPile = updated.Pile == baseEntry.Pile ? null : updated.Pile;
+                        entry.ReplacementGrantedKeyword = LoadoutKeywordPayload.Equivalent(updated.GrantedKeyword, baseEntry.GrantedKeyword)
+                            ? null : updated.GrantedKeyword?.Clone();
+                    });
+                    RefreshPreview();
+                }, showAmount: false);
+                _leftControls.AddChild(nestedEditor);
+                if (model is not LoadoutKeywordKeywordModel { Selection: LoadoutKeywordCardSelection.All })
+                    AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_CARD_KEYWORD_UPGRADE_AMOUNT", "Upgrade Amount") + suffix,
+                        configured?.AmountDelta ?? 0, int.MinValue, int.MaxValue, amount =>
+                        {
+                            SetCardEntryUpgradeAmount(model.StorageKey, baseEntry.CardId, occurrence, amount);
+                            RefreshPreview();
+                        });
+                continue;
+            }
             if (baseEntry.IsRandom)
             {
                 NLoadoutCardFilterStepper pool = new();
@@ -229,6 +256,23 @@ public partial class NCardUpgradeModificationScreen
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            if (addedEntries[index].IsKeywordGrant)
+            {
+                _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
+                NLoadoutKeywordEntryEditor nestedEditor = new();
+                nestedEditor.Init(addedEntries[index], updated =>
+                {
+                    UpdateAddedCardKeywordEntry(capturedIndex, entry =>
+                    {
+                        entry.Amount = updated.Amount;
+                        entry.Pile = updated.Pile;
+                        entry.GrantedKeyword = updated.GrantedKeyword?.Clone();
+                    });
+                    RefreshPreview();
+                });
+                _leftControls.AddChild(nestedEditor);
+                continue;
+            }
             if (addedEntries[index].IsRandom)
             {
                 NLoadoutCardFilterStepper pool = new();

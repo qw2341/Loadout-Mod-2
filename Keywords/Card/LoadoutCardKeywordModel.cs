@@ -13,7 +13,12 @@ public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
 
     private static class Models
     {
-        public static readonly IReadOnlyList<LoadoutCardKeywordModel> Value = [AddCardKeyword.Instance, AddRandomCardKeyword.Instance];
+        public static readonly IReadOnlyList<LoadoutCardKeywordModel> Value =
+        [
+            AddCardKeyword.Instance, AddRandomCardKeyword.Instance,
+            AddKeywordToRandomCardKeyword.Instance, AddKeywordToChosenCardKeyword.Instance,
+            AddKeywordToAllCardsKeyword.Instance
+        ];
     }
 
     public override LoadoutKeywordPresentation Presentation => LoadoutKeywordPresentation.DescriptionOnly;

@@ -99,8 +99,7 @@ public static class LoadoutCardKeywordState
     {
         if (card.IsCanonical)
         {
-            if (LoadoutKeywords.Has(card, LoadoutKeywords.AddCard)
-                || LoadoutKeywords.Has(card, LoadoutKeywords.AddRandomCard))
+            if (LoadoutKeywordRegistry.ResolveActiveModels(card).Any(model => model is LoadoutCardKeywordModel))
                 LoadoutKeywordRegistry.SynchronizeDynamicVars(card);
             return;
         }
@@ -251,6 +250,8 @@ public static class LoadoutCardKeywordState
                     amountWasUpgraded = upgrade.AmountDelta != 0;
                     if (!string.IsNullOrWhiteSpace(upgrade.ReplacementCardId))
                         effective.CardId = upgrade.ReplacementCardId;
+                    if (upgrade.ReplacementGrantedKeyword is not null)
+                        effective.GrantedKeyword = upgrade.ReplacementGrantedKeyword.Clone();
                     if (upgrade.ReplacementUpgraded.HasValue)
                         effective.Upgraded = upgrade.ReplacementUpgraded.Value;
                     if (upgrade.ReplacementPile.HasValue)

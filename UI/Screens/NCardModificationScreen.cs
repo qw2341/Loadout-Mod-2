@@ -1302,6 +1302,19 @@ public partial class NCardModificationScreen : Control
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            if (entries[index].IsKeywordGrant)
+            {
+                _variableControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
+                NLoadoutKeywordEntryEditor nestedEditor = new();
+                nestedEditor.Init(entries[index], updated => UpdateCardKeywordEntry(capturedIndex, entry =>
+                {
+                    entry.Amount = updated.Amount;
+                    entry.Pile = updated.Pile;
+                    entry.GrantedKeyword = updated.GrantedKeyword?.Clone();
+                }, rebuildControls: false));
+                _variableControls.AddChild(nestedEditor);
+                continue;
+            }
             if (entries[index].IsRandom)
             {
                 NLoadoutCardFilterStepper pool = new();

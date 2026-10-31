@@ -45,6 +45,9 @@ public static class LoadoutKeywords
     public const string ParticleKey = "Particle";
     public const string AddRandomCardKey = "AddRandomCard";
     public const string AddCardKey = "AddCard";
+    public const string AddKeywordToRandomCardKey = "AddKeywordToRandomCard";
+    public const string AddKeywordToChosenCardKey = "AddKeywordToChosenCard";
+    public const string AddKeywordToAllCardsKey = "AddKeywordToAllCards";
     public const string AngerKey = "Anger";
     public const string BlankSlateKey = "BlankSlate";
     public const string BasicDamageKey = "BasicDamage";
@@ -266,6 +269,15 @@ public static class LoadoutKeywords
 
     [CustomEnum("ADD_CARD")]
     public static CardKeyword AddCard;
+
+    [CustomEnum("ADD_KEYWORD_TO_RANDOM_CARD")]
+    public static CardKeyword AddKeywordToRandomCard;
+
+    [CustomEnum("ADD_KEYWORD_TO_CHOSEN_CARD")]
+    public static CardKeyword AddKeywordToChosenCard;
+
+    [CustomEnum("ADD_KEYWORD_TO_ALL_CARDS")]
+    public static CardKeyword AddKeywordToAllCards;
 
     [CustomEnum("ANGER")]
     public static CardKeyword Anger;

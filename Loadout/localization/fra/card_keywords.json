@@ -403,5 +403,13 @@
   "LOADOUT-ADD_CARD.cardText": "{LoadoutAddCardList}",
   "LOADOUT-ADD_RANDOM_CARD.title": "Ajouter une carte aléatoire",
   "LOADOUT-ADD_RANDOM_CARD.description": "Lorsque cette carte est jouée, ajoute des cartes aléatoires du groupe et de la rareté sélectionnés aux piles choisies.",
-  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}"
+  "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}",
+  "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.title": "Ajouter un mot-clé à une carte aléatoire",
+  "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.description": "Ajoutez le mot-clé configuré à des cartes aléatoires de la pile choisie pour ce combat.",
+  "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.title": "Ajouter un mot-clé à une carte choisie",
+  "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.description": "Ajoutez le mot-clé configuré aux cartes que vous choisissez dans la pile sélectionnée pour ce combat.",
+  "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "Ajouter un mot-clé à toutes les cartes",
+  "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "Ajoutez le mot-clé configuré à toutes les autres cartes de la pile choisie pour ce combat.",
+  "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
+  "LOADOUT-ADD_KEYWORD.selectionPrompt": "Choisissez une carte qui recevra {Keyword}."
 }

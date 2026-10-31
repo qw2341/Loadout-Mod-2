@@ -932,3 +932,15 @@ CARD_MOD_RANDOM_CARD_UPGRADED_PLURAL,[gold]Upgraded[/gold],[gold]升级过[/gold
 DYNAMIC_VAR_LOADOUT_EXECUTE_CHANCE,Execute Chance (%),处决概率（%）,Chance d’exécution (%),処刑確率（%）,처형 확률 (%),Probabilidad de ejecución (%)
 CARD_MOD_EXECUTE_COMMAND,Console Command,控制台命令,Commande de console,コンソールコマンド,콘솔 명령어,Comando de consola
 CARD_MOD_EDIT_COMMAND,Edit Command,编辑命令,Modifier la commande,コマンドを編集,명령어 편집,Editar comando
+CARD_MOD_LOADOUT_KEYWORD_KEYWORDS,Loadout Keyword Keyword,Loadout 关键词关键词,Mots-clés de mots-clés Loadout,Loadout キーワード付与,Loadout 키워드 부여,Palabras clave de palabras clave de Loadout
+CARD_MOD_KEYWORD_TARGET_AMOUNT,Target Cards,目标卡牌数量,Cartes ciblées,対象カード数,대상 카드 수,Cartas objetivo
+CARD_MOD_KEYWORD_SOURCE_PILE,Card Pile,目标牌堆,Pile de cartes,対象の山,카드 더미,Montón de cartas
+CARD_MOD_GRANTED_KEYWORD,Keyword to Add,添加的关键词,Mot-clé à ajouter,付与するキーワード,추가할 키워드,Palabra clave a añadir
+CARD_MOD_KEYWORD_VALUES,Keyword Values,关键词数值,Valeurs du mot-clé,キーワードの値,키워드 수치,Valores de la palabra clave
+CARD_MOD_KEYWORD_NO_VALUES,No editable values,无可编辑数值,Aucune valeur modifiable,編集可能な値なし,편집 가능한 수치 없음,Sin valores editables
+CARD_MOD_POWER_AMOUNT,Power Amount,能力数量,Quantité de pouvoir,パワー量,파워 수치,Cantidad de poder
+CARD_MOD_GRANT_RANDOM,Add {0} to {1} random cards in your {2} for this combat.,本场战斗中，为{2}中的{1}张随机卡牌添加{0}。,Ajoutez {0} à {1} carte(s) aléatoire(s) de votre {2} pour ce combat.,この戦闘中、{2}のランダムなカード{1}枚に{0}を付与する。,이번 전투 동안 {2}의 무작위 카드 {1}장에 {0} 키워드를 추가합니다.,Añade {0} a {1} carta(s) aleatoria(s) de tu {2} durante este combate.
+CARD_MOD_GRANT_CHOSEN,Add {0} to {1} cards you choose in your {2} for this combat.,本场战斗中，选择{2}中的{1}张卡牌并添加{0}。,Ajoutez {0} à {1} carte(s) choisie(s) dans votre {2} pour ce combat.,この戦闘中、{2}から選んだカード{1}枚に{0}を付与する。,이번 전투 동안 {2}에서 고른 카드 {1}장에 {0} 키워드를 추가합니다.,Añade {0} a {1} carta(s) elegida(s) de tu {2} durante este combate.
+CARD_MOD_GRANT_ALL,Add {0} to all other cards in your {2} for this combat.,本场战斗中，为{2}中的所有其他卡牌添加{0}。,Ajoutez {0} à toutes les autres cartes de votre {2} pour ce combat.,この戦闘中、{2}の他の全カードに{0}を付与する。,이번 전투 동안 {2}의 다른 모든 카드에 {0} 키워드를 추가합니다.,Añade {0} a todas las demás cartas de tu {2} durante este combate.
+CARD_MOD_GRANT_RANDOM_SINGLE,Add {0} to a random card in your {2} for this combat.,本场战斗中，为{2}中的一张随机卡牌添加{0}。,Ajoutez {0} à une carte aléatoire de votre {2} pour ce combat.,この戦闘中、{2}のランダムなカード1枚に{0}を付与する。,이번 전투 동안 {2}의 무작위 카드 한 장에 {0} 키워드를 추가합니다.,Añade {0} a una carta aleatoria de tu {2} durante este combate.
+CARD_MOD_GRANT_CHOSEN_SINGLE,Add {0} to a card you choose in your {2} for this combat.,本场战斗中，选择{2}中的一张卡牌并添加{0}。,Ajoutez {0} à une carte choisie dans votre {2} pour ce combat.,この戦闘中、{2}から選んだカード1枚に{0}を付与する。,이번 전투 동안 {2}에서 고른 카드 한 장에 {0} 키워드를 추가합니다.,Añade {0} a una carta que elijas de tu {2} durante este combate.
