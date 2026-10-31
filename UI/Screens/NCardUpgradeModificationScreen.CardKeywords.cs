@@ -111,9 +111,9 @@ public partial class NCardUpgradeModificationScreen
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
             if (baseEntry.IsKeywordGrant)
             {
-                _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
                 LoadoutCardKeywordEntry effective = baseEntry.Clone();
                 effective.Pile = configured?.ReplacementPile ?? baseEntry.Pile;
                 effective.GrantedKeyword = (configured?.ReplacementGrantedKeyword ?? baseEntry.GrantedKeyword)?.Clone();
@@ -256,9 +256,9 @@ public partial class NCardUpgradeModificationScreen
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
             if (addedEntries[index].IsKeywordGrant)
             {
-                _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
                 NLoadoutKeywordEntryEditor nestedEditor = new();
                 nestedEditor.Init(addedEntries[index], updated =>
                 {

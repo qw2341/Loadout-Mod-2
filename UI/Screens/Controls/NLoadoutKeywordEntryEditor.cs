@@ -114,48 +114,16 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 
     private void AddPayloadControls(VBoxContainer container, LoadoutKeywordPayload payload, Action<LoadoutKeywordPayload> replace, int depth)
     {
-        Button keyword = new()
+        NLoadoutDropdown keyword = new()
         {
-            Text = payload.GetLabel(),
-            ToggleMode = true,
-            CustomMinimumSize = new Vector2(218f, 42f),
-            Alignment = HorizontalAlignment.Left,
-            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-            MouseFilter = MouseFilterEnum.Stop
+            CustomMinimumSize = new Vector2(218f, 40f),
+            ButtonHeight = 40f,
+            LabelMinFontSize = 15,
+            LabelMaxFontSize = 20,
+            ExpandToAvailableWidth = false
         };
-        keyword.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
-        keyword.AddThemeFontSizeOverride("font_size", 18);
-        foreach (string state in new[] { "normal", "hover", "pressed", "hover_pressed" })
-        {
-            keyword.AddThemeStyleboxOverride(state, new StyleBoxFlat
-            {
-                BgColor = state == "normal"
-                    ? new Color(0.172549f, 0.262745f, 0.309804f)
-                    : new Color(0.215686f, 0.411765f, 0.501961f),
-                ContentMarginLeft = 12f,
-                ContentMarginRight = 44f,
-                ContentMarginTop = 4f,
-                ContentMarginBottom = 4f
-            });
-        }
-        foreach (string color in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color" })
-            keyword.AddThemeColorOverride(color, StsColors.gold);
-        TextureRect arrow = new()
-        {
-            Name = "Arrow",
-            Texture = GD.Load<Texture2D>("res://images/atlases/ui_atlas.sprites/settings_tiny_left_arrow.tres"),
-            Rotation = -Mathf.Pi * 0.5f,
-            PivotOffset = new Vector2(13f, 13f),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        arrow.SetAnchorsPreset(LayoutPreset.CenterRight);
-        arrow.OffsetLeft = -36f;
-        arrow.OffsetRight = -10f;
-        arrow.OffsetTop = -13f;
-        arrow.OffsetBottom = 13f;
-        keyword.AddChild(arrow);
+        keyword.SetItems(string.Empty,
+            [new LoadoutDropdownOption(payload.KeywordKey, payload.GetLabel())], payload.KeywordKey);
         container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_GRANTED_KEYWORD", "Keyword to Add"), keyword));
         VBoxContainer pickerHost = new() { Visible = false };
         VBoxContainer valuesHost = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -164,22 +132,24 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
         AddPayloadValueControls(valuesHost, payload, depth);
 
         NCardKeywordEditor? picker = null;
-        keyword.Toggled += expanded =>
+        keyword.InlineExpansionRequested += () =>
         {
+            bool expanded = !pickerHost.Visible;
             if (expanded && picker is null)
             {
                 LoadoutKeywords.TryResolve(payload.KeywordKey, out CardKeyword current);
                 picker = new NCardKeywordEditor();
                 picker.InitSingleSelection(current, selected =>
                 {
-                    keyword.ButtonPressed = false;
-                    keyword.GrabFocus();
+                    pickerHost.Hide();
+                    keyword.CloseLoadoutDropdown(restoreFocus: false);
                     if (LoadoutKeywords.GetStorageKey(selected) == payload.KeywordKey)
                         return;
                     _revision++;
                     payload = LoadoutKeywordPayload.Create(selected);
                     replace(payload);
-                    keyword.Text = payload.GetLabel();
+                    keyword.SetItems(string.Empty,
+                        [new LoadoutDropdownOption(payload.KeywordKey, payload.GetLabel())], payload.KeywordKey);
                     foreach (Node child in valuesHost.GetChildren())
                     {
                         valuesHost.RemoveChild(child);
@@ -191,7 +161,6 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
                 pickerHost.AddChild(picker);
             }
             pickerHost.Visible = expanded;
-            arrow.Rotation = (expanded ? 1f : -1f) * Mathf.Pi * 0.5f;
         };
     }
 
@@ -199,30 +168,18 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
     {
         LoadoutKeywordRegistry.TryGet(payload.KeywordKey, out LoadoutKeywordModel model);
         var definitions = model?.DynamicVars.Where(variable => variable.EditorVisible).ToArray() ?? [];
+        if (definitions.Length == 0 && payload.Power is null && payload.Card is null
+            && (payload.Commands?.Count ?? 0) == 0)
+            return;
         VBoxContainer values = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         values.AddThemeConstantOverride("separation", 4);
-        if (definitions.Length > 0)
+        foreach (var definition in definitions)
         {
-            NLoadoutDropdownStepper variableSelector = new();
-            VBoxContainer valueHost = new();
-            void ShowValue(string name)
-            {
-                foreach (Node child in valueHost.GetChildren())
-                {
-                    valueHost.RemoveChild(child);
-                    child.QueueFree();
-                }
-                var definition = definitions.First(variable => variable.Name == name);
-                NLoadoutDecimalStepper value = new();
-                value.Init((double)payload.Values.GetValueOrDefault(name, definition.DefaultValue), definition.Minimum, definition.Maximum);
-                value.ValueChanged += changed => { payload.Values[name] = (decimal)changed; Commit(); };
-                valueHost.AddChild(CreateRow(LocMan.Loc(definition.LabelLocKey, name), value));
-            }
-            variableSelector.Init(definitions.Select(definition => new LoadoutDropdownOption(
-                definition.Name, LocMan.Loc(definition.LabelLocKey, definition.Name))), definitions[0].Name, ShowValue);
-            values.AddChild(CreateRow(LocMan.Loc("CARD_MOD_KEYWORD_VALUES", "Keyword Values"), variableSelector));
-            values.AddChild(valueHost);
-            ShowValue(definitions[0].Name);
+            string name = definition.Name;
+            NLoadoutDecimalStepper value = new();
+            value.Init((double)payload.Values.GetValueOrDefault(name, definition.DefaultValue), definition.Minimum, definition.Maximum);
+            value.ValueChanged += changed => { payload.Values[name] = (decimal)changed; Commit(); };
+            values.AddChild(CreateRow(LocMan.Loc(definition.LabelLocKey, name), value));
         }
         if (payload.Power is { } power)
         {
@@ -256,12 +213,6 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
                 command.Init(commands[index], value => { commands[commandIndex] = value; Commit(); });
                 values.AddChild(CreateRow(LocMan.Loc("CARD_MOD_EXECUTE_COMMAND", "Console Command"), command));
             }
-        }
-        if (values.GetChildCount() == 0)
-        {
-            NLoadoutDropdownStepper noValues = new();
-            noValues.Init([new LoadoutDropdownOption("none", LocMan.Loc("CARD_MOD_KEYWORD_NO_VALUES", "No editable values"))], "none", _ => { });
-            values.AddChild(CreateRow(LocMan.Loc("CARD_MOD_KEYWORD_VALUES", "Keyword Values"), noValues));
         }
         MarginContainer inset = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         inset.AddThemeConstantOverride("margin_left", depth == 0 ? 12 : 0);

@@ -730,7 +730,7 @@ public partial class NCardModificationScreen : Control
     {
         _backButtonOpacityTween?.Kill();
         _backButtonOpacityTween = button.CreateTween();
-        _backButtonOpacityTween.TweenProperty(button, "modulate:a", opacity, 0.5)
+        _backButtonOpacityTween.TweenProperty(button, "modulate:a", opacity, 0.2)
             .SetTrans(Tween.TransitionType.Sine)
             .SetEase(Tween.EaseType.InOut);
     }
@@ -1113,7 +1113,16 @@ public partial class NCardModificationScreen : Control
             });
 
         CardModel dynamicVarCard = _previewDisplayModel ?? card;
-        foreach ((string name, var dynamicVar) in dynamicVarCard.DynamicVars.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        Dictionary<string, LoadoutKeywordModel> keywordOwners = new(StringComparer.Ordinal);
+        foreach (LoadoutKeywordModel keyword in LoadoutKeywordRegistry.ResolveActiveModels(dynamicVarCard))
+        {
+            foreach (var definition in keyword.DynamicVars)
+                keywordOwners.TryAdd(definition.Name, keyword);
+        }
+        LoadoutKeywordModel? previousKeyword = null;
+        foreach ((string name, var dynamicVar) in dynamicVarCard.DynamicVars
+                     .OrderBy(pair => keywordOwners.GetValueOrDefault(pair.Key)?.StorageKey ?? string.Empty, StringComparer.Ordinal)
+                     .ThenBy(pair => pair.Key, StringComparer.Ordinal))
         {
             int current = _workingState.DynamicVars.TryGetValue(name, out decimal saved)
                 ? Decimal.ToInt32(saved)
@@ -1133,6 +1142,10 @@ public partial class NCardModificationScreen : Control
                 maximum = keywordVarDefinition.Maximum;
             }
 
+            LoadoutKeywordModel? keyword = keywordOwners.GetValueOrDefault(name);
+            if (keyword is not null && keyword != previousKeyword)
+                _variableControls.AddChild(CreateSectionLabel(keyword.GetTitle()));
+            previousKeyword = keyword;
             AddStepperRow(_variableControls, label, current, minimum, maximum, value =>
             {
                 _workingState.DynamicVars[name] = value;
@@ -1150,6 +1163,8 @@ public partial class NCardModificationScreen : Control
     {
         if (_variableControls is null || _workingState.ExecuteCommands is not { } commands)
             return;
+        if (commands.Count > 0)
+            _variableControls.AddChild(CreateSectionLabel(AltExecuteKeyword.Instance.GetTitle()));
         for (int index = 0; index < commands.Count; index++)
         {
             int entryIndex = index;
@@ -1222,6 +1237,7 @@ public partial class NCardModificationScreen : Control
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            _variableControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
             NLoadoutPowerSelector selector = new();
             selector.Init(entries[index].PowerId);
             selector.SelectRequested += () => OpenPowerKeywordPicker(
@@ -1326,9 +1342,9 @@ public partial class NCardModificationScreen : Control
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            _variableControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
             if (entries[index].IsKeywordGrant)
             {
-                _variableControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
                 NLoadoutKeywordEntryEditor nestedEditor = new();
                 nestedEditor.Init(entries[index], updated => UpdateCardKeywordEntry(capturedIndex, entry =>
                 {

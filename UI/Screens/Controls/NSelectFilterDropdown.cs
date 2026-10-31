@@ -65,6 +65,7 @@ public partial class NLoadoutDropdown : NDropdown
     public bool ExpandToAvailableWidth { get; set; } = true;
 
     public event Action<string>? SelectedItemChanged;
+    public event Action? InlineExpansionRequested;
 
     public static bool IsOpenDropdownAt(Vector2 globalPosition)
     {
@@ -203,6 +204,12 @@ public partial class NLoadoutDropdown : NDropdown
         }
 
         _lastToggleFrame = Engine.GetProcessFrames();
+
+        if (InlineExpansionRequested is not null)
+        {
+            InlineExpansionRequested.Invoke();
+            return;
+        }
 
         if (_isOpen)
             CloseLoadoutDropdown();

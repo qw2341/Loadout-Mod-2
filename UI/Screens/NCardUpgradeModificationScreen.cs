@@ -200,6 +200,7 @@ public partial class NCardUpgradeModificationScreen : Control
 
         Dictionary<string, DynamicVarEditorDefinition> definitions =
             new(_nativeDynamicVars, StringComparer.Ordinal);
+        Dictionary<string, LoadoutKeywordModel> keywordOwners = new(StringComparer.Ordinal);
         foreach (LoadoutKeywordModel keyword in LoadoutKeywordRegistry.All)
         {
             if (!IsKeywordEnabled(keyword.Keyword))
@@ -210,6 +211,7 @@ public partial class NCardUpgradeModificationScreen : Control
             {
                 if (!dynamicVar.EditorVisible)
                     continue;
+                keywordOwners.TryAdd(dynamicVar.Name, keyword);
                 definitions[dynamicVar.Name] =
                     new DynamicVarEditorDefinition(
                         dynamicVar.Name,
@@ -237,9 +239,15 @@ public partial class NCardUpgradeModificationScreen : Control
             _leftControls.AddChild(empty);
         }
 
+        LoadoutKeywordModel? previousKeyword = null;
         foreach (DynamicVarEditorDefinition definition in definitions.Values
-                     .OrderBy(value => value.Name, StringComparer.Ordinal))
+                     .OrderBy(value => keywordOwners.GetValueOrDefault(value.Name)?.StorageKey ?? string.Empty, StringComparer.Ordinal)
+                     .ThenBy(value => value.Name, StringComparer.Ordinal))
         {
+            LoadoutKeywordModel? keyword = keywordOwners.GetValueOrDefault(definition.Name);
+            if (keyword is not null && keyword != previousKeyword)
+                _leftControls.AddChild(CreateSectionLabel(keyword.GetTitle()));
+            previousKeyword = keyword;
             int value = Decimal.ToInt32(
                 _draft.DynamicVarDeltas.GetValueOrDefault(definition.Name));
             string name = definition.Name;
@@ -288,6 +296,8 @@ public partial class NCardUpgradeModificationScreen : Control
         if (_leftControls is null)
             return;
         IReadOnlyList<string> commands = GetExecuteCommands();
+        if (commands.Count > 0)
+            _leftControls.AddChild(CreateSectionLabel(AltExecuteKeyword.Instance.GetTitle()));
         for (int index = 0; index < commands.Count; index++)
         {
             int entryIndex = index;
@@ -552,6 +562,7 @@ public partial class NCardUpgradeModificationScreen : Control
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
             NLoadoutPowerSelector selector = new();
             selector.Init(configured?.ReplacementPowerId ?? baseEntry.PowerId);
             selector.SelectRequested += () =>
@@ -616,6 +627,7 @@ public partial class NCardUpgradeModificationScreen : Control
             string suffix = totals.GetValueOrDefault(model.StorageKey) > 1
                 ? $" {number}"
                 : string.Empty;
+            _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
             NLoadoutPowerSelector selector = new();
             selector.Init(addedEntries[index].PowerId);
             selector.SelectRequested += () =>
