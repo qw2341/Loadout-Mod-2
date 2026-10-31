@@ -13,6 +13,7 @@ using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.CardModification;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.TextEffects;
 
@@ -253,6 +254,9 @@ public static class LoadoutCardKeywordState
                     if (upgrade.ReplacementGrantedKeyword is not null)
                         effective.GrantedKeyword = upgrade.ReplacementGrantedKeyword.IsEmpty
                             ? null : upgrade.ReplacementGrantedKeyword.Clone();
+                    if (upgrade.ReplacementGrantedEnchantment is not null)
+                        effective.GrantedEnchantment = upgrade.ReplacementGrantedEnchantment.Clear
+                            ? null : upgrade.ReplacementGrantedEnchantment.Clone();
                     if (upgrade.ReplacementUpgraded.HasValue)
                         effective.Upgraded = upgrade.ReplacementUpgraded.Value;
                     if (upgrade.ReplacementPile.HasValue)
@@ -416,6 +420,23 @@ public static class LoadoutCardKeywordState
     public static void ApplyGeneratedCardKeywords(CardModel generated, LoadoutCardKeywordEntry entry) =>
         entry.GrantedKeyword?.ApplyTo(generated);
 
+    public static void ApplyGeneratedCardExtras(CardModel generated, LoadoutCardKeywordEntry entry)
+    {
+        ApplyGeneratedCardKeywords(generated, entry);
+        LoadoutEnchantmentKeywordModel.ApplyEnchantment(generated, entry.GrantedEnchantment);
+    }
+
+    public static bool CanEnchantGeneratedCard(CardModel canonical, LoadoutCardKeywordEntry entry)
+    {
+        if (entry.GrantedEnchantment is null)
+            return true;
+        if (!entry.Upgraded && entry.GrantedKeyword is not { IsEmpty: false })
+            return LoadoutEnchantmentKeywordModel.CanApply(canonical, entry.GrantedEnchantment);
+        CardModel preview = ((CardHoverTip)HoverTipFactory.FromCard(canonical, entry.Upgraded)).Card;
+        ApplyGeneratedCardKeywords(preview, entry);
+        return LoadoutEnchantmentKeywordModel.CanApply(preview, entry.GrantedEnchantment);
+    }
+
     public static string GetPileLabel(PileType pile) => pile switch
     {
         PileType.Draw => LocMan.Loc("CARD_MOD_CARD_PILE_DRAW", "Draw Pile"),
@@ -444,13 +465,23 @@ public static class LoadoutCardKeywordState
 
     public static string FormatEntry(LoadoutCardKeywordEntry entry, string amount)
     {
-        string cards = entry.IsRandom
-            ? AddRandomCardKeyword.FormatEntry(entry, amount)
-            : LocMan.Loc("CARD_MOD_CARD_KEYWORD_ENTRY", "{0} {1}", amount,
-                $"[gold]{GetCardTitle(entry.CardId, entry.Upgraded)}[/gold]");
+        string title = entry.IsRandom
+            ? AddRandomCardKeyword.GetCardDescription(entry)
+            : $"[gold]{GetCardTitle(entry.CardId, entry.Upgraded)}[/gold]";
+        if (amount == "1")
+            amount = LocMan.Loc("CARD_MOD_SINGLE_CARD_COUNT", "1");
+        if (entry.GrantedEnchantment is { IsEmpty: false, Clear: false } enchantment)
+        {
+            string enchantmentTitle = $"[gold]{LoadoutEnchantmentKeywordModel.GetLabel(enchantment)}[/gold]";
+            if (entry.GrantedKeyword is { IsEmpty: false } keyword)
+                return LocMan.Loc("CARD_MOD_CARD_ENCHANTMENT_AND_KEYWORD_FORMAT", "{0} {2} {1} with {3}",
+                    amount, title, enchantmentTitle, $"[gold]{keyword.GetLabel()}[/gold]");
+            title = LocMan.Loc("CARD_MOD_CARD_ENCHANTED_TITLE", "{0} {1}", enchantmentTitle, title);
+        }
         return entry.GrantedKeyword is { IsEmpty: false } extra
-            ? LocMan.Loc("CARD_MOD_CARD_EXTRA_KEYWORD_FORMAT", "{0} with {1}", cards, $"[gold]{extra.GetLabel()}[/gold]")
-            : cards;
+            ? LocMan.Loc("CARD_MOD_CARD_EXTRA_KEYWORD_FORMAT", "{0} {1} with {2}",
+                amount, title, $"[gold]{extra.GetLabel()}[/gold]")
+            : LocMan.Loc("CARD_MOD_CARD_KEYWORD_ENTRY", "{0} {1}", amount, title);
     }
 
     public static int SaturatingMultiply(int amount, int multiplier)

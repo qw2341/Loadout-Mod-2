@@ -51,7 +51,7 @@ public sealed class AddCardKeyword : LoadoutCardKeywordModel
                     : card.CombatState!.CreateCard(canonical, card.Owner);
                 if (entry.Upgraded && generated.IsUpgradable)
                     CardCmd.Upgrade(generated);
-                LoadoutCardKeywordState.ApplyGeneratedCardKeywords(generated, entry);
+                LoadoutCardKeywordState.ApplyGeneratedCardExtras(generated, entry);
                 LoadoutCardKeywordState.ApplyGeneratedCardCost(generated, entry);
                 if (entry.Pile == PileType.Hand)
                 {
@@ -75,17 +75,18 @@ public sealed class AddCardKeyword : LoadoutCardKeywordModel
         HashSet<(string, bool, string?)> shown = [];
         foreach (var entry in LoadoutCardKeywordState.GetEffectiveEntries(card, StorageKey))
         {
-            string? keywordState = entry.GrantedKeyword is { IsEmpty: false } extra
-                ? JsonSerializer.Serialize(extra) : null;
-            if (!shown.Add((entry.CardId, entry.Upgraded, keywordState))
+            string? extraState = entry.GrantedKeyword is { IsEmpty: false }
+                || entry.GrantedEnchantment is { IsEmpty: false, Clear: false }
+                    ? JsonSerializer.Serialize(new { entry.GrantedKeyword, entry.GrantedEnchantment }) : null;
+            if (!shown.Add((entry.CardId, entry.Upgraded, extraState))
                 || !LoadoutCardKeywordState.TryResolveCard(entry.CardId, out CardModel canonical))
                 continue;
 
             CardHoverTip preview = (CardHoverTip)HoverTipFactory.FromCard(canonical, entry.Upgraded);
-            if (keywordState is not null)
+            if (extraState is not null)
             {
-                LoadoutCardKeywordState.ApplyGeneratedCardKeywords(preview.Card, entry);
-                preview = new GeneratedCardHoverTip(preview.Card, keywordState);
+                LoadoutCardKeywordState.ApplyGeneratedCardExtras(preview.Card, entry);
+                preview = new GeneratedCardHoverTip(preview.Card, extraState);
             }
             yield return preview;
         }
@@ -95,9 +96,9 @@ public sealed class AddCardKeyword : LoadoutCardKeywordModel
     {
         public new string Id { get; }
 
-        public GeneratedCardHoverTip(CardModel card, string keywordState) : base(card)
+        public GeneratedCardHoverTip(CardModel card, string extraState) : base(card)
         {
-            Id = $"LOADOUT_ADD_CARD:{base.Id}:{keywordState}";
+            Id = $"LOADOUT_ADD_CARD:{base.Id}:{extraState}";
         }
     }
 }

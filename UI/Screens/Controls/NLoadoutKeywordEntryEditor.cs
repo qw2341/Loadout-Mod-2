@@ -19,16 +19,16 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
     private LoadoutCardKeywordEntry _entry = new();
     private Action<LoadoutCardKeywordEntry> _changed = _ => { };
     private bool _showAmount;
-    private bool _extraKeywordOnly;
+    private bool _extrasOnly;
     private int _revision;
 
     public void Init(LoadoutCardKeywordEntry entry, Action<LoadoutCardKeywordEntry> changed,
-        bool showAmount = true, bool extraKeywordOnly = false)
+        bool showAmount = true, bool extrasOnly = false)
     {
         _entry = entry.Clone();
         _changed = changed;
         _showAmount = showAmount;
-        _extraKeywordOnly = extraKeywordOnly;
+        _extrasOnly = extrasOnly;
         if (IsNodeReady())
             Rebuild();
     }
@@ -48,8 +48,11 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
             RemoveChild(child);
             child.QueueFree();
         }
-        if (_extraKeywordOnly)
+        if (_extrasOnly)
+        {
             AddExtraKeywordControls(this, _entry, 0);
+            AddEnchantmentControls(this, _entry);
+        }
         else
             AddEntryControls(this, _entry, _showAmount);
     }
@@ -63,16 +66,22 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 
     private void AddEntryControls(VBoxContainer container, LoadoutCardKeywordEntry entry, bool showAmount = true, int depth = 0)
     {
-        if (entry.IsKeywordGrant)
+        if (entry.IsCardGrant)
         {
-            if (showAmount && entry.KeywordKey != LoadoutKeywords.AddKeywordToAllCardsKey)
+            if (showAmount && entry.KeywordKey != LoadoutKeywords.AddKeywordToAllCardsKey
+                && entry.KeywordKey != LoadoutKeywords.AddEnchantmentToAllCardsKey)
                 AddNumber(container, LocMan.Loc("CARD_MOD_KEYWORD_TARGET_AMOUNT", "Target Cards"), entry.Amount, 0,
                     value => { entry.Amount = value; Commit(); });
             NLoadoutPileTypeStepper pile = new();
             pile.Init(entry.Pile, value => { entry.Pile = value; Commit(); }, combatOnly: true);
             container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_KEYWORD_SOURCE_PILE", "Card Pile"), pile));
-            entry.GrantedKeyword ??= LoadoutKeywordPayload.Create(CardKeyword.Retain);
-            AddPayloadControls(container, entry.GrantedKeyword, replacement => entry.GrantedKeyword = replacement, depth);
+            if (entry.IsKeywordGrant)
+            {
+                entry.GrantedKeyword ??= LoadoutKeywordPayload.Create(CardKeyword.Retain);
+                AddPayloadControls(container, entry.GrantedKeyword, replacement => entry.GrantedKeyword = replacement, depth);
+            }
+            else
+                AddEnchantmentControls(container, entry);
             return;
         }
 
@@ -117,10 +126,39 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
         cost.Init(entry.FreeToPlay, value => { entry.FreeToPlay = value; Commit(); });
         container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play"), cost));
         AddExtraKeywordControls(container, entry, depth);
+        AddEnchantmentControls(container, entry);
     }
 
     private void AddExtraKeywordControls(VBoxContainer container, LoadoutCardKeywordEntry entry, int depth) =>
         AddPayloadControls(container, entry.GrantedKeyword, replacement => entry.GrantedKeyword = replacement, depth, allowNone: true);
+
+    private void AddEnchantmentControls(VBoxContainer container, LoadoutCardKeywordEntry entry)
+    {
+        NLoadoutEnchantmentStepper enchantment = new();
+        VBoxContainer amountHost = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        void RefreshAmount()
+        {
+            foreach (Node child in amountHost.GetChildren())
+            {
+                amountHost.RemoveChild(child);
+                child.QueueFree();
+            }
+            if (entry.GrantedEnchantment is { IsEmpty: false, Clear: false } spec)
+                AddNumber(amountHost, LocMan.Loc("CARD_MOD_ENCHANTMENT_AMOUNT", "Enchantment Amount"),
+                    spec.Amount, 1, value => { spec.Amount = value; Commit(); });
+        }
+        enchantment.Init(entry.GrantedEnchantment, selected =>
+        {
+            entry.GrantedEnchantment = selected;
+            RefreshAmount();
+            Commit();
+        }, allowNone: !entry.IsEnchantmentGrant);
+        container.AddChild(CreateRow(entry.IsEnchantmentGrant
+            ? LocMan.Loc("CARD_MOD_GRANTED_ENCHANTMENT", "Enchantment to Add")
+            : LocMan.Loc("CARD_MOD_CARD_EXTRA_ENCHANTMENT", "Extra Enchantment"), enchantment));
+        container.AddChild(amountHost);
+        RefreshAmount();
+    }
 
     private void AddPayloadControls(VBoxContainer container, LoadoutKeywordPayload? payload,
         Action<LoadoutKeywordPayload?> replace, int depth, bool allowNone = false)

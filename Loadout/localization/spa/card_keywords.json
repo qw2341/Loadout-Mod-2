@@ -411,5 +411,13 @@
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "Añadir palabra clave a todas las cartas",
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "Añade la palabra clave configurada a todas las demás cartas del montón seleccionado.",
   "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
-  "LOADOUT-ADD_KEYWORD.selectionPrompt": "Elige una carta que recibirá {Keyword}."
+  "LOADOUT-ADD_KEYWORD.selectionPrompt": "Elige una carta que recibirá {Keyword}.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.title": "Añadir encantamiento a una carta aleatoria",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.description": "Encanta cartas válidas aleatorias del montón seleccionado con el encantamiento configurado.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.title": "Añadir encantamiento a una carta elegida",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.description": "Encanta cartas válidas que elijas del montón seleccionado con el encantamiento configurado.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "Añadir encantamiento a todas las cartas",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "Encanta todas las demás cartas válidas del montón seleccionado con el encantamiento configurado.",
+  "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Elige una carta para encantar con {Enchantment}."
 }

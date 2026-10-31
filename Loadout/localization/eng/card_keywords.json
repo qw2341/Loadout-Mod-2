@@ -411,5 +411,13 @@
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "Add Keyword to All Cards",
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "Add the configured keyword to every other card in the selected pile.",
   "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
-  "LOADOUT-ADD_KEYWORD.selectionPrompt": "Choose a card to receive {Keyword}."
+  "LOADOUT-ADD_KEYWORD.selectionPrompt": "Choose a card to receive {Keyword}.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.title": "Add Enchantment to Random Card",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.description": "Enchant random eligible cards in the selected pile.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.title": "Add Enchantment to Chosen Card",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.description": "Enchant eligible cards you choose from the selected pile.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "Add Enchantment to All Cards",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "Enchant every other eligible card in the selected pile.",
+  "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Choose a card to enchant with {Enchantment}."
 }

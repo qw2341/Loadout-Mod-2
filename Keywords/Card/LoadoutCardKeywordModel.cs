@@ -19,7 +19,9 @@ public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
         [
             AddCardKeyword.Instance, AddRandomCardKeyword.Instance,
             AddKeywordToRandomCardKeyword.Instance, AddKeywordToChosenCardKeyword.Instance,
-            AddKeywordToAllCardsKeyword.Instance
+            AddKeywordToAllCardsKeyword.Instance,
+            AddEnchantmentToRandomCardKeyword.Instance, AddEnchantmentToChosenCardKeyword.Instance,
+            AddEnchantmentToAllCardsKeyword.Instance
         ];
     }
 
@@ -44,6 +46,8 @@ public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
             if (LoadoutKeywords.TryResolve(entry.GrantedKeyword?.KeywordKey, out CardKeyword keyword)
                 && keyword != CardKeyword.None && shown.Add(keyword))
                 yield return HoverTipFactory.FromKeyword(keyword);
+            foreach (IHoverTip tip in LoadoutEnchantmentKeywordModel.GetHoverTips(entry.GrantedEnchantment))
+                yield return tip;
         }
     }
 

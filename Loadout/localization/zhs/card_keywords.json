@@ -411,5 +411,13 @@
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "为所有卡牌添加关键词",
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "为所选牌堆中的所有其他卡牌添加已配置的关键词。",
   "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
-  "LOADOUT-ADD_KEYWORD.selectionPrompt": "选择一张卡牌，添加{Keyword}。"
+  "LOADOUT-ADD_KEYWORD.selectionPrompt": "选择一张卡牌，添加{Keyword}。",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.title": "为随机卡牌添加附魔",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.description": "为选定牌堆中的随机适用牌附魔。",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.title": "为指定卡牌添加附魔",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.description": "从选定牌堆中选择适用牌附魔。",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "为所有卡牌添加附魔",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "为选定牌堆中的所有其他适用牌附魔。",
+  "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "选择一张卡牌以附加{Enchantment}。"
 }

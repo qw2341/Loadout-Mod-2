@@ -1343,7 +1343,7 @@ public partial class NCardModificationScreen : Control
                 ? $" {number}"
                 : string.Empty;
             _variableControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
-            if (entries[index].IsKeywordGrant)
+            if (entries[index].IsCardGrant)
             {
                 NLoadoutKeywordEntryEditor nestedEditor = new();
                 nestedEditor.Init(entries[index], updated => UpdateCardKeywordEntry(capturedIndex, entry =>
@@ -1351,6 +1351,7 @@ public partial class NCardModificationScreen : Control
                     entry.Amount = updated.Amount;
                     entry.Pile = updated.Pile;
                     entry.GrantedKeyword = updated.GrantedKeyword?.Clone();
+                    entry.GrantedEnchantment = updated.GrantedEnchantment?.Clone();
                 }, rebuildControls: false));
                 _variableControls.AddChild(nestedEditor);
                 continue;
@@ -1410,7 +1411,11 @@ public partial class NCardModificationScreen : Control
                 LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play") + suffix, cost));
             NLoadoutKeywordEntryEditor extraKeywordEditor = new();
             extraKeywordEditor.Init(entries[index], updated => UpdateCardKeywordEntry(capturedIndex,
-                entry => entry.GrantedKeyword = updated.GrantedKeyword?.Clone(), rebuildControls: false), extraKeywordOnly: true);
+                entry =>
+                {
+                    entry.GrantedKeyword = updated.GrantedKeyword?.Clone();
+                    entry.GrantedEnchantment = updated.GrantedEnchantment?.Clone();
+                }, rebuildControls: false), extrasOnly: true);
             _variableControls.AddChild(extraKeywordEditor);
         }
     }

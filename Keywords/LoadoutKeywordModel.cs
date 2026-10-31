@@ -37,6 +37,7 @@ public enum LoadoutKeywordEditorSection
     Power,
     Card,
     Keyword,
+    Enchantment,
     Restrictive,
     Fatal,
     Improvement,

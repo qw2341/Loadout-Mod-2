@@ -46,6 +46,18 @@ public sealed class CardAttachmentSpec
     [JsonIgnore]
     public bool IsEmpty => !Clear && string.IsNullOrWhiteSpace(ModelId);
 
+    public void Normalize()
+    {
+        ModelId = string.IsNullOrWhiteSpace(ModelId) ? null : ModelId.Trim();
+        Amount = Math.Max(1, Amount);
+    }
+
+    public static bool Equivalent(CardAttachmentSpec? left, CardAttachmentSpec? right) =>
+        ReferenceEquals(left, right)
+        || left is not null && right is not null
+        && string.Equals(left.ModelId, right.ModelId, StringComparison.Ordinal)
+        && left.Amount == right.Amount && left.Clear == right.Clear;
+
     public CardAttachmentSpec Clone()
     {
         return new CardAttachmentSpec

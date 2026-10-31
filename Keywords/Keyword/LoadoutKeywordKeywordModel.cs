@@ -5,15 +5,9 @@ namespace Loadout.Keywords;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Loadout.Services.CardModification;
 using Loadout.UI.Managers;
-using MegaCrit.Sts2.Core.CardSelection;
-using MegaCrit.Sts2.Core.Combat;
-using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
-using MegaCrit.Sts2.Core.Extensions;
-using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
@@ -25,11 +19,9 @@ public enum LoadoutKeywordCardSelection
     All
 }
 
-public abstract class LoadoutKeywordKeywordModel : LoadoutCardKeywordModel
+public abstract class LoadoutKeywordKeywordModel : LoadoutCardGrantKeywordModel
 {
-    public abstract LoadoutKeywordCardSelection Selection { get; }
     public override LoadoutKeywordEditorSection EditorSection => LoadoutKeywordEditorSection.Keyword;
-    public override string AmountLabelLocKey => "CARD_MOD_KEYWORD_TARGET_AMOUNT";
     public override string? CardTextLocKey => "LOADOUT-ADD_KEYWORD.cardText";
 
     public override LoadoutCardKeywordEntry CreateDefaultEntry() => new()
@@ -42,9 +34,6 @@ public abstract class LoadoutKeywordKeywordModel : LoadoutCardKeywordModel
         string.Equals(key, LoadoutKeywords.AddKeywordToRandomCardKey, StringComparison.OrdinalIgnoreCase)
         || string.Equals(key, LoadoutKeywords.AddKeywordToChosenCardKey, StringComparison.OrdinalIgnoreCase)
         || string.Equals(key, LoadoutKeywords.AddKeywordToAllCardsKey, StringComparison.OrdinalIgnoreCase);
-
-    public static bool IsCombatPile(PileType pile) =>
-        pile is PileType.Hand or PileType.Draw or PileType.Discard or PileType.Exhaust;
 
     protected override void AddCardTextVariables(CardModel card, LocString cardText)
     {
@@ -74,50 +63,17 @@ public abstract class LoadoutKeywordKeywordModel : LoadoutCardKeywordModel
                 }, entry.GrantedKeyword?.GetDescription() ?? string.Empty, entry.Amount, LoadoutCardKeywordState.GetPileLabel(entry.Pile));
     }
 
-    public override object CaptureBeforeOnPlay(CardModel card, CardPlay cardPlay) =>
-        LoadoutCardKeywordState.GetEffectiveEntries(card, StorageKey).ToArray();
+    public override bool HasPayload(LoadoutCardKeywordEntry entry) =>
+        entry.GrantedKeyword is not null && LoadoutKeywords.TryResolve(entry.GrantedKeyword.KeywordKey, out _);
 
-    public override async Task AfterOnPlay(CardModel card, PlayerChoiceContext choiceContext,
-        CardPlay cardPlay, object? capturedState)
+    public override void ApplyToTarget(CardModel target, LoadoutCardKeywordEntry entry) =>
+        ApplyKeyword(target, entry.GrantedKeyword!);
+
+    protected override LocString CreateSelectionPrompt(LoadoutCardKeywordEntry entry)
     {
-        var combat = card.CombatState;
-        if (combat is null || capturedState is not LoadoutCardKeywordEntry[] entries)
-            return;
-        foreach (var entry in entries)
-        {
-            if (CombatManager.Instance.IsOverOrEnding || !ReferenceEquals(card.CombatState, combat))
-                return;
-            if (!IsCombatPile(entry.Pile) || entry.GrantedKeyword is null
-                || !LoadoutKeywords.TryResolve(entry.GrantedKeyword.KeywordKey, out _))
-                continue;
-            CardPile pile = entry.Pile.GetPile(card.Owner);
-            List<CardModel> candidates = pile.Cards.Where(candidate => !ReferenceEquals(candidate, card)).ToList();
-            int count = Selection == LoadoutKeywordCardSelection.All ? candidates.Count : Math.Min(entry.Amount, candidates.Count);
-            if (count <= 0)
-                continue;
-            IEnumerable<CardModel> selected;
-            if (Selection == LoadoutKeywordCardSelection.Random)
-                selected = candidates.TakeRandom(count, card.Owner.RunState.Rng.CombatCardSelection).ToArray();
-            else if (Selection == LoadoutKeywordCardSelection.All)
-                selected = candidates;
-            else
-            {
-                LocString prompt = new("card_keywords", "LOADOUT-ADD_KEYWORD.selectionPrompt");
-                prompt.AddObj("Keyword", entry.GrantedKeyword.GetLabel());
-                CardSelectorPrefs prefs = new(prompt, count);
-                selected = entry.Pile == PileType.Hand
-                    ? await CardSelectCmd.FromHand(choiceContext, card.Owner, prefs, candidate => !ReferenceEquals(candidate, card), card)
-                    : await CardSelectCmd.FromCombatPile(choiceContext, pile, card.Owner, prefs, candidate => !ReferenceEquals(candidate, card));
-            }
-            foreach (CardModel target in selected)
-            {
-                if (CombatManager.Instance.IsOverOrEnding || !ReferenceEquals(card.CombatState, combat))
-                    return;
-                if (ReferenceEquals(target.Owner, card.Owner) && ReferenceEquals(target.Pile, pile)
-                    && ReferenceEquals(target.CombatState, combat) && !ReferenceEquals(target, card))
-                    ApplyKeyword(target, entry.GrantedKeyword);
-            }
-        }
+        LocString prompt = new("card_keywords", "LOADOUT-ADD_KEYWORD.selectionPrompt");
+        prompt.AddObj("Keyword", entry.GrantedKeyword!.GetLabel());
+        return prompt;
     }
 
     public static void ApplyKeyword(CardModel target, LoadoutKeywordPayload payload)

@@ -27,8 +27,17 @@ public sealed class LoadoutCardKeywordEntry
     [JsonPropertyName("grant")]
     public LoadoutKeywordPayload? GrantedKeyword { get; set; }
 
+    [JsonPropertyName("ench")]
+    public CardAttachmentSpec? GrantedEnchantment { get; set; }
+
     [JsonIgnore]
     public bool IsKeywordGrant => LoadoutKeywordKeywordModel.IsGrantKey(KeywordKey);
+
+    [JsonIgnore]
+    public bool IsEnchantmentGrant => LoadoutEnchantmentKeywordModel.IsGrantKey(KeywordKey);
+
+    [JsonIgnore]
+    public bool IsCardGrant => IsKeywordGrant || IsEnchantmentGrant;
 
     [JsonPropertyName("a")]
     public int Amount { get; set; } = 1;
@@ -59,6 +68,7 @@ public sealed class LoadoutCardKeywordEntry
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(KeywordKey)
         || (IsKeywordGrant ? GrantedKeyword is null || GrantedKeyword.IsEmpty
+            : IsEnchantmentGrant ? GrantedEnchantment is null || GrantedEnchantment.IsEmpty || GrantedEnchantment.Clear
             : !IsRandom && string.IsNullOrWhiteSpace(CardId));
 
     public LoadoutCardKeywordEntry Clone()
@@ -68,6 +78,7 @@ public sealed class LoadoutCardKeywordEntry
             KeywordKey = KeywordKey,
             CardId = CardId,
             GrantedKeyword = GrantedKeyword?.Clone(),
+            GrantedEnchantment = GrantedEnchantment?.Clone(),
             Amount = Amount,
             Upgraded = Upgraded,
             PoolId = PoolId,
@@ -98,9 +109,12 @@ public sealed class LoadoutCardKeywordEntry
             entry.PoolId = (entry.PoolId ?? string.Empty).Trim();
             entry.Amount = Math.Max(0, entry.Amount);
             entry.GrantedKeyword?.Normalize();
+            entry.GrantedEnchantment?.Normalize();
+            if (entry.GrantedEnchantment is { IsEmpty: true } or { Clear: true })
+                entry.GrantedEnchantment = null;
             if (!entry.IsKeywordGrant && entry.GrantedKeyword is { IsEmpty: true })
                 entry.GrantedKeyword = null;
-            if (entry.IsKeywordGrant && !LoadoutKeywordKeywordModel.IsCombatPile(entry.Pile))
+            if (entry.IsCardGrant && !LoadoutCardGrantKeywordModel.IsCombatPile(entry.Pile))
                 entry.Pile = PileType.Hand;
             if (!Enum.IsDefined(entry.FreeToPlay))
                 entry.FreeToPlay = LoadoutGeneratedCardCost.None;
@@ -133,6 +147,9 @@ public sealed class LoadoutCardKeywordEntryUpgrade
     [JsonPropertyName("grant")]
     public LoadoutKeywordPayload? ReplacementGrantedKeyword { get; set; }
 
+    [JsonPropertyName("ench")]
+    public CardAttachmentSpec? ReplacementGrantedEnchantment { get; set; }
+
     [JsonPropertyName("u")]
     public bool? ReplacementUpgraded { get; set; }
 
@@ -153,6 +170,7 @@ public sealed class LoadoutCardKeywordEntryUpgrade
         !string.IsNullOrWhiteSpace(KeywordKey)
         && (!string.IsNullOrWhiteSpace(OriginalCardId)
             || LoadoutKeywordKeywordModel.IsGrantKey(KeywordKey)
+            || LoadoutEnchantmentKeywordModel.IsGrantKey(KeywordKey)
             || string.Equals(KeywordKey, LoadoutKeywords.AddRandomCardKey, StringComparison.OrdinalIgnoreCase))
         && OccurrenceIndex >= 0;
 
@@ -162,7 +180,7 @@ public sealed class LoadoutCardKeywordEntryUpgrade
         || (AmountDelta == 0 && string.IsNullOrWhiteSpace(ReplacementCardId)
             && ReplacementUpgraded is null && ReplacementPile is null
             && ReplacementPoolId is null && ReplacementRarity is null && ReplacementFreeToPlay is null
-            && ReplacementGrantedKeyword is null);
+            && ReplacementGrantedKeyword is null && ReplacementGrantedEnchantment is null);
 
     public LoadoutCardKeywordEntryUpgrade Clone()
     {
@@ -174,6 +192,7 @@ public sealed class LoadoutCardKeywordEntryUpgrade
             AmountDelta = AmountDelta,
             ReplacementCardId = ReplacementCardId,
             ReplacementGrantedKeyword = ReplacementGrantedKeyword?.Clone(),
+            ReplacementGrantedEnchantment = ReplacementGrantedEnchantment?.Clone(),
             ReplacementUpgraded = ReplacementUpgraded,
             ReplacementPoolId = ReplacementPoolId,
             ReplacementRarity = ReplacementRarity,
@@ -201,6 +220,9 @@ public sealed class LoadoutCardKeywordEntryUpgrade
             entry.KeywordKey = entry.KeywordKey.Trim();
             entry.OriginalCardId = entry.OriginalCardId.Trim();
             entry.ReplacementGrantedKeyword?.Normalize();
+            entry.ReplacementGrantedEnchantment?.Normalize();
+            if (entry.ReplacementGrantedEnchantment is { IsEmpty: true })
+                entry.ReplacementGrantedEnchantment = null;
             entry.ReplacementPoolId = entry.ReplacementPoolId?.Trim();
             if (entry.ReplacementFreeToPlay.HasValue && !Enum.IsDefined(entry.ReplacementFreeToPlay.Value))
                 entry.ReplacementFreeToPlay = null;

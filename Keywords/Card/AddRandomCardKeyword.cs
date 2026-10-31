@@ -46,7 +46,8 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
                 || string.Equals(pool.Id.ToString(), entry.PoolId, StringComparison.OrdinalIgnoreCase))
             .OrderBy(pool => pool.Id.ToString(), StringComparer.Ordinal)
             .SelectMany(pool => pool.GetUnlockedCards(player.UnlockState, player.RunState.CardMultiplayerConstraint))
-            .Where(candidate => entry.Rarity == CardRarity.None || candidate.Rarity == entry.Rarity);
+            .Where(candidate => entry.Rarity == CardRarity.None || candidate.Rarity == entry.Rarity)
+            .Where(candidate => LoadoutCardKeywordState.CanEnchantGeneratedCard(candidate, entry));
 
     public override async Task AfterOnPlay(CardModel card, PlayerChoiceContext choiceContext,
         CardPlay cardPlay, object? capturedState)
@@ -73,7 +74,7 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
                     break;
                 if (entry.Upgraded && generated.Current.IsUpgradable)
                     CardCmd.Upgrade(generated.Current);
-                LoadoutCardKeywordState.ApplyGeneratedCardKeywords(generated.Current, entry);
+                LoadoutCardKeywordState.ApplyGeneratedCardExtras(generated.Current, entry);
                 LoadoutCardKeywordState.ApplyGeneratedCardCost(generated.Current, entry);
                 if (entry.Pile == PileType.Hand)
                     await CardPileCmd.AddGeneratedCardToCombat(generated.Current, entry.Pile, card.Owner);
@@ -85,7 +86,10 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
         }
     }
 
-    public static string FormatEntry(LoadoutCardKeywordEntry entry, string amount)
+    public static string FormatEntry(LoadoutCardKeywordEntry entry, string amount) =>
+        LocMan.Loc("CARD_MOD_CARD_KEYWORD_ENTRY", "{0} {1}", amount, GetCardDescription(entry));
+
+    public static string GetCardDescription(LoadoutCardKeywordEntry entry)
     {
         bool singular = entry.Amount == 1;
         List<string> descriptors = [];
@@ -104,10 +108,10 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
             descriptors.Add(label);
         }
         return descriptors.Count == 0
-            ? LocMan.Loc(singular ? "CARD_MOD_RANDOM_CARD_PLAIN_SINGLE" : "CARD_MOD_RANDOM_CARD_PLAIN_PLURAL",
-                singular ? "{0} random card" : "{0} random cards", amount)
-            : LocMan.Loc(singular ? "CARD_MOD_RANDOM_CARD_SINGLE" : "CARD_MOD_RANDOM_CARD_PLURAL",
-                singular ? "{0} random {1} card" : "{0} random {1} cards", amount,
+            ? LocMan.Loc(singular ? "CARD_MOD_RANDOM_CARD_NOUN_SINGLE" : "CARD_MOD_RANDOM_CARD_NOUN_PLURAL",
+                singular ? "random card" : "random cards")
+            : LocMan.Loc(singular ? "CARD_MOD_RANDOM_CARD_NOUN_DESCRIBED_SINGLE" : "CARD_MOD_RANDOM_CARD_NOUN_DESCRIBED_PLURAL",
+                singular ? "random {0} card" : "random {0} cards",
                 descriptors.Aggregate((left, right) =>
                     LocMan.Loc("CARD_MOD_RANDOM_CARD_DESCRIPTORS", "{0} {1}", left, right)));
     }

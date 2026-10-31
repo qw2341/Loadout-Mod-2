@@ -411,5 +411,13 @@
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "全カードにキーワードを付与",
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "選択した山の他の全カードに設定したキーワードを付与する。",
   "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
-  "LOADOUT-ADD_KEYWORD.selectionPrompt": "{Keyword}を付与するカードを選択。"
+  "LOADOUT-ADD_KEYWORD.selectionPrompt": "{Keyword}を付与するカードを選択。",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.title": "ランダムなカードにエンチャントを付与",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.description": "選択した山のエンチャント可能なランダムなカードに、設定したエンチャントを付与する。",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.title": "選んだカードにエンチャントを付与",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.description": "選択した山からエンチャント可能なカードを選び、設定したエンチャントを付与する。",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "全カードにエンチャントを付与",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "選択した山の他のエンチャント可能な全カードに、設定したエンチャントを付与する。",
+  "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "{Enchantment}を付与するカードを選ぶ。"
 }

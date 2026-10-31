@@ -411,5 +411,13 @@
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "Ajouter un mot-clé à toutes les cartes",
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "Ajoutez le mot-clé configuré à toutes les autres cartes de la pile choisie.",
   "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
-  "LOADOUT-ADD_KEYWORD.selectionPrompt": "Choisissez une carte qui recevra {Keyword}."
+  "LOADOUT-ADD_KEYWORD.selectionPrompt": "Choisissez une carte qui recevra {Keyword}.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.title": "Ajouter un enchantement à une carte aléatoire",
+  "LOADOUT-ADD_ENCHANTMENT_TO_RANDOM_CARD.description": "Enchantez des cartes compatibles aléatoires de la pile sélectionnée avec l’enchantement configuré.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.title": "Ajouter un enchantement à une carte choisie",
+  "LOADOUT-ADD_ENCHANTMENT_TO_CHOSEN_CARD.description": "Enchantez des cartes compatibles choisies dans la pile sélectionnée avec l’enchantement configuré.",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "Ajouter un enchantement à toutes les cartes",
+  "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "Enchantez toutes les autres cartes compatibles de la pile sélectionnée avec l’enchantement configuré.",
+  "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Choisissez une carte à enchanter avec {Enchantment}."
 }

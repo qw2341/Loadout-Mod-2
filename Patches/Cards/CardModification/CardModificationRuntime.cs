@@ -550,6 +550,7 @@ public static class CardModificationRuntime
                 || left[i].Rarity != right[i].Rarity
                 || left[i].FreeToPlay != right[i].FreeToPlay
                 || !LoadoutKeywordPayload.Equivalent(left[i].GrantedKeyword, right[i].GrantedKeyword)
+                || !CardAttachmentSpec.Equivalent(left[i].GrantedEnchantment, right[i].GrantedEnchantment)
                 || !string.Equals(left[i].PoolId, right[i].PoolId, StringComparison.Ordinal))
             {
                 return false;
@@ -614,6 +615,7 @@ public static class CardModificationRuntime
                 || left[i].ReplacementRarity != right[i].ReplacementRarity
                 || left[i].ReplacementFreeToPlay != right[i].ReplacementFreeToPlay
                 || !LoadoutKeywordPayload.Equivalent(left[i].ReplacementGrantedKeyword, right[i].ReplacementGrantedKeyword)
+                || !CardAttachmentSpec.Equivalent(left[i].ReplacementGrantedEnchantment, right[i].ReplacementGrantedEnchantment)
                 || !string.Equals(left[i].ReplacementPoolId, right[i].ReplacementPoolId, StringComparison.Ordinal)
                 || !string.Equals(
                     left[i].ReplacementCardId,

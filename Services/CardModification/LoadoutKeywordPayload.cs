@@ -169,6 +169,8 @@ public sealed class LoadoutKeywordPayload
             settings.Add($"{(LoadoutPowerKeywordState.TryResolvePower(power.PowerId, out var model) ? CommonHelpers.FormatPowerTitle(model) : power.PowerId)}: {power.Amount}");
         if (Card is { IsKeywordGrant: true } grant)
             settings.Add(AsInlineClause(LoadoutKeywordKeywordModel.FormatEntry(grant)));
+        else if (Card is { IsEnchantmentGrant: true } enchantment)
+            settings.Add(AsInlineClause(LoadoutEnchantmentKeywordModel.FormatEntry(enchantment)));
         else if (Card is { } card)
         {
             string cards = LoadoutCardKeywordState.FormatEntry(card, card.Amount.ToString(CultureInfo.InvariantCulture));
