@@ -57,6 +57,10 @@ public partial class NCardKeywordEditor : VBoxContainer
     private Action<CardKeyword> _onRepeatAdded = _ => { };
     private Action<CardKeyword> _onRepeatRemoved = _ => { };
     private string _selectedModId = AllModFilterId;
+    private bool _singleSelection;
+    private CardKeyword _selectedKeyword;
+    private NLoadoutToggle? _selectedToggle;
+    private float _contentWidth = ContentWidth;
 
     public void Init(
         IReadOnlyList<CardModel> contextCards,
@@ -66,7 +70,9 @@ public partial class NCardKeywordEditor : VBoxContainer
         Action<string>? onSelectedModChanged = null,
         Func<CardKeyword, int>? getRepeatCount = null,
         Action<CardKeyword>? onRepeatAdded = null,
-        Action<CardKeyword>? onRepeatRemoved = null)
+        Action<CardKeyword>? onRepeatRemoved = null,
+        bool singleSelection = false,
+        float contentWidth = ContentWidth)
     {
         _contextCards = contextCards;
         _isChecked = isChecked;
@@ -76,14 +82,30 @@ public partial class NCardKeywordEditor : VBoxContainer
         _getRepeatCount = getRepeatCount ?? (_ => 0);
         _onRepeatAdded = onRepeatAdded ?? (_ => { });
         _onRepeatRemoved = onRepeatRemoved ?? (_ => { });
+        _singleSelection = singleSelection;
+        _contentWidth = contentWidth;
         if (IsNodeReady())
             Rebuild();
+    }
+
+    public void InitSingleSelection(
+        CardKeyword selectedKeyword,
+        Action<CardKeyword> onSelected,
+        float contentWidth = ContentWidth)
+    {
+        _selectedKeyword = selectedKeyword;
+        Init([], keyword => keyword == _selectedKeyword, (keyword, _) =>
+        {
+            _selectedKeyword = keyword;
+            onSelected(keyword);
+        }, singleSelection: true, contentWidth: contentWidth);
     }
 
     public override void _Ready()
     {
         SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
-        MouseFilter = MouseFilterEnum.Ignore;
+        MouseFilter = _singleSelection ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        MouseForcePassScrollEvents = !_singleSelection;
         AddThemeConstantOverride("separation", 4);
         Rebuild();
     }
@@ -129,9 +151,9 @@ public partial class NCardKeywordEditor : VBoxContainer
         NSelectFilterDropdown modFilter = new()
         {
             Name = "KeywordModFilter",
-            CustomMinimumSize = new Vector2(ContentWidth, 52f),
+            CustomMinimumSize = new Vector2(_contentWidth, 52f),
             SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-            DropdownWidth = 420f
+            DropdownWidth = _contentWidth - 6f
         };
         modFilter.SetItems(
             LocMan.Loc("FILTER_GROUP_MODS", "Mods"),
@@ -142,7 +164,7 @@ public partial class NCardKeywordEditor : VBoxContainer
         VBoxContainer contentHost = new()
         {
             Name = "KeywordContentHost",
-            CustomMinimumSize = new Vector2(ContentWidth, 0f),
+            CustomMinimumSize = new Vector2(_contentWidth, 0f),
             SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -170,6 +192,7 @@ public partial class NCardKeywordEditor : VBoxContainer
         if (!GodotObject.IsInstanceValid(contentHost))
             return;
 
+        _selectedToggle = null;
         ClearChildren(contentHost);
         IReadOnlyList<ContentBlock> blocks = BuildContentBlocks(catalog);
         float contentHeight = GetContentHeight(blocks);
@@ -177,8 +200,8 @@ public partial class NCardKeywordEditor : VBoxContainer
         bool needsScrolling = contentHeight > maximumVisibleHeight;
         float visibleHeight = Math.Min(contentHeight, maximumVisibleHeight);
         float contentWidth = needsScrolling
-            ? ContentWidth - NLoadoutNativeScrollbar.Width
-            : ContentWidth;
+            ? _contentWidth - NLoadoutNativeScrollbar.Width
+            : _contentWidth;
 
         VBoxContainer content = CreateContent(blocks, contentWidth);
         content.CustomMinimumSize = new Vector2(contentWidth, contentHeight);
@@ -213,7 +236,8 @@ public partial class NCardKeywordEditor : VBoxContainer
             {
                 Name = "KeywordScroll",
                 SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-                MouseFilter = MouseFilterEnum.Stop
+                MouseFilter = MouseFilterEnum.Stop,
+                MouseForcePassScrollEvents = !_singleSelection
             };
             mask = new Control
             {
@@ -236,7 +260,7 @@ public partial class NCardKeywordEditor : VBoxContainer
             scroll.DisableScrollingIfContentFits();
         }
 
-        scroll.CustomMinimumSize = new Vector2(ContentWidth, visibleHeight);
+        scroll.CustomMinimumSize = new Vector2(_contentWidth, visibleHeight);
 
         content.Name = "Content";
         content.SetAnchorsPreset(LayoutPreset.TopWide);
@@ -525,8 +549,8 @@ public partial class NCardKeywordEditor : VBoxContainer
         {
             CardKeyword keyword = entry.Keyword;
             string key = LoadoutKeywords.GetStorageKey(keyword);
-            if (entry.ControlKind
-                is LoadoutKeywordEditorControlKind.RepeatablePower or LoadoutKeywordEditorControlKind.RepeatableCard or LoadoutKeywordEditorControlKind.RepeatableText)
+            if (!_singleSelection && entry.ControlKind
+                is (LoadoutKeywordEditorControlKind.RepeatablePower or LoadoutKeywordEditorControlKind.RepeatableCard or LoadoutKeywordEditorControlKind.RepeatableText))
             {
                 grid.AddChild(CreateRepeatableControl(entry, toggleWidth));
                 continue;
@@ -539,8 +563,22 @@ public partial class NCardKeywordEditor : VBoxContainer
             };
             toggle.SetHoverTipsFactory(() => GetKeywordHoverTips(keyword));
             toggle.Init($"keyword_{key}", entry.Label, _isChecked(keyword));
+            if (_singleSelection && toggle.IsChecked)
+                _selectedToggle = toggle;
             toggle.Toggled += changed =>
-                _onChanged(keyword, changed.IsChecked);
+            {
+                if (!_singleSelection)
+                {
+                    _onChanged(keyword, changed.IsChecked);
+                    return;
+                }
+                changed.SetChecked(true);
+                if (!_isChecked(keyword))
+                    _selectedToggle?.SetChecked(false);
+                _selectedToggle = changed;
+                NHoverTipSet.Remove(changed);
+                _onChanged(keyword, true);
+            };
             grid.AddChild(toggle);
         }
         return grid;
@@ -824,16 +862,6 @@ public partial class NCardKeywordEditor : VBoxContainer
             return keyword.ToString();
         }
     }
-
-    public static IReadOnlyList<CardKeyword> GetSelectableKeywords() =>
-        Enum.GetValues<CardKeyword>().Concat(LoadoutKeywords.All)
-            .Concat(CustomKeywords.KeywordIDs.Keys.Select(value => (CardKeyword)value))
-            .Concat(ModelDb.AllCards.SelectMany(GetKeywordsSafely))
-            .Where(keyword => keyword != CardKeyword.None)
-            .Distinct()
-            .OrderBy(GetKeywordLabel, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(keyword => (int)keyword)
-            .ToArray();
 
     private static IEnumerable<CardKeyword> GetKeywordsSafely(CardModel card)
     {

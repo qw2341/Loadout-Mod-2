@@ -405,11 +405,11 @@
   "LOADOUT-ADD_RANDOM_CARD.description": "Add random cards from the selected pool and rarity to your chosen piles when played.",
   "LOADOUT-ADD_RANDOM_CARD.cardText": "{LoadoutAddRandomCardList}",
   "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.title": "Add Keyword to Random Card",
-  "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.description": "Add the configured keyword to random cards in the selected pile for this combat.",
+  "LOADOUT-ADD_KEYWORD_TO_RANDOM_CARD.description": "Add the configured keyword to random cards in the selected pile.",
   "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.title": "Add Keyword to Chosen Card",
-  "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.description": "Add the configured keyword to cards you choose from the selected pile for this combat.",
+  "LOADOUT-ADD_KEYWORD_TO_CHOSEN_CARD.description": "Add the configured keyword to cards you choose from the selected pile.",
   "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.title": "Add Keyword to All Cards",
-  "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "Add the configured keyword to every other card in the selected pile for this combat.",
+  "LOADOUT-ADD_KEYWORD_TO_ALL_CARDS.description": "Add the configured keyword to every other card in the selected pile.",
   "LOADOUT-ADD_KEYWORD.cardText": "{GrantedKeywords}",
   "LOADOUT-ADD_KEYWORD.selectionPrompt": "Choose a card to receive {Keyword}."
 }

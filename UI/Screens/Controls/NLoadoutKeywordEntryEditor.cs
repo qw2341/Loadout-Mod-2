@@ -18,7 +18,6 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 {
     private LoadoutCardKeywordEntry _entry = new();
     private Action<LoadoutCardKeywordEntry> _changed = _ => { };
-    private IReadOnlyList<CardKeyword> _keywords = [];
     private bool _showAmount;
     private int _revision;
 
@@ -27,7 +26,6 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
         _entry = entry.Clone();
         _changed = changed;
         _showAmount = showAmount;
-        _keywords = NCardKeywordEditor.GetSelectableKeywords();
         if (IsNodeReady())
             Rebuild();
     }
@@ -50,13 +48,11 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
         AddEntryControls(this, _entry, _showAmount);
     }
 
-    private void Commit(bool rebuild = false)
+    private void Commit()
     {
         if (!IsInsideTree())
             return;
         _changed(_entry.Clone());
-        if (rebuild)
-            Callable.From(Rebuild).CallDeferred();
     }
 
     private void AddEntryControls(VBoxContainer container, LoadoutCardKeywordEntry entry, bool showAmount = true, int depth = 0)
@@ -99,7 +95,8 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
                             return;
                         entry.CardId = selected.Id.ToString();
                         entry.Upgraded = upgraded;
-                        Commit(rebuild: true);
+                        selector.Init(entry.CardId, entry.Upgraded);
+                        Commit();
                     }, out string error))
                     GD.PushWarning(error);
             };
@@ -117,20 +114,89 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 
     private void AddPayloadControls(VBoxContainer container, LoadoutKeywordPayload payload, Action<LoadoutKeywordPayload> replace, int depth)
     {
-        NLoadoutDropdownStepper keyword = new();
-        var options = _keywords.Select(value => new LoadoutDropdownOption(
-            LoadoutKeywords.GetStorageKey(value), NCardKeywordEditor.GetKeywordLabel(value))).ToList();
-        if (!options.Any(option => option.Id == payload.KeywordKey))
-            options.Add(new LoadoutDropdownOption(payload.KeywordKey, payload.GetLabel()));
-        keyword.Init(options, payload.KeywordKey, key =>
+        Button keyword = new()
         {
-            if (!LoadoutKeywords.TryResolve(key, out CardKeyword selected))
-                return;
-            replace(LoadoutKeywordPayload.Create(selected));
-            Commit(rebuild: true);
-        });
+            Text = payload.GetLabel(),
+            ToggleMode = true,
+            CustomMinimumSize = new Vector2(218f, 42f),
+            Alignment = HorizontalAlignment.Left,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        keyword.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
+        keyword.AddThemeFontSizeOverride("font_size", 18);
+        foreach (string state in new[] { "normal", "hover", "pressed", "hover_pressed" })
+        {
+            keyword.AddThemeStyleboxOverride(state, new StyleBoxFlat
+            {
+                BgColor = state == "normal"
+                    ? new Color(0.172549f, 0.262745f, 0.309804f)
+                    : new Color(0.215686f, 0.411765f, 0.501961f),
+                ContentMarginLeft = 12f,
+                ContentMarginRight = 44f,
+                ContentMarginTop = 4f,
+                ContentMarginBottom = 4f
+            });
+        }
+        foreach (string color in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color" })
+            keyword.AddThemeColorOverride(color, StsColors.gold);
+        TextureRect arrow = new()
+        {
+            Name = "Arrow",
+            Texture = GD.Load<Texture2D>("res://images/atlases/ui_atlas.sprites/settings_tiny_left_arrow.tres"),
+            Rotation = -Mathf.Pi * 0.5f,
+            PivotOffset = new Vector2(13f, 13f),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        arrow.SetAnchorsPreset(LayoutPreset.CenterRight);
+        arrow.OffsetLeft = -36f;
+        arrow.OffsetRight = -10f;
+        arrow.OffsetTop = -13f;
+        arrow.OffsetBottom = 13f;
+        keyword.AddChild(arrow);
         container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_GRANTED_KEYWORD", "Keyword to Add"), keyword));
+        VBoxContainer pickerHost = new() { Visible = false };
+        VBoxContainer valuesHost = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        container.AddChild(pickerHost);
+        container.AddChild(valuesHost);
+        AddPayloadValueControls(valuesHost, payload, depth);
 
+        NCardKeywordEditor? picker = null;
+        keyword.Toggled += expanded =>
+        {
+            if (expanded && picker is null)
+            {
+                LoadoutKeywords.TryResolve(payload.KeywordKey, out CardKeyword current);
+                picker = new NCardKeywordEditor();
+                picker.InitSingleSelection(current, selected =>
+                {
+                    keyword.ButtonPressed = false;
+                    keyword.GrabFocus();
+                    if (LoadoutKeywords.GetStorageKey(selected) == payload.KeywordKey)
+                        return;
+                    _revision++;
+                    payload = LoadoutKeywordPayload.Create(selected);
+                    replace(payload);
+                    keyword.Text = payload.GetLabel();
+                    foreach (Node child in valuesHost.GetChildren())
+                    {
+                        valuesHost.RemoveChild(child);
+                        child.QueueFree();
+                    }
+                    AddPayloadValueControls(valuesHost, payload, depth);
+                    Commit();
+                }, contentWidth: depth == 0 ? 426f : 414f);
+                pickerHost.AddChild(picker);
+            }
+            pickerHost.Visible = expanded;
+            arrow.Rotation = (expanded ? 1f : -1f) * Mathf.Pi * 0.5f;
+        };
+    }
+
+    private void AddPayloadValueControls(VBoxContainer container, LoadoutKeywordPayload payload, int depth)
+    {
         LoadoutKeywordRegistry.TryGet(payload.KeywordKey, out LoadoutKeywordModel model);
         var definitions = model?.DynamicVars.Where(variable => variable.EditorVisible).ToArray() ?? [];
         VBoxContainer values = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -170,7 +236,8 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
                         if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || revision != _revision)
                             return;
                         power.PowerId = selected.Id.ToString();
-                        Commit(rebuild: true);
+                        selector.Init(power.PowerId);
+                        Commit();
                     }, out string error))
                     GD.PushWarning(error);
             };
@@ -198,6 +265,21 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
         }
         MarginContainer inset = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         inset.AddThemeConstantOverride("margin_left", depth == 0 ? 12 : 0);
+        MegaLabel heading = new()
+        {
+            Text = payload.GetLabel(),
+            CustomMinimumSize = new Vector2(0f, 36f),
+            AutoSizeEnabled = true,
+            MinFontSize = 14,
+            MaxFontSize = 22,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        heading.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
+        heading.AddThemeFontSizeOverride("font_size", 22);
+        heading.AddThemeColorOverride("font_color", StsColors.gold);
+        values.AddChild(heading);
+        values.MoveChild(heading, 0);
         inset.AddChild(values);
         container.AddChild(inset);
     }

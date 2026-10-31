@@ -123,20 +123,23 @@ public sealed class LoadoutKeywordPayload
         if (Power is { } power)
             settings.Add($"{(LoadoutPowerKeywordState.TryResolvePower(power.PowerId, out var model) ? CommonHelpers.FormatPowerTitle(model) : power.PowerId)}: {power.Amount}");
         if (Card is { IsKeywordGrant: true } grant)
-            settings.Add(LoadoutKeywordKeywordModel.FormatEntry(grant));
+            settings.Add(AsInlineClause(LoadoutKeywordKeywordModel.FormatEntry(grant)));
         else if (Card is { } card)
         {
             string cards = card.IsRandom
                 ? AddRandomCardKeyword.FormatEntry(card, card.Amount.ToString(CultureInfo.InvariantCulture))
                 : $"{card.Amount} {LoadoutCardKeywordState.GetCardTitle(card.CardId, card.Upgraded)}";
-            settings.Add(LocMan.Loc("CARD_MOD_CARD_KEYWORD_SENTENCE", "Add {0} into your [gold]{1}[/gold].",
-                cards, LoadoutCardKeywordState.GetPileLabel(card.Pile)));
+            settings.Add(AsInlineClause(LocMan.Loc("CARD_MOD_CARD_KEYWORD_SENTENCE", "Add {0} into your [gold]{1}[/gold].",
+                cards, LoadoutCardKeywordState.GetPileLabel(card.Pile))));
             string cost = LoadoutCardKeywordState.GetFreeToPlayDescription(card.EffectiveFreeToPlay, card.Amount == 1);
             if (!string.IsNullOrEmpty(cost))
-                settings.Add(cost);
+                settings.Add(AsInlineClause(cost));
         }
         if (Commands is { Count: > 0 })
             settings.AddRange(Commands);
-        return $"[gold]{GetLabel()}[/gold]" + (settings.Count == 0 ? string.Empty : $" ({string.Join(", ", settings)})");
+        string separator = LocMan.Loc("CARD_MOD_KEYWORD_SETTINGS_SEPARATOR", ", ");
+        return $"[gold]{GetLabel()}[/gold]" + (settings.Count == 0 ? string.Empty : $" ({string.Join(separator, settings)})");
     }
+
+    private static string AsInlineClause(string sentence) => sentence.TrimEnd().TrimEnd('.', '。');
 }

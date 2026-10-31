@@ -66,12 +66,12 @@ public abstract class LoadoutKeywordKeywordModel : LoadoutCardKeywordModel
                 selection switch
                 {
                     LoadoutKeywordCardSelection.Random => entry.Amount == 1
-                        ? "Add {0} to a random card in your {2} for this combat."
-                        : "Add {0} to {1} random cards in your {2} for this combat.",
+                        ? "Add {0} to a random card in your {2}."
+                        : "Add {0} to {1} random cards in your {2}.",
                     LoadoutKeywordCardSelection.Chosen => entry.Amount == 1
-                        ? "Add {0} to a card you choose in your {2} for this combat."
-                        : "Add {0} to {1} cards you choose in your {2} for this combat.",
-                    _ => "Add {0} to all other cards in your {2} for this combat."
+                        ? "Add {0} to a card you choose in your {2}."
+                        : "Add {0} to {1} cards you choose in your {2}.",
+                    _ => "Add {0} to all other cards in your {2}."
                 }, entry.GrantedKeyword?.GetDescription() ?? string.Empty, entry.Amount, LoadoutCardKeywordState.GetPileLabel(entry.Pile));
     }
 

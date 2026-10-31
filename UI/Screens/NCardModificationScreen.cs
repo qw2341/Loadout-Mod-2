@@ -86,6 +86,7 @@ public partial class NCardModificationScreen : Control
     private NButton? _leftArrow;
     private NButton? _rightArrow;
     private NBackButton? _backButton;
+    private Tween? _backButtonOpacityTween;
     private NCard? _previewCard;
     private CardModel? _previewDisplayModel;
     private MegaLabel? _titleLabel;
@@ -241,6 +242,13 @@ public partial class NCardModificationScreen : Control
     public override void _ExitTree()
     {
         BeginClose();
+        _backButtonOpacityTween?.Kill();
+        _backButtonOpacityTween = null;
+        if (_backButton is not null && GodotObject.IsInstanceValid(_backButton))
+        {
+            _backButton.Focused -= OnBackButtonFocused;
+            _backButton.Unfocused -= OnBackButtonUnfocused;
+        }
         CloseTextEditor();
         ClearHoverTips();
     }
@@ -700,6 +708,9 @@ public partial class NCardModificationScreen : Control
 
         NBackButton backButton = NLoadoutBackButtonFactory.Create();
         backButton.Name = "BackButton";
+        backButton.Modulate = new Color(1f, 1f, 1f, 0.5f);
+        backButton.Focused += OnBackButtonFocused;
+        backButton.Unfocused += OnBackButtonUnfocused;
         backButton.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ =>
         {
             NLoadoutBackButtonFactory.ResetVisualState(backButton);
@@ -709,6 +720,19 @@ public partial class NCardModificationScreen : Control
         _backButtonMount.AddChild(backButton);
         _backButton = backButton;
         Callable.From(RefreshNativeButtonState).CallDeferred();
+    }
+
+    private void OnBackButtonFocused(NClickableControl button) => FadeBackButton(button, 1f);
+
+    private void OnBackButtonUnfocused(NClickableControl button) => FadeBackButton(button, 0.5f);
+
+    private void FadeBackButton(NClickableControl button, float opacity)
+    {
+        _backButtonOpacityTween?.Kill();
+        _backButtonOpacityTween = button.CreateTween();
+        _backButtonOpacityTween.TweenProperty(button, "modulate:a", opacity, 0.5)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.InOut);
     }
 
     private void BeginClose()
