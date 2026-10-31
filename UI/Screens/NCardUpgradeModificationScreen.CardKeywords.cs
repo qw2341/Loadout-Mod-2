@@ -233,6 +233,18 @@ public partial class NCardUpgradeModificationScreen
                 RefreshPreview();
             });
             _leftControls.AddChild(CreateRow(LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play") + suffix, cost));
+            LoadoutCardKeywordEntry extraEntry = baseEntry.Clone();
+            if (configured?.ReplacementGrantedKeyword is { } replacementExtra)
+                extraEntry.GrantedKeyword = replacementExtra.IsEmpty ? null : replacementExtra.Clone();
+            NLoadoutKeywordEntryEditor extraKeywordEditor = new();
+            extraKeywordEditor.Init(extraEntry, updated =>
+            {
+                UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence, entry =>
+                    entry.ReplacementGrantedKeyword = LoadoutKeywordPayload.Equivalent(updated.GrantedKeyword, baseEntry.GrantedKeyword)
+                        ? null : updated.GrantedKeyword?.Clone() ?? new LoadoutKeywordPayload { KeywordKey = string.Empty });
+                RefreshPreview();
+            }, extraKeywordOnly: true);
+            _leftControls.AddChild(extraKeywordEditor);
         }
 
         if (addedEntries.Count > 0)
@@ -356,6 +368,13 @@ public partial class NCardUpgradeModificationScreen
                 RefreshPreview();
             });
             _leftControls.AddChild(CreateRow(LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play") + suffix, cost));
+            NLoadoutKeywordEntryEditor extraKeywordEditor = new();
+            extraKeywordEditor.Init(addedEntries[index], updated =>
+            {
+                UpdateAddedCardKeywordEntry(capturedIndex, entry => entry.GrantedKeyword = updated.GrantedKeyword?.Clone());
+                RefreshPreview();
+            }, extraKeywordOnly: true);
+            _leftControls.AddChild(extraKeywordEditor);
         }
     }
 

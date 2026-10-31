@@ -251,7 +251,8 @@ public static class LoadoutCardKeywordState
                     if (!string.IsNullOrWhiteSpace(upgrade.ReplacementCardId))
                         effective.CardId = upgrade.ReplacementCardId;
                     if (upgrade.ReplacementGrantedKeyword is not null)
-                        effective.GrantedKeyword = upgrade.ReplacementGrantedKeyword.Clone();
+                        effective.GrantedKeyword = upgrade.ReplacementGrantedKeyword.IsEmpty
+                            ? null : upgrade.ReplacementGrantedKeyword.Clone();
                     if (upgrade.ReplacementUpgraded.HasValue)
                         effective.Upgraded = upgrade.ReplacementUpgraded.Value;
                     if (upgrade.ReplacementPile.HasValue)
@@ -412,6 +413,9 @@ public static class LoadoutCardKeywordState
         }
     }
 
+    public static void ApplyGeneratedCardKeywords(CardModel generated, LoadoutCardKeywordEntry entry) =>
+        entry.GrantedKeyword?.ApplyTo(generated);
+
     public static string GetPileLabel(PileType pile) => pile switch
     {
         PileType.Draw => LocMan.Loc("CARD_MOD_CARD_PILE_DRAW", "Draw Pile"),
@@ -435,10 +439,18 @@ public static class LoadoutCardKeywordState
         string amount = entry.Amount.ToString(CultureInfo.InvariantCulture);
         if (highlight && effective.AmountWasUpgraded)
             amount = StsTextUtilities.HighlightChangeText(amount, 1);
-        if (entry.IsRandom)
-            return AddRandomCardKeyword.FormatEntry(entry, amount);
-        return LocMan.Loc("CARD_MOD_CARD_KEYWORD_ENTRY", "{0} {1}", amount,
-            $"[gold]{GetCardTitle(entry.CardId, entry.Upgraded)}[/gold]");
+        return FormatEntry(entry, amount);
+    }
+
+    public static string FormatEntry(LoadoutCardKeywordEntry entry, string amount)
+    {
+        string cards = entry.IsRandom
+            ? AddRandomCardKeyword.FormatEntry(entry, amount)
+            : LocMan.Loc("CARD_MOD_CARD_KEYWORD_ENTRY", "{0} {1}", amount,
+                $"[gold]{GetCardTitle(entry.CardId, entry.Upgraded)}[/gold]");
+        return entry.GrantedKeyword is { IsEmpty: false } extra
+            ? LocMan.Loc("CARD_MOD_CARD_EXTRA_KEYWORD_FORMAT", "{0} with {1}", cards, $"[gold]{extra.GetLabel()}[/gold]")
+            : cards;
     }
 
     public static int SaturatingMultiply(int amount, int multiplier)

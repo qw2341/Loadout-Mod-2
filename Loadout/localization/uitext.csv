@@ -936,6 +936,8 @@ CARD_MOD_LOADOUT_KEYWORD_KEYWORDS,Loadout Keyword Keyword,Loadout 关键词关�
 CARD_MOD_KEYWORD_TARGET_AMOUNT,Target Cards,目标卡牌数量,Cartes ciblées,対象カード数,대상 카드 수,Cartas objetivo
 CARD_MOD_KEYWORD_SOURCE_PILE,Card Pile,目标牌堆,Pile de cartes,対象の山,카드 더미,Montón de cartas
 CARD_MOD_GRANTED_KEYWORD,Keyword to Add,添加的关键词,Mot-clé à ajouter,付与するキーワード,추가할 키워드,Palabra clave a añadir
+CARD_MOD_CARD_EXTRA_KEYWORD,Extra Keyword,附加关键词,Mot-clé supplémentaire,追加キーワード,추가 키워드,Palabra clave adicional
+CARD_MOD_CARD_EXTRA_KEYWORD_FORMAT,{0} with {1},{0}（附带{1}）,{0} avec {1},{0}（{1}付き）,{0} ({1} 부여),{0} con {1}
 CARD_MOD_KEYWORD_VALUES,Keyword Values,关键词数值,Valeurs du mot-clé,キーワードの値,키워드 수치,Valores de la palabra clave
 CARD_MOD_KEYWORD_NO_VALUES,No editable values,无可编辑数值,Aucune valeur modifiable,編集可能な値なし,편집 가능한 수치 없음,Sin valores editables
 CARD_MOD_POWER_AMOUNT,Power Amount,能力数量,Quantité de pouvoir,パワー量,파워 수치,Cantidad de poder

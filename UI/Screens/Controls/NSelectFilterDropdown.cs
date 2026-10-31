@@ -208,6 +208,7 @@ public partial class NLoadoutDropdown : NDropdown
         if (InlineExpansionRequested is not null)
         {
             InlineExpansionRequested.Invoke();
+            CloseLoadoutDropdown(restoreFocus: false);
             return;
         }
 
@@ -564,14 +565,16 @@ public partial class NLoadoutDropdown : NDropdown
 
     private void RefreshButtonHighlight()
     {
+        bool showFocus = HasFocus()
+            && (InlineExpansionRequested is null || NControllerManager.Instance?.IsUsingDirectionalNavigation == true);
         if (_buttonHoverHighlight is not null && GodotObject.IsInstanceValid(_buttonHoverHighlight))
-            _buttonHoverHighlight.Visible = _isOpen || _isButtonHovered || HasFocus();
+            _buttonHoverHighlight.Visible = _isOpen || _isButtonHovered || showFocus;
     }
 
     private void RefreshButtonHoverFromMouse()
     {
-        Viewport? viewport = GetViewport();
-        _isButtonHovered = viewport is not null && GetGlobalRect().HasPoint(viewport.GetMousePosition());
+        _isButtonHovered = IsInsideTree() && IsVisibleInTree()
+            && GetGlobalRect().HasPoint(GetGlobalMousePosition());
     }
 
     private void PositionDropdownContainer()

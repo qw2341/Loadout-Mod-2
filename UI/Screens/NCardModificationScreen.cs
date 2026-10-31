@@ -1408,6 +1408,10 @@ public partial class NCardModificationScreen : Control
                 capturedIndex, entry => entry.FreeToPlay = value, rebuildControls: false));
             _variableControls.AddChild(CreateRow(
                 LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play") + suffix, cost));
+            NLoadoutKeywordEntryEditor extraKeywordEditor = new();
+            extraKeywordEditor.Init(entries[index], updated => UpdateCardKeywordEntry(capturedIndex,
+                entry => entry.GrantedKeyword = updated.GrantedKeyword?.Clone(), rebuildControls: false), extraKeywordOnly: true);
+            _variableControls.AddChild(extraKeywordEditor);
         }
     }
 

@@ -4,6 +4,8 @@ namespace Loadout.Keywords;
 
 using System.Collections.Generic;
 using BaseLib.Cards.Variables;
+using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using Loadout.Services.CardModification;
 
@@ -33,6 +35,17 @@ public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
         KeywordKey = StorageKey,
         CardId = LoadoutCardKeywordState.GetDefaultCardId()
     };
+
+    public override IEnumerable<IHoverTip> GetAdditionalCardHoverTips(CardModel card)
+    {
+        HashSet<CardKeyword> shown = [];
+        foreach (var entry in LoadoutCardKeywordState.GetEffectiveEntries(card, StorageKey))
+        {
+            if (LoadoutKeywords.TryResolve(entry.GrantedKeyword?.KeywordKey, out CardKeyword keyword)
+                && keyword != CardKeyword.None && shown.Add(keyword))
+                yield return HoverTipFactory.FromKeyword(keyword);
+        }
+    }
 
     protected static IReadOnlyList<LoadoutKeywordDynamicVarDefinition> CreateDisplayVariables(
         string name, string label, string key) =>

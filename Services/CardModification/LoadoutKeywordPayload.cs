@@ -10,9 +10,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Loadout.Keywords;
 using Loadout.PanelItems;
+using Loadout.Patches.Cards.CardModification;
 using Loadout.UI.Managers;
 using Loadout.UI.Screens.Controls;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Commands;
 
 public sealed class LoadoutKeywordPayload
 {
@@ -32,7 +35,8 @@ public sealed class LoadoutKeywordPayload
     public List<string>? Commands { get; set; }
 
     [JsonIgnore]
-    public bool IsEmpty => string.IsNullOrWhiteSpace(KeywordKey);
+    public bool IsEmpty => string.IsNullOrWhiteSpace(KeywordKey)
+        || string.Equals(KeywordKey, nameof(CardKeyword.None), StringComparison.OrdinalIgnoreCase);
 
     public LoadoutKeywordPayload Clone() => new()
     {
@@ -107,6 +111,47 @@ public sealed class LoadoutKeywordPayload
         || left is not null && right is not null
         && string.Equals(JsonSerializer.Serialize(left), JsonSerializer.Serialize(right), StringComparison.Ordinal);
 
+    public void ApplyTo(CardModel target)
+    {
+        if (target.IsCanonical || IsEmpty || !LoadoutKeywords.TryResolve(KeywordKey, out CardKeyword keyword))
+            return;
+        CardModificationSpec state = CardModificationRuntime.GetEffectiveSpec(target);
+        state.KeywordOverrides[KeywordKey] = true;
+        foreach ((string name, decimal value) in Values)
+            state.DynamicVars[name] = value;
+        if (Power is { } power)
+            (state.PowerKeywordEntries ??= []).Add(power.Clone());
+        if (Card is { } nested)
+            (state.CardKeywordEntries ??= []).Add(nested.Clone());
+        if (Commands is { } commands)
+        {
+            List<string> effective = AltExecuteKeyword.GetCommands(target).ToList();
+            effective.AddRange(commands);
+            state.ExecuteCommands = effective;
+            if (target.CurrentUpgradeLevel > 0)
+                state.UpgradeModification.ExecuteCommands = effective.ToList();
+        }
+        CardModificationFields.Set(target, state);
+        LoadoutPowerKeywordState.SetExplicitState(target, state);
+        LoadoutCardKeywordState.SetExplicitState(target, state);
+        AltExecuteKeyword.SetExplicitState(target, state);
+        bool newlyAdded = !LoadoutKeywords.Has(target, keyword);
+        LoadoutKeywordRegistry.SynchronizeDynamicVars(target, state.KeywordOverrides);
+        foreach ((string name, decimal value) in Values)
+        {
+            if (target.DynamicVars.TryGetValue(name, out var variable))
+                variable.BaseValue = value;
+        }
+        if (LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model))
+        {
+            if (newlyAdded)
+                model.OnAdded(target);
+            if ((model.ModificationFlags & LoadoutCardModificationFlags.OverrideXCost) != 0)
+                XCostKeywordMechanics.SynchronizeEnergyCost(target, state.KeywordOverrides, state.EnergyCost);
+        }
+        CardCmd.ApplyKeyword(target, keyword);
+    }
+
     public string GetLabel() => LoadoutKeywords.TryResolve(KeywordKey, out CardKeyword keyword)
         ? NCardKeywordEditor.GetKeywordLabel(keyword)
         : KeywordKey;
@@ -126,9 +171,7 @@ public sealed class LoadoutKeywordPayload
             settings.Add(AsInlineClause(LoadoutKeywordKeywordModel.FormatEntry(grant)));
         else if (Card is { } card)
         {
-            string cards = card.IsRandom
-                ? AddRandomCardKeyword.FormatEntry(card, card.Amount.ToString(CultureInfo.InvariantCulture))
-                : $"{card.Amount} {LoadoutCardKeywordState.GetCardTitle(card.CardId, card.Upgraded)}";
+            string cards = LoadoutCardKeywordState.FormatEntry(card, card.Amount.ToString(CultureInfo.InvariantCulture));
             settings.Add(AsInlineClause(LocMan.Loc("CARD_MOD_CARD_KEYWORD_SENTENCE", "Add {0} into your [gold]{1}[/gold].",
                 cards, LoadoutCardKeywordState.GetPileLabel(card.Pile))));
             string cost = LoadoutCardKeywordState.GetFreeToPlayDescription(card.EffectiveFreeToPlay, card.Amount == 1);

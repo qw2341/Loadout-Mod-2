@@ -19,13 +19,16 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
     private LoadoutCardKeywordEntry _entry = new();
     private Action<LoadoutCardKeywordEntry> _changed = _ => { };
     private bool _showAmount;
+    private bool _extraKeywordOnly;
     private int _revision;
 
-    public void Init(LoadoutCardKeywordEntry entry, Action<LoadoutCardKeywordEntry> changed, bool showAmount = true)
+    public void Init(LoadoutCardKeywordEntry entry, Action<LoadoutCardKeywordEntry> changed,
+        bool showAmount = true, bool extraKeywordOnly = false)
     {
         _entry = entry.Clone();
         _changed = changed;
         _showAmount = showAmount;
+        _extraKeywordOnly = extraKeywordOnly;
         if (IsNodeReady())
             Rebuild();
     }
@@ -45,7 +48,10 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
             RemoveChild(child);
             child.QueueFree();
         }
-        AddEntryControls(this, _entry, _showAmount);
+        if (_extraKeywordOnly)
+            AddExtraKeywordControls(this, _entry, 0);
+        else
+            AddEntryControls(this, _entry, _showAmount);
     }
 
     private void Commit()
@@ -110,9 +116,14 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
         NLoadoutCardCostStepper cost = new();
         cost.Init(entry.FreeToPlay, value => { entry.FreeToPlay = value; Commit(); });
         container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play"), cost));
+        AddExtraKeywordControls(container, entry, depth);
     }
 
-    private void AddPayloadControls(VBoxContainer container, LoadoutKeywordPayload payload, Action<LoadoutKeywordPayload> replace, int depth)
+    private void AddExtraKeywordControls(VBoxContainer container, LoadoutCardKeywordEntry entry, int depth) =>
+        AddPayloadControls(container, entry.GrantedKeyword, replacement => entry.GrantedKeyword = replacement, depth, allowNone: true);
+
+    private void AddPayloadControls(VBoxContainer container, LoadoutKeywordPayload? payload,
+        Action<LoadoutKeywordPayload?> replace, int depth, bool allowNone = false)
     {
         NLoadoutDropdown keyword = new()
         {
@@ -122,14 +133,19 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
             LabelMaxFontSize = 20,
             ExpandToAvailableWidth = false
         };
-        keyword.SetItems(string.Empty,
-            [new LoadoutDropdownOption(payload.KeywordKey, payload.GetLabel())], payload.KeywordKey);
-        container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_GRANTED_KEYWORD", "Keyword to Add"), keyword));
+        void RefreshSelection() => keyword.SetItems(string.Empty,
+            [new LoadoutDropdownOption(payload?.KeywordKey ?? string.Empty, payload?.GetLabel() ?? LocMan.Loc("NONE", "None"))],
+            payload?.KeywordKey ?? string.Empty);
+        RefreshSelection();
+        container.AddChild(CreateRow(allowNone
+            ? LocMan.Loc("CARD_MOD_CARD_EXTRA_KEYWORD", "Extra Keyword")
+            : LocMan.Loc("CARD_MOD_GRANTED_KEYWORD", "Keyword to Add"), keyword));
         VBoxContainer pickerHost = new() { Visible = false };
         VBoxContainer valuesHost = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         container.AddChild(pickerHost);
         container.AddChild(valuesHost);
-        AddPayloadValueControls(valuesHost, payload, depth);
+        if (payload is not null)
+            AddPayloadValueControls(valuesHost, payload, depth);
 
         NCardKeywordEditor? picker = null;
         keyword.InlineExpansionRequested += () =>
@@ -137,27 +153,28 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
             bool expanded = !pickerHost.Visible;
             if (expanded && picker is null)
             {
-                LoadoutKeywords.TryResolve(payload.KeywordKey, out CardKeyword current);
+                LoadoutKeywords.TryResolve(payload?.KeywordKey, out CardKeyword current);
                 picker = new NCardKeywordEditor();
                 picker.InitSingleSelection(current, selected =>
                 {
                     pickerHost.Hide();
                     keyword.CloseLoadoutDropdown(restoreFocus: false);
-                    if (LoadoutKeywords.GetStorageKey(selected) == payload.KeywordKey)
+                    string selectedKey = selected == CardKeyword.None ? string.Empty : LoadoutKeywords.GetStorageKey(selected);
+                    if (selectedKey == (payload?.KeywordKey ?? string.Empty))
                         return;
                     _revision++;
-                    payload = LoadoutKeywordPayload.Create(selected);
+                    payload = selected == CardKeyword.None ? null : LoadoutKeywordPayload.Create(selected);
                     replace(payload);
-                    keyword.SetItems(string.Empty,
-                        [new LoadoutDropdownOption(payload.KeywordKey, payload.GetLabel())], payload.KeywordKey);
+                    RefreshSelection();
                     foreach (Node child in valuesHost.GetChildren())
                     {
                         valuesHost.RemoveChild(child);
                         child.QueueFree();
                     }
-                    AddPayloadValueControls(valuesHost, payload, depth);
+                    if (payload is not null)
+                        AddPayloadValueControls(valuesHost, payload, depth);
                     Commit();
-                }, contentWidth: depth == 0 ? 426f : 414f);
+                }, contentWidth: depth == 0 ? 426f : 414f, allowNone: allowNone);
                 pickerHost.AddChild(picker);
             }
             pickerHost.Visible = expanded;

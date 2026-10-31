@@ -98,6 +98,8 @@ public sealed class LoadoutCardKeywordEntry
             entry.PoolId = (entry.PoolId ?? string.Empty).Trim();
             entry.Amount = Math.Max(0, entry.Amount);
             entry.GrantedKeyword?.Normalize();
+            if (!entry.IsKeywordGrant && entry.GrantedKeyword is { IsEmpty: true })
+                entry.GrantedKeyword = null;
             if (entry.IsKeywordGrant && !LoadoutKeywordKeywordModel.IsCombatPile(entry.Pile))
                 entry.Pile = PileType.Hand;
             if (!Enum.IsDefined(entry.FreeToPlay))

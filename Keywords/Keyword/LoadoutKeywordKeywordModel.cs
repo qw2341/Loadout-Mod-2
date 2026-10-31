@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Loadout.Patches.Cards.CardModification;
 using Loadout.Services.CardModification;
 using Loadout.UI.Managers;
 using MegaCrit.Sts2.Core.CardSelection;
@@ -123,44 +122,8 @@ public abstract class LoadoutKeywordKeywordModel : LoadoutCardKeywordModel
 
     public static void ApplyKeyword(CardModel target, LoadoutKeywordPayload payload)
     {
-        if (target.IsCanonical || target.Pile is null || !IsCombatPile(target.Pile.Type)
-            || !LoadoutKeywords.TryResolve(payload.KeywordKey, out CardKeyword keyword))
-            return;
-        CardModificationSpec state = CardModificationRuntime.GetEffectiveSpec(target);
-        state.KeywordOverrides[payload.KeywordKey] = true;
-        foreach ((string name, decimal value) in payload.Values)
-            state.DynamicVars[name] = value;
-        if (payload.Power is { } power)
-            (state.PowerKeywordEntries ??= []).Add(power.Clone());
-        if (payload.Card is { } nested)
-            (state.CardKeywordEntries ??= []).Add(nested.Clone());
-        if (payload.Commands is { } commands)
-        {
-            List<string> effective = AltExecuteKeyword.GetCommands(target).ToList();
-            effective.AddRange(commands);
-            state.ExecuteCommands = effective;
-            if (target.CurrentUpgradeLevel > 0)
-                state.UpgradeModification.ExecuteCommands = effective.ToList();
-        }
-        CardModificationFields.Set(target, state);
-        LoadoutPowerKeywordState.SetExplicitState(target, state);
-        LoadoutCardKeywordState.SetExplicitState(target, state);
-        AltExecuteKeyword.SetExplicitState(target, state);
-        bool newlyAdded = !LoadoutKeywords.Has(target, keyword);
-        LoadoutKeywordRegistry.SynchronizeDynamicVars(target, state.KeywordOverrides);
-        foreach ((string name, decimal value) in payload.Values)
-        {
-            if (target.DynamicVars.TryGetValue(name, out var variable))
-                variable.BaseValue = value;
-        }
-        if (LoadoutKeywordRegistry.TryGet(keyword, out LoadoutKeywordModel model))
-        {
-            if (newlyAdded)
-                model.OnAdded(target);
-            if ((model.ModificationFlags & LoadoutCardModificationFlags.OverrideXCost) != 0)
-                XCostKeywordMechanics.SynchronizeEnergyCost(target, state.KeywordOverrides, state.EnergyCost);
-        }
-        CardCmd.ApplyKeyword(target, keyword);
+        if (target.Pile is not null && IsCombatPile(target.Pile.Type))
+            payload.ApplyTo(target);
     }
 
     public override IEnumerable<IHoverTip> GetAdditionalCardHoverTips(CardModel card)

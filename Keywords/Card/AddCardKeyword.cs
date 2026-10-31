@@ -3,6 +3,7 @@
 namespace Loadout.Keywords;
 
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -50,6 +51,7 @@ public sealed class AddCardKeyword : LoadoutCardKeywordModel
                     : card.CombatState!.CreateCard(canonical, card.Owner);
                 if (entry.Upgraded && generated.IsUpgradable)
                     CardCmd.Upgrade(generated);
+                LoadoutCardKeywordState.ApplyGeneratedCardKeywords(generated, entry);
                 LoadoutCardKeywordState.ApplyGeneratedCardCost(generated, entry);
                 if (entry.Pile == PileType.Hand)
                 {
@@ -68,12 +70,34 @@ public sealed class AddCardKeyword : LoadoutCardKeywordModel
 
     public override IEnumerable<IHoverTip> GetAdditionalCardHoverTips(CardModel card)
     {
-        HashSet<(string, bool)> shown = [];
+        foreach (IHoverTip tip in base.GetAdditionalCardHoverTips(card))
+            yield return tip;
+        HashSet<(string, bool, string?)> shown = [];
         foreach (var entry in LoadoutCardKeywordState.GetEffectiveEntries(card, StorageKey))
         {
-            if (shown.Add((entry.CardId, entry.Upgraded))
-                && LoadoutCardKeywordState.TryResolveCard(entry.CardId, out CardModel canonical))
-                yield return HoverTipFactory.FromCard(canonical, entry.Upgraded);
+            string? keywordState = entry.GrantedKeyword is { IsEmpty: false } extra
+                ? JsonSerializer.Serialize(extra) : null;
+            if (!shown.Add((entry.CardId, entry.Upgraded, keywordState))
+                || !LoadoutCardKeywordState.TryResolveCard(entry.CardId, out CardModel canonical))
+                continue;
+
+            CardHoverTip preview = (CardHoverTip)HoverTipFactory.FromCard(canonical, entry.Upgraded);
+            if (keywordState is not null)
+            {
+                LoadoutCardKeywordState.ApplyGeneratedCardKeywords(preview.Card, entry);
+                preview = new GeneratedCardHoverTip(preview.Card, keywordState);
+            }
+            yield return preview;
+        }
+    }
+
+    public sealed class GeneratedCardHoverTip : CardHoverTip, IHoverTip
+    {
+        public new string Id { get; }
+
+        public GeneratedCardHoverTip(CardModel card, string keywordState) : base(card)
+        {
+            Id = $"LOADOUT_ADD_CARD:{base.Id}:{keywordState}";
         }
     }
 }

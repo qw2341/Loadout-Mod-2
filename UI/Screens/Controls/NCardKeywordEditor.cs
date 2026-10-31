@@ -58,6 +58,7 @@ public partial class NCardKeywordEditor : VBoxContainer
     private Action<CardKeyword> _onRepeatRemoved = _ => { };
     private string _selectedModId = AllModFilterId;
     private bool _singleSelection;
+    private bool _allowNoneSelection;
     private CardKeyword _selectedKeyword;
     private NLoadoutToggle? _selectedToggle;
     private float _contentWidth = ContentWidth;
@@ -91,9 +92,11 @@ public partial class NCardKeywordEditor : VBoxContainer
     public void InitSingleSelection(
         CardKeyword selectedKeyword,
         Action<CardKeyword> onSelected,
-        float contentWidth = ContentWidth)
+        float contentWidth = ContentWidth,
+        bool allowNone = false)
     {
         _selectedKeyword = selectedKeyword;
+        _allowNoneSelection = allowNone;
         Init([], keyword => keyword == _selectedKeyword, (keyword, _) =>
         {
             _selectedKeyword = keyword;
@@ -195,6 +198,12 @@ public partial class NCardKeywordEditor : VBoxContainer
         _selectedToggle = null;
         ClearChildren(contentHost);
         IReadOnlyList<ContentBlock> blocks = BuildContentBlocks(catalog);
+        if (_singleSelection && _allowNoneSelection)
+        {
+            blocks = [new ContentBlock(null, [new CatalogEntry(
+                CardKeyword.None, LocMan.Loc("NONE", "None"), BaseGameModId, string.Empty,
+                LoadoutKeywordEditorSection.Default, 0, LoadoutKeywordEditorControlKind.Toggle)]), .. blocks];
+        }
         float contentHeight = GetContentHeight(blocks);
         float maximumVisibleHeight = GetGridHeight(VisibleRows);
         bool needsScrolling = contentHeight > maximumVisibleHeight;
@@ -561,7 +570,8 @@ public partial class NCardKeywordEditor : VBoxContainer
                 CustomMinimumSize = new Vector2(toggleWidth, ToggleHeight),
                 SizeFlagsHorizontal = SizeFlags.ShrinkBegin
             };
-            toggle.SetHoverTipsFactory(() => GetKeywordHoverTips(keyword));
+            if (keyword != CardKeyword.None)
+                toggle.SetHoverTipsFactory(() => GetKeywordHoverTips(keyword));
             toggle.Init($"keyword_{key}", entry.Label, _isChecked(keyword));
             if (_singleSelection && toggle.IsChecked)
                 _selectedToggle = toggle;

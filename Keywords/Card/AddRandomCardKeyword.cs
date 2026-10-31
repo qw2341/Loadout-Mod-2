@@ -73,6 +73,7 @@ public sealed class AddRandomCardKeyword : LoadoutCardKeywordModel
                     break;
                 if (entry.Upgraded && generated.Current.IsUpgradable)
                     CardCmd.Upgrade(generated.Current);
+                LoadoutCardKeywordState.ApplyGeneratedCardKeywords(generated.Current, entry);
                 LoadoutCardKeywordState.ApplyGeneratedCardCost(generated.Current, entry);
                 if (entry.Pile == PileType.Hand)
                     await CardPileCmd.AddGeneratedCardToCombat(generated.Current, entry.Pile, card.Owner);
