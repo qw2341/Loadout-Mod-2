@@ -696,7 +696,8 @@ public static class PermanentModificationArchiveService
                 pair.First.PowerId,
                 pair.Second.PowerId,
                 StringComparison.Ordinal)
-            && pair.First.Amount == pair.Second.Amount);
+            && pair.First.Amount == pair.Second.Amount
+            && pair.First.AmountAdjustment == pair.Second.AmountAdjustment);
 
     private static bool PowerKeywordEntryUpgradeListsEqual(
         List<LoadoutPowerKeywordEntryUpgrade> left,

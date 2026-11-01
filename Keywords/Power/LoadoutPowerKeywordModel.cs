@@ -321,6 +321,76 @@ public static class LoadoutPowerKeywordState
         }
     }
 
+    public static bool IncreaseAmounts(
+        CardModel card,
+        decimal amount,
+        CardModificationDelta? persistentDelta = null) =>
+        amount > 0m && ModifyAmounts(card, 1m, amount, persistentDelta);
+
+    public static bool MultiplyAmounts(CardModel card, decimal multiplier) =>
+        multiplier >= 0m && ModifyAmounts(card, multiplier, 0m, null);
+
+    private static bool ModifyAmounts(
+        CardModel card,
+        decimal multiplier,
+        decimal increase,
+        CardModificationDelta? persistentDelta)
+    {
+        if (card.IsCanonical)
+            return false;
+
+        ResolveLists(card, out var baseEntries, out var entryUpgrades, out var addedEntries);
+        if ((baseEntries is null || baseEntries.Count == 0)
+            && (card.CurrentUpgradeLevel <= 0 || addedEntries is null || addedEntries.Count == 0))
+            return false;
+
+        InfiniteUpgradeScalingMode scalingMode = InfiniteUpgradeValueScaling.Resolve(card);
+        ExplicitState live = new(baseEntries, entryUpgrades, addedEntries);
+        bool changed = ModifyAmounts(live, card.CurrentUpgradeLevel, scalingMode, multiplier, increase);
+        if (changed)
+        {
+            ExplicitStates.Remove(card);
+            ExplicitStates.Add(card, live);
+        }
+
+        if (persistentDelta is not null)
+        {
+            // Combat-only improvements must not become permanent.
+            ResolveLists(card, out baseEntries, out entryUpgrades, out addedEntries, useExplicitState: false);
+            ExplicitState saved = new(baseEntries, entryUpgrades, addedEntries);
+            if (ModifyAmounts(saved, card.CurrentUpgradeLevel, scalingMode, multiplier, increase))
+            {
+                persistentDelta.PowerKeywordEntries = saved.BaseEntries;
+                persistentDelta.UpgradeModification.AddedPowerKeywordEntries = saved.AddedEntries;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private static bool ModifyAmounts(
+        ExplicitState state,
+        int upgradeLevel,
+        InfiniteUpgradeScalingMode scalingMode,
+        decimal multiplier,
+        decimal increase)
+    {
+        bool changed = false;
+        foreach (EffectivePowerKeywordEntry effective in GetEffectiveEntryStates(
+                     state.BaseEntries, state.EntryUpgrades, state.AddedEntries, upgradeLevel, scalingMode))
+        {
+            int amount = (int)Math.Clamp(effective.Entry.Amount * multiplier + increase, int.MinValue, int.MaxValue);
+            long difference = (long)amount - effective.Entry.Amount;
+            if (difference == 0)
+                continue;
+
+            effective.SourceEntry.AmountAdjustment += difference;
+            changed = true;
+        }
+        return changed;
+    }
+
     public static IEnumerable<LoadoutPowerKeywordEntry> GetEffectiveEntries(
         CardModel card,
         string keywordKey)
@@ -457,9 +527,12 @@ public static class LoadoutPowerKeywordState
                         effective.PowerId = upgrade.ReplacementPowerId;
                 }
 
+                effective.Amount = (int)Math.Clamp(
+                    (decimal)effective.Amount + baseEntry.AmountAdjustment, int.MinValue, int.MaxValue);
                 yield return new EffectivePowerKeywordEntry(
                     effective,
-                    amountWasUpgraded);
+                    amountWasUpgraded,
+                    baseEntry);
             }
         }
 
@@ -474,9 +547,12 @@ public static class LoadoutPowerKeywordState
                 : SaturatingAmount(
                     (long)addedEntry.Amount * level
                     + cumulativeUpgradeBonus);
+            effective.Amount = (int)Math.Clamp(
+                (decimal)effective.Amount + addedEntry.AmountAdjustment, int.MinValue, int.MaxValue);
             yield return new EffectivePowerKeywordEntry(
                 effective,
-                AmountWasUpgraded: true);
+                AmountWasUpgraded: true,
+                addedEntry);
         }
     }
 
@@ -707,9 +783,10 @@ public static class LoadoutPowerKeywordState
         CardModel card,
         out IReadOnlyList<LoadoutPowerKeywordEntry>? baseEntries,
         out IReadOnlyList<LoadoutPowerKeywordEntryUpgrade>? entryUpgrades,
-        out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries)
+        out IReadOnlyList<LoadoutPowerKeywordEntry>? addedEntries,
+        bool useExplicitState = true)
     {
-        if (ExplicitStates.TryGetValue(card, out ExplicitState? explicitState))
+        if (useExplicitState && ExplicitStates.TryGetValue(card, out ExplicitState? explicitState))
         {
             baseEntries = explicitState.BaseEntries;
             entryUpgrades = explicitState.EntryUpgrades;
@@ -801,7 +878,8 @@ public static class LoadoutPowerKeywordState
 
     private readonly record struct EffectivePowerKeywordEntry(
         LoadoutPowerKeywordEntry Entry,
-        bool AmountWasUpgraded);
+        bool AmountWasUpgraded,
+        LoadoutPowerKeywordEntry SourceEntry);
 
     private sealed class KeywordPowerIdentityComparer
         : IEqualityComparer<(string KeywordKey, string PowerId)>

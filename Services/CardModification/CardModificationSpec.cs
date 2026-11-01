@@ -111,6 +111,11 @@ public sealed class LoadoutPowerKeywordEntry
     [JsonPropertyName("a")]
     public int Amount { get; set; } = 1;
 
+    // Applied after upgrade scaling.
+    [JsonPropertyName("adjustment")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long AmountAdjustment { get; set; }
+
     [JsonIgnore]
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(KeywordKey)
@@ -122,7 +127,8 @@ public sealed class LoadoutPowerKeywordEntry
         {
             KeywordKey = KeywordKey,
             PowerId = PowerId,
-            Amount = Amount
+            Amount = Amount,
+            AmountAdjustment = AmountAdjustment
         };
     }
 

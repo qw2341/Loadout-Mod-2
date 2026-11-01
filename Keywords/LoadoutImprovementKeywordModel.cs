@@ -71,7 +71,8 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
         CardModel card,
         decimal multiplier)
     {
-        return MultiplyMatchingValues(card, multiplier, IsOtherNumericVariable);
+        bool changed = MultiplyMatchingValues(card, multiplier, IsOtherNumericVariable);
+        return LoadoutPowerKeywordState.MultiplyAmounts(card, multiplier) || changed;
     }
 
     protected static void IncreaseOtherVariablesPermanently(
@@ -209,7 +210,8 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
             persistentDelta.DynamicVarDeltas[name] = existingIncrease + amount;
         }
 
-        return changed;
+        return LoadoutPowerKeywordState.IncreaseAmounts(card, amount, persistentDelta)
+               || changed;
     }
 
     private static bool MultiplyMatchingValues(
