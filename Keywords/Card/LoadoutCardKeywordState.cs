@@ -109,8 +109,13 @@ public static class LoadoutCardKeywordState
         foreach (LoadoutCardKeywordModel model in
                  LoadoutCardKeywordModel.All)
         {
-            bool enabled = HasEffectiveEntries(card, model.StorageKey);
             bool present = LoadoutKeywords.Has(card, model.Keyword);
+            if (model.EditorControlKind == LoadoutKeywordEditorControlKind.Toggle)
+            {
+                needsVariables |= present;
+                continue;
+            }
+            bool enabled = HasEffectiveEntries(card, model.StorageKey);
             needsVariables |= enabled || present;
             if (enabled && !present)
                 card.AddKeyword(model.Keyword);
@@ -216,11 +221,14 @@ public static class LoadoutCardKeywordState
                 : null;
         Dictionary<(string KeywordKey, string CardId), int> occurrences =
             new(KeywordCardIdentityComparer.Instance);
+        HashSet<string>? singleKeywords = null;
 
         if (baseEntries is not null)
         {
             foreach (LoadoutCardKeywordEntry baseEntry in baseEntries)
             {
+                if (baseEntry.IsTransform && !(singleKeywords ??= new(StringComparer.OrdinalIgnoreCase)).Add(baseEntry.KeywordKey))
+                    continue;
                 LoadoutCardKeywordEntry effective = baseEntry.Clone();
                 bool amountWasUpgraded = false;
                 int occurrence = GetAndIncrementOccurrence(occurrences, baseEntry);
@@ -267,6 +275,8 @@ public static class LoadoutCardKeywordState
                         effective.PoolId = upgrade.ReplacementPoolId;
                     if (upgrade.ReplacementRarity.HasValue)
                         effective.Rarity = upgrade.ReplacementRarity.Value;
+                    if (upgrade.ReplacementSourceCardType.HasValue)
+                        effective.SourceCardType = upgrade.ReplacementSourceCardType.Value;
                     if (upgrade.ReplacementFreeToPlay.HasValue)
                         effective.FreeToPlay = upgrade.ReplacementFreeToPlay.Value;
                     effective.Amount = Math.Max(0, effective.Amount);
@@ -283,8 +293,11 @@ public static class LoadoutCardKeywordState
 
         foreach (LoadoutCardKeywordEntry addedEntry in addedEntries)
         {
+            if (addedEntry.IsTransform && !(singleKeywords ??= new(StringComparer.OrdinalIgnoreCase)).Add(addedEntry.KeywordKey))
+                continue;
             LoadoutCardKeywordEntry effective = addedEntry.Clone();
-            effective.Amount = scalingMode == InfiniteUpgradeScalingMode.Double
+            effective.Amount = addedEntry.IsTransform ? addedEntry.Amount
+                : scalingMode == InfiniteUpgradeScalingMode.Double
                 ? DoubleAmount(addedEntry.Amount, level - 1)
                 : SaturatingAmount(
                     (long)addedEntry.Amount * level

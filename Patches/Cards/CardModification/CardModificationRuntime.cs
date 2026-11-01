@@ -550,6 +550,7 @@ public static class CardModificationRuntime
                 || left[i].Upgraded != right[i].Upgraded
                 || left[i].Pile != right[i].Pile
                 || left[i].Rarity != right[i].Rarity
+                || left[i].SourceCardType != right[i].SourceCardType
                 || left[i].FreeToPlay != right[i].FreeToPlay
                 || !LoadoutKeywordPayload.Equivalent(left[i].GrantedKeyword, right[i].GrantedKeyword)
                 || !CardAttachmentSpec.Equivalent(left[i].GrantedEnchantment, right[i].GrantedEnchantment)
@@ -616,6 +617,7 @@ public static class CardModificationRuntime
                 || left[i].ReplacementUpgraded != right[i].ReplacementUpgraded
                 || left[i].ReplacementPile != right[i].ReplacementPile
                 || left[i].ReplacementRarity != right[i].ReplacementRarity
+                || left[i].ReplacementSourceCardType != right[i].ReplacementSourceCardType
                 || left[i].ReplacementFreeToPlay != right[i].ReplacementFreeToPlay
                 || !LoadoutKeywordPayload.Equivalent(left[i].ReplacementGrantedKeyword, right[i].ReplacementGrantedKeyword)
                 || !CardAttachmentSpec.Equivalent(left[i].ReplacementGrantedEnchantment, right[i].ReplacementGrantedEnchantment)

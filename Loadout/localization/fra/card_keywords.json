@@ -438,5 +438,10 @@
   "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "Tous les joueurs [gold]Canalisent[/gold] chacun {Amount} [gold]{Orb}[/gold].",
   "LOADOUT-BASIC_EVOKE.title": "Activation",
   "LOADOUT-BASIC_EVOKE.description": "Active votre Orbe le plus à droite plusieurs fois, puis le retire après la dernière activation.",
-  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Activez[/gold] votre Orbe le plus à droite {LoadoutBasicEvoke:diff()} fois."
+  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Activez[/gold] votre Orbe le plus à droite {LoadoutBasicEvoke:diff()} fois.",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.title": "Transformer tout",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "Transforme toutes les cartes du type sélectionné dans une pile en la carte cible.",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "Transformer la sélection",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "Transforme des cartes d’une pile en la carte cible.",
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
 }

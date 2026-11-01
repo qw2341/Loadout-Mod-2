@@ -438,5 +438,10 @@
   "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "所有玩家各[gold]生成[/gold]{Amount}个[gold]{Orb}[/gold]充能球。",
   "LOADOUT-BASIC_EVOKE.title": "激发",
   "LOADOUT-BASIC_EVOKE.description": "激发你最右侧的充能球。",
-  "LOADOUT-BASIC_EVOKE.cardText": "[gold]激发[/gold]你最右侧的充能球{LoadoutBasicEvoke:diff()}次。"
+  "LOADOUT-BASIC_EVOKE.cardText": "[gold]激发[/gold]你最右侧的充能球{LoadoutBasicEvoke:diff()}次。",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.title": "变化全部",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "将牌堆中所有卡牌变化为目标卡牌。",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "变化选定",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "变化牌堆中一定数量的卡牌为目标卡牌。",
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
 }

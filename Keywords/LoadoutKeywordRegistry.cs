@@ -123,6 +123,8 @@ public static class LoadoutKeywordRegistry
         IncreaseMonsterDamagePermanentlyKeyword.Instance,
         AddCardKeyword.Instance,
         AddRandomCardKeyword.Instance,
+        TransformAllOfTypeKeyword.Instance,
+        TransformChosenCardsKeyword.Instance,
         AddKeywordToRandomCardKeyword.Instance,
         AddKeywordToChosenCardKeyword.Instance,
         AddKeywordToAllCardsKeyword.Instance,

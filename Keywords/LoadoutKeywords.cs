@@ -45,6 +45,8 @@ public static class LoadoutKeywords
     public const string ParticleKey = "Particle";
     public const string AddRandomCardKey = "AddRandomCard";
     public const string AddCardKey = "AddCard";
+    public const string TransformAllOfTypeKey = "TransformAllOfType";
+    public const string TransformChosenCardsKey = "TransformChosenCards";
     public const string AddKeywordToRandomCardKey = "AddKeywordToRandomCard";
     public const string AddKeywordToChosenCardKey = "AddKeywordToChosenCard";
     public const string AddKeywordToAllCardsKey = "AddKeywordToAllCards";
@@ -278,6 +280,12 @@ public static class LoadoutKeywords
 
     [CustomEnum("ADD_CARD")]
     public static CardKeyword AddCard;
+
+    [CustomEnum("TRANSFORM_ALL_OF_TYPE")]
+    public static CardKeyword TransformAllOfType;
+
+    [CustomEnum("TRANSFORM_CHOSEN_CARDS")]
+    public static CardKeyword TransformChosenCards;
 
     [CustomEnum("ADD_KEYWORD_TO_RANDOM_CARD")]
     public static CardKeyword AddKeywordToRandomCard;

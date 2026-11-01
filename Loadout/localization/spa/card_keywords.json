@@ -438,5 +438,10 @@
   "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "Todos los jugadores [gold]Canalizan[/gold] {Amount} [gold]{Orb}[/gold] cada uno.",
   "LOADOUT-BASIC_EVOKE.title": "Descargar",
   "LOADOUT-BASIC_EVOKE.description": "Descarga tu orbe situado más a la derecha varias veces y lo elimina tras la última descarga.",
-  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Descarga[/gold] el Orbe situado más a la derecha {LoadoutBasicEvoke:diff()} {LoadoutBasicEvoke:plural:vez|veces}."
+  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Descarga[/gold] el Orbe situado más a la derecha {LoadoutBasicEvoke:diff()} {LoadoutBasicEvoke:plural:vez|veces}.",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.title": "Transformar todas",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "Transforma todas las cartas del tipo seleccionado de una pila en la carta objetivo.",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "Transformar elegidas",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "Transforma cartas de una pila en la carta objetivo.",
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
 }

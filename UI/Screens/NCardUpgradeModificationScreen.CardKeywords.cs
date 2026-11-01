@@ -112,19 +112,25 @@ public partial class NCardUpgradeModificationScreen
                 ? $" {number}"
                 : string.Empty;
             _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
-            if (baseEntry.IsCardGrant || baseEntry.IsOrb)
+            if (baseEntry.IsCardGrant || baseEntry.IsOrb || baseEntry.IsTransform)
             {
                 LoadoutCardKeywordEntry effective = baseEntry.Clone();
                 effective.OrbId = configured?.ReplacementOrbId ?? baseEntry.OrbId;
+                effective.CardId = configured?.ReplacementCardId ?? baseEntry.CardId;
+                effective.Upgraded = configured?.ReplacementUpgraded ?? baseEntry.Upgraded;
+                effective.SourceCardType = configured?.ReplacementSourceCardType ?? baseEntry.SourceCardType;
                 effective.Pile = configured?.ReplacementPile ?? baseEntry.Pile;
                 effective.GrantedKeyword = (configured?.ReplacementGrantedKeyword ?? baseEntry.GrantedKeyword)?.Clone();
                 effective.GrantedEnchantment = (configured?.ReplacementGrantedEnchantment ?? baseEntry.GrantedEnchantment)?.Clone();
-                NLoadoutKeywordEntryEditor nestedEditor = new();
+                NLoadoutKeywordEntryEditor nestedEditor = new() { ContentWidth = EditorRowWidth };
                 nestedEditor.Init(effective, updated =>
                 {
                     UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence, entry =>
                     {
                         entry.ReplacementOrbId = updated.OrbId == baseEntry.OrbId ? null : updated.OrbId;
+                        entry.ReplacementCardId = updated.CardId == baseEntry.CardId ? null : updated.CardId;
+                        entry.ReplacementUpgraded = updated.Upgraded == baseEntry.Upgraded ? null : updated.Upgraded;
+                        entry.ReplacementSourceCardType = updated.SourceCardType == baseEntry.SourceCardType ? null : updated.SourceCardType;
                         entry.ReplacementPile = updated.Pile == baseEntry.Pile ? null : updated.Pile;
                         entry.ReplacementGrantedKeyword = LoadoutKeywordPayload.Equivalent(updated.GrantedKeyword, baseEntry.GrantedKeyword)
                             ? null : updated.GrantedKeyword?.Clone();
@@ -134,7 +140,8 @@ public partial class NCardUpgradeModificationScreen
                     RefreshPreview();
                 }, showAmount: false);
                 _leftControls.AddChild(nestedEditor);
-                if (model is not LoadoutCardGrantKeywordModel { Selection: LoadoutKeywordCardSelection.All })
+                if (model is not LoadoutCardGrantKeywordModel { Selection: LoadoutKeywordCardSelection.All }
+                    && model is not LoadoutCardTransformKeywordModel { TransformsAllOfType: true })
                     AddStepperRow(_leftControls, LocMan.Loc("CARD_MOD_CARD_KEYWORD_UPGRADE_AMOUNT", "Upgrade Amount") + suffix,
                         configured?.AmountDelta ?? 0, int.MinValue, int.MaxValue, amount =>
                         {
@@ -243,7 +250,7 @@ public partial class NCardUpgradeModificationScreen
                 extraEntry.GrantedKeyword = replacementExtra.IsEmpty ? null : replacementExtra.Clone();
             if (configured?.ReplacementGrantedEnchantment is { } replacementEnchantment)
                 extraEntry.GrantedEnchantment = replacementEnchantment.Clear ? null : replacementEnchantment.Clone();
-            NLoadoutKeywordEntryEditor extraKeywordEditor = new();
+            NLoadoutKeywordEntryEditor extraKeywordEditor = new() { ContentWidth = EditorRowWidth };
             extraKeywordEditor.Init(extraEntry, updated =>
             {
                 UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence, entry =>
@@ -280,15 +287,18 @@ public partial class NCardUpgradeModificationScreen
                 ? $" {number}"
                 : string.Empty;
             _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
-            if (addedEntries[index].IsCardGrant || addedEntries[index].IsOrb)
+            if (addedEntries[index].IsCardGrant || addedEntries[index].IsOrb || addedEntries[index].IsTransform)
             {
-                NLoadoutKeywordEntryEditor nestedEditor = new();
+                NLoadoutKeywordEntryEditor nestedEditor = new() { ContentWidth = EditorRowWidth };
                 nestedEditor.Init(addedEntries[index], updated =>
                 {
                     UpdateAddedCardKeywordEntry(capturedIndex, entry =>
                     {
                         entry.Amount = updated.Amount;
                         entry.OrbId = updated.OrbId;
+                        entry.CardId = updated.CardId;
+                        entry.Upgraded = updated.Upgraded;
+                        entry.SourceCardType = updated.SourceCardType;
                         entry.Pile = updated.Pile;
                         entry.GrantedKeyword = updated.GrantedKeyword?.Clone();
                         entry.GrantedEnchantment = updated.GrantedEnchantment?.Clone();
@@ -381,7 +391,7 @@ public partial class NCardUpgradeModificationScreen
                 RefreshPreview();
             });
             _leftControls.AddChild(CreateRow(LocMan.Loc("CARD_MOD_CARD_FREE", "Free to Play") + suffix, cost));
-            NLoadoutKeywordEntryEditor extraKeywordEditor = new();
+            NLoadoutKeywordEntryEditor extraKeywordEditor = new() { ContentWidth = EditorRowWidth };
             extraKeywordEditor.Init(addedEntries[index], updated =>
             {
                 UpdateAddedCardKeywordEntry(capturedIndex, entry =>

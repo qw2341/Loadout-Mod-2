@@ -46,6 +46,12 @@ public sealed class LoadoutCardKeywordEntry
     [JsonIgnore]
     public bool IsOrb => LoadoutBasicOrbKeywordModel.IsOrbKey(KeywordKey);
 
+    [JsonIgnore]
+    public bool IsTransform => LoadoutCardTransformKeywordModel.IsTransformKey(KeywordKey);
+
+    [JsonPropertyName("type")]
+    public CardType SourceCardType { get; set; } = CardType.Status;
+
     [JsonPropertyName("a")]
     public int Amount { get; set; } = 1;
 
@@ -92,6 +98,7 @@ public sealed class LoadoutCardKeywordEntry
             Upgraded = Upgraded,
             PoolId = PoolId,
             Rarity = Rarity,
+            SourceCardType = SourceCardType,
             FreeToPlay = FreeToPlay,
             Pile = Pile
         };
@@ -124,13 +131,14 @@ public sealed class LoadoutCardKeywordEntry
                 entry.GrantedEnchantment = null;
             if (!entry.IsKeywordGrant && entry.GrantedKeyword is { IsEmpty: true })
                 entry.GrantedKeyword = null;
-            if (entry.IsCardGrant && !LoadoutCardGrantKeywordModel.IsCombatPile(entry.Pile))
+            if ((entry.IsCardGrant || entry.IsTransform) && !LoadoutCardGrantKeywordModel.IsCombatPile(entry.Pile))
                 entry.Pile = PileType.Hand;
             if (!Enum.IsDefined(entry.FreeToPlay))
                 entry.FreeToPlay = LoadoutGeneratedCardCost.None;
             if (!Loadout.Keywords.LoadoutCardKeywordState.IsSupportedPile(entry.Pile))
                 entry.Pile = MegaCrit.Sts2.Core.Entities.Cards.PileType.Hand;
-            if (!entry.IsEmpty)
+            if (!entry.IsEmpty && (!entry.IsTransform || !result.Any(existing =>
+                    string.Equals(existing.KeywordKey, entry.KeywordKey, StringComparison.OrdinalIgnoreCase))))
                 result.Add(entry);
         }
         return result;
@@ -176,6 +184,9 @@ public sealed class LoadoutCardKeywordEntryUpgrade
     [JsonPropertyName("rarity")]
     public CardRarity? ReplacementRarity { get; set; }
 
+    [JsonPropertyName("type")]
+    public CardType? ReplacementSourceCardType { get; set; }
+
     [JsonPropertyName("free")]
     public LoadoutGeneratedCardCost? ReplacementFreeToPlay { get; set; }
 
@@ -195,7 +206,7 @@ public sealed class LoadoutCardKeywordEntryUpgrade
         || (AmountDelta == 0 && string.IsNullOrWhiteSpace(ReplacementCardId)
             && string.IsNullOrWhiteSpace(ReplacementOrbId)
             && ReplacementUpgraded is null && ReplacementPile is null
-            && ReplacementPoolId is null && ReplacementRarity is null && ReplacementFreeToPlay is null
+            && ReplacementPoolId is null && ReplacementRarity is null && ReplacementSourceCardType is null && ReplacementFreeToPlay is null
             && ReplacementGrantedKeyword is null && ReplacementGrantedEnchantment is null);
 
     public LoadoutCardKeywordEntryUpgrade Clone()
@@ -213,6 +224,7 @@ public sealed class LoadoutCardKeywordEntryUpgrade
             ReplacementUpgraded = ReplacementUpgraded,
             ReplacementPoolId = ReplacementPoolId,
             ReplacementRarity = ReplacementRarity,
+            ReplacementSourceCardType = ReplacementSourceCardType,
             ReplacementFreeToPlay = ReplacementFreeToPlay,
             ReplacementPile = ReplacementPile
         };
@@ -246,6 +258,9 @@ public sealed class LoadoutCardKeywordEntryUpgrade
             if (entry.ReplacementFreeToPlay.HasValue && !Enum.IsDefined(entry.ReplacementFreeToPlay.Value))
                 entry.ReplacementFreeToPlay = null;
             if (entry.ReplacementPile.HasValue && !Loadout.Keywords.LoadoutCardKeywordState.IsSupportedPile(entry.ReplacementPile.Value))
+                entry.ReplacementPile = null;
+            if (LoadoutCardTransformKeywordModel.IsTransformKey(entry.KeywordKey)
+                && entry.ReplacementPile.HasValue && !LoadoutCardGrantKeywordModel.IsCombatPile(entry.ReplacementPile.Value))
                 entry.ReplacementPile = null;
             entry.ReplacementCardId = string.IsNullOrWhiteSpace(entry.ReplacementCardId)
                 || string.Equals(

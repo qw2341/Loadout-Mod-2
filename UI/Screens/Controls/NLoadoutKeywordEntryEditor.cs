@@ -22,6 +22,8 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
     private bool _extrasOnly;
     private int _revision;
 
+    public float ContentWidth { get; set; }
+
     public void Init(LoadoutCardKeywordEntry entry, Action<LoadoutCardKeywordEntry> changed,
         bool showAmount = true, bool extrasOnly = false)
     {
@@ -35,7 +37,9 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 
     public override void _Ready()
     {
-        SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        SizeFlagsHorizontal = ContentWidth > 0f ? SizeFlags.ShrinkBegin : SizeFlags.ExpandFill;
+        if (ContentWidth > 0f)
+            CustomMinimumSize = new Vector2(ContentWidth, 0f);
         AddThemeConstantOverride("separation", 4);
         Rebuild();
     }
@@ -66,6 +70,11 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 
     private void AddEntryControls(VBoxContainer container, LoadoutCardKeywordEntry entry, bool showAmount = true, int depth = 0)
     {
+        if (entry.IsTransform)
+        {
+            AddTransformControls(container, entry, showAmount);
+            return;
+        }
         if (entry.IsOrb)
         {
             NLoadoutOrbTypeStepper orb = new();
@@ -141,6 +150,39 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 
     private void AddExtraKeywordControls(VBoxContainer container, LoadoutCardKeywordEntry entry, int depth) =>
         AddPayloadControls(container, entry.GrantedKeyword, replacement => entry.GrantedKeyword = replacement, depth, allowNone: true);
+
+    private void AddTransformControls(VBoxContainer container, LoadoutCardKeywordEntry entry, bool showAmount)
+    {
+        NLoadoutCardSelector selector = new();
+        selector.Init(entry.CardId, entry.Upgraded);
+        selector.SelectRequested += () =>
+        {
+            int revision = _revision;
+            if (!CardPrinter.TryOpenKeywordCardPicker((selected, upgraded) =>
+                {
+                    if (!GodotObject.IsInstanceValid(this) || !IsInsideTree() || revision != _revision)
+                        return;
+                    entry.CardId = selected.Id.ToString();
+                    entry.Upgraded = upgraded;
+                    selector.Init(entry.CardId, entry.Upgraded);
+                    Commit();
+                }, out string error))
+                GD.PushWarning(error);
+        };
+        container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_TRANSFORM_TARGET", "Transform Target"), selector));
+        if (string.Equals(entry.KeywordKey, LoadoutKeywords.TransformAllOfTypeKey, StringComparison.OrdinalIgnoreCase))
+        {
+            NLoadoutCardFilterStepper type = new();
+            type.InitType(entry.SourceCardType, value => { entry.SourceCardType = value; Commit(); });
+            container.AddChild(CreateRow(LocMan.Loc("FILTER_GROUP_TYPE", "Card Type"), type));
+        }
+        else if (showAmount)
+            AddNumber(container, LocMan.Loc("CARD_MOD_KEYWORD_TARGET_AMOUNT", "Target Cards"), entry.Amount, 0,
+                value => { entry.Amount = value; Commit(); });
+        NLoadoutPileTypeStepper pile = new();
+        pile.Init(entry.Pile, value => { entry.Pile = value; Commit(); }, combatOnly: true);
+        container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_KEYWORD_SOURCE_PILE", "Card Pile"), pile));
+    }
 
     private void AddEnchantmentControls(VBoxContainer container, LoadoutCardKeywordEntry entry)
     {
@@ -317,14 +359,19 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 
     private static Control CreateRow(string label, Control input)
     {
-        HBoxContainer row = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Ignore };
-        row.AddThemeConstantOverride("separation", 8);
+        float inputWidth = input is NLoadoutCardSelector or NLoadoutPowerSelector ? 234f : 218f;
+        Control row = new()
+        {
+            CustomMinimumSize = new Vector2(158f + inputWidth, 44f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
         MegaLabel text = new()
         {
             Text = label,
-            CustomMinimumSize = new Vector2(150f, 44f),
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Size = new Vector2(150f, 44f),
             AutoSizeEnabled = true,
+            ClipText = true,
             MinFontSize = 13,
             MaxFontSize = 21,
             VerticalAlignment = VerticalAlignment.Center,
@@ -333,8 +380,15 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
         text.AddThemeFontOverride("font", CommonHelpers.LoadGameFont());
         text.AddThemeColorOverride("font_color", StsColors.cream);
         row.AddChild(text);
-        input.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+        text.AnchorRight = 1f;
+        text.OffsetRight = -inputWidth - 8f;
+        input.CustomMinimumSize = new Vector2(inputWidth, 42f);
         row.AddChild(input);
+        input.SetAnchorsAndOffsetsPreset(LayoutPreset.TopRight);
+        input.OffsetLeft = -inputWidth;
+        input.OffsetTop = 1f;
+        input.OffsetRight = 0f;
+        input.OffsetBottom = 43f;
         return row;
     }
 }

@@ -737,6 +737,7 @@ public static class PermanentModificationArchiveService
             && pair.First.Upgraded == pair.Second.Upgraded
             && pair.First.Pile == pair.Second.Pile
             && pair.First.Rarity == pair.Second.Rarity
+            && pair.First.SourceCardType == pair.Second.SourceCardType
             && pair.First.FreeToPlay == pair.Second.FreeToPlay
             && string.Equals(pair.First.OrbId, pair.Second.OrbId, StringComparison.Ordinal)
             && string.Equals(pair.First.PoolId, pair.Second.PoolId, StringComparison.Ordinal));
@@ -759,6 +760,7 @@ public static class PermanentModificationArchiveService
             && pair.First.ReplacementUpgraded == pair.Second.ReplacementUpgraded
             && pair.First.ReplacementPile == pair.Second.ReplacementPile
             && pair.First.ReplacementRarity == pair.Second.ReplacementRarity
+            && pair.First.ReplacementSourceCardType == pair.Second.ReplacementSourceCardType
             && pair.First.ReplacementFreeToPlay == pair.Second.ReplacementFreeToPlay
             && string.Equals(pair.First.ReplacementOrbId, pair.Second.ReplacementOrbId, StringComparison.Ordinal)
             && string.Equals(pair.First.ReplacementPoolId, pair.Second.ReplacementPoolId, StringComparison.Ordinal)

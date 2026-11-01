@@ -438,5 +438,10 @@
   "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "모든 플레이어가 각각 [gold]{Orb}[/gold] {Amount}개를 [gold]영창[/gold]합니다.",
   "LOADOUT-BASIC_EVOKE.title": "발현",
   "LOADOUT-BASIC_EVOKE.description": "맨 오른쪽 구체를 반복해서 발현하고, 마지막 발현 후 제거합니다.",
-  "LOADOUT-BASIC_EVOKE.cardText": "가장 오른쪽의 구체를\n{LoadoutBasicEvoke:diff()}번 [gold]발현[/gold]합니다."
+  "LOADOUT-BASIC_EVOKE.cardText": "가장 오른쪽의 구체를\n{LoadoutBasicEvoke:diff()}번 [gold]발현[/gold]합니다.",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.title": "전체 변화",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "카드 더미에서 선택한 유형의 모든 카드를 대상 카드로 변화시킵니다.",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "선택 변화",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "카드 더미의 카드를 대상 카드로 변화시킵니다.",
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
 }

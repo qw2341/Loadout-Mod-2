@@ -122,7 +122,14 @@ public sealed class LoadoutKeywordPayload
         if (Power is { } power)
             (state.PowerKeywordEntries ??= []).Add(power.Clone());
         if (Card is { } nested)
+        {
+            if (nested.IsTransform)
+            {
+                state.CardKeywordEntries?.RemoveAll(entry => string.Equals(entry.KeywordKey, KeywordKey, StringComparison.OrdinalIgnoreCase));
+                state.UpgradeModification.AddedCardKeywordEntries?.RemoveAll(entry => string.Equals(entry.KeywordKey, KeywordKey, StringComparison.OrdinalIgnoreCase));
+            }
             (state.CardKeywordEntries ??= []).Add(nested.Clone());
+        }
         if (Commands is { } commands)
         {
             List<string> effective = AltExecuteKeyword.GetCommands(target).ToList();
@@ -173,6 +180,8 @@ public sealed class LoadoutKeywordPayload
             settings.Add(AsInlineClause(LoadoutKeywordKeywordModel.FormatEntry(grant)));
         else if (Card is { IsEnchantmentGrant: true } enchantment)
             settings.Add(AsInlineClause(LoadoutEnchantmentKeywordModel.FormatEntry(enchantment)));
+        else if (Card is { IsTransform: true } transform)
+            settings.Add(AsInlineClause(LoadoutCardTransformKeywordModel.FormatEntry(transform, transform.Amount.ToString(CultureInfo.InvariantCulture))));
         else if (Card is { } card)
         {
             string cards = LoadoutCardKeywordState.FormatEntry(card, card.Amount.ToString(CultureInfo.InvariantCulture));

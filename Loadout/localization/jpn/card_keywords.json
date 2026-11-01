@@ -438,5 +438,10 @@
   "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "全プレイヤーが[gold]{Orb}[/gold]をそれぞれ{Amount}個[gold]生成[/gold]する。",
   "LOADOUT-BASIC_EVOKE.title": "解放",
   "LOADOUT-BASIC_EVOKE.description": "一番右のオーブを繰り返し解放し、最後の解放後に取り除く。",
-  "LOADOUT-BASIC_EVOKE.cardText": "右端のオーブを{LoadoutBasicEvoke:diff()}回[gold]解放[/gold]する。"
+  "LOADOUT-BASIC_EVOKE.cardText": "右端のオーブを{LoadoutBasicEvoke:diff()}回[gold]解放[/gold]する。",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.title": "すべて変化",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "指定したカード置き場にある、選択した種類のカードをすべて対象のカードに変化させる。",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "選んで変化",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "指定したカード置き場にあるカードを対象のカードに変化させる。",
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
 }

@@ -18,6 +18,7 @@ public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
         public static readonly IReadOnlyList<LoadoutCardKeywordModel> Value =
         [
             AddCardKeyword.Instance, AddRandomCardKeyword.Instance,
+            TransformAllOfTypeKeyword.Instance, TransformChosenCardsKeyword.Instance,
             AddKeywordToRandomCardKeyword.Instance, AddKeywordToChosenCardKeyword.Instance,
             AddKeywordToAllCardsKeyword.Instance,
             AddEnchantmentToRandomCardKeyword.Instance, AddEnchantmentToChosenCardKeyword.Instance,

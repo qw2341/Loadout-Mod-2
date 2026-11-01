@@ -438,5 +438,10 @@
   "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "All players [gold]Channel[/gold] {Amount} [gold]{Orb}[/gold] each.",
   "LOADOUT-BASIC_EVOKE.title": "Evoke",
   "LOADOUT-BASIC_EVOKE.description": "Evokes your rightmost Orb.",
-  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Evoke[/gold] your rightmost Orb {LoadoutBasicEvoke:diff()} {LoadoutBasicEvoke:plural:time|times}."
+  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Evoke[/gold] your rightmost Orb {LoadoutBasicEvoke:diff()} {LoadoutBasicEvoke:plural:time|times}.",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.title": "Transform All",
+  "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "Transform every card of the selected type in a pile into target card.",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "Transform Chosen",
+  "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "Transform cards from a pile into target card.",
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
 }

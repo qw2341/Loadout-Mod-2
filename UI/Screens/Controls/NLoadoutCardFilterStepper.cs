@@ -12,6 +12,16 @@ using MegaCrit.Sts2.Core.Models;
 
 public partial class NLoadoutCardFilterStepper : NLoadoutDropdownStepper
 {
+    public void InitType(CardType selected, Action<CardType> changed) =>
+        Init(ModelDb.AllCards.Select(card => card.Type).Append(selected)
+            .Where(type => type != CardType.None).Distinct().OrderBy(type => type)
+            .Select(type => new LoadoutDropdownOption(type.ToString(), CardPrinter.GetCardTypeLabel(type))),
+            selected.ToString(), value =>
+            {
+                if (Enum.TryParse(value, out CardType type))
+                    changed(type);
+            });
+
     public void InitUpgraded(bool selected, Action<bool> changed) =>
         Init([
             new(bool.FalseString, LocMan.Loc("CARD_MOD_RANDOM_CARD_UPGRADE_NO", "No")),

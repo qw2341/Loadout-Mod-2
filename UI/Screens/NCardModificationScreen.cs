@@ -1451,13 +1451,16 @@ public partial class NCardModificationScreen : Control
                 ? $" {number}"
                 : string.Empty;
             _variableControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
-            if (entries[index].IsCardGrant || entries[index].IsOrb)
+            if (entries[index].IsCardGrant || entries[index].IsOrb || entries[index].IsTransform)
             {
                 NLoadoutKeywordEntryEditor nestedEditor = new();
                 nestedEditor.Init(entries[index], updated => UpdateCardKeywordEntry(capturedIndex, entry =>
                 {
                     entry.Amount = updated.Amount;
                     entry.OrbId = updated.OrbId;
+                    entry.CardId = updated.CardId;
+                    entry.Upgraded = updated.Upgraded;
+                    entry.SourceCardType = updated.SourceCardType;
                     entry.Pile = updated.Pile;
                     entry.GrantedKeyword = updated.GrantedKeyword?.Clone();
                     entry.GrantedEnchantment = updated.GrantedEnchantment?.Clone();
@@ -2033,6 +2036,15 @@ public partial class NCardModificationScreen : Control
                     out LoadoutKeywordModel definition);
                 if (hasDefinition)
                 {
+                    if (definition is LoadoutCardKeywordModel { EditorControlKind: LoadoutKeywordEditorControlKind.Toggle } cardKeyword)
+                    {
+                        List<LoadoutCardKeywordEntry> entries = LoadoutCardKeywordEntry.CloneList(_workingState.CardKeywordEntries) ?? [];
+                        if (!enabled)
+                            entries.RemoveAll(entry => string.Equals(entry.KeywordKey, key, StringComparison.OrdinalIgnoreCase));
+                        else if (!entries.Any(entry => string.Equals(entry.KeywordKey, key, StringComparison.OrdinalIgnoreCase)))
+                            entries.Add(cardKeyword.CreateDefaultEntry());
+                        SetCardKeywordEntries(entries);
+                    }
                     foreach (LoadoutKeywordDynamicVarDefinition dynamicVar
                              in definition.DynamicVars)
                     {

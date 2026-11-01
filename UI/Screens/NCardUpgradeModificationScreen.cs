@@ -390,6 +390,16 @@ public partial class NCardUpgradeModificationScreen : Control
                 keyword,
                 out LoadoutKeywordModel definition))
         {
+            if (definition is LoadoutCardKeywordModel { EditorControlKind: LoadoutKeywordEditorControlKind.Toggle } cardKeyword)
+            {
+                List<LoadoutCardKeywordEntry> entries = LoadoutCardKeywordEntry.CloneList(_draft.AddedCardKeywordEntries) ?? [];
+                if (!enabled)
+                    entries.RemoveAll(entry => string.Equals(entry.KeywordKey, key, StringComparison.OrdinalIgnoreCase));
+                else if (_baseState.CardKeywordEntries?.Any(entry => string.Equals(entry.KeywordKey, key, StringComparison.OrdinalIgnoreCase)) != true
+                    && !entries.Any(entry => string.Equals(entry.KeywordKey, key, StringComparison.OrdinalIgnoreCase)))
+                    entries.Add(cardKeyword.CreateDefaultEntry());
+                _draft.AddedCardKeywordEntries = entries;
+            }
             foreach (LoadoutKeywordDynamicVarDefinition dynamicVar
                      in definition.DynamicVars)
             {
