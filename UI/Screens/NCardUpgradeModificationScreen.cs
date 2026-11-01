@@ -665,6 +665,19 @@ public partial class NCardUpgradeModificationScreen : Control
                         entry => entry.Amount = amount);
                     RefreshPreview();
                 });
+
+            if (model.SupportsPowerDescription)
+            {
+                NLoadoutDropdownStepper description = new();
+                description.Init(addedEntries[index].UseDescription, enabled =>
+                {
+                    UpdateAddedPowerKeywordEntry(capturedIndex, entry => entry.UseDescription = enabled);
+                    RefreshPreview();
+                });
+                _leftControls.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_POWER_USE_DESCRIPTION", "Use Description") + suffix,
+                    description));
+            }
         }
     }
 

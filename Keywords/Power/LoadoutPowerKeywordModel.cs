@@ -23,6 +23,8 @@ using System.Threading.Tasks;
 using BaseLib.Cards.Variables;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.TextEffects;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Localization;
 
 public enum LoadoutPowerKeywordTargetMode
 {
@@ -37,7 +39,8 @@ public enum LoadoutPowerKeywordDescriptionStyle
 {
     EntryList,
     PermanentGainLose,
-    FatalPermanentGainLose
+    FatalPermanentGainLose,
+    SelfGain
 }
 
 public abstract class LoadoutPowerKeywordModel : LoadoutKeywordModel
@@ -58,6 +61,8 @@ public abstract class LoadoutPowerKeywordModel : LoadoutKeywordModel
     public abstract string AmountLabelLocKey { get; }
 
     public abstract string PowerLabelLocKey { get; }
+
+    public virtual bool SupportsPowerDescription => false;
 
     public override bool HasOnPlayEffect => true;
 
@@ -664,6 +669,9 @@ public static class LoadoutPowerKeywordState
                     effective.Entry,
                     keywordKey))
                 .ToList();
+        if (descriptionStyle == LoadoutPowerKeywordDescriptionStyle.SelfGain)
+            return FormatSelfEntries(card, entries, highlightUpgradeAmounts);
+
         if (descriptionStyle == LoadoutPowerKeywordDescriptionStyle.EntryList)
         {
             return JoinFormattedEntries(
@@ -708,6 +716,63 @@ public static class LoadoutPowerKeywordState
         }
 
         return string.Join(' ', sentences);
+    }
+
+    private static string FormatSelfEntries(
+        CardModel card,
+        IReadOnlyList<EffectivePowerKeywordEntry> entries,
+        bool highlightUpgradeAmounts)
+    {
+        List<EffectivePowerKeywordEntry> gains = [];
+        List<string> descriptions = [];
+        foreach (EffectivePowerKeywordEntry effective in entries)
+        {
+            if (effective.Entry.UseDescription
+                && TryResolvePower(effective.Entry.PowerId, out PowerModel power))
+            {
+                string description = FormatPowerDescription(
+                    card, power, effective.Entry.Amount,
+                    highlightUpgradeAmounts && effective.AmountWasUpgraded);
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    descriptions.Add(description);
+                    continue;
+                }
+            }
+            gains.Add(effective);
+        }
+
+        if (gains.Count > 0)
+        {
+            descriptions.Insert(0, LocMan.Loc(
+                "CARD_MOD_POWER_KEYWORD_GAIN", "Gain {0}.",
+                JoinFormattedEntries(gains, highlightUpgradeAmounts, useAbsoluteAmounts: false)));
+        }
+        return string.Join('\n', descriptions);
+    }
+
+    private static string FormatPowerDescription(
+        CardModel card, PowerModel power, int amount, bool highlightAmount)
+    {
+        LocString description = power.SmartDescription;
+        power.DynamicVars.AddTo(description);
+        description.Add("Amount", amount);
+        description.Add("OnPlayer", true);
+        var owner = card.IsMutable ? card.Owner : null;
+        int playerCount = owner?.RunState.Players.Count ?? 1;
+        description.Add("IsMultiplayer", playerCount > 1);
+        description.Add("PlayerCount", playerCount);
+        description.Add("OwnerName", owner?.Character.Title.GetFormattedText() ?? string.Empty);
+        description.Add("singleStarIcon", "[img]res://images/packed/sprite_fonts/star_icon.png[/img]");
+        description.Add("energyPrefix", EnergyIconHelper.GetPrefix(card));
+        string formatted = LocMan.SafeFormatLocString(description, string.Empty);
+        if (highlightAmount)
+        {
+            string value = amount.ToString(CultureInfo.InvariantCulture);
+            formatted = formatted.Replace($"[blue]{value}[/blue]",
+                StsTextUtilities.HighlightChangeText(value, 1), StringComparison.Ordinal);
+        }
+        return formatted;
     }
 
     private static string JoinFormattedEntries(

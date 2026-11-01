@@ -368,7 +368,7 @@
   "LOADOUT-APPLY_POWER.cardText": "{LoadoutApplyPowerList}을 부여합니다.",
   "LOADOUT-APPLY_SELF.title": "자신에게 부여",
   "LOADOUT-APPLY_SELF.description": "자신에게 설정된 능력을 부여합니다.",
-  "LOADOUT-APPLY_SELF.cardText": "{LoadoutApplySelfList}을 얻습니다.",
+  "LOADOUT-APPLY_SELF.cardText": "{LoadoutApplySelfDescription}",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.title": "모든 적에게 부여",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.description": "모든 적에게 설정된 능력을 부여합니다.",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.cardText": "모든 적에게 {LoadoutApplyToAllEnemiesList}을 부여합니다.",

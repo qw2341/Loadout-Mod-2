@@ -256,6 +256,13 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
             values.AddChild(CreateRow(LocMan.Loc("CARD_MOD_SELECT_POWER", "Select Power"), selector));
             AddNumber(values, LocMan.Loc("CARD_MOD_POWER_AMOUNT", "Power Amount"), power.Amount, int.MinValue,
                 value => { power.Amount = value; Commit(); });
+            if (model is LoadoutPowerKeywordModel { SupportsPowerDescription: true })
+            {
+                NLoadoutDropdownStepper description = new();
+                description.Init(power.UseDescription, enabled => { power.UseDescription = enabled; Commit(); });
+                values.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_POWER_USE_DESCRIPTION", "Use Description"), description));
+            }
         }
         if (payload.Card is { } nested)
             AddEntryControls(values, nested, depth: depth + 1);

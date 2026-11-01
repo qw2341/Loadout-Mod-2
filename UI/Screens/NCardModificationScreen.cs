@@ -1358,6 +1358,16 @@ public partial class NCardModificationScreen : Control
                     capturedIndex,
                     entry => entry.Amount = amount,
                     rebuildControls: false));
+
+            if (model.SupportsPowerDescription)
+            {
+                NLoadoutDropdownStepper description = new();
+                description.Init(entries[index].UseDescription, enabled => UpdatePowerKeywordEntry(
+                    capturedIndex, entry => entry.UseDescription = enabled, rebuildControls: false));
+                _variableControls.AddChild(CreateRow(
+                    LocMan.Loc("CARD_MOD_POWER_USE_DESCRIPTION", "Use Description") + suffix,
+                    description));
+            }
         }
     }
 

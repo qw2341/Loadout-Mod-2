@@ -368,7 +368,7 @@
   "LOADOUT-APPLY_POWER.cardText": "{LoadoutApplyPowerList}を付与する。",
   "LOADOUT-APPLY_SELF.title": "自身に付与",
   "LOADOUT-APPLY_SELF.description": "自身に設定済みのパワーを付与する。",
-  "LOADOUT-APPLY_SELF.cardText": "{LoadoutApplySelfList}を得る。",
+  "LOADOUT-APPLY_SELF.cardText": "{LoadoutApplySelfDescription}",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.title": "すべての敵に付与",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.description": "すべての敵に設定済みのパワーを付与する。",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.cardText": "すべての敵に{LoadoutApplyToAllEnemiesList}を付与する。",

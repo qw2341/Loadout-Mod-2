@@ -368,7 +368,7 @@
   "LOADOUT-APPLY_POWER.cardText": "Applique {LoadoutApplyPowerList}.",
   "LOADOUT-APPLY_SELF.title": "S’appliquer un pouvoir",
   "LOADOUT-APPLY_SELF.description": "Vous gagnez les pouvoirs configurés.",
-  "LOADOUT-APPLY_SELF.cardText": "Gagnez {LoadoutApplySelfList}.",
+  "LOADOUT-APPLY_SELF.cardText": "{LoadoutApplySelfDescription}",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.title": "Appliquer à tous les ennemis",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.description": "Applique les pouvoirs configurés à tous les ennemis.",
   "LOADOUT-APPLY_TO_ALL_ENEMIES.cardText": "Applique {LoadoutApplyToAllEnemiesList} à TOUS les ennemis.",

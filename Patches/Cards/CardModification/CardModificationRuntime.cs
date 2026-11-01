@@ -519,7 +519,8 @@ public static class CardModificationRuntime
                     right[i].PowerId,
                     StringComparison.Ordinal)
                 || left[i].Amount != right[i].Amount
-                || left[i].AmountAdjustment != right[i].AmountAdjustment)
+                || left[i].AmountAdjustment != right[i].AmountAdjustment
+                || left[i].UseDescription != right[i].UseDescription)
             {
                 return false;
             }

@@ -8,10 +8,15 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 public sealed class ApplySelfKeyword : LoadoutPowerKeywordModel
 {
     private static readonly IReadOnlyList<LoadoutKeywordDynamicVarDefinition>
-        Variables = CreateDisplayVariables(
+        Variables = [.. CreateDisplayVariables(
             "LoadoutApplySelfList",
             "DYNAMIC_VAR_LOADOUT_APPLY_SELF_LIST",
-            LoadoutKeywords.ApplySelfKey);
+            LoadoutKeywords.ApplySelfKey),
+        .. CreateDisplayVariables(
+            "LoadoutApplySelfDescription",
+            "DYNAMIC_VAR_LOADOUT_APPLY_SELF_DESCRIPTION",
+            LoadoutKeywords.ApplySelfKey,
+            LoadoutPowerKeywordDescriptionStyle.SelfGain)];
 
     public static ApplySelfKeyword Instance { get; } = new();
 
@@ -26,6 +31,7 @@ public sealed class ApplySelfKeyword : LoadoutPowerKeywordModel
     public override string DisplayVarName => "LoadoutApplySelfList";
     public override string AmountLabelLocKey => "CARD_MOD_APPLY_SELF_AMOUNT";
     public override string PowerLabelLocKey => "CARD_MOD_APPLY_SELF_POWER";
+    public override bool SupportsPowerDescription => true;
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars => Variables;
     public override LoadoutPowerKeywordTargetMode TargetMode => LoadoutPowerKeywordTargetMode.Self;
 }

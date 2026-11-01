@@ -116,6 +116,10 @@ public sealed class LoadoutPowerKeywordEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public long AmountAdjustment { get; set; }
 
+    [JsonPropertyName("useDescription")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool UseDescription { get; set; }
+
     [JsonIgnore]
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(KeywordKey)
@@ -128,7 +132,8 @@ public sealed class LoadoutPowerKeywordEntry
             KeywordKey = KeywordKey,
             PowerId = PowerId,
             Amount = Amount,
-            AmountAdjustment = AmountAdjustment
+            AmountAdjustment = AmountAdjustment,
+            UseDescription = UseDescription
         };
     }
 
