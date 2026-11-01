@@ -738,6 +738,7 @@ public static class PermanentModificationArchiveService
             && pair.First.Pile == pair.Second.Pile
             && pair.First.Rarity == pair.Second.Rarity
             && pair.First.FreeToPlay == pair.Second.FreeToPlay
+            && string.Equals(pair.First.OrbId, pair.Second.OrbId, StringComparison.Ordinal)
             && string.Equals(pair.First.PoolId, pair.Second.PoolId, StringComparison.Ordinal));
 
     private static bool CardKeywordEntryUpgradeListsEqual(
@@ -759,6 +760,7 @@ public static class PermanentModificationArchiveService
             && pair.First.ReplacementPile == pair.Second.ReplacementPile
             && pair.First.ReplacementRarity == pair.Second.ReplacementRarity
             && pair.First.ReplacementFreeToPlay == pair.Second.ReplacementFreeToPlay
+            && string.Equals(pair.First.ReplacementOrbId, pair.Second.ReplacementOrbId, StringComparison.Ordinal)
             && string.Equals(pair.First.ReplacementPoolId, pair.Second.ReplacementPoolId, StringComparison.Ordinal)
             && string.Equals(
                 pair.First.ReplacementCardId,

@@ -1451,12 +1451,13 @@ public partial class NCardModificationScreen : Control
                 ? $" {number}"
                 : string.Empty;
             _variableControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
-            if (entries[index].IsCardGrant)
+            if (entries[index].IsCardGrant || entries[index].IsOrb)
             {
                 NLoadoutKeywordEntryEditor nestedEditor = new();
                 nestedEditor.Init(entries[index], updated => UpdateCardKeywordEntry(capturedIndex, entry =>
                 {
                     entry.Amount = updated.Amount;
+                    entry.OrbId = updated.OrbId;
                     entry.Pile = updated.Pile;
                     entry.GrantedKeyword = updated.GrantedKeyword?.Clone();
                     entry.GrantedEnchantment = updated.GrantedEnchantment?.Clone();

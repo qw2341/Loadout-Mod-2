@@ -422,5 +422,21 @@
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "为所有卡牌添加附魔",
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "为选定牌堆中的所有其他适用牌附魔。",
   "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
-  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "选择一张卡牌以附加{Enchantment}。"
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "选择一张卡牌以附加{Enchantment}。",
+  "LOADOUT-BASIC_ORB.entries": "{Orbs}",
+  "LOADOUT-BASIC_ORB.title": "生成充能球",
+  "LOADOUT-BASIC_ORB.description": "为自己生成充能球。",
+  "LOADOUT-BASIC_ORB.channelText": "[gold]生成[/gold]{Amount}个[gold]{Orb}[/gold]充能球。",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.title": "队友充能球",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.description": "为另一位玩家生成充能球。",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.channelText": "为另一位玩家[gold]生成[/gold]{Amount}个[gold]{Orb}[/gold]充能球。",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.title": "其他玩家充能球",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.description": "为其他玩家生成充能球。",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.channelText": "其他玩家各[gold]生成[/gold]{Amount}个[gold]{Orb}[/gold]充能球。",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.title": "所有玩家充能球",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.description": "为所有玩家生成充能球。",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "所有玩家各[gold]生成[/gold]{Amount}个[gold]{Orb}[/gold]充能球。",
+  "LOADOUT-BASIC_EVOKE.title": "激发",
+  "LOADOUT-BASIC_EVOKE.description": "激发你最右侧的充能球。",
+  "LOADOUT-BASIC_EVOKE.cardText": "[gold]激发[/gold]你最右侧的充能球{LoadoutBasicEvoke:diff()}次。"
 }

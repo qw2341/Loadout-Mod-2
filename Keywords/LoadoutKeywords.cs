@@ -70,6 +70,11 @@ public static class LoadoutKeywords
     public const string BasicStarsKey = "BasicStars";
     public const string BasicForgeKey = "BasicForge";
     public const string BasicSummonKey = "BasicSummon";
+    public const string BasicEvokeKey = "BasicEvoke";
+    public const string BasicOrbKey = "BasicOrb";
+    public const string AnotherPlayerOrbKey = "BasicOrbAnotherPlayer";
+    public const string AllOtherPlayersOrbKey = "BasicOrbAllOtherPlayers";
+    public const string AllPlayersOrbKey = "BasicOrbAllPlayers";
     public const string BasicOstyAttackKey = "BasicOstyAttack";
     public const string BasicOstyAllAttackKey = "BasicOstyAllAttack";
     public const string AnotherPlayerBlockKey = "BasicMultiplayerAnotherPlayerBlock";
@@ -348,6 +353,21 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_SUMMON")]
     public static CardKeyword BasicSummon;
+
+    [CustomEnum("BASIC_EVOKE")]
+    public static CardKeyword BasicEvoke;
+
+    [CustomEnum("BASIC_ORB")]
+    public static CardKeyword BasicOrb;
+
+    [CustomEnum("BASIC_ORB_ANOTHER_PLAYER")]
+    public static CardKeyword AnotherPlayerOrb;
+
+    [CustomEnum("BASIC_ORB_ALL_OTHER_PLAYERS")]
+    public static CardKeyword AllOtherPlayersOrb;
+
+    [CustomEnum("BASIC_ORB_ALL_PLAYERS")]
+    public static CardKeyword AllPlayersOrb;
 
     [CustomEnum("BASIC_OSTY_ATTACK")]
     public static CardKeyword BasicOstyAttack;

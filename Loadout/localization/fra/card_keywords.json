@@ -422,5 +422,21 @@
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "Ajouter un enchantement à toutes les cartes",
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "Enchantez toutes les autres cartes compatibles de la pile sélectionnée avec l’enchantement configuré.",
   "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
-  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Choisissez une carte à enchanter avec {Enchantment}."
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Choisissez une carte à enchanter avec {Enchantment}.",
+  "LOADOUT-BASIC_ORB.entries": "{Orbs}",
+  "LOADOUT-BASIC_ORB.title": "Canaliser des orbes",
+  "LOADOUT-BASIC_ORB.description": "Canalisez des orbes pour vous-même.",
+  "LOADOUT-BASIC_ORB.channelText": "[gold]Canalisez[/gold] {Amount} [gold]{Orb}[/gold].",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.title": "Canaliser des orbes - Autre allié",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.description": "Canalisez des orbes pour un autre allié.",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.channelText": "Un autre allié [gold]Canalise[/gold] {Amount} [gold]{Orb}[/gold].",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.title": "Canaliser des orbes - Tous les autres alliés",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.description": "Canalisez des orbes pour tous les autres alliés en vie.",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.channelText": "Tous les autres alliés [gold]Canalisent[/gold] chacun {Amount} [gold]{Orb}[/gold].",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.title": "Canaliser des orbes - Tous les joueurs",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.description": "Canalisez des orbes pour tous les joueurs en vie, vous compris.",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "Tous les joueurs [gold]Canalisent[/gold] chacun {Amount} [gold]{Orb}[/gold].",
+  "LOADOUT-BASIC_EVOKE.title": "Activation",
+  "LOADOUT-BASIC_EVOKE.description": "Active votre Orbe le plus à droite plusieurs fois, puis le retire après la dernière activation.",
+  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Activez[/gold] votre Orbe le plus à droite {LoadoutBasicEvoke:diff()} fois."
 }

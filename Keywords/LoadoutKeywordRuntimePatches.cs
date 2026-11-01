@@ -860,6 +860,10 @@ internal static class LoadoutKeywordRuntimePatches
                     typeof(LoadoutDescriptionKeywordHoverTipsPatch),
                     nameof(LoadoutDescriptionKeywordHoverTipsPatch.Postfix)));
 
+            HarmonyMethod orbEvokePostfix = new(
+                typeof(BasicEvokeKeyword), nameof(BasicEvokeKeyword.OrbEvokeTypePostfix));
+            foreach (MethodBase target in LoadoutKeywordModel.GetCardPropertyGetters(nameof(CardModel.OrbEvokeType)))
+                DescriptionKeywordHarmony.Patch(target, postfix: orbEvokePostfix);
         }, () => DescriptionKeywordsEnabled = true);
     }
 

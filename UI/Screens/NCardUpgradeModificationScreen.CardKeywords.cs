@@ -112,9 +112,10 @@ public partial class NCardUpgradeModificationScreen
                 ? $" {number}"
                 : string.Empty;
             _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
-            if (baseEntry.IsCardGrant)
+            if (baseEntry.IsCardGrant || baseEntry.IsOrb)
             {
                 LoadoutCardKeywordEntry effective = baseEntry.Clone();
+                effective.OrbId = configured?.ReplacementOrbId ?? baseEntry.OrbId;
                 effective.Pile = configured?.ReplacementPile ?? baseEntry.Pile;
                 effective.GrantedKeyword = (configured?.ReplacementGrantedKeyword ?? baseEntry.GrantedKeyword)?.Clone();
                 effective.GrantedEnchantment = (configured?.ReplacementGrantedEnchantment ?? baseEntry.GrantedEnchantment)?.Clone();
@@ -123,6 +124,7 @@ public partial class NCardUpgradeModificationScreen
                 {
                     UpdateCardEntryUpgrade(model.StorageKey, baseEntry.CardId, occurrence, entry =>
                     {
+                        entry.ReplacementOrbId = updated.OrbId == baseEntry.OrbId ? null : updated.OrbId;
                         entry.ReplacementPile = updated.Pile == baseEntry.Pile ? null : updated.Pile;
                         entry.ReplacementGrantedKeyword = LoadoutKeywordPayload.Equivalent(updated.GrantedKeyword, baseEntry.GrantedKeyword)
                             ? null : updated.GrantedKeyword?.Clone();
@@ -278,7 +280,7 @@ public partial class NCardUpgradeModificationScreen
                 ? $" {number}"
                 : string.Empty;
             _leftControls.AddChild(CreateSectionLabel(model.GetTitle() + suffix));
-            if (addedEntries[index].IsCardGrant)
+            if (addedEntries[index].IsCardGrant || addedEntries[index].IsOrb)
             {
                 NLoadoutKeywordEntryEditor nestedEditor = new();
                 nestedEditor.Init(addedEntries[index], updated =>
@@ -286,6 +288,7 @@ public partial class NCardUpgradeModificationScreen
                     UpdateAddedCardKeywordEntry(capturedIndex, entry =>
                     {
                         entry.Amount = updated.Amount;
+                        entry.OrbId = updated.OrbId;
                         entry.Pile = updated.Pile;
                         entry.GrantedKeyword = updated.GrantedKeyword?.Clone();
                         entry.GrantedEnchantment = updated.GrantedEnchantment?.Clone();

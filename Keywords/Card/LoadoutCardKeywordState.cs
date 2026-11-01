@@ -251,6 +251,8 @@ public static class LoadoutCardKeywordState
                     amountWasUpgraded = upgrade.AmountDelta != 0;
                     if (!string.IsNullOrWhiteSpace(upgrade.ReplacementCardId))
                         effective.CardId = upgrade.ReplacementCardId;
+                    if (!string.IsNullOrWhiteSpace(upgrade.ReplacementOrbId))
+                        effective.OrbId = upgrade.ReplacementOrbId;
                     if (upgrade.ReplacementGrantedKeyword is not null)
                         effective.GrantedKeyword = upgrade.ReplacementGrantedKeyword.IsEmpty
                             ? null : upgrade.ReplacementGrantedKeyword.Clone();
@@ -371,6 +373,23 @@ public static class LoadoutCardKeywordState
     }
 
     public static string GetDefaultCardId() => ModelDb.Card<MegaCrit.Sts2.Core.Models.Cards.Shiv>().Id.ToString();
+
+    public static string FormatEntryDescriptions(CardModel card, string keywordKey,
+        Func<LoadoutCardKeywordEntry, string, string> format)
+    {
+        ResolveLists(card, out var baseEntries, out var upgrades, out var addedEntries);
+        bool highlight = card.UpgradePreviewType.IsPreview();
+        return string.Join("\n", GetEffectiveEntryStates(baseEntries, upgrades, addedEntries,
+            card.CurrentUpgradeLevel, InfiniteUpgradeValueScaling.Resolve(card))
+            .Where(effective => MatchesKeyword(effective.Entry, keywordKey))
+            .Select(effective =>
+            {
+                string amount = effective.Entry.Amount.ToString(CultureInfo.InvariantCulture);
+                if (highlight && effective.AmountWasUpgraded)
+                    amount = StsTextUtilities.HighlightChangeText(amount, 1);
+                return format(effective.Entry, amount);
+            }));
+    }
 
     public static bool IsSupportedPile(PileType pile) =>
         pile is PileType.Hand or PileType.Draw or PileType.Discard or PileType.Exhaust or PileType.Deck;

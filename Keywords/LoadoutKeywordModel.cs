@@ -41,7 +41,8 @@ public enum LoadoutKeywordEditorSection
     Restrictive,
     Fatal,
     Improvement,
-    Joke
+    Joke,
+    BasicOrb
 }
 
 public enum LoadoutKeywordEditorControlKind

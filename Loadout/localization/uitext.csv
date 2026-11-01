@@ -1,4 +1,4 @@
-﻿keys,en,zh_CN,fr,ja,ko,es
+keys,en,zh_CN,fr,ja,ko,es
 CREATE_NEW_CARD,Create a new card,创建新卡牌,Créer une carte,新しいカードを作成,새 카드 만들기,Crear una carta nueva
 IMAGE_EDITOR_SAVE_OPTIMIZED,Optimized Save?,优化保存？,Enregistrer dans un format optimisé ?,最適化形式で保存しますか？,최적화 형식으로 저장할까요?,¿Guardar en formato optimizado?
 IMAGE_EDITOR_ORIGINAL,Original,原始,Original,元の出力,원본,Original
@@ -979,3 +979,7 @@ CARD_MOD_ENCHANT_ALL,Enchant all other eligible cards in your {2} with {0}.,为{
 CARD_MOD_ENCHANT_RANDOM_SINGLE,Enchant a random eligible card in your {2} with {0}.,为{2}中的一张随机适用牌附魔{0}。,Enchantez une carte compatible aléatoire de votre {2} avec {0}.,{2}のエンチャント可能なランダムなカード1枚に{0}を付与する。,{2}에서 마법 부여가 가능한 무작위 카드 한 장에 {0}을(를) 부여합니다.,Encanta una carta válida aleatoria de tu {2} con {0}.
 CARD_MOD_ENCHANT_CHOSEN_SINGLE,Enchant an eligible card you choose in your {2} with {0}.,选择{2}中的一张适用牌附魔{0}。,Enchantez une carte compatible choisie dans votre {2} avec {0}.,{2}から選んだエンチャント可能なカード1枚に{0}を付与する。,{2}에서 마법 부여가 가능한 카드 한 장을 골라 {0}을(를) 부여합니다.,Encanta una carta válida que elijas de tu {2} con {0}.
 CARD_MOD_CARD_ENCHANTMENT_AND_KEYWORD_FORMAT,{0} {2} {1} with {3},{0}张带有{3}的{2}{1},{0} {1} avec {2} et {3},{3}を持つ{2}{1}を{0}枚,{3} 키워드가 있는 {2} {1} {0}장,{0} {1} con {2} y {3}
+CARD_MOD_LOADOUT_BASIC_ORB_KEYWORDS,Loadout Basic Orb Keywords,Loadout 基础充能球关键词,Mots-clés d’orbes de base Loadout,Loadout基本オーブキーワード,Loadout 기본 구체 키워드,Palabras clave de orbes básicos de Loadout
+CARD_MOD_ORB_TYPE,Orb Type,充能球类型,Type d’orbe,オーブの種類,구체 종류,Tipo de orbe
+CARD_MOD_ORB_AMOUNT,Amount,数量,Quantité,個数,개수,Cantidad
+DYNAMIC_VAR_LOADOUT_BASIC_EVOKE,Evoke Amount,激发次数,Nombre d’activations,解放回数,발현 횟수,Cantidad de descargas

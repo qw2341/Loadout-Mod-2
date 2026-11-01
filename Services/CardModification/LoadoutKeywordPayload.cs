@@ -167,7 +167,9 @@ public sealed class LoadoutKeywordPayload
         }
         if (Power is { } power)
             settings.Add($"{(LoadoutPowerKeywordState.TryResolvePower(power.PowerId, out var model) ? CommonHelpers.FormatPowerTitle(model) : power.PowerId)}: {power.Amount}");
-        if (Card is { IsKeywordGrant: true } grant)
+        if (Card is { IsOrb: true } orb)
+            settings.Add(AsInlineClause(LoadoutBasicOrbKeywordModel.FormatEntry(orb)));
+        else if (Card is { IsKeywordGrant: true } grant)
             settings.Add(AsInlineClause(LoadoutKeywordKeywordModel.FormatEntry(grant)));
         else if (Card is { IsEnchantmentGrant: true } enchantment)
             settings.Add(AsInlineClause(LoadoutEnchantmentKeywordModel.FormatEntry(enchantment)));

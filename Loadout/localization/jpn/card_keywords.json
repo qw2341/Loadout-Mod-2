@@ -422,5 +422,21 @@
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "全カードにエンチャントを付与",
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "選択した山の他のエンチャント可能な全カードに、設定したエンチャントを付与する。",
   "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
-  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "{Enchantment}を付与するカードを選ぶ。"
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "{Enchantment}を付与するカードを選ぶ。",
+  "LOADOUT-BASIC_ORB.entries": "{Orbs}",
+  "LOADOUT-BASIC_ORB.title": "オーブ生成",
+  "LOADOUT-BASIC_ORB.description": "自分にオーブを生成する。",
+  "LOADOUT-BASIC_ORB.channelText": "[gold]{Orb}[/gold]を{Amount}個[gold]生成[/gold]する。",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.title": "オーブ生成 - 他の味方1人",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.description": "他の味方1人にオーブを生成する。",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.channelText": "他の味方1人が[gold]{Orb}[/gold]を{Amount}個[gold]生成[/gold]する。",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.title": "オーブ生成 - 他の味方全員",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.description": "生存している他の味方全員にオーブを生成する。",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.channelText": "他の味方全員が[gold]{Orb}[/gold]をそれぞれ{Amount}個[gold]生成[/gold]する。",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.title": "オーブ生成 - 全プレイヤー",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.description": "自分を含む生存している全プレイヤーにオーブを生成する。",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "全プレイヤーが[gold]{Orb}[/gold]をそれぞれ{Amount}個[gold]生成[/gold]する。",
+  "LOADOUT-BASIC_EVOKE.title": "解放",
+  "LOADOUT-BASIC_EVOKE.description": "一番右のオーブを繰り返し解放し、最後の解放後に取り除く。",
+  "LOADOUT-BASIC_EVOKE.cardText": "右端のオーブを{LoadoutBasicEvoke:diff()}回[gold]解放[/gold]する。"
 }

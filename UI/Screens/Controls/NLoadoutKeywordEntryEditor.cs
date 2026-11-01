@@ -66,6 +66,16 @@ public partial class NLoadoutKeywordEntryEditor : VBoxContainer
 
     private void AddEntryControls(VBoxContainer container, LoadoutCardKeywordEntry entry, bool showAmount = true, int depth = 0)
     {
+        if (entry.IsOrb)
+        {
+            NLoadoutOrbTypeStepper orb = new();
+            orb.Init(entry.OrbId ?? string.Empty, value => { entry.OrbId = value; Commit(); });
+            container.AddChild(CreateRow(LocMan.Loc("CARD_MOD_ORB_TYPE", "Orb Type"), orb));
+            if (showAmount)
+                AddNumber(container, LocMan.Loc("CARD_MOD_ORB_AMOUNT", "Amount"), entry.Amount, 0,
+                    value => { entry.Amount = value; Commit(); });
+            return;
+        }
         if (entry.IsCardGrant)
         {
             if (showAmount && entry.KeywordKey != LoadoutKeywords.AddKeywordToAllCardsKey

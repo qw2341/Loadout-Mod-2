@@ -92,7 +92,7 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
         CardPlay cardPlay,
         object? capturedState)
     {
-        IReadOnlyList<Creature> targets = ResolveTargets(card, cardPlay);
+        IReadOnlyList<Creature> targets = ResolvePlayerTargets(card, cardPlay, TargetMode);
         if (Effect == LoadoutBasicMultiplayerEffect.Summon)
         {
             if (targets.Count == 0 || GetAmount(card, AmountVarName).BaseValue <= 0m)
@@ -130,12 +130,15 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
         };
     }
 
-    private IReadOnlyList<Creature> ResolveTargets(
+    public static IReadOnlyList<Creature> ResolvePlayerTargets(
         CardModel card,
-        CardPlay cardPlay)
+        CardPlay cardPlay,
+        LoadoutBasicMultiplayerTargetMode? targetMode)
     {
         Creature source = card.Owner.Creature;
-        if (TargetMode == LoadoutBasicMultiplayerTargetMode.AnotherPlayer)
+        if (targetMode is null)
+            return source.IsAlive ? [source] : [];
+        if (targetMode == LoadoutBasicMultiplayerTargetMode.AnotherPlayer)
         {
             return cardPlay.Target is { IsAlive: true, IsPlayer: true } target
                    && !ReferenceEquals(target, source)
@@ -148,7 +151,7 @@ public abstract class LoadoutBasicMultiplayerKeywordModel
                    .Where(target =>
                        target.IsAlive
                        && target.IsPlayer
-                       && (TargetMode
+                       && (targetMode
                                != LoadoutBasicMultiplayerTargetMode.AllOtherPlayers
                            || !ReferenceEquals(target, source)))
                    .ToArray()

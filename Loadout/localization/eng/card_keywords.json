@@ -422,5 +422,21 @@
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "Add Enchantment to All Cards",
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "Enchant every other eligible card in the selected pile.",
   "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
-  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Choose a card to enchant with {Enchantment}."
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Choose a card to enchant with {Enchantment}.",
+  "LOADOUT-BASIC_ORB.entries": "{Orbs}",
+  "LOADOUT-BASIC_ORB.title": "Channel Orbs",
+  "LOADOUT-BASIC_ORB.description": "Channel orbs for yourself.",
+  "LOADOUT-BASIC_ORB.channelText": "[gold]Channel[/gold] {Amount} [gold]{Orb}[/gold].",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.title": "Channel Orbs - Another Ally",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.description": "Channel orbs for another ally.",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.channelText": "Another ally [gold]Channels[/gold] {Amount} [gold]{Orb}[/gold].",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.title": "Channel Orbs - All Other Allies",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.description": "Channel orbs for every other living ally.",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.channelText": "All other allies [gold]Channel[/gold] {Amount} [gold]{Orb}[/gold] each.",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.title": "Channel Orbs - All Players",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.description": "Channel orbs for every living player.",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "All players [gold]Channel[/gold] {Amount} [gold]{Orb}[/gold] each.",
+  "LOADOUT-BASIC_EVOKE.title": "Evoke",
+  "LOADOUT-BASIC_EVOKE.description": "Evokes your rightmost Orb.",
+  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Evoke[/gold] your rightmost Orb {LoadoutBasicEvoke:diff()} {LoadoutBasicEvoke:plural:time|times}."
 }

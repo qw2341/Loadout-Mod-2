@@ -352,6 +352,12 @@ public partial class NCardKeywordEditor : VBoxContainer
         AddLoadoutSection(
             blocks,
             catalog,
+            LoadoutKeywordEditorSection.BasicOrb,
+            "CARD_MOD_LOADOUT_BASIC_ORB_KEYWORDS",
+            "Loadout Basic Orb Keywords");
+        AddLoadoutSection(
+            blocks,
+            catalog,
             LoadoutKeywordEditorSection.Power,
             "CARD_MOD_LOADOUT_POWER_KEYWORDS",
             "Loadout Power Keywords");
@@ -441,6 +447,12 @@ public partial class NCardKeywordEditor : VBoxContainer
             LoadoutKeywordEditorSection.BasicMultipliers,
             "CARD_MOD_LOADOUT_BASIC_MULTIPLIERS",
             "Loadout Basic Multipliers");
+        AddLoadoutSection(
+            blocks,
+            entries,
+            LoadoutKeywordEditorSection.BasicOrb,
+            "CARD_MOD_LOADOUT_BASIC_ORB_KEYWORDS",
+            "Loadout Basic Orb Keywords");
         AddLoadoutSection(
             blocks,
             entries,
@@ -826,7 +838,7 @@ public partial class NCardKeywordEditor : VBoxContainer
     {
         return entries.Count > 0
                && entries.All(entry =>
-                   entry.EditorSection is LoadoutKeywordEditorSection.Power or LoadoutKeywordEditorSection.Card or LoadoutKeywordEditorSection.Keyword or LoadoutKeywordEditorSection.Enchantment)
+                   entry.EditorSection is LoadoutKeywordEditorSection.Power or LoadoutKeywordEditorSection.Card or LoadoutKeywordEditorSection.Keyword or LoadoutKeywordEditorSection.Enchantment or LoadoutKeywordEditorSection.BasicOrb)
             ? 1
             : Columns;
     }

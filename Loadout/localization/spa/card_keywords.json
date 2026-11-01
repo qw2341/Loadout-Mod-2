@@ -422,5 +422,21 @@
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.title": "Añadir encantamiento a todas las cartas",
   "LOADOUT-ADD_ENCHANTMENT_TO_ALL_CARDS.description": "Encanta todas las demás cartas válidas del montón seleccionado con el encantamiento configurado.",
   "LOADOUT-ADD_ENCHANTMENT.cardText": "{GrantedEnchantments}",
-  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Elige una carta para encantar con {Enchantment}."
+  "LOADOUT-ADD_ENCHANTMENT.selectionPrompt": "Elige una carta para encantar con {Enchantment}.",
+  "LOADOUT-BASIC_ORB.entries": "{Orbs}",
+  "LOADOUT-BASIC_ORB.title": "Canalizar orbes",
+  "LOADOUT-BASIC_ORB.description": "Canaliza orbes para ti.",
+  "LOADOUT-BASIC_ORB.channelText": "[gold]Canaliza[/gold] {Amount} [gold]{Orb}[/gold].",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.title": "Canalizar orbes - Otro aliado",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.description": "Canaliza orbes para otro aliado.",
+  "LOADOUT-BASIC_ORB_ANOTHER_PLAYER.channelText": "Otro aliado [gold]Canaliza[/gold] {Amount} [gold]{Orb}[/gold].",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.title": "Canalizar orbes - Todos los demás aliados",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.description": "Canaliza orbes para todos los demás aliados vivos.",
+  "LOADOUT-BASIC_ORB_ALL_OTHER_PLAYERS.channelText": "Todos los demás aliados [gold]Canalizan[/gold] {Amount} [gold]{Orb}[/gold] cada uno.",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.title": "Canalizar orbes - Todos los jugadores",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.description": "Canaliza orbes para todos los jugadores vivos, incluyéndote.",
+  "LOADOUT-BASIC_ORB_ALL_PLAYERS.channelText": "Todos los jugadores [gold]Canalizan[/gold] {Amount} [gold]{Orb}[/gold] cada uno.",
+  "LOADOUT-BASIC_EVOKE.title": "Descargar",
+  "LOADOUT-BASIC_EVOKE.description": "Descarga tu orbe situado más a la derecha varias veces y lo elimina tras la última descarga.",
+  "LOADOUT-BASIC_EVOKE.cardText": "[gold]Descarga[/gold] el Orbe situado más a la derecha {LoadoutBasicEvoke:diff()} {LoadoutBasicEvoke:plural:vez|veces}."
 }

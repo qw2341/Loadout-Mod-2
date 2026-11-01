@@ -21,7 +21,9 @@ public abstract class LoadoutCardKeywordModel : LoadoutKeywordModel
             AddKeywordToRandomCardKeyword.Instance, AddKeywordToChosenCardKeyword.Instance,
             AddKeywordToAllCardsKeyword.Instance,
             AddEnchantmentToRandomCardKeyword.Instance, AddEnchantmentToChosenCardKeyword.Instance,
-            AddEnchantmentToAllCardsKeyword.Instance
+            AddEnchantmentToAllCardsKeyword.Instance,
+            BasicOrbKeyword.Instance, AnotherPlayerOrbKeyword.Instance,
+            AllOtherPlayersOrbKeyword.Instance, AllPlayersOrbKeyword.Instance
         ];
     }
 
