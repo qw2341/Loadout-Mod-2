@@ -3671,11 +3671,7 @@ public partial class NGenericSelectScreen : Control
                         continue;
 
                     if (!ResourceLoader.Exists(path))
-                    {
-                        _preloadWarnings.Enqueue(
-                            $"Loadout select screen '{screenName}' could not find preload resource '{path}' for item '{item.Id}' ({item.Name}).");
                         continue;
-                    }
 
                     resourcePaths.Add(path);
                 }
