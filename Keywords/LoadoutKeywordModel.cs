@@ -134,7 +134,9 @@ public abstract class LoadoutKeywordModel
 
     public virtual bool HasPlayRestriction => false;
 
-    public virtual bool ChangesTargeting => false;
+    public virtual bool ChangesTargeting => MultiTargetType.HasValue;
+
+    public virtual TargetType? MultiTargetType => null;
 
     public virtual bool RequiresAnotherPlayerTarget => false;
 

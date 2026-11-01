@@ -270,6 +270,8 @@ DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE,Damage,伤害,Dégâts,ダメージ,피해,Dañ
 DYNAMIC_VAR_LOADOUT_BASIC_DAMAGE_AOE,AOE Damage,群体伤害,Dégâts de zone,全体ダメージ,광역 피해,Daño en área
 DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_DAMAGE,Damage per Hit,每次伤害,Dégâts par coup,1ヒットのダメージ,타격당 피해,Daño por golpe
 DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_REPEAT,Hits,次数,Nombre de coups,ヒット回数,타격 횟수,Golpes
+DYNAMIC_VAR_LOADOUT_BASIC_RANDOM_MULTI_HIT_DAMAGE,Damage per Hit,每次伤害,Dégâts par coup aléatoire,ランダム1ヒットのダメージ,무작위 타격당 피해,Daño por golpe aleatorio
+DYNAMIC_VAR_LOADOUT_BASIC_RANDOM_MULTI_HIT_REPEAT,Hits,次数,Nombre de coups aléatoires,ランダムヒット回数,무작위 타격 횟수,Golpes aleatorios
 DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_AOE_DAMAGE,AOE Damage per Hit,每次群体伤害,Dégâts de zone par coup,1ヒットの全体ダメージ,타격당 광역 피해,Daño en área por golpe
 DYNAMIC_VAR_LOADOUT_BASIC_MULTI_HIT_AOE_REPEAT,AOE Hits,群体伤害次数,Nombre de coups de zone,全体ヒット回数,광역 타격 횟수,Golpes en área
 DYNAMIC_VAR_LOADOUT_BASIC_BLOCK,Block,格挡,Blocage,ブロック,방어도,Bloqueo

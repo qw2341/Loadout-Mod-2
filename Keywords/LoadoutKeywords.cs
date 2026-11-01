@@ -56,6 +56,7 @@ public static class LoadoutKeywords
     public const string BasicDamageKey = "BasicDamage";
     public const string BasicDamageAoeKey = "BasicDamageAoe";
     public const string BasicMultiHitKey = "BasicMultiHit";
+    public const string BasicRandomMultiHitKey = "BasicRandomMultiHit";
     public const string BasicMultiHitAoeKey = "BasicMultiHitAoe";
     public const string BasicBlockKey = "BasicBlock";
     public const string BasicDrawKey = "BasicDraw";
@@ -305,6 +306,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_MULTI_HIT")]
     public static CardKeyword BasicMultiHit;
+
+    [CustomEnum("BASIC_RANDOM_MULTI_HIT")]
+    public static CardKeyword BasicRandomMultiHit;
 
     [CustomEnum("BASIC_MULTI_HIT_AOE")]
     public static CardKeyword BasicMultiHitAoe;

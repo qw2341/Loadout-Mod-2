@@ -32,6 +32,32 @@ internal static class LoadoutBasicKeywordTargetTypePatch
             return;
         }
 
+        TargetType? multiTargetType = null;
+        bool requiresSingleTarget = false;
+        foreach (LoadoutKeywordModel model in LoadoutKeywordRegistry.EnumerateLiveModels(
+                     __instance, static model => model.ChangesTargeting))
+        {
+            if (model.MultiTargetType is not { } targetType)
+            {
+                requiresSingleTarget = true;
+                break;
+            }
+
+            if (multiTargetType != TargetType.AllEnemies)
+                multiTargetType = targetType;
+        }
+
+        if (!requiresSingleTarget && multiTargetType is { } multiTarget)
+        {
+            if (__result is TargetType.None or TargetType.Self
+                or TargetType.AllEnemies or TargetType.RandomEnemy
+                || LoadoutKeywordRegistry.SuppressesOriginalOnPlay(__instance))
+            {
+                __result = multiTarget;
+            }
+            return;
+        }
+
         if (__result == TargetType.Self)
         {
             __result = CustomTargetType.Anyone;

@@ -2,7 +2,6 @@
 
 namespace Loadout.Keywords;
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;
@@ -44,6 +43,8 @@ public sealed class BasicDamageAoeKeyword : LoadoutBasicKeywordModel
 
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         VariableDefinitions;
+
+    public override TargetType? MultiTargetType => TargetType.AllEnemies;
 
     public override async Task AfterOnPlay(
         CardModel card,

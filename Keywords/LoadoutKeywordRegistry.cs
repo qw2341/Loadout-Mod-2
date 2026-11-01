@@ -58,6 +58,7 @@ public static class LoadoutKeywordRegistry
         BasicDamageKeyword.Instance,
         BasicDamageAoeKeyword.Instance,
         BasicMultiHitKeyword.Instance,
+        BasicRandomMultiHitKeyword.Instance,
         BasicMultiHitAoeKeyword.Instance,
         BasicBlockKeyword.Instance,
         BasicDrawKeyword.Instance,
