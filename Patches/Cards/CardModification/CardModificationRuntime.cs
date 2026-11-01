@@ -1575,6 +1575,15 @@ public static class CardModificationRuntime
         return scratch;
     }
 
+    public static void CopyPreviewState(CardModel source, CardModel destination)
+    {
+        if (!PreviewDeltas.TryGetValue(source, out CardModificationDelta? preview))
+            return;
+
+        PreviewDeltas.Remove(destination);
+        PreviewDeltas.Add(destination, preview.Clone());
+    }
+
     public static bool CanModifyUpgrade(
         CardModel source,
         CardModificationSpec state)

@@ -47,6 +47,7 @@ public partial class NCardUpgradeModificationScreen : Control
     private NCardUpgradePreview? _upgradePreview;
     private NCardKeywordEditor? _keywordEditor;
     private NBackButton? _backButton;
+    private Tween? _backButtonOpacityTween;
     private CardModel? _previewSource;
     private CardModel? _previewUpgrade;
     private HashSet<CardKeyword> _nativeUpgradeKeywords = [];
@@ -118,6 +119,13 @@ public partial class NCardUpgradeModificationScreen : Control
     public override void _ExitTree()
     {
         VisibilityChanged -= OnVisibilityChanged;
+        _backButtonOpacityTween?.Kill();
+        _backButtonOpacityTween = null;
+        if (_backButton is not null && GodotObject.IsInstanceValid(_backButton))
+        {
+            _backButton.Focused -= OnBackButtonFocused;
+            _backButton.Unfocused -= OnBackButtonUnfocused;
+        }
         SaveOnce();
         ReleasePreviewCards();
     }
@@ -867,6 +875,7 @@ public partial class NCardUpgradeModificationScreen : Control
         CardModel source)
     {
         CardModel clone = scope.CloneCard(source);
+        CardModificationRuntime.CopyPreviewState(source, clone);
         LoadoutPowerKeywordState.CopyExplicitState(source, clone);
         LoadoutCardKeywordState.CopyExplicitState(source, clone);
         AltExecuteKeyword.CopyExplicitState(source, clone);
@@ -917,6 +926,9 @@ public partial class NCardUpgradeModificationScreen : Control
 
         NBackButton button = NLoadoutBackButtonFactory.Create();
         button.Name = "BackButton";
+        button.Modulate = new Color(1f, 1f, 1f, 0.5f);
+        button.Focused += OnBackButtonFocused;
+        button.Unfocused += OnBackButtonUnfocused;
         button.Connect(
             NClickableControl.SignalName.Released,
             Callable.From<NClickableControl>(_ =>
@@ -927,6 +939,19 @@ public partial class NCardUpgradeModificationScreen : Control
             }));
         _backButtonMount.AddChild(button);
         _backButton = button;
+    }
+
+    private void OnBackButtonFocused(NClickableControl button) => FadeBackButton(button, 1f);
+
+    private void OnBackButtonUnfocused(NClickableControl button) => FadeBackButton(button, 0.5f);
+
+    private void FadeBackButton(NClickableControl button, float opacity)
+    {
+        _backButtonOpacityTween?.Kill();
+        _backButtonOpacityTween = button.CreateTween();
+        _backButtonOpacityTween.TweenProperty(button, "modulate:a", opacity, 0.2)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.InOut);
     }
 
     private void OnVisibilityChanged()
