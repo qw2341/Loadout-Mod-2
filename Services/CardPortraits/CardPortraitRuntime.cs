@@ -485,9 +485,11 @@ internal static class CardPortraitRuntime
             throw new InvalidDataException("The portrait metadata does not match its saved asset.");
         }
 
-        Vector2I outputSize = ImageAnimationSizing.GetOutputSize(
+        Vector2I outputSize = ImageAnimationSizing.GetTextureSize(
             frame.OutputSize,
-            source.Frames.Count);
+            new Vector2I(source.Width, source.Height),
+            source.Frames.Count,
+            preserveSourceSize: string.Equals(asset.Record.FrameId, frame.Id, StringComparison.Ordinal));
         long outputPixels = (long)outputSize.X * outputSize.Y * source.Frames.Count;
         if (outputPixels > MaxOutputPixelsAcrossFrames)
             throw new InvalidDataException("The animated portrait exceeds the decoded frame budget.");

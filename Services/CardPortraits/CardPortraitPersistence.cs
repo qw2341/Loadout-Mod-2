@@ -153,6 +153,7 @@ internal static class CardPortraitPersistence
             && !normalized.Contains("://", StringComparison.Ordinal)
             && !normalized.Split('/').Any(part => part is "" or "." or "..")
             && (normalized.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                || normalized.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
                 || normalized.EndsWith(ImageAnimationPackage.Extension, StringComparison.OrdinalIgnoreCase));
     }
 

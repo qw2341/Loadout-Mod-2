@@ -33,6 +33,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     private HSlider _zoomSlider = null!;
     private HSlider? _rotationSlider;
     private MegaLabel? _rotationLabel;
+    private MegaLabel? _optimizationEstimate;
     private Control _saveButton = null!;
     private NCard? _cardPreview;
     private CardModel? _cardPreviewModel;
@@ -47,6 +48,7 @@ public partial class NImageEditorModal : Control, IScreenContext
     private bool _uiBuilt;
     private bool _completed;
     private bool _forceAncientRendering;
+    private bool _saveOptimized;
 
     [Export]
     public bool UseLoadoutScreenChrome { get; set; }
@@ -66,6 +68,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         _request = request;
         _activeFrame = request.Frame;
         _forceAncientRendering = request.InitialForceAncientRendering;
+        _saveOptimized = request.AllowOptimizedSaving;
         _initialized = true;
         if (IsNodeReady())
             BuildUi();
@@ -345,6 +348,27 @@ public partial class NImageEditorModal : Control, IScreenContext
         }));
         tools.AddChild(CreateButton("reset", EditorText("IMAGE_EDITOR_RESET", "Reset image"), _canvas.ResetAll));
 
+        if (_request.AllowOptimizedSaving)
+        {
+            string title = LocMan.Loc("IMAGE_EDITOR_SAVE_OPTIMIZED", "Save using optimized format?");
+            NLoadoutToggle optimized = new()
+            {
+                CustomMinimumSize = new Vector2(360f, 56f),
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            optimized.Init("save_optimized", title, _saveOptimized);
+            optimized.Toggled += toggle =>
+            {
+                _saveOptimized = toggle.IsChecked;
+                RefreshCardPreviewResolution();
+            };
+            tools.AddChild(optimized);
+            _optimizationEstimate = CreateLabel(string.Empty, 18, StsColors.cream);
+            _optimizationEstimate.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            tools.AddChild(_optimizationEstimate);
+            RefreshOptimizationEstimate();
+        }
+
         MegaLabel instructions = CreateLabel(
             _request.AllowAlphaEditing
                 ? EditorText("IMAGE_EDITOR_INSTRUCTIONS", "Drag to move. Brush beyond the frame edge for softer cuts. Use the mouse wheel to zoom.")
@@ -357,6 +381,37 @@ public partial class NImageEditorModal : Control, IScreenContext
         instructions.VerticalAlignment = VerticalAlignment.Bottom;
         tools.AddChild(instructions);
         return tools;
+    }
+
+    private Vector2I GetPortraitOutputSize(bool optimize)
+    {
+        return ImageAnimationSizing.GetOutputSize(_activeFrame.OutputSize, _source.Frames.Count, optimize);
+    }
+
+    private void RefreshOptimizationEstimate()
+    {
+        if (_optimizationEstimate is null)
+            return;
+
+        Vector2I original = GetPortraitOutputSize(false);
+        Vector2I optimized = GetPortraitOutputSize(true);
+        long originalBytes = (long)original.X * original.Y * _source.Frames.Count * 4;
+        long optimizedBytes = (long)optimized.X * optimized.Y * _source.Frames.Count * 4;
+        double ratio = (double)optimizedBytes / originalBytes * 100.0;
+        _optimizationEstimate.Text =
+            $"{LocMan.Loc("IMAGE_EDITOR_ORIGINAL", "Original")}: {original.Y} × {original.X} · ~{originalBytes / 1_000_000.0:0.00} MB\n"
+            + $"{LocMan.Loc("IMAGE_EDITOR_OPTIMIZED", "Optimized")}: {optimized.Y} × {optimized.X} · ~{optimizedBytes / 1_000_000.0:0.00} MB\n"
+            + $"{LocMan.Loc("IMAGE_EDITOR_COMPRESSION_RATIO", "Compression Ratio")}: {ratio:0.##}%";
+    }
+
+    private void RefreshCardPreviewResolution()
+    {
+        Vector2I size = GetPortraitOutputSize(_saveOptimized);
+        if (_cardPreviewViewport is not null && GodotObject.IsInstanceValid(_cardPreviewViewport))
+            _cardPreviewViewport.Size = size;
+        if (_cardPreviewSurface is not null && GodotObject.IsInstanceValid(_cardPreviewSurface))
+            _cardPreviewSurface.Size = size;
+        RefreshCardPreviewMaterial();
     }
 
     private Control CreateBottomButtons()
@@ -451,6 +506,7 @@ public partial class NImageEditorModal : Control, IScreenContext
             model.Type,
             model.Rarity == CardRarity.Ancient || _forceAncientRendering);
         _canvas.SetFrame(_activeFrame);
+        RefreshOptimizationEstimate();
         if (_request.AllowForceAncientRendering)
             CardModificationRuntime.SetPreviewAncientRendering(model, _forceAncientRendering);
         _cardPreviewMount = GetNodeOrNull<Control>("%CardPreviewMount");
@@ -479,7 +535,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         _cardPreviewViewport = new SubViewport
         {
             Name = "PortraitPreviewViewport",
-            Size = _activeFrame.OutputSize,
+            Size = GetPortraitOutputSize(_saveOptimized),
             TransparentBg = true,
             Disable3D = true,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Once
@@ -491,7 +547,7 @@ public partial class NImageEditorModal : Control, IScreenContext
         {
             Name = "PortraitPreviewSurface",
             Position = Vector2.Zero,
-            Size = _activeFrame.OutputSize,
+            Size = GetPortraitOutputSize(_saveOptimized),
             MouseFilter = MouseFilterEnum.Ignore,
             Material = _cardPreviewMaterial,
             Color = Colors.White
@@ -516,10 +572,8 @@ public partial class NImageEditorModal : Control, IScreenContext
         bool ancientPresentation = _cardPreviewModel.Rarity == CardRarity.Ancient || enabled;
         _activeFrame = ImageEditFramePresets.ForCard(_cardPreviewModel.Type, ancientPresentation);
         _canvas.SetFrame(_activeFrame);
-        if (_cardPreviewViewport is not null && GodotObject.IsInstanceValid(_cardPreviewViewport))
-            _cardPreviewViewport.Size = _activeFrame.OutputSize;
-        if (_cardPreviewSurface is not null && GodotObject.IsInstanceValid(_cardPreviewSurface))
-            _cardPreviewSurface.Size = _activeFrame.OutputSize;
+        RefreshOptimizationEstimate();
+        RefreshCardPreviewResolution();
 
         CardModificationRuntime.SetPreviewAncientRendering(_cardPreviewModel, enabled);
         RefreshCardPreviewPresentation();
@@ -768,12 +822,13 @@ public partial class NImageEditorModal : Control, IScreenContext
         {
             Complete(new EditorSessionResult(
                 true,
-                _canvas.RenderOutputDocument(),
+                _canvas.RenderOutputDocument(_saveOptimized),
                 name,
                 saveOptionId,
                 ForceAncientRendering: _request.AllowForceAncientRendering
                     ? _forceAncientRendering
-                    : null));
+                    : null,
+                SaveOptimized: _saveOptimized));
         }
         catch (Exception exception)
         {
@@ -824,7 +879,8 @@ public partial class NImageEditorModal : Control, IScreenContext
         string? DisplayName,
         string? SaveOptionId,
         string? ErrorMessage = null,
-        bool? ForceAncientRendering = null);
+        bool? ForceAncientRendering = null,
+        bool SaveOptimized = false);
 
     private static string EditorText(string key, string fallback)
     {

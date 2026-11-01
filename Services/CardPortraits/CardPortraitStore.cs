@@ -694,6 +694,7 @@ internal static class CardPortraitStore
         !string.IsNullOrWhiteSpace(fileName)
         && string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal)
         && (fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
             || fileName.EndsWith(ImageAnimationPackage.Extension, StringComparison.OrdinalIgnoreCase));
 
     private static bool IsSafeRelativeFile(string? fileName)
@@ -710,6 +711,7 @@ internal static class CardPortraitStore
         }
 
         return normalized.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
             || normalized.EndsWith(ImageAnimationPackage.Extension, StringComparison.OrdinalIgnoreCase);
     }
 

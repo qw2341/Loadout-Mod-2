@@ -3,7 +3,6 @@
 namespace Loadout.UI.ImageEditing;
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -59,11 +58,12 @@ public sealed class ImageMediaDocument
 internal static class ImageAnimationSizing
 {
     public const long MaxOutputPixelsAcrossFrames = 48L * 1024L * 1024L;
+    public const long OptimizedMaxOutputPixelsAcrossFrames = 12L * 1024L * 1024L;
     private const int MaxOutputDimension = 500;
 
-    public static Vector2I GetOutputSize(Vector2I requestedSize, int frameCount)
+    public static Vector2I GetOutputSize(Vector2I requestedSize, int frameCount, bool optimize = false)
     {
-        if (requestedSize.X <= 0 || requestedSize.Y <= 0 || frameCount <= 1)
+        if (requestedSize.X <= 0 || requestedSize.Y <= 0 || frameCount <= 0 || (frameCount == 1 && !optimize))
             return requestedSize;
 
         long requestedPixels = (long)requestedSize.X * requestedSize.Y;
@@ -72,7 +72,8 @@ internal static class ImageAnimationSizing
             (double)MaxOutputDimension / Math.Max(requestedSize.X, requestedSize.Y));
         double budgetScale = Math.Min(
             1.0,
-            Math.Sqrt((double)MaxOutputPixelsAcrossFrames / (requestedPixels * frameCount)));
+            Math.Sqrt((double)(optimize ? OptimizedMaxOutputPixelsAcrossFrames : MaxOutputPixelsAcrossFrames)
+                / (requestedPixels * frameCount)));
         double scale = Math.Min(dimensionScale, budgetScale);
         if (scale >= 1.0)
             return requestedSize;
@@ -81,12 +82,21 @@ internal static class ImageAnimationSizing
         int height = Math.Max(1, (int)Math.Floor(requestedSize.Y * scale));
         return new Vector2I(width, height);
     }
+
+    public static Vector2I GetTextureSize(Vector2I requestedSize, Vector2I sourceSize, int frameCount, bool preserveSourceSize)
+    {
+        if (preserveSourceSize)
+            return GetOutputSize(sourceSize, frameCount);
+        Vector2I size = GetOutputSize(requestedSize, frameCount);
+        double scale = Math.Min(1.0, Math.Min((double)sourceSize.X / size.X, (double)sourceSize.Y / size.Y));
+        return new Vector2I(Math.Max(1, (int)Math.Floor(size.X * scale)), Math.Max(1, (int)Math.Floor(size.Y * scale)));
+    }
 }
 
 public static class ImageAnimationPackage
 {
     public const string Extension = ".loadoutanim";
-    private const int CurrentVersion = 1;
+    private const int CurrentVersion = 2;
     private const long MaxEntryBytes = 64L * 1024L * 1024L;
     private const long MaxPackageBytes = 512L * 1024L * 1024L;
     private const string ManifestEntryName = "animation.json";
@@ -97,7 +107,7 @@ public static class ImageAnimationPackage
         WriteIndented = true
     };
 
-    public static void Save(string path, ImageMediaDocument document)
+    public static void Save(string path, ImageMediaDocument document, bool optimize = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(document);
@@ -107,19 +117,18 @@ public static class ImageAnimationPackage
         List<AnimationFrameRecord> records = new(document.Frames.Count);
         for (int i = 0; i < document.Frames.Count; i++)
         {
-            string frameFile = $"frames/{i:D4}.png";
-            byte[] png = document.Frames[i].Image.SavePngToBuffer();
-            if (png.Length == 0)
-                throw new IOException($"Animation frame {i} could not be encoded as PNG.");
-            ZipArchiveEntry entry = archive.CreateEntry(frameFile, CompressionLevel.Fastest);
+            (byte[] data, string extension) = ImageMediaEncoding.Encode(document.Frames[i].Image, optimize);
+            string frameFile = $"frames/{i:D4}{extension}";
+            ZipArchiveEntry entry = archive.CreateEntry(frameFile,
+                extension == ".webp" ? CompressionLevel.NoCompression : CompressionLevel.Fastest);
             using Stream entryStream = entry.Open();
-            entryStream.Write(png);
+            entryStream.Write(data);
             records.Add(new AnimationFrameRecord(frameFile, NormalizeDuration(document.Frames[i].DurationSeconds)));
         }
 
         AnimationManifest manifest = new()
         {
-            Version = CurrentVersion,
+            Version = optimize ? CurrentVersion : 1,
             Width = document.Width,
             Height = document.Height,
             Frames = records
@@ -162,7 +171,7 @@ public static class ImageAnimationPackage
         AnimationManifest? manifest;
         using (Stream manifestStream = manifestEntry.Open())
             manifest = JsonSerializer.Deserialize<AnimationManifest>(manifestStream, JsonOptions);
-        if (manifest is null || manifest.Version != CurrentVersion)
+        if (manifest is null || manifest.Version is < 1 or > CurrentVersion)
             throw new InvalidDataException("The animation package version is unsupported.");
         if (manifest.Frames is not { Count: > 0 } || manifest.Frames.Count > ImageMediaDocument.MaxFrames)
             throw new InvalidDataException("The animation package frame count is invalid.");
@@ -187,13 +196,10 @@ public static class ImageAnimationPackage
             if (totalBytes > MaxPackageBytes)
                 throw new InvalidDataException("The animation package expands beyond the supported size.");
 
-            byte[] png = new byte[checked((int)frameEntry.Length)];
+            byte[] data = new byte[checked((int)frameEntry.Length)];
             using (Stream frameStream = frameEntry.Open())
-                frameStream.ReadExactly(png);
-            Image image = new();
-            Error error = image.LoadPngFromBuffer(png);
-            if (error != Error.Ok || image.IsEmpty())
-                throw new InvalidDataException($"Animation frame '{frameRecord.File}' could not be decoded.");
+                frameStream.ReadExactly(data);
+            Image image = DecodeFrame(data, frameRecord.File, manifest.Frames.Count);
             frames.Add(new ImageMediaFrame(image, NormalizeDuration(frameRecord.DurationSeconds)));
         }
 
@@ -219,7 +225,7 @@ public static class ImageAnimationPackage
         AnimationManifest? manifest;
         using (Stream manifestStream = manifestEntry.Open())
             manifest = JsonSerializer.Deserialize<AnimationManifest>(manifestStream, JsonOptions);
-        if (manifest is null || manifest.Version != CurrentVersion)
+        if (manifest is null || manifest.Version is < 1 or > CurrentVersion)
             throw new InvalidDataException("The animation package version is unsupported.");
         if (manifest.Frames is not { Count: > 0 } || manifest.Frames.Count > ImageMediaDocument.MaxFrames)
             throw new InvalidDataException("The animation package frame count is invalid.");
@@ -237,14 +243,10 @@ public static class ImageAnimationPackage
             ?? throw new InvalidDataException($"Animation frame '{firstFrame.File}' is missing.");
         if (frameEntry.Length <= 0 || frameEntry.Length > MaxEntryBytes)
             throw new InvalidDataException($"Animation frame '{firstFrame.File}' is invalid.");
-        byte[] png = new byte[checked((int)frameEntry.Length)];
+        byte[] data = new byte[checked((int)frameEntry.Length)];
         using (Stream frameStream = frameEntry.Open())
-            frameStream.ReadExactly(png);
-        Image image = new();
-        Error error = image.LoadPngFromBuffer(png);
-        if (error != Error.Ok || image.IsEmpty())
-            throw new InvalidDataException($"Animation frame '{firstFrame.File}' could not be decoded.");
-        return image;
+            frameStream.ReadExactly(data);
+        return DecodeFrame(data, firstFrame.File, manifest.Frames.Count);
     }
 
     public static ImageMediaMetadata ReadMetadata(string path)
@@ -266,7 +268,7 @@ public static class ImageAnimationPackage
         AnimationManifest? manifest;
         using (Stream manifestStream = manifestEntry.Open())
             manifest = JsonSerializer.Deserialize<AnimationManifest>(manifestStream, JsonOptions);
-        if (manifest is null || manifest.Version != CurrentVersion)
+        if (manifest is null || manifest.Version is < 1 or > CurrentVersion)
             throw new InvalidDataException("The animation package version is unsupported.");
         if (manifest.Frames is not { Count: > 0 } || manifest.Frames.Count > ImageMediaDocument.MaxFrames)
             throw new InvalidDataException("The animation package frame count is invalid.");
@@ -298,7 +300,9 @@ public static class ImageAnimationPackage
         if (width <= 0 || height <= 0)
         {
             using Stream frameStream = firstFrameEntry!.Open();
-            (width, height) = ReadPngDimensions(frameStream);
+            ImageMediaMetadata metadata = ImageMediaEncoding.ReadMetadata(frameStream);
+            width = metadata.Width;
+            height = metadata.Height;
         }
         if (width <= 0 || height <= 0)
             throw new InvalidDataException("The animation package dimensions are invalid.");
@@ -310,20 +314,20 @@ public static class ImageAnimationPackage
         return double.IsFinite(duration) ? Math.Clamp(duration, 0.02, 10.0) : 0.1;
     }
 
-    private static (int Width, int Height) ReadPngDimensions(Stream stream)
+    private static Image DecodeFrame(byte[] data, string fileName, int frameCount)
     {
-        Span<byte> header = stackalloc byte[24];
-        stream.ReadExactly(header);
-        ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
-        if (!header[..8].SequenceEqual(signature)
-            || !header.Slice(12, 4).SequenceEqual("IHDR"u8))
-        {
-            throw new InvalidDataException("The animation package first frame is not a valid PNG.");
-        }
+        using MemoryStream stream = new(data, writable: false);
+        ImageMediaMetadata metadata = ImageMediaEncoding.ReadMetadata(stream);
+        if ((long)metadata.Width * metadata.Height * frameCount > ImageAnimationSizing.MaxOutputPixelsAcrossFrames)
+            throw new InvalidDataException("The animation package exceeds the decoded frame budget.");
 
-        int width = BinaryPrimitives.ReadInt32BigEndian(header.Slice(16, 4));
-        int height = BinaryPrimitives.ReadInt32BigEndian(header.Slice(20, 4));
-        return (width, height);
+        Image image = new();
+        Error error = fileName.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
+            ? image.LoadWebpFromBuffer(data)
+            : image.LoadPngFromBuffer(data);
+        if (error != Error.Ok || image.IsEmpty())
+            throw new InvalidDataException($"Animation frame '{fileName}' could not be decoded.");
+        return image;
     }
 
     private sealed class AnimationManifest

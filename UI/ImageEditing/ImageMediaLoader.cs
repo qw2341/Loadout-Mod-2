@@ -107,26 +107,14 @@ public static class ImageMediaLoader
             throw new FileNotFoundException("The image file does not exist.", path);
         if (file.Extension.Equals(ImageAnimationPackage.Extension, StringComparison.OrdinalIgnoreCase))
             return ImageAnimationPackage.ReadMetadata(file.FullName);
-        if (!file.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Only saved PNG images and Loadout animation packages have lightweight metadata.");
+        if (!file.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            && !file.Extension.Equals(".webp", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Only saved PNG/WebP images and Loadout animation packages have lightweight metadata.");
         if (file.Length < 24 || file.Length > MaxInputBytes)
-            throw new InvalidDataException("The PNG image is empty or too large.");
+            throw new InvalidDataException("The saved image is empty or too large.");
 
-        Span<byte> header = stackalloc byte[24];
-        using (FileStream stream = new(file.FullName, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read))
-            stream.ReadExactly(header);
-        ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
-        if (!header[..8].SequenceEqual(signature)
-            || !header.Slice(12, 4).SequenceEqual("IHDR"u8))
-        {
-            throw new InvalidDataException("The saved companion image is not a valid PNG.");
-        }
-
-        int width = BinaryPrimitives.ReadInt32BigEndian(header.Slice(16, 4));
-        int height = BinaryPrimitives.ReadInt32BigEndian(header.Slice(20, 4));
-        if (width <= 0 || height <= 0)
-            throw new InvalidDataException("The saved companion image dimensions are invalid.");
-        return new ImageMediaMetadata(width, height, 1);
+        using FileStream stream = new(file.FullName, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read);
+        return ImageMediaEncoding.ReadMetadata(stream);
     }
 
     private static Error LoadBySignature(Image image, byte[] data)

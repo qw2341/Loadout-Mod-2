@@ -46,7 +46,8 @@ public sealed record ImageEditRequest(
     bool UseLoadoutScreen = false,
     CardModel? CardPreviewModel = null,
     bool AllowForceAncientRendering = false,
-    bool InitialForceAncientRendering = false);
+    bool InitialForceAncientRendering = false,
+    bool AllowOptimizedSaving = false);
 
 public sealed record ImageEditResult(
     ImageEditStatus Status,

@@ -106,7 +106,8 @@ public static class ImageEditorService
             string savedPath = SaveDocumentAtomically(
                 session.Document,
                 saveOption.DestinationDirectory,
-                saveOption.OutputFileName);
+                saveOption.OutputFileName,
+                session.SaveOptimized);
             return new ImageEditResult(
                 ImageEditStatus.Saved,
                 savedPath,
@@ -329,7 +330,8 @@ public static class ImageEditorService
     private static string SaveDocumentAtomically(
         ImageMediaDocument document,
         string requestedDirectory,
-        string requestedFileName)
+        string requestedFileName,
+        bool optimize)
     {
         string directory = ResolveWritableDirectory(requestedDirectory);
         Directory.CreateDirectory(directory);
@@ -340,9 +342,10 @@ public static class ImageEditorService
             throw new InvalidOperationException("The output filename is invalid.");
         if (!string.Equals(fileName, requestedName, StringComparison.Ordinal))
             throw new InvalidOperationException("The output filename cannot contain a directory path.");
-        fileName = Path.ChangeExtension(
-            fileName,
-            document.IsAnimated ? ImageAnimationPackage.Extension : ".png");
+        (byte[] Data, string Extension) encoded = document.IsAnimated
+            ? (Array.Empty<byte>(), ImageAnimationPackage.Extension)
+            : ImageMediaEncoding.Encode(document.FirstImage, optimize);
+        fileName = Path.ChangeExtension(fileName, encoded.Extension);
 
         string directoryRoot = Path.GetFullPath(directory)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
@@ -353,18 +356,16 @@ public static class ImageEditorService
 
         string temporaryPath = Path.Combine(
             directoryRoot,
-            $".{Guid.NewGuid():N}.tmp{(document.IsAnimated ? ImageAnimationPackage.Extension : ".png")}");
+            $".{Guid.NewGuid():N}.tmp{encoded.Extension}");
         try
         {
             if (document.IsAnimated)
             {
-                ImageAnimationPackage.Save(temporaryPath, document);
+                ImageAnimationPackage.Save(temporaryPath, document, optimize);
             }
             else
             {
-                Error error = document.FirstImage.SavePng(temporaryPath);
-                if (error != Error.Ok)
-                    throw new IOException($"Godot could not save the PNG ({error}).");
+                File.WriteAllBytes(temporaryPath, encoded.Data);
             }
             File.Move(temporaryPath, outputPath, overwrite: true);
             return outputPath;

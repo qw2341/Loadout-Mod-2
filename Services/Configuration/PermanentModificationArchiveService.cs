@@ -1090,6 +1090,7 @@ public static class PermanentModificationArchiveService
         }
         string extension = Path.GetExtension(normalized);
         return string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase)
                || string.Equals(extension, ImageAnimationPackage.Extension, StringComparison.OrdinalIgnoreCase);
     }
 

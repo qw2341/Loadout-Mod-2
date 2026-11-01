@@ -526,7 +526,7 @@ public partial class NImageEditorCanvas : Control
         return RenderOutputDocument().FirstImage;
     }
 
-    public ImageMediaDocument RenderOutputDocument()
+    public ImageMediaDocument RenderOutputDocument(bool optimize = false)
     {
         if (!_initialized)
             throw new InvalidOperationException("The editor canvas has not been initialized.");
@@ -535,7 +535,8 @@ public partial class NImageEditorCanvas : Control
 
         Vector2I outputSize = ImageAnimationSizing.GetOutputSize(
             _frame.OutputSize,
-            _workingFrames.Count);
+            _workingFrames.Count,
+            optimize);
         List<ImageMediaFrame> frames = new(_workingFrames.Count);
         for (int i = 0; i < _workingFrames.Count; i++)
             frames.Add(new ImageMediaFrame(

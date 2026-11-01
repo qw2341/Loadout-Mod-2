@@ -1084,7 +1084,8 @@ public partial class NCardModificationScreen : Control
             UseLoadoutScreen: true,
             CardPreviewModel: editorPreviewCard,
             AllowForceAncientRendering: hasDetachedEditorPreview,
-            InitialForceAncientRendering: initialForceAncientRendering);
+            InitialForceAncientRendering: initialForceAncientRendering,
+            AllowOptimizedSaving: true);
         ImageEditResult result = await ImageEditorService.PickAndEditAsync(request);
         if (result.Status == ImageEditStatus.Cancelled)
             return;
