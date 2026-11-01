@@ -56,6 +56,8 @@ public sealed class BasicMultiHitAoeKeyword : LoadoutBasicKeywordModel
     public override IReadOnlyList<LoadoutKeywordDynamicVarDefinition> DynamicVars =>
         VariableDefinitions;
 
+    public override TargetType? MultiTargetType => TargetType.AllEnemies;
+
     public override async Task AfterOnPlay(
         CardModel card,
         PlayerChoiceContext choiceContext,

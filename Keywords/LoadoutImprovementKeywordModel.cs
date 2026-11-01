@@ -118,9 +118,9 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
             return false;
 
         bool changed = false;
-        foreach ((string name, DynamicVar dynamicVar) in card.DynamicVars)
+        foreach ((string name, DynamicVar value) in card.DynamicVars)
         {
-            if (dynamicVar is not TVar value)
+            if (!MatchesValueType<TVar>(value))
                 continue;
 
             value.BaseValue += amount;
@@ -146,9 +146,9 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
             return false;
 
         bool changed = false;
-        foreach (DynamicVar dynamicVar in card.DynamicVars.Values)
+        foreach (DynamicVar value in card.DynamicVars.Values)
         {
-            if (dynamicVar is not TVar value)
+            if (!MatchesValueType<TVar>(value))
                 continue;
 
             value.BaseValue *= multiplier;
@@ -157,6 +157,11 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
 
         return changed;
     }
+
+    private static bool MatchesValueType<TVar>(DynamicVar value)
+        where TVar : DynamicVar =>
+        value is TVar
+        || typeof(TVar) == typeof(DamageVar) && value is OstyDamageVar;
 
     private static void IncreaseMatchingValuesPermanently(
         CardModel card,
@@ -247,6 +252,7 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
             return false;
 
         return value is not DamageVar
+               and not OstyDamageVar
                and not BlockVar
                and not CalculatedVar
                and not CalculationBaseVar
