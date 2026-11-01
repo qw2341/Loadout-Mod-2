@@ -396,6 +396,9 @@ public partial class NLoadoutPanelRoot : Control
 		    && currentScreen is NGenericSelectScreen selectScreen
 		    && !selectScreen.CanCloseFromBackNavigation)
 			return false;
+		if (currentScreen is NCardModificationScreen modificationScreen
+		    && !modificationScreen.TryCloseFromBackNavigation())
+			return true;
 		if (!_screenHistory.TryPop(out var screen))
 			return false;
 

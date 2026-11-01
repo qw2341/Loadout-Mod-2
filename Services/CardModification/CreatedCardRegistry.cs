@@ -123,6 +123,19 @@ public static class CreatedCardRegistry
 
     public static void NotifyCollectionChanged() => CollectionRevision++;
 
+    public static bool DiscardUnsavedCard(ModelId id)
+    {
+        if (!IsCreatedId(id)
+            || PermanentCardModificationStore.HasCollectionDefinition(id)
+            || RunDefinitions.ContainsKey(id)
+            || !Cards.Remove(id))
+            return false;
+
+        CanonicalCardModificationRegistry.RemoveCreatedCard(id);
+        ((Dictionary<ModelId, AbstractModel>)ContentField.GetValue(null)!).Remove(id);
+        return true;
+    }
+
     public static bool TryGetRunDefinition(ModelId id, out CardModificationDelta delta) =>
         RunDefinitions.TryGetValue(id, out delta!);
 

@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -173,6 +174,11 @@ public class CardPrinter
 			    ViewUpgradesToggleId,
 			    LocMan.GameLoc("card_library", "VIEW_UPGRADES", LocMan.GameLoc("gameplay_ui", "VIEW_UPGRADES", "View Upgrades")),
 			    checkedByDefault: false,
+			    section: SelectSidebarSection.Bottom);
+		    builder.ActionButton(
+			    "create_card", LocMan.Loc("CREATE_NEW_CARD", "Create a new card"),
+			    CreateNewCard,
+			    CommonHelpers.LoadActionButtonIcon("CardPrinter.png"),
 			    section: SelectSidebarSection.Bottom);
 		    IReadOnlyList<CardPoolModel> librarySortPools = BuildOrderedPrinterCardPools();
 		    builder.Sorter("library", LocMan.Loc("SORT_LIBRARY", "Library"), (a, b) => CompareCardLibraryOrder(a, b, librarySortPools), activeByDefault: true);
@@ -452,6 +458,30 @@ public class CardPrinter
 		    return false;
 	    delta = parsed.IsEmpty ? null : parsed;
 	    return true;
+    }
+
+    private static void CreateNewCard(NGenericSelectScreen selectScreen)
+    {
+	    NLoadoutPanelRoot root = NLoadoutPanelRoot.Instance;
+	    if (root is null || !selectScreen.IsScreenActive || selectScreen.IsReusedSelectionActive)
+		    return;
+	    RunState run = RunManager.Instance.DebugOnlyGetState();
+	    Player creator = run is null ? null : LocalContext.GetMe(run);
+	    if (creator is null)
+		    return;
+
+	    selectScreen.CaptureUiState().FilterSelections.TryGetValue("class", out string selectedClass);
+	    CardPoolModel pool = BuildOrderedPrinterCardPools()
+		    .FirstOrDefault(candidate => CommonHelpers.PoolFilterId("card", candidate) == selectedClass)
+		    ?? ModelDb.CardPool<ColorlessCardPool>();
+	    SelectScrollOffsetState parentScroll = selectScreen.CaptureScrollOffset();
+	    NCardModificationScreen editor = NCardModificationScreen.Create();
+	    editor.InitForCreatedPrinterCard(creator, pool, () =>
+	    {
+		    if (GodotObject.IsInstanceValid(selectScreen))
+			    selectScreen.RestoreScrollOffset(parentScroll);
+	    });
+	    root.OpenScreen(editor);
     }
 
     private static void OpenCardPrinterEditor(

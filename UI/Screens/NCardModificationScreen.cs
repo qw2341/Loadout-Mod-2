@@ -26,12 +26,14 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
+using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Runs;
 
 public partial class NCardModificationScreen : Control
@@ -101,6 +103,8 @@ public partial class NCardModificationScreen : Control
     private bool _awaitingResetConfirmation;
     private bool _customRunAuthoringMode;
     private bool _cardPrinterMode;
+    private ModelId? _createdPrinterCardId;
+    private bool _discardPromptOpen;
     private bool _singleCardOnly;
     private NCardKeywordEditor? _keywordEditor;
     private Action? _cardPrinterRecipeChanged;
@@ -171,6 +175,20 @@ public partial class NCardModificationScreen : Control
             : null;
         CardModel detached = CardPrinterRunRecipeStore.CreateDetachedCard(canonicalCard, localPlayer, recipe);
         Init(new LoadoutOwnedItem<CardModel>(localPlayer, -1, detached, null, null), parentScrollRestore: parentScrollRestore);
+    }
+
+    public void InitForCreatedPrinterCard(
+        Player creator,
+        CardPoolModel pool,
+        Action? parentScrollRestore = null)
+    {
+        _createdPrinterCardId = CreatedCardRegistry.CreateId(creator.NetId);
+        _singleCardOnly = true;
+        Name = $"CardPrinterModification_{CommonHelpers.MakeSafeNodeName(_createdPrinterCardId.ToString())}";
+        InitForCardPrinter(CreatedCardRegistry.GetOrCreate(_createdPrinterCardId), creator, parentScrollRestore);
+        _workingState.PoolId = pool.Id.ToString();
+        _temporaryState.PoolId = _workingState.PoolId;
+        ApplyWorkingState();
     }
 
     public override void _Ready()
@@ -714,7 +732,6 @@ public partial class NCardModificationScreen : Control
         backButton.Connect(NClickableControl.SignalName.Released, Callable.From<NClickableControl>(_ =>
         {
             NLoadoutBackButtonFactory.ResetVisualState(backButton);
-            BeginClose();
             NLoadoutPanelRoot.CloseTopLoadoutScreen();
         }));
         _backButtonMount.AddChild(backButton);
@@ -735,6 +752,81 @@ public partial class NCardModificationScreen : Control
             .SetEase(Tween.EaseType.InOut);
     }
 
+    public bool TryCloseFromBackNavigation()
+    {
+        if (_discardPromptOpen)
+            return false;
+        if (HasUnsavedCreatedPrinterCard())
+        {
+            _ = ConfirmDiscardCreatedCardAsync();
+            return false;
+        }
+
+        BeginClose();
+        return true;
+    }
+
+    private bool HasUnsavedCreatedPrinterCard() =>
+        _createdPrinterCardId is not null
+        && !PermanentCardModificationStore.HasCollectionDefinition(_createdPrinterCardId);
+
+    private async Task ConfirmDiscardCreatedCardAsync()
+    {
+        NModalContainer? modal = NModalContainer.Instance;
+        if (modal is null || !GodotObject.IsInstanceValid(modal))
+            return;
+        if (modal.OpenModal is GodotObject openModal && !GodotObject.IsInstanceValid(openModal))
+            modal.Clear();
+        if (modal.OpenModal is not null)
+            return;
+        NGenericPopup? popup = NGenericPopup.Create();
+        if (popup is null)
+            return;
+
+        _discardPromptOpen = true;
+        bool discard;
+        IDisposable? lease = NLoadoutPanelRoot.Instance?.HostNativeModal(modal);
+        try
+        {
+            LocManager.Instance.GetTable("settings_ui").MergeWith(new Dictionary<string, string>
+            {
+                ["LOADOUT-DISCARD_NEW_CARD_BODY.title"] = LocMan.Loc("DISCARD_NEW_CARD_BODY", "If you want to keep the card, Save it permanently. If you want to create a temporary new card, go to Card Modifier, and create a new card without permanently saving it."),
+                ["LOADOUT-DISCARD_NEW_CARD_TITLE.title"] = LocMan.Loc("DISCARD_NEW_CARD_TITLE", "Discard changes and delete new card?"),
+                ["LOADOUT-DISCARD_NEW_CARD_NO.title"] = LocMan.Loc("DISCARD_NEW_CARD_NO", "No, Return"),
+                ["LOADOUT-DISCARD_NEW_CARD_YES.title"] = LocMan.Loc("DISCARD_NEW_CARD_YES", "Yes, Delete")
+            });
+            modal.Add(popup);
+            discard = await popup.WaitForConfirmation(
+                new LocString("settings_ui", "LOADOUT-DISCARD_NEW_CARD_BODY.title"),
+                new LocString("settings_ui", "LOADOUT-DISCARD_NEW_CARD_TITLE.title"),
+                new LocString("settings_ui", "LOADOUT-DISCARD_NEW_CARD_NO.title"),
+                new LocString("settings_ui", "LOADOUT-DISCARD_NEW_CARD_YES.title"));
+        }
+        finally
+        {
+            if (GodotObject.IsInstanceValid(modal))
+                modal.Clear();
+            lease?.Dispose();
+            _discardPromptOpen = false;
+        }
+
+        if (!discard || !GodotObject.IsInstanceValid(this) || !IsVisibleInTree() || _isClosing)
+            return;
+        DiscardCreatedPrinterCard();
+        NLoadoutPanelRoot.CloseTopLoadoutScreen();
+    }
+
+    private void DiscardCreatedPrinterCard()
+    {
+        if (!HasUnsavedCreatedPrinterCard())
+            return;
+
+        _hasPendingTemporaryCommit = false;
+        CardPrinterRunRecipeStore.Reset(_createdPrinterCardId!);
+        CreatedCardRegistry.DiscardUnsavedCard(_createdPrinterCardId!);
+        _createdPrinterCardId = null;
+    }
+
     private void BeginClose()
     {
         if (_isClosing)
@@ -744,6 +836,7 @@ public partial class NCardModificationScreen : Control
         // Stop mutation confirmations and queued structural changes from rebuilding
         // a screen that is about to be freed.
         UnbindRunContentEvents();
+        DiscardCreatedPrinterCard();
         CommitPendingTemporaryModification();
     }
 
@@ -1046,6 +1139,16 @@ public partial class NCardModificationScreen : Control
         _item = resolved;
         if (_itemIndex >= 0 && _itemIndex < _items.Count)
             _items[_itemIndex] = resolved;
+        if (_cardPrinterMode)
+        {
+            if (forceAncientRendering != initialForceAncientRendering)
+                _workingState.ForceAncientPortraitRendering = forceAncientRendering;
+            CardPrinterRunRecipeStore.SetFromEditor(resolved.Model, _workingState);
+            _cardPrinterRecipeChanged?.Invoke();
+            ReloadCardPrinterItem();
+            return;
+        }
+
         LoadItem(resolved);
         if (forceAncientRendering != initialForceAncientRendering)
         {
@@ -1056,13 +1159,7 @@ public partial class NCardModificationScreen : Control
         }
         RebuildControls();
         RefreshPreview(forceReload: true);
-        if (_cardPrinterMode)
-        {
-            CardPrinterRunRecipeStore.SetFromEditor(resolved.Model, _workingState);
-            _cardPrinterRecipeChanged?.Invoke();
-        }
-        else
-            NotifyPortraitChanged(resolved);
+        NotifyPortraitChanged(resolved);
     }
 
     private static void TryDeletePortraitOutput(string path)
@@ -2266,12 +2363,15 @@ public partial class NCardModificationScreen : Control
 
         if (_cardPrinterMode)
         {
+            if (_createdPrinterCardId is not null)
+                permanentState.CustomTitle ??= LocMan.Loc("NEW_CARD", "New Card");
             bool accepted = CardModificationNetProtocol.RequestCatalogPermanentOperation(
                 CardModificationOperation.ApplyPermanent,
                 _item.Model.Id,
                 permanentState);
             if (!accepted)
                 return;
+            _createdPrinterCardId = null;
             CardPrinterRunRecipeStore.Reset(_item.Model.Id);
             _cardPrinterRecipeChanged?.Invoke();
             ReloadCardPrinterItem();

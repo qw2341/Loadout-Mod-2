@@ -1,6 +1,10 @@
 ﻿keys,en,zh_CN,fr,ja,ko,es
 CREATE_NEW_CARD,Create a new card,创建新卡牌,Créer une carte,新しいカードを作成,새 카드 만들기,Crear una carta nueva
 NEW_CARD,New Card,新卡牌,Nouvelle carte,新しいカード,새 카드,Carta nueva
+DISCARD_NEW_CARD_TITLE,Discard changes and delete new card?,放弃更改并删除新卡牌？,Abandonner les modifications et supprimer la nouvelle carte ?,変更を破棄して新しいカードを削除しますか？,변경 사항을 취소하고 새 카드를 삭제할까요?,¿Descartar los cambios y eliminar la nueva carta?
+DISCARD_NEW_CARD_BODY,"If you want to keep the card, Save it permanently. If you want to create a temporary new card for this run, go to Card Modifier and create a new card (without permanently saving it).",如果你想保留这张卡牌，请永久保存。如果你想临时为本局创建一张新卡牌，请在改卡机创建新卡牌（但不要永久保存）。,"Pour conserver la carte, enregistrez-la définitivement. Pour créer une nouvelle carte temporaire, allez dans le Modificateur de cartes et créez une carte sans l'enregistrer définitivement.",カードを残したい場合は、永続保存してください。一時的な新しいカードを作成したい場合は、カード改造機で新しいカードを作成し、永続保存せずに使用してください。,"카드를 보관하려면 영구 저장하세요. 임시 새 카드를 만들려면 카드 수정기에서 새 카드를 만들고 영구 저장하지 마세요.","Si quieres conservar la carta, guárdala permanentemente. Si quieres crear una nueva carta temporal, ve al Modificador de cartas y crea una carta nueva sin guardarla permanentemente."
+DISCARD_NEW_CARD_NO,"No, Return",否，返回,"Non, revenir",いいえ、戻ります,"아니요, 돌아가기","No, volver"
+DISCARD_NEW_CARD_YES,"Yes, Delete",是，删除,"Oui, supprimer",はい、削除します,"예, 삭제","Sí, eliminar"
 ui.text_placeholder,Enter text here,请输入文本,Saisissez du texte ici,ここにテキストを入力,여기에 텍스트를 입력하세요,Introduce texto aquí
 TITLE_SELECT,Select,选择,Sélectionner,選択,선택,Seleccionar
 SEARCH,Search,搜索,Rechercher,検索,검색,Buscar

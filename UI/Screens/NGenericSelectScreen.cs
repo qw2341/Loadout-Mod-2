@@ -2353,11 +2353,11 @@ public partial class NGenericSelectScreen : Control
         if (_bottomControlsContainer.GetParent() == _filterControls)
             _filterControls.MoveChild(_bottomControlsContainer, _filterControls.GetChildCount() - 1);
 
-        if (_bottomActionButtonsContainer.GetParent() == _bottomControlsContainer && _bottomCustomControlsContainer.GetParent() == _bottomControlsContainer)
-            _bottomControlsContainer.MoveChild(_bottomCustomControlsContainer, _bottomActionButtonsContainer.GetIndex() + 1);
-
         if (_bottomCustomControlsContainer.GetParent() == _bottomControlsContainer && _bottomTogglesContainer.GetParent() == _bottomControlsContainer)
             _bottomControlsContainer.MoveChild(_bottomTogglesContainer, _bottomCustomControlsContainer.GetIndex() + 1);
+
+        if (_bottomActionButtonsContainer.GetParent() == _bottomControlsContainer)
+            _bottomControlsContainer.MoveChild(_bottomActionButtonsContainer, _bottomControlsContainer.GetChildCount() - 1);
     }
 
     private void EnsureGameScrollbar()
