@@ -28,10 +28,13 @@ using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Monsters;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
+using MegaCrit.Sts2.Core.Rewards;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 
@@ -80,6 +83,10 @@ public static class PowerGiverStateService
     private static readonly FavoritesUtility Favorites = new(FavoritesPath, [LegacyFavoritesPath]);
     private static readonly HashSet<LoadRunLobby> RegisteredLoadLobbies = [];
     private static readonly HashSet<INetGameService> RegisteredMessageServices = [];
+    private static readonly Dictionary<Type, Action<Creature, int>> PowerApplicationExceptions = new()
+    {
+        [typeof(TheHuntPower)] = GrantHuntRewards
+    };
     private static PowerGiverRunState _run = new();
     private static INetGameService? _runNetService;
     private static RunLobby? _runLobby;
@@ -1054,6 +1061,7 @@ public static class PowerGiverStateService
             return;
         }
 
+        PowerApplicationExceptions.TryGetValue(power.GetType(), out var afterApply);
         foreach (Creature target in targets)
         {
             try
@@ -1062,6 +1070,10 @@ public static class PowerGiverStateService
                 if (target.IsPlayer && mutablePower.InstanceType == PowerInstanceType.Instanced)
                     mutablePower.Target = target;
 
+                int amountBefore = afterApply is null
+                    ? 0
+                    : target.GetPower(power.Id)?.Amount ?? 0;
+
                 await PowerCmd.Apply(
                     choiceContext ?? new ThrowingPlayerChoiceContext(),
                     mutablePower,
@@ -1069,11 +1081,30 @@ public static class PowerGiverStateService
                     amount,
                     applier,
                     source);
+
+                afterApply?.Invoke(target, (target.GetPower(power.Id)?.Amount ?? 0) - amountBefore);
             }
             catch (Exception exception)
             {
                 GD.PushWarning($"PowerGiver: failed to apply '{powerId}' to '{target.Name}'. {exception.Message}");
             }
+        }
+    }
+
+    private static void GrantHuntRewards(Creature target, int appliedAmount)
+    {
+        // Hunt's native power is only the reward indicator.
+        if (appliedAmount <= 0
+            || target.Player is not { } player
+            || player.RunState.CurrentRoom is not CombatRoom combatRoom)
+            return;
+
+        for (int rewardIndex = 0; rewardIndex < appliedAmount; rewardIndex++)
+        {
+            combatRoom.AddExtraReward(player, new CardReward(
+                CardCreationOptions.ForRoom(player, combatRoom.RoomType),
+                3,
+                player));
         }
     }
 
