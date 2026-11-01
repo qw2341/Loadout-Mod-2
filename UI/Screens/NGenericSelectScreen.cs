@@ -460,8 +460,6 @@ public partial class NGenericSelectScreen : Control
 
     private bool IsContentBanShortcutSuppressed()
     {
-        if (!string.IsNullOrWhiteSpace(_query) || !string.IsNullOrWhiteSpace(_searchLineEdit?.Text))
-            return true;
         Control? focusOwner = GetViewport()?.GuiGetFocusOwner();
         return focusOwner is LineEdit or TextEdit;
     }
@@ -2483,6 +2481,7 @@ public partial class NGenericSelectScreen : Control
     private void OnSearchTextSubmitted(string text)
     {
         SetQuery(text);
+        _searchLineEdit?.ReleaseFocus();
         RefreshNow();
     }
 
