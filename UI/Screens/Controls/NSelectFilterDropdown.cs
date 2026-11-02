@@ -34,6 +34,12 @@ public partial class NLoadoutDropdown : NDropdown
     private const float DefaultButtonHeight = 52f;
     private const float ScrollbarLaneWidth = 42f;
 
+    // 0.107 exposes IsUsingController instead.
+    private static readonly Func<NControllerManager, bool> UsesDirectionalNavigation =
+        (typeof(NControllerManager).GetProperty("IsUsingDirectionalNavigation")
+         ?? typeof(NControllerManager).GetProperty("IsUsingController"))!
+        .GetMethod!.CreateDelegate<Func<NControllerManager, bool>>();
+
     private readonly List<LoadoutDropdownOption> _items = new();
     private readonly Dictionary<NSelectDropdownItem, string> _itemIdsByNode = new();
     private string _labelPrefix = string.Empty;
@@ -566,7 +572,8 @@ public partial class NLoadoutDropdown : NDropdown
     private void RefreshButtonHighlight()
     {
         bool showFocus = HasFocus()
-            && (InlineExpansionRequested is null || NControllerManager.Instance?.IsUsingDirectionalNavigation == true);
+            && (InlineExpansionRequested is null
+                || NControllerManager.Instance is { } controller && UsesDirectionalNavigation(controller));
         if (_buttonHoverHighlight is not null && GodotObject.IsInstanceValid(_buttonHoverHighlight))
             _buttonHoverHighlight.Visible = _isOpen || _isButtonHovered || showFocus;
     }
