@@ -20,7 +20,7 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
     protected static decimal GetAmount(CardModel card, string name)
     {
         return LoadoutKeywordRegistry.TryGetValue(card, name, out DynamicVar value)
-            ? Math.Max(0m, value.BaseValue)
+            ? value.BaseValue
             : 0m;
     }
 
@@ -114,7 +114,7 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
         CardModificationDelta? persistentDelta)
         where TVar : DynamicVar
     {
-        if (amount <= 0m || card.IsCanonical)
+        if (amount == 0m || card.IsCanonical)
             return false;
 
         bool changed = false;
@@ -195,7 +195,7 @@ public abstract class LoadoutImprovementKeywordModel : LoadoutKeywordModel
         CardModificationDelta? persistentDelta,
         Func<string, DynamicVar, bool> predicate)
     {
-        if (amount <= 0m || card.IsCanonical)
+        if (amount == 0m || card.IsCanonical)
             return false;
 
         bool changed = false;

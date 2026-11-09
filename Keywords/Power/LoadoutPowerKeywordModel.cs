@@ -330,7 +330,7 @@ public static class LoadoutPowerKeywordState
         CardModel card,
         decimal amount,
         CardModificationDelta? persistentDelta = null) =>
-        amount > 0m && ModifyAmounts(card, 1m, amount, persistentDelta);
+        amount != 0m && ModifyAmounts(card, 1m, amount, persistentDelta);
 
     public static bool MultiplyAmounts(CardModel card, decimal multiplier) =>
         multiplier >= 0m && ModifyAmounts(card, multiplier, 0m, null);

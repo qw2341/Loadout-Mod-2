@@ -59,7 +59,7 @@ public sealed class AllDamageOnPlayKeyword : LoadoutImprovementKeywordModel
         object? capturedState)
     {
         decimal amount = GetAmount(card, AmountVar);
-        if (amount <= 0m || card.Owner.PlayerCombatState is not { } combatState)
+        if (amount == 0m || card.Owner.PlayerCombatState is not { } combatState)
             return Task.CompletedTask;
 
         foreach (CardModel candidate in combatState.AllCards)
