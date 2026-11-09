@@ -443,5 +443,8 @@
   "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "Transforme toutes les cartes du type sélectionné dans une pile en la carte cible.",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "Transformer la sélection",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "Transforme des cartes d’une pile en la carte cible.",
-  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}",
+  "LOADOUT-BASIC_ORB_SLOTS.title": "Emplacements d'Orbe",
+  "LOADOUT-BASIC_ORB_SLOTS.description": "Les valeurs positives ajoutent des Emplacements d'Orbe. Les valeurs négatives retirent les derniers emplacements et leurs Orbes.",
+  "LOADOUT-BASIC_ORB_SLOTS.cardText": "{OrbSlots.PreviewValue:cond:<0?Perdez {OrbSlots.PreviewValue:abs()} {OrbSlots.PreviewValue:cond:==-1?Emplacement d'Orbe|Emplacements d'Orbe}.|Gagnez {OrbSlots:diff()} {OrbSlots:plural:Emplacement d'Orbe|Emplacements d'Orbe}.}"
 }

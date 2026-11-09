@@ -443,5 +443,8 @@
   "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "카드 더미에서 선택한 유형의 모든 카드를 대상 카드로 변화시킵니다.",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "선택 변화",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "카드 더미의 카드를 대상 카드로 변화시킵니다.",
-  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}",
+  "LOADOUT-BASIC_ORB_SLOTS.title": "구체 슬롯",
+  "LOADOUT-BASIC_ORB_SLOTS.description": "양수는 구체 슬롯을 추가합니다. 음수는 뒤쪽부터 슬롯과 그 안의 구체를 제거합니다.",
+  "LOADOUT-BASIC_ORB_SLOTS.cardText": "{OrbSlots.PreviewValue:cond:<0?구체 슬롯을 {OrbSlots.PreviewValue:abs()}개 잃습니다.|구체 슬롯을 {OrbSlots:diff()}개 얻습니다.}"
 }

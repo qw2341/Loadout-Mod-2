@@ -48,6 +48,9 @@ public static class CommonLoc
     public static string MaxHp =>
         LocMan.Loc("DYNAMIC_VAR_MAX_HP", "Max HP");
 
+    public static string OrbSlots =>
+        LocMan.Loc("DYNAMIC_VAR_ORB_SLOTS", "Orb Slots");
+
     public static string OstyDamage =>
         LocMan.Loc("DYNAMIC_VAR_OSTY_DAMAGE", "Osty Damage");
 

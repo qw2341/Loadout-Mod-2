@@ -443,5 +443,8 @@
   "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "Transform every card of the selected type in a pile into target card.",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "Transform Chosen",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "Transform cards from a pile into target card.",
-  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}",
+  "LOADOUT-BASIC_ORB_SLOTS.title": "Orb Slots",
+  "LOADOUT-BASIC_ORB_SLOTS.description": "Positive values add Orb Slots. Negative values remove slots from the back, including any Orbs in them.",
+  "LOADOUT-BASIC_ORB_SLOTS.cardText": "{OrbSlots.PreviewValue:cond:<0?Lose {OrbSlots.PreviewValue:abs()} Orb {OrbSlots.PreviewValue:cond:==-1?Slot|Slots}.|Gain {OrbSlots:diff()} Orb {OrbSlots:plural:Slot|Slots}.}"
 }

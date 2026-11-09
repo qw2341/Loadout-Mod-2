@@ -443,5 +443,8 @@
   "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "Transforma todas las cartas del tipo seleccionado de una pila en la carta objetivo.",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "Transformar elegidas",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "Transforma cartas de una pila en la carta objetivo.",
-  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}",
+  "LOADOUT-BASIC_ORB_SLOTS.title": "Espacios de Orbe",
+  "LOADOUT-BASIC_ORB_SLOTS.description": "Los valores positivos añaden espacios de Orbe. Los negativos eliminan espacios desde el final, incluidos sus Orbes.",
+  "LOADOUT-BASIC_ORB_SLOTS.cardText": "{OrbSlots.PreviewValue:cond:<0?Pierde {OrbSlots.PreviewValue:abs()} {OrbSlots.PreviewValue:cond:==-1?espacio|espacios} de Orbe.|Gana {OrbSlots:diff()} {OrbSlots:plural:espacio|espacios} de Orbe.}"
 }

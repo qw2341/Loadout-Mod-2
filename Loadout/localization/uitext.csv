@@ -301,6 +301,7 @@ DYNAMIC_VAR_HEAL,Heal,治疗,Soins,回復,회복,Curación
 DYNAMIC_VAR_HP_LOSS,HP Loss,生命流失,Perte de PV,HP減少,HP 손실,Pérdida de PV
 DYNAMIC_VAR_IF_UPGRADED,If Upgraded,升级时,Si améliorée,アップグレード時,업그레이드 시,Si está mejorada
 DYNAMIC_VAR_MAX_HP,Max HP,最大生命值,PV max,最大HP,최대 HP,PV máximos
+DYNAMIC_VAR_ORB_SLOTS,Orb Slots,充能球栏位,Emplacements d'Orbe,オーブスロット,구체 슬롯,Espacios de Orbe
 DYNAMIC_VAR_OSTY_DAMAGE,Osty Damage,奥斯蒂伤害,Dégâts Osty,オスティダメージ,오스티 피해,Daño Osty
 DYNAMIC_VAR_STRENGTHLOSS,Strength Loss,力量失去,Perte de Force,筋力低下,힘 감소,Pérdida de Fuerza
 DYNAMIC_VAR_POWER,Power,效力,Pouvoir,パワー,파워,Poder

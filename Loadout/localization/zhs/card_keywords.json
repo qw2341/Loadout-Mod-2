@@ -443,5 +443,8 @@
   "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "将牌堆中所有卡牌变化为目标卡牌。",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "变化选定",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "变化牌堆中一定数量的卡牌为目标卡牌。",
-  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}",
+  "LOADOUT-BASIC_ORB_SLOTS.title": "充能球栏位",
+  "LOADOUT-BASIC_ORB_SLOTS.description": "正值增加充能球栏位。负值从末尾移除栏位及其中的充能球。",
+  "LOADOUT-BASIC_ORB_SLOTS.cardText": "{OrbSlots.PreviewValue:cond:<0?失去{OrbSlots.PreviewValue:abs()}个充能球栏位。|获得{OrbSlots:diff()}个充能球栏位。}"
 }

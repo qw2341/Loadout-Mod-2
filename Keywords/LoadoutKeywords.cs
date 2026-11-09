@@ -73,6 +73,7 @@ public static class LoadoutKeywords
     public const string BasicForgeKey = "BasicForge";
     public const string BasicSummonKey = "BasicSummon";
     public const string BasicEvokeKey = "BasicEvoke";
+    public const string BasicOrbSlotsKey = "BasicOrbSlots";
     public const string BasicOrbKey = "BasicOrb";
     public const string AnotherPlayerOrbKey = "BasicOrbAnotherPlayer";
     public const string AllOtherPlayersOrbKey = "BasicOrbAllOtherPlayers";
@@ -364,6 +365,9 @@ public static class LoadoutKeywords
 
     [CustomEnum("BASIC_EVOKE")]
     public static CardKeyword BasicEvoke;
+
+    [CustomEnum("BASIC_ORB_SLOTS")]
+    public static CardKeyword BasicOrbSlots;
 
     [CustomEnum("BASIC_ORB")]
     public static CardKeyword BasicOrb;

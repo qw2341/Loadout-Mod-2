@@ -72,6 +72,7 @@ public static class LoadoutKeywordRegistry
         BasicStarsKeyword.Instance,
         BasicForgeKeyword.Instance,
         BasicSummonKeyword.Instance,
+        BasicOrbSlotsKeyword.Instance,
         BasicOrbKeyword.Instance,
         AnotherPlayerOrbKeyword.Instance,
         AllOtherPlayersOrbKeyword.Instance,
@@ -496,7 +497,10 @@ public static class LoadoutKeywordRegistry
             {
                 if (!enabled)
                 {
-                    variables.Remove(definition.Name);
+                    if (variables.ContainsKey(definition.Name)
+                        && (!CanonicalCardModificationRegistry.TryGetBaseline(card.Id, out var baseline)
+                            || !baseline.DynamicVars.ContainsKey(definition.Name)))
+                        variables.Remove(definition.Name);
                 }
                 else if (!variables.ContainsKey(definition.Name))
                 {

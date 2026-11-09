@@ -443,5 +443,8 @@
   "LOADOUT-TRANSFORM_ALL_OF_TYPE.description": "指定したカード置き場にある、選択した種類のカードをすべて対象のカードに変化させる。",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.title": "選んで変化",
   "LOADOUT-TRANSFORM_CHOSEN_CARDS.description": "指定したカード置き場にあるカードを対象のカードに変化させる。",
-  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}"
+  "LOADOUT-TRANSFORM_CARDS.cardText": "{Transforms}",
+  "LOADOUT-BASIC_ORB_SLOTS.title": "オーブスロット",
+  "LOADOUT-BASIC_ORB_SLOTS.description": "正の値はオーブスロットを増やす。負の値は末尾からスロットとその中のオーブを取り除く。",
+  "LOADOUT-BASIC_ORB_SLOTS.cardText": "{OrbSlots.PreviewValue:cond:<0?オーブスロットを{OrbSlots.PreviewValue:abs()}個失う。|オーブスロットを{OrbSlots:diff()}得る。}"
 }

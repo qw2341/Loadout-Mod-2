@@ -218,6 +218,7 @@ public static class LocMan
             HpLossVar _ => CommonLoc.HpLoss,
             IfUpgradedVar _ => CommonLoc.IfUpgraded,
             MaxHpVar _ => CommonLoc.MaxHp,
+            { Name: "OrbSlots" } => CommonLoc.OrbSlots,
             OstyDamageVar _ => CommonLoc.OstyDamage,
             RepeatVar _ => CommonLoc.Repeat,
             StarsVar _ => CommonLoc.Stars,
